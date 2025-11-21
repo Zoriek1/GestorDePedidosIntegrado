@@ -18,72 +18,72 @@ const PedidoCard = {
         const overdueClass = isOverdue ? 'text-red-600 font-bold' : '';
 
         card.innerHTML = `
-            <div class="flex justify-between items-start mb-3">
-                <div class="flex-1">
-                    <h3 class="text-lg font-bold text-gray-800">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-lg font-bold text-gray-800 truncate">
                         Pedido #${pedido.id}
                     </h3>
-                    <p class="text-sm text-gray-600">
+                    <p class="text-sm text-gray-600 break-words">
                         <i class="fas fa-calendar mr-1"></i>
                         ${Utils.formatDate(pedido.dia_entrega)} às ${pedido.horario}
-                        ${isOverdue ? '<span class="text-red-600 ml-2"><i class="fas fa-exclamation-triangle"></i> Atrasado</span>' : ''}
+                        ${isOverdue ? '<span class="text-red-600 ml-2 whitespace-nowrap"><i class="fas fa-exclamation-triangle"></i> Atrasado</span>' : ''}
                     </p>
                 </div>
-                <span class="status-badge status-${pedido.status}">
+                <span class="status-badge status-${pedido.status} self-start sm:self-auto">
                     ${Utils.translateStatus(pedido.status)}
                 </span>
             </div>
 
             <div class="space-y-2 mb-4">
                 ${pedido.cliente ? `
-                    <p class="text-sm">
-                        <i class="fas fa-user text-gray-400 w-5"></i>
-                        <strong>De:</strong> ${Utils.escapeHtml(pedido.cliente)}
+                    <p class="text-sm break-words">
+                        <i class="fas fa-user text-gray-400 w-5 inline-block"></i>
+                        <strong>De:</strong> <span class="break-words">${Utils.escapeHtml(pedido.cliente)}</span>
                     </p>
                 ` : ''}
                 
-                <p class="text-sm">
-                    <i class="fas fa-gift text-gray-400 w-5"></i>
-                    <strong>Para:</strong> ${Utils.escapeHtml(pedido.destinatario)}
+                <p class="text-sm break-words">
+                    <i class="fas fa-gift text-gray-400 w-5 inline-block"></i>
+                    <strong>Para:</strong> <span class="break-words">${Utils.escapeHtml(pedido.destinatario)}</span>
                 </p>
 
                 ${pedido.telefone_cliente ? `
-                    <p class="text-sm">
-                        <i class="fas fa-phone text-gray-400 w-5"></i>
-                        ${Utils.formatPhone(pedido.telefone_cliente)}
+                    <p class="text-sm break-words">
+                        <i class="fas fa-phone text-gray-400 w-5 inline-block"></i>
+                        <span class="break-words">${Utils.formatPhone(pedido.telefone_cliente)}</span>
                     </p>
                 ` : ''}
 
-                <p class="text-sm">
-                    <i class="fas fa-flower text-gray-400 w-5"></i>
-                    ${Utils.escapeHtml(Utils.truncate(pedido.produto, 60))}
+                <p class="text-sm break-words">
+                    <i class="fas fa-flower text-gray-400 w-5 inline-block"></i>
+                    <span class="break-words">${Utils.escapeHtml(Utils.truncate(pedido.produto, 60))}</span>
                 </p>
 
                 ${pedido.tipo_pedido ? `
-                    <p class="text-sm">
-                        <i class="fas ${pedido.tipo_pedido === 'Entrega' ? 'fa-truck' : 'fa-store'} text-gray-400 w-5"></i>
-                        ${Utils.translateType(pedido.tipo_pedido)}
+                    <p class="text-sm break-words">
+                        <i class="fas ${pedido.tipo_pedido === 'Entrega' ? 'fa-truck' : 'fa-store'} text-gray-400 w-5 inline-block"></i>
+                        <span class="break-words">${Utils.translateType(pedido.tipo_pedido)}</span>
                     </p>
                 ` : ''}
 
                 ${pedido.endereco && pedido.tipo_pedido === 'Entrega' ? `
-                    <p class="text-sm">
-                        <i class="fas fa-map-marker-alt text-gray-400 w-5"></i>
-                        ${Utils.escapeHtml(Utils.truncate(pedido.endereco, 60))}
+                    <p class="text-sm break-words">
+                        <i class="fas fa-map-marker-alt text-gray-400 w-5 inline-block"></i>
+                        <span class="break-words">${Utils.escapeHtml(Utils.truncate(pedido.endereco, 60))}</span>
                     </p>
                 ` : ''}
 
                 ${pedido.valor ? `
-                    <p class="text-sm">
-                        <i class="fas fa-dollar-sign text-gray-400 w-5"></i>
-                        ${Utils.escapeHtml(pedido.valor)}
+                    <p class="text-sm break-words">
+                        <i class="fas fa-dollar-sign text-gray-400 w-5 inline-block"></i>
+                        <span class="break-words">${Utils.escapeHtml(pedido.valor)}</span>
                     </p>
                 ` : ''}
             </div>
 
-            <div class="flex gap-2 pt-3 border-t border-gray-200">
+            <div class="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-200">
                 <select 
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-primary"
+                    class="w-full sm:flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-primary"
                     onchange="PainelManager.changeStatus(${pedido.id}, this.value)"
                 >
                     <option value="">Alterar Status</option>
@@ -95,37 +95,43 @@ const PedidoCard = {
                     <option value="concluido" ${pedido.status === 'concluido' ? 'selected' : ''}>Concluído</option>
                 </select>
 
-                <button 
-                    class="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
-                    onclick="PedidoCard.printPedido(${pedido.id})"
-                    title="Imprimir Pedido"
-                >
-                    <i class="fas fa-print"></i>
-                </button>
+                <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                    <button 
+                        class="flex-1 sm:flex-none px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition text-sm"
+                        onclick="PedidoCard.printPedido(${pedido.id})"
+                        title="Imprimir Pedido"
+                    >
+                        <i class="fas fa-print"></i>
+                        <span class="hidden sm:inline ml-1">Imprimir</span>
+                    </button>
 
-                <button 
-                    class="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-                    onclick="PedidoCard.showDetails(${pedido.id})"
-                    title="Ver detalhes"
-                >
-                    <i class="fas fa-eye"></i>
-                </button>
+                    <button 
+                        class="flex-1 sm:flex-none px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
+                        onclick="PedidoCard.showDetails(${pedido.id})"
+                        title="Ver detalhes"
+                    >
+                        <i class="fas fa-eye"></i>
+                        <span class="hidden sm:inline ml-1">Ver</span>
+                    </button>
 
-                <button 
-                    class="px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition"
-                    onclick="PedidoCard.editPedido(${pedido.id})"
-                    title="Editar pedido"
-                >
-                    <i class="fas fa-edit"></i>
-                </button>
+                    <button 
+                        class="flex-1 sm:flex-none px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition text-sm"
+                        onclick="PedidoCard.editPedido(${pedido.id})"
+                        title="Editar pedido"
+                    >
+                        <i class="fas fa-edit"></i>
+                        <span class="hidden sm:inline ml-1">Editar</span>
+                    </button>
 
-                <button 
-                    class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
-                    onclick="PainelManager.deletePedido(${pedido.id})"
-                    title="Deletar pedido"
-                >
-                    <i class="fas fa-trash"></i>
-                </button>
+                    <button 
+                        class="flex-1 sm:flex-none px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm"
+                        onclick="PainelManager.deletePedido(${pedido.id})"
+                        title="Deletar pedido"
+                    >
+                        <i class="fas fa-trash"></i>
+                        <span class="hidden sm:inline ml-1">Deletar</span>
+                    </button>
+                </div>
             </div>
         `;
 

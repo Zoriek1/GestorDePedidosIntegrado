@@ -1,99 +1,99 @@
 <!-- Página: Painel de Gestão -->
 <div>
     <!-- Cabeçalho -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-800 mb-2">
+    <div class="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+            <div class="min-w-0 flex-1">
+                <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 mb-1 sm:mb-2 truncate">
                     <i class="fas fa-th-large text-primary"></i>
-                    Painel de Gestão
+                    <span class="ml-2">Painel de Gestão</span>
                 </h1>
-                <p class="text-gray-600">Gerencie todos os pedidos em um só lugar</p>
+                <p class="text-sm sm:text-base text-gray-600">Gerencie todos os pedidos em um só lugar</p>
             </div>
 
-            <div class="flex gap-2">
-                <button id="btn-refresh" class="btn btn-secondary" title="Atualizar">
+            <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                <button id="btn-refresh" class="btn btn-secondary flex-1 sm:flex-none text-sm" title="Atualizar">
                     <i class="fas fa-sync-alt"></i>
-                    <span class="hidden md:inline">Atualizar</span>
+                    <span class="hidden sm:inline ml-1">Atualizar</span>
                 </button>
-                <button id="btn-cleanup" class="btn btn-secondary" title="Limpar Antigos">
+                <button id="btn-cleanup" class="btn btn-secondary flex-1 sm:flex-none text-sm" title="Limpar Antigos">
                     <i class="fas fa-broom"></i>
-                    <span class="hidden md:inline">Limpar Antigos</span>
+                    <span class="hidden sm:inline ml-1">Limpar</span>
                 </button>
-                <button onclick="Router.navigate('/criar-pedido')" class="btn btn-primary">
+                <button onclick="Router.navigate('/criar-pedido')" class="btn btn-primary flex-1 sm:flex-none text-sm">
                     <i class="fas fa-plus-circle"></i>
-                    <span class="hidden md:inline">Novo Pedido</span>
+                    <span class="hidden sm:inline ml-1">Novo Pedido</span>
                 </button>
             </div>
         </div>
     </div>
 
     <!-- Estatísticas -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-4 sm:mb-6">
         <!-- Total -->
-        <div class="bg-white rounded-lg shadow-md p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm text-gray-600 mb-1">Total</p>
-                    <p id="stat-total" class="text-3xl font-bold text-gray-800" data-count="0">0</p>
+        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+            <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                    <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Total</p>
+                    <p id="stat-total" class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 truncate" data-count="0">0</p>
                 </div>
-                <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                    <i class="fas fa-list text-2xl text-blue-600"></i>
+                <div class="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-list text-lg sm:text-2xl text-blue-600"></i>
                 </div>
             </div>
         </div>
 
         <!-- Agendados -->
-        <div class="bg-white rounded-lg shadow-md p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm text-gray-600 mb-1">Agendados</p>
-                    <p id="stat-agendado" class="text-3xl font-bold text-gray-800" data-count="0">0</p>
+        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+            <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                    <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Agendados</p>
+                    <p id="stat-agendado" class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 truncate" data-count="0">0</p>
                 </div>
-                <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                    <i class="fas fa-clock text-2xl text-gray-600"></i>
+                <div class="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-clock text-lg sm:text-2xl text-gray-600"></i>
                 </div>
             </div>
         </div>
 
         <!-- Em Produção -->
-        <div class="bg-white rounded-lg shadow-md p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm text-gray-600 mb-1">Produção</p>
-                    <p id="stat-producao" class="text-3xl font-bold text-gray-800" data-count="0">0</p>
+        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+            <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                    <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Produção</p>
+                    <p id="stat-producao" class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 truncate" data-count="0">0</p>
                 </div>
-                <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                    <i class="fas fa-cogs text-2xl text-yellow-600"></i>
+                <div class="w-10 h-10 sm:w-12 sm:h-12 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-cogs text-lg sm:text-2xl text-yellow-600"></i>
                 </div>
             </div>
         </div>
 
         <!-- Prontos -->
-        <div class="bg-white rounded-lg shadow-md p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm text-gray-600 mb-1">Prontos</p>
-                    <p id="stat-pronto" class="text-3xl font-bold text-gray-800" data-count="0">0</p>
+        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+            <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                    <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Prontos</p>
+                    <p id="stat-pronto" class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 truncate" data-count="0">0</p>
                 </div>
-                <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                    <i class="fas fa-check-circle text-2xl text-green-600"></i>
+                <div class="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-check-circle text-lg sm:text-2xl text-green-600"></i>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Filtros e Busca -->
-    <div class="bg-white rounded-lg shadow-md p-4 mb-6">
-        <div class="flex flex-col md:flex-row gap-4">
+    <div class="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
+        <div class="flex flex-col gap-3 sm:gap-4">
             <!-- Busca -->
-            <div class="flex-1">
+            <div class="flex-1 w-full">
                 <div class="relative">
-                    <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <i class="fas fa-search absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm sm:text-base"></i>
                     <input 
                         type="text" 
                         id="search-input"
-                        class="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
+                        class="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
                         placeholder="Buscar por cliente, destinatário ou produto..."
                     >
                 </div>
@@ -103,31 +103,31 @@
             <div class="flex flex-wrap gap-2">
                 <button 
                     data-filter-status="todos"
-                    class="px-4 py-2 rounded-lg transition active bg-primary text-white"
+                    class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition active bg-primary text-white"
                 >
                     Todos
                 </button>
                 <button 
                     data-filter-status="agendado"
-                    class="px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
                 >
                     Agendado
                 </button>
                 <button 
                     data-filter-status="em_producao"
-                    class="px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
                 >
                     Em Produção
                 </button>
                 <button 
                     data-filter-status="pronto_entrega"
-                    class="px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
                 >
                     Pronto
                 </button>
                 <button 
                     data-filter-status="concluido"
-                    class="px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300"
                 >
                     Concluído
                 </button>

@@ -410,16 +410,255 @@ select:focus {
 /* Responsivo */
 @media (max-width: 640px) {
     .pedido-card {
-        padding: 1rem;
+        padding: 0.75rem;
     }
     
     .notification {
         min-width: 260px;
+        max-width: calc(100vw - 2rem);
     }
     
     .modal-content {
         width: 100%;
         padding: 1rem;
+        margin: 0.5rem;
+    }
+    
+    /* Navbar responsivo */
+    nav .container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    
+    nav .flex.items-center {
+        gap: 0.5rem;
+    }
+    
+    nav .brand-title {
+        font-size: 0.875rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 120px;
+    }
+    
+    nav .nav-button {
+        padding: 0.5rem;
+        min-width: auto;
+    }
+    
+    nav .nav-button span {
+        display: none;
+    }
+    
+    /* Botões em cards de pedido */
+    .pedido-card .flex.gap-2 {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .pedido-card select {
+        flex: 1 1 100%;
+        min-width: 100%;
+        margin-bottom: 0.5rem;
+    }
+    
+    .pedido-card button {
+        flex: 1 1 calc(50% - 0.25rem);
+        min-width: calc(50% - 0.25rem);
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Cards de estatísticas */
+    .grid.grid-cols-2 {
+        gap: 0.5rem;
+    }
+    
+    .grid.grid-cols-2 > div {
+        padding: 0.75rem;
+    }
+    
+    .grid.grid-cols-2 p.text-3xl {
+        font-size: 1.5rem;
+    }
+    
+    .grid.grid-cols-2 .w-12 {
+        width: 2.5rem;
+        height: 2.5rem;
+    }
+    
+    .grid.grid-cols-2 .text-2xl {
+        font-size: 1.25rem;
+    }
+    
+    /* Botões do painel */
+    .flex.gap-2 button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Filtros de status */
+    .flex.flex-wrap.gap-2 button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.75rem;
+        flex: 1 1 auto;
+        min-width: calc(50% - 0.25rem);
+    }
+    
+    /* Formulário */
+    .form-step {
+        padding: 0.5rem 0;
+    }
+    
+    .form-step h2 {
+        font-size: 1.25rem;
+    }
+    
+    /* Progress bar */
+    .progress-step p {
+        font-size: 0.625rem;
+    }
+    
+    .progress-circle {
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Radio buttons de tipo de pedido */
+    .flex.flex-col.sm\\:flex-row label {
+        min-width: 0;
+    }
+    
+    /* Inputs e textareas */
+    input[type="text"],
+    input[type="tel"],
+    input[type="date"],
+    input[type="time"],
+    textarea,
+    select {
+        font-size: 0.875rem;
+        padding: 0.75rem;
+    }
+    
+    /* Labels */
+    label {
+        font-size: 0.875rem;
+    }
+    
+    /* Botões de navegação do formulário */
+    .flex.justify-between.mt-8 {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .flex.justify-between.mt-8 .ml-auto {
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .flex.justify-between.mt-8 .ml-auto.flex {
+        width: 100%;
+        justify-content: stretch;
+    }
+    
+    .flex.justify-between.mt-8 button {
+        flex: 1;
+    }
+    
+    /* Cabeçalho do painel */
+    .bg-white.rounded-lg.shadow-md.p-6 {
+        padding: 1rem;
+    }
+    
+    .bg-white.rounded-lg.shadow-md.p-6 h1 {
+        font-size: 1.5rem;
+    }
+    
+    /* Input de busca */
+    input[type="text"].w-full {
+        font-size: 0.875rem;
+        padding: 0.75rem;
+    }
+    
+    /* Status badge */
+    .status-badge {
+        font-size: 0.625rem;
+        padding: 0.25rem 0.5rem;
+        white-space: nowrap;
+    }
+    
+    /* Textos em cards */
+    .pedido-card .text-lg {
+        font-size: 1rem;
+    }
+    
+    .pedido-card .text-sm {
+        font-size: 0.75rem;
+    }
+    
+    /* Container principal */
+    .container.mx-auto {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    
+    /* Espaçamento reduzido */
+    .mb-6 {
+        margin-bottom: 1rem;
+    }
+    
+    .p-6 {
+        padding: 1rem;
+    }
+    
+    .gap-4 {
+        gap: 0.75rem;
+    }
+    
+    /* Prevenir sobreposição de texto */
+    .space-y-2 p,
+    .space-y-2 span {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+    
+    /* Garantir que textos longos não quebrem o layout */
+    .text-sm {
+        line-height: 1.5;
+    }
+    
+    /* Ajustes para evitar overflow horizontal */
+    body {
+        overflow-x: hidden;
+    }
+    
+    /* Garantir que containers não ultrapassem a largura */
+    .container {
+        max-width: 100%;
+    }
+    
+    /* Ajustes para cards em telas muito pequenas */
+    @media (max-width: 375px) {
+        .pedido-card {
+            padding: 0.5rem;
+        }
+        
+        .pedido-card button {
+            font-size: 0.75rem;
+            padding: 0.375rem;
+        }
+        
+        .grid.grid-cols-2 p.text-3xl {
+            font-size: 1.25rem;
+        }
+        
+        nav .brand-title {
+            max-width: 80px;
+            font-size: 0.75rem;
+        }
     }
 }
 

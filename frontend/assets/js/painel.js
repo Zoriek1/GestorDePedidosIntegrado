@@ -397,9 +397,9 @@ const PainelManager = {
      */
     async cleanupOldPedidos() {
         const confirmed = await Modal.confirm({
-            title: 'Limpar Pedidos Antigos',
-            message: 'Isso vai remover pedidos concluídos há mais de 1 dia. Deseja continuar?',
-            confirmText: 'Limpar',
+            title: 'Arquivar Pedidos Antigos',
+            message: 'Isso vai arquivar (ocultar) pedidos concluídos há mais de 1 dia da lista. Os dados permanecerão no banco de dados. Deseja continuar?',
+            confirmText: 'Arquivar',
             cancelText: 'Cancelar',
             icon: 'fa-broom'
         });
@@ -412,17 +412,17 @@ const PainelManager = {
             const result = await API.cleanupOldPedidos(1);
 
             if (result.success) {
-                Notification.success(`${result.data.count} pedidos removidos`);
+                Notification.success(`${result.data.count} pedidos arquivados (ocultos da lista)`);
                 
                 // Recarregar lista
                 await this.loadPedidos();
             } else {
-                throw new Error(result.error || 'Falha ao limpar');
+                throw new Error(result.error || 'Falha ao arquivar');
             }
 
         } catch (error) {
-            console.error('Erro ao limpar pedidos:', error);
-            Notification.error(`Erro ao limpar pedidos antigos: ${error.message || ''}`.trim());
+            console.error('Erro ao arquivar pedidos:', error);
+            Notification.error(`Erro ao arquivar pedidos antigos: ${error.message || ''}`.trim());
         } finally {
             Utils.hideLoading();
         }

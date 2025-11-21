@@ -153,8 +153,8 @@ def listar_pedidos():
         limit = request.args.get('limit', type=int)
         search = request.args.get('search', '').strip()
         
-        # Query base
-        query = Pedido.query
+        # Query base - excluir pedidos ocultos/arquivados
+        query = Pedido.query.filter(Pedido.oculto == False)
         
         # Aplicar filtros
         if status:
@@ -395,7 +395,7 @@ def pedidos_atrasados():
 
 @api_bp.route('/cleanup', methods=['POST'])
 def limpar_pedidos_antigos():
-    """Remove pedidos antigos automaticamente"""
+    """Arquiva (oculta) pedidos antigos - NÃO deleta do banco de dados"""
     try:
         data = request.get_json() or {}
         days = data.get('days', 1)
@@ -404,7 +404,7 @@ def limpar_pedidos_antigos():
         
         return jsonify({
             'success': True,
-            'message': f'{count} pedidos antigos removidos',
+            'message': f'{count} pedidos antigos arquivados (ocultos da lista)',
             'count': count
         })
         

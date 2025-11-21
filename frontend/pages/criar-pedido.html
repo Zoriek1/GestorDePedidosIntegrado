@@ -102,19 +102,19 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Tipo de Pedido <span class="text-red-500">*</span>
                 </label>
-                <div class="flex gap-4">
+                <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <label class="flex-1 cursor-pointer">
                         <input type="radio" name="tipo_pedido" value="Entrega" checked class="hidden peer">
-                        <div class="px-6 py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
-                            <i class="fas fa-truck text-2xl mb-2"></i>
-                            <p>Entrega</p>
+                        <div class="px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
+                            <i class="fas fa-truck text-xl sm:text-2xl mb-2"></i>
+                            <p class="text-sm sm:text-base">Entrega</p>
                         </div>
                     </label>
                     <label class="flex-1 cursor-pointer">
                         <input type="radio" name="tipo_pedido" value="Retirada" class="hidden peer">
-                        <div class="px-6 py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
-                            <i class="fas fa-store text-2xl mb-2"></i>
-                            <p>Retirada</p>
+                        <div class="px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
+                            <i class="fas fa-store text-xl sm:text-2xl mb-2"></i>
+                            <p class="text-sm sm:text-base">Retirada</p>
                         </div>
                     </label>
                 </div>
@@ -304,33 +304,33 @@
         </div>
 
         <!-- Botões de Navegação -->
-        <div class="flex justify-between mt-8 pt-6 border-t">
+        <div class="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t">
             <button 
                 type="button" 
                 id="btn-anterior"
-                class="btn btn-secondary hidden"
+                class="btn btn-secondary hidden sm:flex order-2 sm:order-1"
             >
                 <i class="fas fa-arrow-left"></i>
-                Anterior
+                <span class="ml-1">Anterior</span>
             </button>
 
-            <div class="ml-auto flex gap-2">
+            <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto order-1 sm:order-2 sm:ml-auto">
                 <button 
                     type="button" 
                     id="btn-proximo"
-                    class="btn btn-primary"
+                    class="btn btn-primary w-full sm:w-auto"
                 >
-                    Próximo
-                    <i class="fas fa-arrow-right"></i>
+                    <span>Próximo</span>
+                    <i class="fas fa-arrow-right ml-1"></i>
                 </button>
 
                 <button 
                     type="button" 
                     id="btn-finalizar"
-                    class="btn btn-success hidden"
+                    class="btn btn-success hidden w-full sm:w-auto"
                 >
                     <i class="fas fa-check"></i>
-                    Finalizar Pedido
+                    <span class="ml-1">Finalizar Pedido</span>
                 </button>
             </div>
         </div>

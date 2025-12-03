@@ -97,6 +97,35 @@ const Masks = {
     },
 
     /**
+     * Aplica máscara de CEP
+     * Formato: XXXXX-XXX
+     */
+    cep(input) {
+        input.addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\D/g, '');
+            
+            // Limitar a 8 dígitos
+            if (value.length > 8) {
+                value = value.slice(0, 8);
+            }
+            
+            // Aplicar formato
+            if (value.length > 5) {
+                value = value.replace(/^(\d{5})(\d{0,3})/, '$1-$2');
+            }
+            
+            e.target.value = value;
+        });
+    },
+
+    /**
+     * Remove máscara de CEP
+     */
+    unmaskCep(value) {
+        return value ? value.replace(/\D/g, '') : '';
+    },
+
+    /**
      * Aplica máscara de moeda
      * Formato: R$ X.XXX,XX
      */
@@ -183,6 +212,11 @@ const Masks = {
         // Horário
         document.querySelectorAll('[data-mask="time"]').forEach(input => {
             this.time(input);
+        });
+
+        // CEP
+        document.querySelectorAll('[data-mask="cep"]').forEach(input => {
+            this.cep(input);
         });
 
         // Moeda

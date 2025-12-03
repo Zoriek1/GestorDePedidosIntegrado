@@ -26,8 +26,13 @@ class Pedido(db.Model):
     dia_entrega = db.Column(db.Date, nullable=False, comment='Data de entrega')
     horario = db.Column(db.String(10), nullable=False, comment='Horário de entrega (HH:MM)')
     
-    # Step 3 - Logística
-    endereco = db.Column(db.Text, nullable=True, comment='Endereço completo')
+    # Step 3 - Logística (campos separados de endereço)
+    cep = db.Column(db.String(10), nullable=True, comment='CEP')
+    rua = db.Column(db.String(200), nullable=True, comment='Rua/Logradouro')
+    numero = db.Column(db.String(20), nullable=True, comment='Número')
+    bairro = db.Column(db.String(100), nullable=True, comment='Bairro')
+    cidade = db.Column(db.String(100), nullable=True, comment='Cidade')
+    endereco = db.Column(db.Text, nullable=True, comment='Endereço completo (gerado ou manual)')
     obs_entrega = db.Column(db.Text, nullable=True, comment='Como entregar/Observações de entrega')
     
     # Step 4 - Finalização
@@ -62,7 +67,12 @@ class Pedido(db.Model):
             'valor': self.valor or '',
             'dia_entrega': self.dia_entrega.strftime('%Y-%m-%d') if self.dia_entrega else '',
             'horario': self.horario or '',
-            # Step 3
+            # Step 3 - Endereço
+            'cep': self.cep or '',
+            'rua': self.rua or '',
+            'numero': self.numero or '',
+            'bairro': self.bairro or '',
+            'cidade': self.cidade or '',
             'endereco': self.endereco or '',
             'obs_entrega': self.obs_entrega or '',
             # Step 4

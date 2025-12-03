@@ -38,7 +38,12 @@ def criar_pedido():
         horario = data.get('horario', data.get('hora_entrega', '')).strip()
         dia_entrega_str = data.get('dia_entrega', data.get('data_entrega', '')).strip()
         
-        # Step 3 - Logística
+        # Step 3 - Logística (campos de endereço separados)
+        cep = data.get('cep', '').strip()
+        rua = data.get('rua', '').strip()
+        numero = data.get('numero', '').strip()
+        bairro = data.get('bairro', '').strip()
+        cidade = data.get('cidade', '').strip()
         endereco = data.get('endereco', '').strip()
         obs_entrega = data.get('obs_entrega', '').strip()
         
@@ -112,7 +117,12 @@ def criar_pedido():
             valor=valor if valor else None,
             horario=horario,
             dia_entrega=dia_entrega,
-            # Step 3
+            # Step 3 - Endereço
+            cep=cep if cep else None,
+            rua=rua if rua else None,
+            numero=numero if numero else None,
+            bairro=bairro if bairro else None,
+            cidade=cidade if cidade else None,
             endereco=endereco if endereco else None,
             obs_entrega=obs_entrega if obs_entrega else None,
             # Step 4
@@ -298,6 +308,16 @@ def atualizar_pedido(pedido_id):
                 pedido.dia_entrega = datetime.strptime(dia_entrega_str, '%d/%m/%Y').date()
             else:
                 pedido.dia_entrega = datetime.strptime(dia_entrega_str, '%Y-%m-%d').date()
+        if 'cep' in data:
+            pedido.cep = data['cep']
+        if 'rua' in data:
+            pedido.rua = data['rua']
+        if 'numero' in data:
+            pedido.numero = data['numero']
+        if 'bairro' in data:
+            pedido.bairro = data['bairro']
+        if 'cidade' in data:
+            pedido.cidade = data['cidade']
         if 'endereco' in data:
             pedido.endereco = data['endereco']
         if 'obs_entrega' in data:

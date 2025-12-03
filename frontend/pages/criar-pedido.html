@@ -215,17 +215,111 @@
                 Logística de Entrega
             </h2>
 
+            <!-- CEP com busca automática -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    CEP
+                </label>
+                <div class="flex gap-2">
+                    <input 
+                        type="text" 
+                        id="cep"
+                        name="cep"
+                        data-mask="cep"
+                        class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
+                        placeholder="00000-000"
+                    >
+                    <button 
+                        type="button" 
+                        id="btn-buscar-cep"
+                        class="px-4 py-3 bg-primary text-white rounded-lg hover:bg-secondary transition flex items-center gap-2"
+                    >
+                        <i class="fas fa-search"></i>
+                        <span class="hidden sm:inline">Buscar</span>
+                    </button>
+                </div>
+                <p id="cep-status" class="text-sm mt-1 hidden"></p>
+            </div>
+
+            <!-- Grid de campos de endereço -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Rua / Logradouro
+                    </label>
+                    <input 
+                        type="text" 
+                        id="rua"
+                        name="rua"
+                        class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
+                        placeholder="Nome da rua"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Número
+                    </label>
+                    <input 
+                        type="text" 
+                        id="numero"
+                        name="numero"
+                        class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
+                        placeholder="Nº"
+                    >
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Bairro
+                    </label>
+                    <input 
+                        type="text" 
+                        id="bairro"
+                        name="bairro"
+                        class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
+                        placeholder="Nome do bairro"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Cidade
+                    </label>
+                    <input 
+                        type="text" 
+                        id="cidade"
+                        name="cidade"
+                        class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
+                        placeholder="Nome da cidade"
+                    >
+                </div>
+            </div>
+
+            <!-- Endereço Completo -->
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Endereço Completo
                 </label>
-                <textarea 
-                    id="endereco"
-                    name="endereco"
-                    rows="4"
-                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Rua, número, complemento, bairro, cidade"
-                ></textarea>
+                <div class="flex flex-col gap-2">
+                    <textarea 
+                        id="endereco"
+                        name="endereco"
+                        rows="3"
+                        class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
+                        placeholder="Endereço completo para entrega"
+                    ></textarea>
+                    <button 
+                        type="button" 
+                        id="btn-gerar-endereco"
+                        class="self-start px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 text-sm"
+                    >
+                        <i class="fas fa-magic"></i>
+                        Gerar automaticamente
+                    </button>
+                </div>
             </div>
 
             <div>
@@ -235,9 +329,9 @@
                 <textarea 
                     id="obs_entrega"
                     name="obs_entrega"
-                    rows="4"
+                    rows="3"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Instruções especiais para entrega"
+                    placeholder="Instruções especiais para entrega (complemento, referência, etc.)"
                 ></textarea>
             </div>
         </div>

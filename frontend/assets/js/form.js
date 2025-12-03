@@ -7,6 +7,7 @@ const FormManager = {
     currentStep: 1,
     totalSteps: 4,
     formData: {},
+    buscandoCep: false,
 
     /**
      * Inicializa o formulário
@@ -19,6 +20,12 @@ const FormManager = {
         
         // Configurar listeners
         this.setupListeners();
+        
+        // Configurar listeners de endereço (CEP e geração automática)
+        // Usar setTimeout para garantir que o DOM esteja completamente renderizado
+        setTimeout(() => {
+            this.setupEnderecoListeners();
+        }, 100);
         
         // Mostrar primeiro step
         this.showStep(1);
@@ -91,24 +98,239 @@ const FormManager = {
     },
 
     /**
+     * Configura listeners para campos de endereço (CEP e geração automática)
+     */
+    setupEnderecoListeners() {
+        console.log('🏠 Configurando listeners de endereço...');
+        
+        // Botão de buscar CEP
+        const btnBuscarCep = document.getElementById('btn-buscar-cep');
+        console.log('Botão Buscar CEP:', btnBuscarCep ? 'Encontrado' : 'NÃO encontrado');
+        
+        if (btnBuscarCep) {
+            // Remover listeners antigos clonando o elemento
+            const newBtnCep = btnBuscarCep.cloneNode(true);
+            btnBuscarCep.parentNode.replaceChild(newBtnCep, btnBuscarCep);
+            
+            newBtnCep.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔍 Clicou em Buscar CEP');
+                this.buscarCep();
+            });
+            console.log('✅ Listener do botão Buscar CEP configurado!');
+        }
+
+        // Buscar CEP ao pressionar Enter no campo
+        const cepInput = document.getElementById('cep');
+        console.log('Campo CEP:', cepInput ? 'Encontrado' : 'NÃO encontrado');
+        
+        if (cepInput) {
+            cepInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    console.log('⌨️ Enter no campo CEP');
+                    this.buscarCep();
+                }
+            });
+
+            // Buscar automaticamente quando completar 9 caracteres (XXXXX-XXX)
+            cepInput.addEventListener('input', (e) => {
+                if (e.target.value.length === 9) {
+                    console.log('📝 CEP completo, buscando automaticamente...');
+                    this.buscarCep();
+                }
+            });
+        }
+
+        // Botão de gerar endereço completo
+        const btnGerarEndereco = document.getElementById('btn-gerar-endereco');
+        console.log('Botão Gerar Endereço:', btnGerarEndereco ? 'Encontrado' : 'NÃO encontrado');
+        
+        if (btnGerarEndereco) {
+            // Remover listeners antigos clonando o elemento
+            const newBtnEndereco = btnGerarEndereco.cloneNode(true);
+            btnGerarEndereco.parentNode.replaceChild(newBtnEndereco, btnGerarEndereco);
+            
+            newBtnEndereco.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('✨ Clicou em Gerar Endereço');
+                this.gerarEnderecoCompleto();
+            });
+            console.log('✅ Listener do botão Gerar Endereço configurado!');
+        }
+    },
+
+    /**
+     * Busca endereço pelo CEP usando a API ViaCEP
+     */
+    async buscarCep() {
+        if (this.buscandoCep) return;
+
+        const cepInput = document.getElementById('cep');
+        const cepStatus = document.getElementById('cep-status');
+        
+        if (!cepInput) return;
+
+        const cep = Masks.unmaskCep(cepInput.value);
+        
+        if (cep.length !== 8) {
+            this.showCepStatus('Digite um CEP válido com 8 dígitos', 'error');
+            return;
+        }
+
+        this.buscandoCep = true;
+        this.showCepStatus('Buscando...', 'loading');
+
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+            const data = await response.json();
+
+            if (data.erro) {
+                this.showCepStatus('CEP não encontrado', 'error');
+                return;
+            }
+
+            // Preencher campos com os dados retornados
+            const ruaInput = document.getElementById('rua');
+            const bairroInput = document.getElementById('bairro');
+            const cidadeInput = document.getElementById('cidade');
+
+            if (ruaInput && data.logradouro) {
+                ruaInput.value = data.logradouro;
+            }
+            if (bairroInput && data.bairro) {
+                bairroInput.value = data.bairro;
+            }
+            if (cidadeInput && data.localidade) {
+                cidadeInput.value = data.localidade;
+            }
+
+            this.showCepStatus('Endereço encontrado!', 'success');
+
+            // Focar no campo número
+            const numeroInput = document.getElementById('numero');
+            if (numeroInput) {
+                numeroInput.focus();
+            }
+
+            console.log('✅ CEP encontrado:', data);
+
+        } catch (error) {
+            console.error('Erro ao buscar CEP:', error);
+            this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+        } finally {
+            this.buscandoCep = false;
+        }
+    },
+
+    /**
+     * Mostra status da busca de CEP
+     */
+    showCepStatus(message, type) {
+        const cepStatus = document.getElementById('cep-status');
+        if (!cepStatus) return;
+
+        cepStatus.textContent = message;
+        cepStatus.classList.remove('hidden', 'text-red-600', 'text-green-600', 'text-blue-600');
+        
+        switch (type) {
+            case 'error':
+                cepStatus.classList.add('text-red-600');
+                break;
+            case 'success':
+                cepStatus.classList.add('text-green-600');
+                // Esconder após 3 segundos
+                setTimeout(() => {
+                    cepStatus.classList.add('hidden');
+                }, 3000);
+                break;
+            case 'loading':
+                cepStatus.classList.add('text-blue-600');
+                break;
+        }
+    },
+
+    /**
+     * Gera o endereço completo automaticamente a partir dos campos
+     */
+    gerarEnderecoCompleto() {
+        const rua = document.getElementById('rua')?.value?.trim() || '';
+        const numero = document.getElementById('numero')?.value?.trim() || '';
+        const bairro = document.getElementById('bairro')?.value?.trim() || '';
+        const cidade = document.getElementById('cidade')?.value?.trim() || '';
+        const cep = document.getElementById('cep')?.value?.trim() || '';
+
+        // Montar endereço completo
+        const partes = [];
+        
+        if (rua) {
+            if (numero) {
+                partes.push(`${rua}, ${numero}`);
+            } else {
+                partes.push(rua);
+            }
+        }
+        
+        if (bairro) {
+            partes.push(bairro);
+        }
+        
+        if (cidade) {
+            partes.push(cidade);
+        }
+        
+        if (cep) {
+            partes.push(`CEP: ${cep}`);
+        }
+
+        const enderecoCompleto = partes.join(' - ');
+        
+        const enderecoInput = document.getElementById('endereco');
+        if (enderecoInput) {
+            enderecoInput.value = enderecoCompleto;
+            
+            if (enderecoCompleto) {
+                Notification.success('Endereço gerado com sucesso!');
+            } else {
+                Notification.warning('Preencha pelo menos a rua para gerar o endereço');
+            }
+        }
+
+        console.log('📍 Endereço gerado:', enderecoCompleto);
+    },
+
+    /**
      * Mostra/oculta campos de endereço baseado no tipo de pedido
      */
     toggleEnderecoFields(tipoPedido) {
+        // Selecionar todos os containers de campos de endereço
+        const cepContainer = document.getElementById('cep')?.closest('div')?.parentElement;
+        const ruaNumeroGrid = document.getElementById('rua')?.closest('.grid');
+        const bairroCidadeGrid = document.getElementById('bairro')?.closest('.grid');
         const enderecoContainer = document.getElementById('endereco')?.closest('div');
         const obsEntregaContainer = document.getElementById('obs_entrega')?.closest('div');
         const step3Title = document.querySelector('#step-3 h2');
 
+        const camposEndereco = [cepContainer, ruaNumeroGrid, bairroCidadeGrid, enderecoContainer];
+
         if (tipoPedido === 'Retirada') {
             // Esconder campos de endereço
-            if (enderecoContainer) {
-                enderecoContainer.style.display = 'none';
-                // Remover required do endereço
-                const enderecoField = document.getElementById('endereco');
-                if (enderecoField) {
-                    enderecoField.removeAttribute('required');
-                    enderecoField.value = ''; // Limpar valor
+            camposEndereco.forEach(container => {
+                if (container) {
+                    container.style.display = 'none';
                 }
-            }
+            });
+
+            // Limpar campos de endereço
+            ['cep', 'rua', 'numero', 'bairro', 'cidade', 'endereco'].forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.removeAttribute('required');
+                    field.value = '';
+                }
+            });
             
             // Mudar título do step 3
             if (step3Title) {
@@ -131,9 +353,11 @@ const FormManager = {
             console.log('🏪 Modo: Retirada - Campos de endereço ocultados');
         } else {
             // Mostrar campos de endereço
-            if (enderecoContainer) {
-                enderecoContainer.style.display = 'block';
-            }
+            camposEndereco.forEach(container => {
+                if (container) {
+                    container.style.display = '';
+                }
+            });
 
             // Restaurar título do step 3
             if (step3Title) {
@@ -190,6 +414,8 @@ const FormManager = {
             if (tipoSelecionado) {
                 this.toggleEnderecoFields(tipoSelecionado.value);
             }
+            // Reconfigurar listeners de endereço quando entrar no step 3
+            this.setupEnderecoListeners();
         }
 
         // Scroll para o topo
@@ -374,7 +600,12 @@ const FormManager = {
         formData.dia_entrega = Masks.unmaskDate(document.getElementById('dia_entrega')?.value || '');
         formData.horario = Masks.unmaskTime(document.getElementById('horario')?.value || '');
 
-        // Step 3 - Logística
+        // Step 3 - Logística (campos de endereço)
+        formData.cep = Masks.unmaskCep(document.getElementById('cep')?.value || '');
+        formData.rua = document.getElementById('rua')?.value || '';
+        formData.numero = document.getElementById('numero')?.value || '';
+        formData.bairro = document.getElementById('bairro')?.value || '';
+        formData.cidade = document.getElementById('cidade')?.value || '';
         formData.endereco = document.getElementById('endereco')?.value || '';
         formData.obs_entrega = document.getElementById('obs_entrega')?.value || '';
 

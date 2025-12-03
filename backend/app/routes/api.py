@@ -308,18 +308,31 @@ def atualizar_pedido(pedido_id):
                 pedido.dia_entrega = datetime.strptime(dia_entrega_str, '%d/%m/%Y').date()
             else:
                 pedido.dia_entrega = datetime.strptime(dia_entrega_str, '%Y-%m-%d').date()
-        if 'cep' in data:
+        # Campos de endereço - se qualquer um mudar, limpar a distância para recalcular
+        endereco_mudou = False
+        if 'cep' in data and data['cep'] != pedido.cep:
             pedido.cep = data['cep']
-        if 'rua' in data:
+            endereco_mudou = True
+        if 'rua' in data and data['rua'] != pedido.rua:
             pedido.rua = data['rua']
-        if 'numero' in data:
+            endereco_mudou = True
+        if 'numero' in data and data['numero'] != pedido.numero:
             pedido.numero = data['numero']
-        if 'bairro' in data:
+            endereco_mudou = True
+        if 'bairro' in data and data['bairro'] != pedido.bairro:
             pedido.bairro = data['bairro']
-        if 'cidade' in data:
+            endereco_mudou = True
+        if 'cidade' in data and data['cidade'] != pedido.cidade:
             pedido.cidade = data['cidade']
-        if 'endereco' in data:
+            endereco_mudou = True
+        if 'endereco' in data and data['endereco'] != pedido.endereco:
             pedido.endereco = data['endereco']
+            endereco_mudou = True
+        
+        # Se o endereço mudou, limpar distância para forçar recálculo
+        if endereco_mudou:
+            pedido.distancia_km = None
+            print(f"[DEBUG] Endereço do pedido {pedido_id} alterado - distância resetada")
         if 'obs_entrega' in data:
             pedido.obs_entrega = data['obs_entrega']
         if 'mensagem' in data:
@@ -436,7 +449,7 @@ def limpar_pedidos_antigos():
 
 
 @api_bp.route('/pedidos/<int:pedido_id>/distancia', methods=['GET'])
-def calcular_distancia_pedido(pedido_id):
+def calcular_distancia_pedido_endpoint(pedido_id):
     """Calcula e retorna a distância da floricultura até o endereço do pedido"""
     try:
         from app.services.distancia import distancia_service
@@ -449,17 +462,36 @@ def calcular_distancia_pedido(pedido_id):
                 'pedido_id': pedido_id
             }), 404
         
-        # Se já tem distância calculada, retornar do cache
-        if pedido.distancia_km is not None:
+        # Verificar se tem query param force_recalc
+        force_recalc = request.args.get('force_recalc', 'false').lower() == 'true'
+        
+        # Se já tem distância calculada e não é forçado, retornar do cache
+        if pedido.distancia_km is not None and not force_recalc:
+            print(f"[DEBUG] Pedido {pedido_id}: retornando distância do cache: {pedido.distancia_km} km")
             return jsonify({
                 'success': True,
                 'pedido_id': pedido_id,
                 'distancia_km': pedido.distancia_km,
+                'endereco': pedido.endereco,
                 'cached': True
             })
         
-        # Calcular distância
-        resultado = distancia_service.calcular_distancia_pedido(pedido.endereco)
+        print(f"\n[DEBUG] ========== CALCULANDO DISTÂNCIA INDIVIDUAL ==========")
+        print(f"[DEBUG] Pedido ID: {pedido_id}")
+        print(f"[DEBUG] Endereço completo: {pedido.endereco}")
+        print(f"[DEBUG] Campos: rua={pedido.rua}, num={pedido.numero}, bairro={pedido.bairro}, cidade={pedido.cidade}, cep={pedido.cep}")
+        print(f"[DEBUG] Forçar recálculo: {force_recalc}")
+        
+        # Calcular distância usando campos separados para melhor precisão
+        resultado = distancia_service.calcular_distancia_pedido(
+            endereco_pedido=pedido.endereco,
+            pedido_id=pedido_id,
+            rua=pedido.rua,
+            numero=pedido.numero,
+            bairro=pedido.bairro,
+            cidade=pedido.cidade,
+            cep=pedido.cep
+        )
         
         if resultado:
             # Salvar no banco para cache
@@ -471,6 +503,8 @@ def calcular_distancia_pedido(pedido_id):
                 'pedido_id': pedido_id,
                 'distancia_km': resultado['distancia_km'],
                 'duracao_min': resultado['duracao_min'],
+                'endereco': pedido.endereco,
+                'coords_destino': resultado.get('coords_destino'),
                 'cached': False
             })
         else:
@@ -482,6 +516,7 @@ def calcular_distancia_pedido(pedido_id):
             })
             
     except Exception as e:
+        print(f"[ERRO] Exceção ao calcular distância do pedido {pedido_id}: {e}")
         return jsonify({
             'error': 'Erro ao calcular distância',
             'detalhes': str(e)
@@ -554,19 +589,16 @@ def calcular_distancias_lote():
                     ignorados += 1
                     continue
                 
-                # Validar formato do endereço antes de tentar geocodificar
-                valido, motivo = distancia_service.validar_endereco(pedido.endereco)
-                if not valido:
-                    resultados.append({
-                        'id': pedido.id,
-                        'distancia_km': None,
-                        'error': f'Endereço inválido: {motivo}'
-                    })
-                    ignorados += 1
-                    continue
-                
-                # Calcular distância
-                resultado = distancia_service.calcular_distancia_pedido(pedido.endereco)
+                # Calcular distância usando campos separados para melhor precisão
+                resultado = distancia_service.calcular_distancia_pedido(
+                    endereco_pedido=pedido.endereco,
+                    pedido_id=pedido.id,
+                    rua=pedido.rua,
+                    numero=pedido.numero,
+                    bairro=pedido.bairro,
+                    cidade=pedido.cidade,
+                    cep=pedido.cep
+                )
                 
                 if resultado:
                     pedido.distancia_km = resultado['distancia_km']
@@ -574,6 +606,8 @@ def calcular_distancias_lote():
                         'id': pedido.id,
                         'distancia_km': resultado['distancia_km'],
                         'duracao_min': resultado['duracao_min'],
+                        'endereco': pedido.endereco,
+                        'coords_destino': resultado.get('coords_destino'),
                         'cached': False
                     })
                     calculados += 1
@@ -581,6 +615,14 @@ def calcular_distancias_lote():
                     resultados.append({
                         'id': pedido.id,
                         'distancia_km': None,
+                        'endereco': pedido.endereco,
+                        'campos': {
+                            'rua': pedido.rua,
+                            'numero': pedido.numero,
+                            'bairro': pedido.bairro,
+                            'cidade': pedido.cidade,
+                            'cep': pedido.cep
+                        },
                         'error': 'Falha na geocodificação'
                     })
                     erros += 1
@@ -640,5 +682,234 @@ def health_check():
             'success': False,
             'status': 'unhealthy',
             'error': str(e)
+        }), 500
+
+
+@api_bp.route('/debug/geocode', methods=['GET', 'POST'])
+def debug_geocode():
+    """
+    Endpoint de debug para testar geocodificação de um endereço.
+    Mostra detalhes completos do que a API retorna.
+    
+    GET: /api/debug/geocode?endereco=Rua+X,+123
+    GET: /api/debug/geocode?rua=Rua+X&numero=123&bairro=Centro&cidade=Goiania&cep=74000000
+    POST: {"endereco": "Rua X, 123"} ou {"rua": "Rua X", "numero": "123", ...}
+    """
+    try:
+        from app.services.distancia import distancia_service
+        import requests
+        
+        # Aceitar tanto GET (query param) quanto POST (json body)
+        if request.method == 'GET':
+            endereco = request.args.get('endereco', '')
+            rua = request.args.get('rua', '')
+            numero = request.args.get('numero', '')
+            bairro = request.args.get('bairro', '')
+            cidade = request.args.get('cidade', '')
+            cep = request.args.get('cep', '')
+        else:
+            data = request.get_json() or {}
+            endereco = data.get('endereco', '')
+            rua = data.get('rua', '')
+            numero = data.get('numero', '')
+            bairro = data.get('bairro', '')
+            cidade = data.get('cidade', '')
+            cep = data.get('cep', '')
+        
+        # Verificar se tem campos separados ou endereço completo
+        tem_campos_separados = rua or bairro or cep
+        
+        if not endereco and not tem_campos_separados:
+            return jsonify({
+                'error': 'Endereço é obrigatório',
+                'uso': [
+                    'GET /api/debug/geocode?endereco=Rua+X,+123,+Bairro,+Cidade',
+                    'GET /api/debug/geocode?rua=Rua+X&numero=123&bairro=Centro&cidade=Goiania&cep=74000000',
+                    'POST {"endereco": "Rua X, 123"}',
+                    'POST {"rua": "Rua X", "numero": "123", "bairro": "Centro", "cidade": "Goiânia", "cep": "74000-000"}'
+                ]
+            }), 400
+        
+        print(f"\n[DEBUG] ========== TESTE DE GEOCODIFICAÇÃO ==========")
+        print(f"[DEBUG] Endereço original: {endereco}")
+        print(f"[DEBUG] Campos separados: rua={rua}, num={numero}, bairro={bairro}, cidade={cidade}, cep={cep}")
+        
+        # Construir endereço otimizado para geocodificação
+        if tem_campos_separados:
+            endereco_para_geocode = distancia_service.construir_endereco_para_geocode(
+                rua=rua,
+                numero=numero,
+                bairro=bairro,
+                cidade=cidade,
+                cep=cep,
+                endereco_completo=endereco
+            )
+            print(f"[DEBUG] Endereço construído dos campos: {endereco_para_geocode}")
+        else:
+            endereco_para_geocode = distancia_service.limpar_endereco(endereco)
+            print(f"[DEBUG] Endereço limpo: {endereco_para_geocode}")
+        
+        # Usar a função de geocodificação do serviço (usa Nominatim + OpenRouteService)
+        print(f"[DEBUG] Chamando geocodificar()...")
+        coords = distancia_service.geocodificar(endereco_para_geocode, normalizar=False)
+        
+        if not coords:
+            return jsonify({
+                'success': False,
+                'endereco_original': endereco,
+                'campos_separados': {
+                    'rua': rua,
+                    'numero': numero,
+                    'bairro': bairro,
+                    'cidade': cidade,
+                    'cep': cep
+                } if tem_campos_separados else None,
+                'endereco_para_geocode': endereco_para_geocode,
+                'error': 'Nenhum resultado encontrado (Nominatim e OpenRouteService falharam)',
+                'dica': 'Verifique se o endereço está correto e completo. Tente com: Rua, Número, Bairro, Cidade'
+            })
+        
+        # Calcular distância da floricultura
+        distancia = None
+        duracao = None
+        coords_floricultura = distancia_service.coords_floricultura
+        
+        if coords_floricultura:
+            resultado_dist = distancia_service.calcular_distancia(coords_floricultura, coords)
+            if resultado_dist:
+                distancia = resultado_dist['distancia_km']
+                duracao = resultado_dist['duracao_min']
+        
+        return jsonify({
+            'success': True,
+            'endereco_original': endereco,
+            'campos_separados': {
+                'rua': rua,
+                'numero': numero,
+                'bairro': bairro,
+                'cidade': cidade,
+                'cep': cep
+            } if tem_campos_separados else None,
+            'endereco_para_geocode': endereco_para_geocode,
+            'coords': {
+                'longitude': coords[0],
+                'latitude': coords[1]
+            },
+            'google_maps_link': f"https://www.google.com/maps?q={coords[1]},{coords[0]}",
+            'distancia_km': distancia,
+            'duracao_min': duracao,
+            'coords_floricultura': {
+                'longitude': coords_floricultura[0] if coords_floricultura else None,
+                'latitude': coords_floricultura[1] if coords_floricultura else None
+            } if coords_floricultura else None
+        })
+        
+    except Exception as e:
+        print(f"[ERRO] Exceção no debug de geocodificação: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Erro ao testar geocodificação',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/debug/limpar-distancias', methods=['POST'])
+def debug_limpar_distancias():
+    """
+    Endpoint de debug para limpar todas as distâncias cacheadas.
+    Força recálculo na próxima chamada.
+    """
+    try:
+        # Limpar todas as distâncias
+        pedidos = Pedido.query.filter(Pedido.distancia_km.isnot(None)).all()
+        count = len(pedidos)
+        
+        for pedido in pedidos:
+            pedido.distancia_km = None
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{count} distâncias limpas do cache',
+            'count': count
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Erro ao limpar distâncias',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/debug/config-floricultura', methods=['GET'])
+def debug_config_floricultura():
+    """
+    Endpoint de debug para verificar a configuração da floricultura.
+    Mostra o endereço configurado e as coordenadas geocodificadas.
+    """
+    try:
+        from app.services.distancia import distancia_service
+        import os
+        
+        endereco = os.environ.get('ENDERECO_FLORICULTURA', '')
+        api_key = os.environ.get('OPENROUTE_API_KEY', '')
+        
+        # Forçar re-geocodificação da floricultura
+        distancia_service._coords_floricultura = None
+        coords = distancia_service.coords_floricultura
+        
+        return jsonify({
+            'success': True,
+            'endereco_configurado': endereco,
+            'api_key_configurada': bool(api_key),
+            'api_key_preview': api_key[:20] + '...' if api_key else None,
+            'coords_floricultura': {
+                'longitude': coords[0] if coords else None,
+                'latitude': coords[1] if coords else None
+            } if coords else None,
+            'google_maps_link': f"https://www.google.com/maps?q={coords[1]},{coords[0]}" if coords else None,
+            'status': 'OK' if coords else 'ERRO - Não foi possível geocodificar'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Erro ao verificar configuração',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/debug/reset-floricultura', methods=['POST'])
+def debug_reset_floricultura():
+    """
+    Força recálculo das coordenadas da floricultura.
+    """
+    try:
+        from app.services.distancia import distancia_service
+        
+        # Limpar cache
+        distancia_service._coords_floricultura = None
+        distancia_service._enderecos_invalidos.clear()
+        
+        # Forçar re-geocodificação
+        coords = distancia_service.coords_floricultura
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cache da floricultura limpo e recalculado',
+            'endereco': distancia_service.endereco_floricultura,
+            'coords': {
+                'longitude': coords[0] if coords else None,
+                'latitude': coords[1] if coords else None
+            } if coords else None,
+            'google_maps_link': f"https://www.google.com/maps?q={coords[1]},{coords[0]}" if coords else None
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Erro ao resetar floricultura',
+            'detalhes': str(e)
         }), 500
 

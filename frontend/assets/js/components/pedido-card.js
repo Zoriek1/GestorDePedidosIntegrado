@@ -80,8 +80,26 @@ const PedidoCard = {
                             ${PedidoCard.formatarDistancia(pedido.distancia_km)}
                         </span>
                         <span class="text-gray-400 text-xs ml-1">da floricultura</span>
+                        <button 
+                            class="ml-2 text-blue-500 hover:text-blue-700 text-xs"
+                            onclick="PedidoCard.calcularDistancia(${pedido.id}, true)"
+                            title="Recalcular distância"
+                        >
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
                     </p>
-                ` : ''}
+                ` : (pedido.tipo_pedido === 'Entrega' && pedido.endereco ? `
+                    <p class="text-sm">
+                        <i class="fas fa-route text-gray-400 w-5 inline-block"></i>
+                        <button 
+                            class="text-blue-500 hover:text-blue-700 text-xs font-medium"
+                            onclick="PedidoCard.calcularDistancia(${pedido.id})"
+                            title="Calcular distância"
+                        >
+                            <i class="fas fa-calculator mr-1"></i>Calcular distância
+                        </button>
+                    </p>
+                ` : '')}
 
                 ${pedido.valor ? `
                     <p class="text-sm break-words">
@@ -224,9 +242,37 @@ const PedidoCard = {
                             </div>
                         </div>
 
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
-                            <textarea id="edit-endereco" class="w-full border rounded px-3 py-2" rows="2">${Utils.escapeHtml(p.endereco || '')}</textarea>
+                        <!-- Campos de Endereço Separados -->
+                        <div class="border rounded-lg p-3 bg-gray-50">
+                            <h3 class="text-sm font-semibold text-gray-700 mb-3">📍 Endereço de Entrega</h3>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">CEP</label>
+                                    <input id="edit-cep" type="text" class="w-full border rounded px-2 py-1.5 text-sm" value="${Utils.escapeHtml(p.cep || '')}" placeholder="00000-000">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Rua</label>
+                                    <input id="edit-rua" type="text" class="w-full border rounded px-2 py-1.5 text-sm" value="${Utils.escapeHtml(p.rua || '')}" placeholder="Nome da rua">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Número</label>
+                                    <input id="edit-numero" type="text" class="w-full border rounded px-2 py-1.5 text-sm" value="${Utils.escapeHtml(p.numero || '')}" placeholder="123">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Bairro</label>
+                                    <input id="edit-bairro" type="text" class="w-full border rounded px-2 py-1.5 text-sm" value="${Utils.escapeHtml(p.bairro || '')}" placeholder="Bairro">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Cidade</label>
+                                    <input id="edit-cidade" type="text" class="w-full border rounded px-2 py-1.5 text-sm" value="${Utils.escapeHtml(p.cidade || 'Goiânia')}" placeholder="Cidade">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Endereço Completo (gerado automaticamente)</label>
+                                <textarea id="edit-endereco" class="w-full border rounded px-2 py-1.5 text-sm bg-white" rows="2" placeholder="Será preenchido automaticamente ou edite manualmente">${Utils.escapeHtml(p.endereco || '')}</textarea>
+                            </div>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -270,7 +316,7 @@ const PedidoCard = {
                 try {
                     Utils.showLoading();
 
-                    // Coletar dados (enviar apenas os campos presentes)
+                    // Coletar dados (incluindo campos de endereço separados)
                     const data = {
                         cliente: overlay.querySelector('#edit-cliente').value.trim(),
                         telefone_cliente: overlay.querySelector('#edit-telefone').value.trim(),
@@ -281,6 +327,12 @@ const PedidoCard = {
                         valor: overlay.querySelector('#edit-valor').value.trim(),
                         dia_entrega: overlay.querySelector('#edit-dia').value, // YYYY-MM-DD
                         horario: overlay.querySelector('#edit-horario').value,
+                        // Campos de endereço separados
+                        cep: overlay.querySelector('#edit-cep').value.trim().replace(/\D/g, ''),
+                        rua: overlay.querySelector('#edit-rua').value.trim(),
+                        numero: overlay.querySelector('#edit-numero').value.trim(),
+                        bairro: overlay.querySelector('#edit-bairro').value.trim(),
+                        cidade: overlay.querySelector('#edit-cidade').value.trim() || 'Goiânia',
                         endereco: overlay.querySelector('#edit-endereco').value.trim(),
                         obs_entrega: overlay.querySelector('#edit-obs_entrega').value.trim(),
                         mensagem: overlay.querySelector('#edit-mensagem').value.trim(),
@@ -519,6 +571,63 @@ const PedidoCard = {
             Notification.error('Erro ao carregar detalhes do pedido');
         } finally {
             Utils.hideLoading();
+        }
+    },
+
+    /**
+     * Calcula a distância de um pedido individual
+     */
+    async calcularDistancia(pedidoId, forceRecalc = false) {
+        try {
+            // Encontrar o card e mostrar loading
+            const card = document.querySelector(`.pedido-card[data-id="${pedidoId}"]`);
+            if (card) {
+                const routeIcon = card.querySelector('.fa-route, .fa-calculator, .fa-sync-alt');
+                if (routeIcon) {
+                    routeIcon.classList.add('fa-spin');
+                }
+            }
+            
+            console.log(`[DEBUG] Calculando distância do pedido ${pedidoId} (forceRecalc: ${forceRecalc})`);
+            
+            // Chamar API
+            const url = `/api/pedidos/${pedidoId}/distancia${forceRecalc ? '?force_recalc=true' : ''}`;
+            const response = await fetch(url);
+            const result = await response.json();
+            
+            console.log('[DEBUG] Resultado:', result);
+            
+            if (result.success) {
+                const distancia = result.distancia_km;
+                const cached = result.cached;
+                
+                // Atualizar o pedido no PainelManager se existir
+                if (window.PainelManager && window.PainelManager.pedidos) {
+                    const pedido = window.PainelManager.pedidos.find(p => p.id === pedidoId);
+                    if (pedido) {
+                        pedido.distancia_km = distancia;
+                    }
+                }
+                
+                // Re-renderizar o card
+                if (window.PainelManager && typeof window.PainelManager.renderPedidos === 'function') {
+                    window.PainelManager.renderPedidos();
+                }
+                
+                // Mostrar notificação
+                const msg = `Distância: ${PedidoCard.formatarDistancia(distancia)}${cached ? ' (cache)' : ''}`;
+                if (result.coords_destino) {
+                    console.log(`[DEBUG] Coordenadas destino: lon=${result.coords_destino[0]}, lat=${result.coords_destino[1]}`);
+                }
+                Notification.success(msg);
+            } else {
+                console.error('[ERRO] Falha ao calcular distância:', result.error);
+                Notification.error(`Erro: ${result.error || 'Falha ao calcular distância'}`);
+            }
+            
+        } catch (error) {
+            console.error('[ERRO] Exceção ao calcular distância:', error);
+            Notification.error('Erro ao calcular distância');
         }
     },
 

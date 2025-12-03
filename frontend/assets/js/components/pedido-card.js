@@ -73,6 +73,16 @@ const PedidoCard = {
                     </p>
                 ` : ''}
 
+                ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
+                    <p class="text-sm">
+                        <i class="fas fa-route text-${PedidoCard.getCorDistancia(pedido.distancia_km)}-500 w-5 inline-block"></i>
+                        <span class="font-medium text-${PedidoCard.getCorDistancia(pedido.distancia_km)}-600">
+                            ${PedidoCard.formatarDistancia(pedido.distancia_km)}
+                        </span>
+                        <span class="text-gray-400 text-xs ml-1">da floricultura</span>
+                    </p>
+                ` : ''}
+
                 ${pedido.valor ? `
                     <p class="text-sm break-words">
                         <i class="fas fa-dollar-sign text-gray-400 w-5 inline-block"></i>
@@ -327,6 +337,31 @@ const PedidoCard = {
         } catch (error) {
             return false;
         }
+    },
+
+    /**
+     * Formata distância para exibição
+     */
+    formatarDistancia(distanciaKm) {
+        if (distanciaKm === null || distanciaKm === undefined) {
+            return '';
+        }
+        if (distanciaKm < 1) {
+            return `${Math.round(distanciaKm * 1000)} m`;
+        }
+        return `${distanciaKm.toFixed(1)} km`;
+    },
+
+    /**
+     * Retorna cor baseada na distância (para classes Tailwind)
+     */
+    getCorDistancia(distanciaKm) {
+        if (distanciaKm === null || distanciaKm === undefined) {
+            return 'gray';
+        }
+        if (distanciaKm <= 5) return 'green';   // Perto
+        if (distanciaKm <= 15) return 'yellow'; // Médio
+        return 'red';                           // Longe
     },
 
     /**

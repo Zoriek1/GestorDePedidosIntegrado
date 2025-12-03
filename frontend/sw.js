@@ -1,7 +1,7 @@
 // Service Worker - Plante Uma Flor PWA v3.0
 // Gerencia cache e funcionalidade offline
 
-const CACHE_NAME = 'plante-uma-flor-v6';
+const CACHE_NAME = 'plante-uma-flor-v10';
 const CACHE_URLS = [
     '/',
     '/index.html',
@@ -76,12 +76,18 @@ self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
     
+    // Ignorar requisições que não são GET (POST, PUT, DELETE não podem ser cacheadas)
+    if (request.method !== 'GET') {
+        event.respondWith(fetch(request));
+        return;
+    }
+    
     // Estratégia para API: Network First (tenta rede primeiro)
     if (url.pathname.startsWith('/api/')) {
         event.respondWith(
             fetch(request)
                 .then((response) => {
-                    // Clonar resposta para cache
+                    // Clonar resposta para cache (apenas GET)
                     const responseClone = response.clone();
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(request, responseClone);

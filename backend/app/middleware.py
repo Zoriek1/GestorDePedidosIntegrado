@@ -10,6 +10,8 @@ import hashlib
 import time
 from datetime import datetime, timedelta
 
+
+
 # ============================================
 # CONFIGURAÇÃO DE USUÁRIOS
 # ============================================

@@ -435,6 +435,194 @@ def limpar_pedidos_antigos():
         }), 500
 
 
+@api_bp.route('/pedidos/<int:pedido_id>/distancia', methods=['GET'])
+def calcular_distancia_pedido(pedido_id):
+    """Calcula e retorna a distância da floricultura até o endereço do pedido"""
+    try:
+        from app.services.distancia import distancia_service
+        
+        pedido = Pedido.query.get(pedido_id)
+        
+        if not pedido:
+            return jsonify({
+                'error': 'Pedido não encontrado',
+                'pedido_id': pedido_id
+            }), 404
+        
+        # Se já tem distância calculada, retornar do cache
+        if pedido.distancia_km is not None:
+            return jsonify({
+                'success': True,
+                'pedido_id': pedido_id,
+                'distancia_km': pedido.distancia_km,
+                'cached': True
+            })
+        
+        # Calcular distância
+        resultado = distancia_service.calcular_distancia_pedido(pedido.endereco)
+        
+        if resultado:
+            # Salvar no banco para cache
+            pedido.distancia_km = resultado['distancia_km']
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'pedido_id': pedido_id,
+                'distancia_km': resultado['distancia_km'],
+                'duracao_min': resultado['duracao_min'],
+                'cached': False
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'pedido_id': pedido_id,
+                'error': 'Não foi possível calcular a distância',
+                'endereco': pedido.endereco
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'error': 'Erro ao calcular distância',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/pedidos/calcular-distancias', methods=['POST'])
+def calcular_distancias_lote():
+    """Calcula distâncias para múltiplos pedidos em lote"""
+    try:
+        from app.services.distancia import distancia_service
+        
+        data = request.get_json() or {}
+        pedido_ids = data.get('pedido_ids', [])
+        force_recalc = data.get('force_recalc', False)  # Forçar recálculo mesmo se já tiver cache
+        
+        if not pedido_ids:
+            # Se não especificar IDs, calcular apenas para pedidos:
+            # - Não ocultos
+            # - Não concluídos (status != 'concluido')
+            # - Tipo Entrega (tipo_pedido == 'Entrega')
+            pedidos = Pedido.query.filter(
+                Pedido.oculto == False,
+                Pedido.status != 'concluido',
+                Pedido.tipo_pedido == 'Entrega'
+            ).all()
+        else:
+            # Se especificar IDs, aplicar os mesmos filtros
+            pedidos = Pedido.query.filter(
+                Pedido.id.in_(pedido_ids),
+                Pedido.status != 'concluido',
+                Pedido.tipo_pedido == 'Entrega'
+            ).all()
+        
+        resultados = []
+        calculados = 0
+        do_cache = 0
+        erros = 0
+        ignorados = 0
+        
+        for pedido in pedidos:
+            try:
+                # Se já tem distância e não é forçado, usar cache
+                if pedido.distancia_km is not None and not force_recalc:
+                    resultados.append({
+                        'id': pedido.id,
+                        'distancia_km': pedido.distancia_km,
+                        'cached': True
+                    })
+                    do_cache += 1
+                    continue
+                
+                # Pular pedidos sem endereço
+                if not pedido.endereco:
+                    resultados.append({
+                        'id': pedido.id,
+                        'distancia_km': None,
+                        'error': 'Sem endereço'
+                    })
+                    ignorados += 1
+                    continue
+                
+                # Pular pedidos do tipo Retirada
+                if pedido.tipo_pedido == 'Retirada':
+                    resultados.append({
+                        'id': pedido.id,
+                        'distancia_km': None,
+                        'error': 'Tipo Retirada - não requer entrega'
+                    })
+                    ignorados += 1
+                    continue
+                
+                # Validar formato do endereço antes de tentar geocodificar
+                valido, motivo = distancia_service.validar_endereco(pedido.endereco)
+                if not valido:
+                    resultados.append({
+                        'id': pedido.id,
+                        'distancia_km': None,
+                        'error': f'Endereço inválido: {motivo}'
+                    })
+                    ignorados += 1
+                    continue
+                
+                # Calcular distância
+                resultado = distancia_service.calcular_distancia_pedido(pedido.endereco)
+                
+                if resultado:
+                    pedido.distancia_km = resultado['distancia_km']
+                    resultados.append({
+                        'id': pedido.id,
+                        'distancia_km': resultado['distancia_km'],
+                        'duracao_min': resultado['duracao_min'],
+                        'cached': False
+                    })
+                    calculados += 1
+                else:
+                    resultados.append({
+                        'id': pedido.id,
+                        'distancia_km': None,
+                        'error': 'Falha na geocodificação'
+                    })
+                    erros += 1
+                    
+            except Exception as pedido_error:
+                # Erro ao processar pedido individual - não interrompe o lote
+                print(f"[ERRO] Erro ao calcular distância do pedido {pedido.id}: {pedido_error}")
+                resultados.append({
+                    'id': pedido.id,
+                    'distancia_km': None,
+                    'error': f'Erro interno: {str(pedido_error)[:50]}'
+                })
+                erros += 1
+        
+        # Salvar distâncias calculadas no banco
+        try:
+            db.session.commit()
+        except Exception as commit_error:
+            print(f"[ERRO] Erro ao salvar distâncias: {commit_error}")
+            db.session.rollback()
+        
+        # Ordenar por distância (None no final)
+        resultados.sort(key=lambda x: (x['distancia_km'] is None, x['distancia_km'] or 0))
+        
+        return jsonify({
+            'success': True,
+            'total': len(resultados),
+            'calculados': calculados,
+            'do_cache': do_cache,
+            'erros': erros,
+            'ignorados': ignorados,
+            'resultados': resultados
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Erro ao calcular distâncias',
+            'detalhes': str(e)
+        }), 500
+
+
 @api_bp.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""

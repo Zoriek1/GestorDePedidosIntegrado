@@ -8,6 +8,11 @@ import sys
 import configparser
 from pathlib import Path
 
+# Carregar variáveis de ambiente do arquivo .env
+from dotenv import load_dotenv
+env_path = Path(__file__).parent / '.env'
+load_dotenv(env_path)
+
 # Configurar encoding UTF-8 para evitar erros no Windows
 if sys.platform == 'win32':
     import io

@@ -171,6 +171,27 @@ const API = {
      */
     async healthCheck() {
         return this.get('/api/health');
+    },
+
+    // ==================== ENDPOINTS DE DISTÂNCIA ====================
+
+    /**
+     * Calcular distância de um pedido específico
+     */
+    async calcularDistanciaPedido(pedidoId) {
+        return this.get(`/api/pedidos/${pedidoId}/distancia`);
+    },
+
+    /**
+     * Calcular distâncias em lote
+     * @param {Array} pedidoIds - Array de IDs dos pedidos (opcional, se vazio calcula todos)
+     * @param {Boolean} forceRecalc - Forçar recálculo mesmo se já tiver cache
+     */
+    async calcularDistanciasLote(pedidoIds = [], forceRecalc = false) {
+        return this.post('/api/pedidos/calcular-distancias', {
+            pedido_ids: pedidoIds,
+            force_recalc: forceRecalc
+        });
     }
 };
 

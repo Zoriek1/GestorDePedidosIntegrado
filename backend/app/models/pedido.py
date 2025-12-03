@@ -45,6 +45,9 @@ class Pedido(db.Model):
     quantidade = db.Column(db.Integer, default=1, comment='Quantidade (compatibilidade)')
     oculto = db.Column(db.Boolean, default=False, comment='Se True, pedido está oculto/arquivado (não aparece na lista)')
     
+    # Distância calculada (OpenRouteService)
+    distancia_km = db.Column(db.Float, nullable=True, comment='Distância em km da floricultura até o endereço')
+    
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='Data de criação')
     updated_at = db.Column(db.DateTime, nullable=True, onupdate=datetime.utcnow, comment='Última atualização')
@@ -83,6 +86,7 @@ class Pedido(db.Model):
             'status': self.status or 'agendado',
             'quantidade': self.quantidade or 1,
             'oculto': self.oculto or False,
+            'distancia_km': self.distancia_km,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else '',
             'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else ''
         }

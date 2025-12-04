@@ -233,14 +233,14 @@ const FormManager = {
         if (!cepStatus) return;
 
         cepStatus.textContent = message;
-        cepStatus.classList.remove('hidden', 'text-red-600', 'text-green-600', 'text-blue-600');
+        cepStatus.classList.remove('hidden', 'text-red-600', 'text-primary', 'text-blue-600');
         
         switch (type) {
             case 'error':
                 cepStatus.classList.add('text-red-600');
                 break;
             case 'success':
-                cepStatus.classList.add('text-green-600');
+                cepStatus.classList.add('text-primary');
                 // Esconder após 3 segundos
                 setTimeout(() => {
                     cepStatus.classList.add('hidden');

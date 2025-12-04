@@ -5,7 +5,7 @@ API completa para o frontend PWA
 """
 from flask import Blueprint, request, jsonify
 from app import db
-from app.models import Pedido
+from app.models import Pedido, RotaOtimizada
 from datetime import datetime
 import re
 
@@ -496,6 +496,11 @@ def calcular_distancia_pedido_endpoint(pedido_id):
         if resultado:
             # Salvar no banco para cache
             pedido.distancia_km = resultado['distancia_km']
+            # Salvar coordenadas se disponíveis
+            if 'coords_destino_lat' in resultado:
+                pedido.coords_lat = resultado['coords_destino_lat']
+            if 'coords_destino_lon' in resultado:
+                pedido.coords_lon = resultado['coords_destino_lon']
             db.session.commit()
             
             return jsonify({
@@ -602,6 +607,11 @@ def calcular_distancias_lote():
                 
                 if resultado:
                     pedido.distancia_km = resultado['distancia_km']
+                    # Salvar coordenadas se disponíveis
+                    if 'coords_destino_lat' in resultado:
+                        pedido.coords_lat = resultado['coords_destino_lat']
+                    if 'coords_destino_lon' in resultado:
+                        pedido.coords_lon = resultado['coords_destino_lon']
                     resultados.append({
                         'id': pedido.id,
                         'distancia_km': resultado['distancia_km'],
@@ -661,6 +671,299 @@ def calcular_distancias_lote():
         db.session.rollback()
         return jsonify({
             'error': 'Erro ao calcular distâncias',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/pedidos/<int:pedido_id>/calcular-taxa', methods=['POST'])
+def calcular_taxa_pedido(pedido_id):
+    """Calcula e retorna a taxa de entrega para um pedido"""
+    try:
+        from app.services.distancia import distancia_service
+        from app.services.taxa_entrega import taxa_entrega_service
+        
+        pedido = Pedido.query.get(pedido_id)
+        
+        if not pedido:
+            return jsonify({
+                'error': 'Pedido não encontrado',
+                'pedido_id': pedido_id
+            }), 404
+        
+        # Verificar se já tem distância calculada
+        if pedido.distancia_km is None:
+            # Calcular distância primeiro
+            resultado = distancia_service.calcular_distancia_pedido(
+                endereco_pedido=pedido.endereco,
+                pedido_id=pedido_id,
+                rua=pedido.rua,
+                numero=pedido.numero,
+                bairro=pedido.bairro,
+                cidade=pedido.cidade,
+                cep=pedido.cep
+            )
+            
+            if not resultado:
+                return jsonify({
+                    'success': False,
+                    'pedido_id': pedido_id,
+                    'error': 'Não foi possível calcular a distância para calcular a taxa',
+                    'endereco': pedido.endereco
+                }), 400
+            
+            # Salvar distância e coordenadas
+            pedido.distancia_km = resultado['distancia_km']
+            if 'coords_destino_lat' in resultado:
+                pedido.coords_lat = resultado['coords_destino_lat']
+            if 'coords_destino_lon' in resultado:
+                pedido.coords_lon = resultado['coords_destino_lon']
+            db.session.commit()
+        
+        # Calcular taxa de entrega
+        taxa = taxa_entrega_service.calcular_taxa(pedido.distancia_km)
+        
+        # Salvar taxa no pedido
+        pedido.taxa_entrega = taxa
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'pedido_id': pedido_id,
+            'distancia_km': pedido.distancia_km,
+            'taxa_entrega': taxa,
+            'endereco': pedido.endereco
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERRO] Exceção ao calcular taxa do pedido {pedido_id}: {e}")
+        return jsonify({
+            'error': 'Erro ao calcular taxa de entrega',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/pedidos/rota-otimizada', methods=['POST'])
+def calcular_rota_otimizada():
+    """Calcula rota otimizada para múltiplos pedidos"""
+    try:
+        from app.services.distancia import distancia_service
+        from app.services.graphhopper import graphhopper_service
+        from app.models import RotaOtimizada
+        
+        data = request.get_json() or {}
+        pedido_ids = data.get('pedido_ids', [])
+        nome_rota = data.get('nome', 'Rota Otimizada')
+        
+        if not pedido_ids:
+            # Se não especificar IDs, usar pedidos elegíveis
+            pedidos = Pedido.query.filter(
+                Pedido.oculto == False,
+                Pedido.status != 'concluido',
+                Pedido.tipo_pedido == 'Entrega',
+                Pedido.distancia_km.isnot(None)  # Apenas pedidos com distância calculada
+            ).all()
+        else:
+            pedidos = Pedido.query.filter(
+                Pedido.id.in_(pedido_ids),
+                Pedido.status != 'concluido',
+                Pedido.tipo_pedido == 'Entrega'
+            ).all()
+        
+        if len(pedidos) < 2:
+            return jsonify({
+                'error': 'É necessário pelo menos 2 pedidos para calcular rota otimizada',
+                'pedidos_encontrados': len(pedidos)
+            }), 400
+        
+        # Obter coordenadas da floricultura
+        origem = distancia_service.coords_floricultura
+        if not origem:
+            return jsonify({
+                'error': 'Não foi possível obter coordenadas da floricultura'
+            }), 500
+        
+        # Converter para formato (lat, lon) para GraphHopper
+        origem_gh = (origem[1], origem[0])
+        
+        # Coletar waypoints dos pedidos (apenas os que têm coordenadas)
+        waypoints = []
+        pedidos_com_coords = []
+        
+        for pedido in pedidos:
+            if pedido.coords_lat and pedido.coords_lon:
+                waypoints.append((pedido.coords_lat, pedido.coords_lon))
+                pedidos_com_coords.append(pedido)
+            else:
+                # Tentar geocodificar se não tiver coordenadas
+                resultado = distancia_service.calcular_distancia_pedido(
+                    endereco_pedido=pedido.endereco,
+                    pedido_id=pedido.id,
+                    rua=pedido.rua,
+                    numero=pedido.numero,
+                    bairro=pedido.bairro,
+                    cidade=pedido.cidade,
+                    cep=pedido.cep
+                )
+                
+                if resultado and 'coords_destino_lat' in resultado:
+                    lat = resultado['coords_destino_lat']
+                    lon = resultado['coords_destino_lon']
+                    waypoints.append((lat, lon))
+                    pedido.coords_lat = lat
+                    pedido.coords_lon = lon
+                    pedidos_com_coords.append(pedido)
+        
+        if len(waypoints) < 2:
+            return jsonify({
+                'error': 'É necessário pelo menos 2 pedidos com coordenadas válidas',
+                'waypoints_encontrados': len(waypoints)
+            }), 400
+        
+        # Calcular rota otimizada
+        resultado_rota = graphhopper_service.calcular_rota_otimizada(
+            origem_gh, waypoints, retornar_origem=True
+        )
+        
+        if not resultado_rota:
+            return jsonify({
+                'error': 'Não foi possível calcular rota otimizada'
+            }), 500
+        
+        # Mapear waypoints otimizados de volta para pedidos
+        sequencia_pedidos = []
+        waypoints_otimizados = resultado_rota.get('sequencia_otimizada', [])
+        
+        # Criar mapeamento de coordenadas para pedidos (com tolerância para diferenças de precisão)
+        import math
+        
+        # Se não temos waypoints otimizados, usar ordem original
+        if not waypoints_otimizados:
+            sequencia_pedidos = [p.id for p in pedidos_com_coords]
+        else:
+            # Criar lista de pedidos disponíveis (não usados ainda)
+            pedidos_disponiveis = pedidos_com_coords.copy()
+            
+            # Para cada waypoint otimizado, encontrar o pedido mais próximo
+            for waypoint in waypoints_otimizados:
+                if not pedidos_disponiveis:
+                    break
+                
+                pedido_encontrado = None
+                menor_dist = float('inf')
+                indice_encontrado = -1
+                
+                # Encontrar pedido mais próximo deste waypoint
+                for i, pedido in enumerate(pedidos_disponiveis):
+                    if pedido.coords_lat and pedido.coords_lon:
+                        # Calcular distância em graus (aproximação)
+                        dist = math.sqrt(
+                            (pedido.coords_lat - waypoint[0])**2 + 
+                            (pedido.coords_lon - waypoint[1])**2
+                        )
+                        if dist < menor_dist:
+                            menor_dist = dist
+                            pedido_encontrado = pedido
+                            indice_encontrado = i
+                
+                # Adicionar pedido encontrado à sequência e remover da lista disponível
+                if pedido_encontrado:
+                    sequencia_pedidos.append(pedido_encontrado.id)
+                    pedidos_disponiveis.pop(indice_encontrado)
+            
+            # Adicionar pedidos restantes que não foram mapeados
+            for pedido in pedidos_disponiveis:
+                if pedido.id not in sequencia_pedidos:
+                    sequencia_pedidos.append(pedido.id)
+        
+        # Salvar rota no banco
+        rota = RotaOtimizada(
+            nome=nome_rota,
+            distancia_total_km=resultado_rota['distancia_total_km'],
+            duracao_total_min=resultado_rota['duracao_total_min'],
+            origem_lat=origem[1],
+            origem_lon=origem[0],
+            num_pedidos=len(sequencia_pedidos),
+            metodo_otimizacao=resultado_rota.get('metodo', 'nearest_neighbor')
+        )
+        rota.set_sequencia_pedidos(sequencia_pedidos)
+        rota.set_waypoints_coords(waypoints_otimizados)
+        
+        db.session.add(rota)
+        
+        # Salvar coordenadas dos pedidos se ainda não tiverem
+        try:
+            db.session.commit()
+        except Exception as commit_error:
+            print(f"[ERRO] Erro ao salvar rota: {commit_error}")
+            db.session.rollback()
+            raise
+        
+        return jsonify({
+            'success': True,
+            'rota_id': rota.id,
+            'nome': rota.nome,
+            'distancia_total_km': rota.distancia_total_km,
+            'duracao_total_min': rota.duracao_total_min,
+            'sequencia_pedidos': rota.get_sequencia_pedidos(),
+            'num_pedidos': rota.num_pedidos,
+            'metodo_otimizacao': rota.metodo_otimizacao,
+            'origem': {
+                'lat': rota.origem_lat,
+                'lon': rota.origem_lon
+            },
+            'waypoints': rota.get_waypoints_coords()
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERRO] Exceção ao calcular rota otimizada: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Erro ao calcular rota otimizada',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/pedidos/rota-otimizada/<int:rota_id>', methods=['GET'])
+def obter_rota_otimizada(rota_id):
+    """Obtém detalhes de uma rota otimizada"""
+    try:
+        from app.models import RotaOtimizada
+        
+        rota = RotaOtimizada.query.get(rota_id)
+        
+        if not rota:
+            return jsonify({
+                'error': 'Rota não encontrada',
+                'rota_id': rota_id
+            }), 404
+        
+        # Buscar informações dos pedidos na sequência
+        pedidos_info = []
+        for pedido_id in rota.get_sequencia_pedidos():
+            pedido = Pedido.query.get(pedido_id)
+            if pedido:
+                pedidos_info.append({
+                    'id': pedido.id,
+                    'cliente': pedido.cliente,
+                    'destinatario': pedido.destinatario,
+                    'endereco': pedido.endereco,
+                    'distancia_km': pedido.distancia_km,
+                    'coords_lat': pedido.coords_lat,
+                    'coords_lon': pedido.coords_lon
+                })
+        
+        return jsonify({
+            'success': True,
+            'rota': rota.to_dict(),
+            'pedidos': pedidos_info
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Erro ao obter rota otimizada',
             'detalhes': str(e)
         }), 500
 

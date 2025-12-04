@@ -7,9 +7,9 @@ const PedidoCard = {
     /**
      * Cria HTML de um card de pedido
      */
-    create(pedido) {
+    create(pedido, modoSelecao = false, selecionado = false) {
         const card = document.createElement('div');
-        card.className = `pedido-card status-${pedido.status}`;
+        card.className = `pedido-card status-${pedido.status} ${selecionado ? 'selected border-2 border-primary' : ''}`;
         card.dataset.id = pedido.id;
         card.dataset.status = pedido.status;
 
@@ -17,8 +17,21 @@ const PedidoCard = {
         const isOverdue = this.isOverdue(pedido);
         const overdueClass = isOverdue ? 'text-red-600 font-bold' : '';
 
+        // Checkbox para seleção (apenas em modo seleção e se for Entrega)
+        const checkboxHtml = modoSelecao && pedido.tipo_pedido === 'Entrega' ? `
+            <div class="absolute top-3 right-3 z-10">
+                <input 
+                    type="checkbox" 
+                    class="w-5 h-5 text-primary rounded focus:ring-primary cursor-pointer"
+                    ${selecionado ? 'checked' : ''}
+                    onchange="if(window.PainelManager) window.PainelManager.toggleSelecaoPedido(${pedido.id})"
+                >
+            </div>
+        ` : '';
+
         card.innerHTML = `
-            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
+            ${checkboxHtml}
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3 ${modoSelecao && pedido.tipo_pedido === 'Entrega' ? 'pr-8' : ''}">
                 <div class="flex-1 min-w-0">
                     <h3 class="text-lg font-bold text-gray-800 truncate">
                         Pedido #${pedido.id}
@@ -101,6 +114,33 @@ const PedidoCard = {
                     </p>
                 ` : '')}
 
+                ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? `
+                    <p class="text-sm">
+                        <i class="fas fa-dollar-sign text-primary w-5 inline-block"></i>
+                        <span class="font-medium text-primary">
+                            Taxa: R$ ${pedido.taxa_entrega.toFixed(2)}
+                        </span>
+                        <button 
+                            class="ml-2 text-blue-500 hover:text-blue-700 text-xs"
+                            onclick="PedidoCard.calcularTaxa(${pedido.id}, true)"
+                            title="Recalcular taxa"
+                        >
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </p>
+                ` : (pedido.distancia_km !== null && pedido.distancia_km !== undefined && pedido.tipo_pedido === 'Entrega' ? `
+                    <p class="text-sm">
+                        <i class="fas fa-dollar-sign text-gray-400 w-5 inline-block"></i>
+                        <button 
+                            class="text-blue-500 hover:text-blue-700 text-xs font-medium"
+                            onclick="PedidoCard.calcularTaxa(${pedido.id})"
+                            title="Calcular taxa de entrega"
+                        >
+                            <i class="fas fa-calculator mr-1"></i>Calcular taxa
+                        </button>
+                    </p>
+                ` : '')}
+
                 ${pedido.valor ? `
                     <p class="text-sm break-words">
                         <i class="fas fa-dollar-sign text-gray-400 w-5 inline-block"></i>
@@ -125,7 +165,7 @@ const PedidoCard = {
 
                 <div class="flex flex-wrap gap-2 w-full sm:w-auto">
                     <button 
-                        class="flex-1 sm:flex-none px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition text-sm"
+                        class="flex-1 sm:flex-none px-3 py-2 bg-primary text-white rounded hover:bg-secondary transition text-sm"
                         onclick="PedidoCard.printPedido(${pedido.id})"
                         title="Imprimir Pedido"
                     >
@@ -498,7 +538,7 @@ const PedidoCard = {
                         ${pedido.valor ? `
                             <div>
                                 <h3 class="font-semibold text-gray-700 mb-1">Valor:</h3>
-                                <p class="text-gray-800 text-xl font-bold text-green-600">${Utils.escapeHtml(pedido.valor)}</p>
+                                <p class="text-gray-800 text-xl font-bold text-primary">${Utils.escapeHtml(pedido.valor)}</p>
                             </div>
                         ` : ''}
 
@@ -571,6 +611,66 @@ const PedidoCard = {
             Notification.error('Erro ao carregar detalhes do pedido');
         } finally {
             Utils.hideLoading();
+        }
+    },
+
+    /**
+     * Calcula a taxa de entrega de um pedido individual
+     */
+    async calcularTaxa(pedidoId, forceRecalc = false) {
+        try {
+            // Encontrar o card e mostrar loading
+            const card = document.querySelector(`.pedido-card[data-id="${pedidoId}"]`);
+            if (card) {
+                const taxaIcon = card.querySelector('.fa-dollar-sign, .fa-calculator, .fa-sync-alt');
+                if (taxaIcon) {
+                    taxaIcon.classList.add('fa-spin');
+                }
+            }
+            
+            console.log(`[DEBUG] Calculando taxa do pedido ${pedidoId}`);
+            
+            // Chamar API
+            const result = await API.calcularTaxaEntrega(pedidoId);
+            
+            console.log('[DEBUG] Resultado taxa:', result);
+            
+            if (result.success) {
+                const taxa = result.data.taxa_entrega;
+                const distancia = result.data.distancia_km;
+                
+                // Atualizar pedido no painel se existir
+                if (window.Painel && window.Painel.pedidos) {
+                    const pedido = window.Painel.pedidos.find(p => p.id === pedidoId);
+                    if (pedido) {
+                        pedido.taxa_entrega = taxa;
+                        pedido.distancia_km = distancia;
+                        // Re-renderizar card
+                        const cardElement = document.querySelector(`.pedido-card[data-id="${pedidoId}"]`);
+                        if (cardElement) {
+                            cardElement.outerHTML = PedidoCard.render(pedido);
+                        }
+                    }
+                }
+                
+                const msg = `Taxa: R$ ${taxa.toFixed(2)}${distancia ? ` (${PedidoCard.formatarDistancia(distancia)})` : ''}`;
+                Notification.success(msg);
+            } else {
+                throw new Error(result.error || 'Erro ao calcular taxa');
+            }
+            
+        } catch (error) {
+            console.error('Erro ao calcular taxa:', error);
+            Notification.error(`Erro ao calcular taxa: ${error.message || 'Falha na requisição'}`);
+        } finally {
+            // Remover loading
+            const card = document.querySelector(`.pedido-card[data-id="${pedidoId}"]`);
+            if (card) {
+                const taxaIcon = card.querySelector('.fa-dollar-sign, .fa-calculator, .fa-sync-alt');
+                if (taxaIcon) {
+                    taxaIcon.classList.remove('fa-spin');
+                }
+            }
         }
     },
 
@@ -689,13 +789,13 @@ const PedidoCard = {
         
         .header {
             text-align: center;
-            border-bottom: 2px solid #9333ea;
+            border-bottom: 2px solid #047857;
             padding-bottom: 10px;
             margin-bottom: 15px;
         }
         
         .header h1 {
-            color: #9333ea;
+            color: #047857;
             font-size: 20pt;
             margin-bottom: 3px;
         }
@@ -706,7 +806,7 @@ const PedidoCard = {
         }
         
         .pedido-numero {
-            background: #9333ea;
+            background: #047857;
             color: white;
             padding: 6px 15px;
             border-radius: 6px;
@@ -724,7 +824,7 @@ const PedidoCard = {
         .section-title {
             background: #f3f4f6;
             padding: 5px 10px;
-            border-left: 3px solid #9333ea;
+            border-left: 3px solid #047857;
             font-weight: bold;
             font-size: 11pt;
             margin-bottom: 6px;
@@ -750,7 +850,7 @@ const PedidoCard = {
         }
         
         .field-value.highlight {
-            color: #9333ea;
+            color: #047857;
             font-weight: bold;
             font-size: 11pt;
         }
@@ -970,7 +1070,7 @@ const PedidoCard = {
         <!-- Botão de Impressão (esconde ao imprimir) -->
         <div class="no-print" style="text-align: center; margin-top: 30px;">
             <button onclick="window.print()" style="
-                background: #9333ea;
+                background: #047857;
                 color: white;
                 border: none;
                 padding: 15px 40px;

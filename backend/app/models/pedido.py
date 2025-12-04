@@ -45,8 +45,15 @@ class Pedido(db.Model):
     quantidade = db.Column(db.Integer, default=1, comment='Quantidade (compatibilidade)')
     oculto = db.Column(db.Boolean, default=False, comment='Se True, pedido está oculto/arquivado (não aparece na lista)')
     
-    # Distância calculada (OpenRouteService)
+    # Distância calculada (GraphHopper/OpenRouteService)
     distancia_km = db.Column(db.Float, nullable=True, comment='Distância em km da floricultura até o endereço')
+    
+    # Taxa de entrega calculada
+    taxa_entrega = db.Column(db.Float, nullable=True, comment='Taxa de entrega calculada (R$)')
+    
+    # Coordenadas do endereço (cache para evitar geocodificação repetida)
+    coords_lat = db.Column(db.Float, nullable=True, comment='Latitude do endereço')
+    coords_lon = db.Column(db.Float, nullable=True, comment='Longitude do endereço')
     
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='Data de criação')
@@ -87,6 +94,9 @@ class Pedido(db.Model):
             'quantidade': self.quantidade or 1,
             'oculto': self.oculto or False,
             'distancia_km': self.distancia_km,
+            'taxa_entrega': self.taxa_entrega,
+            'coords_lat': self.coords_lat,
+            'coords_lon': self.coords_lon,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else '',
             'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else ''
         }

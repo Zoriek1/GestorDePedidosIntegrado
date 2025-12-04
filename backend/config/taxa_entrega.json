@@ -1,0 +1,39 @@
+{
+  "tipo": "faixas",
+  "faixas": [
+    {
+      "ate_km": 3,
+      "taxa": 10.00,
+      "descricao": "Até 5 km"
+    },
+    {
+      "ate_km": 7,
+      "taxa": 15.00,
+      "descricao": "De 5 a 10 km"
+    },
+    {
+      "ate_km": 15,
+      "taxa": 20.00,
+      "descricao": "De 10 a 20 km"
+    },
+    {
+      "ate_km": 20,
+      "taxa": 25.00,
+      "descricao": "De 10 a 20 km"
+    },
+    {
+      "ate_km": 25,
+      "taxa": 30.00,
+      "descricao": "Acima de 20 km"
+    },
+    {
+      "ate_km": 35,
+      "taxa": 50.00,
+      "descricao": "Acima de 20 km"
+    }
+  ],
+  "taxa_minima": 5.00,
+  "taxa_maxima": 50.00,
+  "observacoes": "Valores podem ser customizados conforme necessário"
+}
+

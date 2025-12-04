@@ -192,6 +192,34 @@ const API = {
             pedido_ids: pedidoIds,
             force_recalc: forceRecalc
         });
+    },
+
+    /**
+     * Calcular taxa de entrega para um pedido
+     * @param {Number} pedidoId - ID do pedido
+     */
+    async calcularTaxaEntrega(pedidoId) {
+        return this.post(`/api/pedidos/${pedidoId}/calcular-taxa`);
+    },
+
+    /**
+     * Calcular rota otimizada para múltiplos pedidos
+     * @param {Array} pedidoIds - Array de IDs dos pedidos (opcional, se vazio calcula todos elegíveis)
+     * @param {String} nome - Nome da rota (opcional)
+     */
+    async calcularRotaOtimizada(pedidoIds = [], nome = 'Rota Otimizada') {
+        return this.post('/api/pedidos/rota-otimizada', {
+            pedido_ids: pedidoIds,
+            nome: nome
+        });
+    },
+
+    /**
+     * Obter detalhes de uma rota otimizada
+     * @param {Number} rotaId - ID da rota
+     */
+    async obterRotaOtimizada(rotaId) {
+        return this.get(`/api/pedidos/rota-otimizada/${rotaId}`);
     }
 };
 

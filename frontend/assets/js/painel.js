@@ -13,6 +13,8 @@ const PainelManager = {
     autoRefreshTime: 30000, // 30 segundos
     ordenadoPorDistancia: false,
     calculandoDistancias: false,
+    modoSelecao: false,
+    pedidosSelecionados: new Set(),
 
     /**
      * Inicializa o painel
@@ -70,6 +72,11 @@ const PainelManager = {
         const btnDistancia = document.getElementById('btn-ordenar-distancia');
         if (btnDistancia) {
             btnDistancia.addEventListener('click', () => this.ordenarPorDistancia());
+        }
+        
+        const btnRotaOtimizada = document.getElementById('btn-rota-otimizada');
+        if (btnRotaOtimizada) {
+            btnRotaOtimizada.addEventListener('click', () => this.calcularRotaOtimizada());
         }
     },
 
@@ -209,7 +216,7 @@ const PainelManager = {
 
         // Criar cards
         pedidosOrdenados.forEach(pedido => {
-            const card = PedidoCard.create(pedido);
+            const card = PedidoCard.create(pedido, this.modoSelecao, this.pedidosSelecionados.has(pedido.id));
             container.appendChild(card);
         });
 
@@ -518,6 +525,168 @@ const PainelManager = {
     },
 
     /**
+     * Ativa/desativa modo de seleção de pedidos
+     */
+    toggleModoSelecao() {
+        this.modoSelecao = !this.modoSelecao;
+        this.pedidosSelecionados.clear();
+        
+        const btnRota = document.getElementById('btn-rota-otimizada');
+        
+        if (this.modoSelecao) {
+            // Modo seleção ativado
+            if (btnRota) {
+                btnRota.innerHTML = '<i class="fas fa-check-circle"></i> <span class="hidden sm:inline">Confirmar Seleção</span>';
+                btnRota.classList.remove('bg-green-100', 'text-green-700');
+                btnRota.classList.add('bg-primary', 'text-white');
+            }
+            Notification.info('Modo de seleção ativado. Selecione os pedidos para calcular a rota.');
+        } else {
+            // Modo seleção desativado
+            if (btnRota) {
+                btnRota.innerHTML = '<i class="fas fa-map-marked-alt"></i> <span class="hidden sm:inline">Rota Otimizada</span>';
+                btnRota.classList.remove('bg-primary', 'text-white');
+                btnRota.classList.add('bg-green-100', 'text-green-700');
+            }
+        }
+        
+        // Re-renderizar pedidos para mostrar/ocultar checkboxes
+        this.renderPedidos();
+    },
+
+    /**
+     * Toggle seleção de um pedido
+     */
+    toggleSelecaoPedido(pedidoId) {
+        if (this.pedidosSelecionados.has(pedidoId)) {
+            this.pedidosSelecionados.delete(pedidoId);
+        } else {
+            this.pedidosSelecionados.add(pedidoId);
+        }
+        
+        // Atualizar visual do card
+        const card = document.querySelector(`.pedido-card[data-id="${pedidoId}"]`);
+        if (card) {
+            const checkbox = card.querySelector('input[type="checkbox"]');
+            if (checkbox) {
+                checkbox.checked = this.pedidosSelecionados.has(pedidoId);
+            }
+            card.classList.toggle('selected', this.pedidosSelecionados.has(pedidoId));
+        }
+        
+        // Atualizar contador no botão
+        this.atualizarContadorSelecao();
+    },
+
+    /**
+     * Atualiza contador de pedidos selecionados no botão
+     */
+    atualizarContadorSelecao() {
+        const btnRota = document.getElementById('btn-rota-otimizada');
+        const count = this.pedidosSelecionados.size;
+        
+        if (btnRota && this.modoSelecao) {
+            if (count > 0) {
+                btnRota.innerHTML = `<i class="fas fa-check-circle"></i> <span class="hidden sm:inline">Calcular Rota (${count})</span>`;
+            } else {
+                btnRota.innerHTML = '<i class="fas fa-check-circle"></i> <span class="hidden sm:inline">Confirmar Seleção</span>';
+            }
+        }
+    },
+
+    /**
+     * Calcula rota otimizada para os pedidos selecionados
+     */
+    async calcularRotaOtimizada() {
+        const btnRota = document.getElementById('btn-rota-otimizada');
+        
+        // Se estiver em modo seleção, calcular rota com pedidos selecionados
+        if (this.modoSelecao) {
+            const pedidosSelecionados = Array.from(this.pedidosSelecionados);
+            
+            if (pedidosSelecionados.length < 2) {
+                Notification.warning('Selecione pelo menos 2 pedidos para calcular a rota otimizada.');
+                return;
+            }
+            
+            // Verificar se os pedidos selecionados têm distância calculada
+            const pedidosComDistancia = this.pedidos.filter(p => 
+                pedidosSelecionados.includes(p.id) &&
+                p.distancia_km !== null && 
+                p.distancia_km !== undefined &&
+                p.tipo_pedido === 'Entrega'
+            );
+            
+            if (pedidosComDistancia.length < 2) {
+                Notification.warning('É necessário que pelo menos 2 pedidos selecionados tenham distância calculada e sejam do tipo Entrega.');
+                return;
+            }
+            
+            // Desativar modo seleção
+            this.modoSelecao = false;
+            this.renderPedidos();
+            
+            // Calcular rota
+            await this.executarCalculoRota(pedidosComDistancia.map(p => p.id));
+            return;
+        }
+        
+        // Se não estiver em modo seleção, ativar modo seleção
+        this.toggleModoSelecao();
+    },
+
+    /**
+     * Executa o cálculo da rota otimizada
+     */
+    async executarCalculoRota(pedidoIds) {
+        const btnRota = document.getElementById('btn-rota-otimizada');
+        
+        try {
+            // Atualizar botão para mostrar loading
+            if (btnRota) {
+                btnRota.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="hidden sm:inline">Calculando...</span>';
+                btnRota.disabled = true;
+            }
+            
+            Notification.info('Calculando rota otimizada... Isso pode levar alguns segundos.');
+            
+            // Chamar API para calcular rota otimizada
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Timeout - tente novamente')), 120000)
+            );
+            
+            const apiPromise = API.calcularRotaOtimizada(pedidoIds);
+            const result = await Promise.race([apiPromise, timeoutPromise]);
+            
+            if (result && result.success) {
+                const rota = result.data;
+                
+                Notification.success(`Rota otimizada calculada! ${rota.distancia_total_km} km, ${rota.duracao_total_min} min`);
+                
+                // Limpar seleção
+                this.pedidosSelecionados.clear();
+                
+                // Redirecionar para página de visualização da rota
+                window.location.href = `/pages/rota-entrega.html?id=${rota.rota_id}`;
+            } else {
+                throw new Error(result?.error || 'Erro ao calcular rota otimizada');
+            }
+            
+        } catch (error) {
+            console.error('Erro ao calcular rota otimizada:', error);
+            Notification.error(`Erro: ${error.message || 'Falha ao calcular rota otimizada'}`);
+        } finally {
+            // Restaurar botão
+            if (btnRota) {
+                btnRota.innerHTML = '<i class="fas fa-map-marked-alt"></i> <span class="hidden sm:inline">Rota Otimizada</span>';
+                btnRota.classList.remove('bg-primary', 'text-white');
+                btnRota.classList.add('bg-green-100', 'text-green-700');
+                btnRota.disabled = false;
+            }
+        }
+    },
+
+    /**
      * Formata distância para exibição
      */
     formatarDistancia(distanciaKm) {
@@ -617,6 +786,9 @@ const PainelManager = {
         this.stopAutoRefresh();
     }
 };
+
+// Expor PainelManager globalmente para acesso via onclick
+window.PainelManager = PainelManager;
 
 // Parar auto-refresh ao navegar para outra página
 window.addEventListener('beforeunload', () => {

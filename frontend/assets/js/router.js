@@ -7,7 +7,8 @@ const Router = {
     routes: {
         '/': () => Router.navigate('/painel'),
         '/criar-pedido': () => Router.loadPage('criar-pedido'),
-        '/painel': () => Router.loadPage('painel')
+        '/painel': () => Router.loadPage('painel'),
+        '/rota-entrega': () => Router.loadPage('rota-entrega')
     },
 
     currentRoute: null,

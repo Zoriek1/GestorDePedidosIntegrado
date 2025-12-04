@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rota Otimizada - Plante Uma Flor</title>
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome para ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet para mapas (opcional) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-map-marked-alt text-primary"></i>
+                        Rota Otimizada de Entrega
+                    </h1>
+                    <p class="text-gray-600 mt-1" id="rota-nome">Carregando...</p>
+                </div>
+                <button 
+                    onclick="window.history.back()"
+                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                >
+                    <i class="fas fa-arrow-left mr-2"></i>Voltar
+                </button>
+            </div>
+            
+            <!-- Estatísticas da Rota -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4" id="rota-stats">
+                <div class="bg-blue-50 rounded-lg p-4">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-route text-blue-600 text-xl"></i>
+                        <div>
+                            <p class="text-sm text-gray-600">Distância Total</p>
+                            <p class="text-xl font-bold text-blue-600" id="distancia-total">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-green-50 rounded-lg p-4">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-clock text-primary text-xl"></i>
+                        <div>
+                            <p class="text-sm text-gray-600">Duração Estimada</p>
+                            <p class="text-xl font-bold text-primary" id="duracao-total">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-green-50 rounded-lg p-4">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-box text-primary text-xl"></i>
+                        <div>
+                            <p class="text-sm text-gray-600">Pedidos</p>
+                            <p class="text-xl font-bold text-primary" id="num-pedidos">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mapa -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">
+                <i class="fas fa-map mr-2"></i>Mapa da Rota
+            </h2>
+            <div id="map"></div>
+        </div>
+        
+        <!-- Lista de Pedidos na Ordem da Rota -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">
+                <i class="fas fa-list-ol mr-2"></i>Sequência de Entrega
+            </h2>
+            <div id="pedidos-lista" class="space-y-4">
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                    <p>Carregando rota...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script type="module">
+        // Obter ID da rota da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const rotaId = urlParams.get('id') || window.location.hash.split('/').pop();
+        
+        let map = null;
+        let markers = [];
+        let polyline = null;
+        
+        // Carregar dados da rota
+        async function carregarRota() {
+            try {
+                const response = await fetch(`/api/pedidos/rota-otimizada/${rotaId}`);
+                const result = await response.json();
+                
+                if (!result.success) {
+                    throw new Error(result.error || 'Erro ao carregar rota');
+                }
+                
+                const rota = result.rota;
+                const pedidos = result.pedidos || [];
+                
+                // Atualizar header
+                document.getElementById('rota-nome').textContent = rota.nome || 'Rota Otimizada';
+                document.getElementById('distancia-total').textContent = `${rota.distancia_total_km} km`;
+                document.getElementById('duracao-total').textContent = `${Math.round(rota.duracao_total_min)} min`;
+                document.getElementById('num-pedidos').textContent = rota.num_pedidos;
+                
+                // Inicializar mapa
+                inicializarMapa(rota, pedidos);
+                
+                // Renderizar lista de pedidos
+                renderizarPedidos(pedidos);
+                
+            } catch (error) {
+                console.error('Erro ao carregar rota:', error);
+                document.getElementById('pedidos-lista').innerHTML = `
+                    <div class="text-center py-8 text-red-500">
+                        <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
+                        <p>Erro ao carregar rota: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function inicializarMapa(rota, pedidos) {
+            // Coordenadas centrais (origem)
+            const centro = [rota.origem_lat, rota.origem_lon];
+            
+            // Inicializar mapa
+            map = L.map('map').setView(centro, 12);
+            
+            // Adicionar tile layer (OpenStreetMap)
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+            
+            // Adicionar marcador da origem (floricultura)
+            const origemMarker = L.marker(centro, {
+                icon: L.divIcon({
+                    className: 'custom-marker-origem',
+                    html: '<div style="background-color: #10b981; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15]
+                })
+            }).addTo(map);
+            origemMarker.bindPopup('<b>Floricultura (Origem)</b>').openPopup();
+            markers.push(origemMarker);
+            
+            // Adicionar marcadores dos pedidos
+            const waypoints = rota.waypoints || [];
+            pedidos.forEach((pedido, index) => {
+                if (pedido.coords_lat && pedido.coords_lon) {
+                    const coords = [pedido.coords_lat, pedido.coords_lon];
+                    const marker = L.marker(coords, {
+                        icon: L.divIcon({
+                            className: 'custom-marker-pedido',
+                            html: `<div style="background-color: #047857; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">${index + 1}</div>`,
+                            iconSize: [25, 25],
+                            iconAnchor: [12, 12]
+                        })
+                    }).addTo(map);
+                    
+                    marker.bindPopup(`
+                        <b>Parada ${index + 1}</b><br>
+                        ${pedido.destinatario}<br>
+                        ${pedido.endereco}<br>
+                        ${pedido.distancia_km ? `Distância: ${pedido.distancia_km} km` : ''}
+                    `);
+                    markers.push(marker);
+                }
+            });
+            
+            // Desenhar linha da rota (simples, conectando pontos)
+            const pontos = [centro, ...waypoints.map(wp => [wp[0], wp[1]])];
+            if (rota.retornar_origem !== false) {
+                pontos.push(centro); // Retornar à origem
+            }
+            
+            polyline = L.polyline(pontos, {
+                color: '#047857',
+                weight: 4,
+                opacity: 0.7
+            }).addTo(map);
+            
+            // Ajustar zoom para mostrar toda a rota
+            if (pontos.length > 1) {
+                const group = new L.featureGroup([...markers, polyline]);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+        }
+        
+        function renderizarPedidos(pedidos) {
+            const container = document.getElementById('pedidos-lista');
+            
+            if (pedidos.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-2"></i>
+                        <p>Nenhum pedido encontrado</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = pedidos.map((pedido, index) => `
+                <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                    <div class="flex items-start gap-4">
+                        <div class="flex-shrink-0 w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center font-bold">
+                            ${index + 1}
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-800 mb-1">
+                                ${pedido.destinatario}
+                            </h3>
+                            <p class="text-sm text-gray-600 mb-2">
+                                <i class="fas fa-map-marker-alt mr-1"></i>
+                                ${pedido.endereco}
+                            </p>
+                            <div class="flex gap-4 text-sm">
+                                ${pedido.distancia_km ? `
+                                    <span class="text-blue-600">
+                                        <i class="fas fa-route mr-1"></i>
+                                        ${pedido.distancia_km} km
+                                    </span>
+                                ` : ''}
+                                <span class="text-gray-600">
+                                    <i class="fas fa-user mr-1"></i>
+                                    ${pedido.cliente}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Carregar rota ao iniciar
+        if (rotaId) {
+            carregarRota();
+        } else {
+            document.getElementById('pedidos-lista').innerHTML = `
+                <div class="text-center py-8 text-red-500">
+                    <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
+                    <p>ID da rota não fornecido</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
+

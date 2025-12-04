@@ -219,7 +219,7 @@ const Validators = {
      */
     updateFieldFeedback(input, result) {
         // Remove classes anteriores
-        input.classList.remove('border-red-500', 'border-green-500');
+        input.classList.remove('border-red-500', 'border-primary');
 
         // Remove mensagem de erro anterior
         const existingError = input.parentElement.querySelector('.field-error');
@@ -238,7 +238,7 @@ const Validators = {
             input.parentElement.appendChild(errorMsg);
         } else if (input.value.trim() !== '') {
             // Adiciona borda verde para campo válido preenchido
-            input.classList.add('border-green-500');
+            input.classList.add('border-primary');
         }
     },
 
@@ -274,7 +274,7 @@ const Validators = {
      * Remove feedback de erro de um campo
      */
     clearFieldError(input) {
-        input.classList.remove('border-red-500', 'border-green-500');
+        input.classList.remove('border-red-500', 'border-primary');
         
         const errorMsg = input.parentElement.querySelector('.field-error');
         if (errorMsg) {

@@ -33,7 +33,7 @@ def criar_icone_de_imagem_or_fallback(caminho_ico, tamanho, nome_arquivo):
         print(f"✅ Criado (Buques): {nome_arquivo} ({tamanho}x{tamanho})")
     except Exception as e:
         # Fallback genérico
-        img = Image.new('RGB', (tamanho, tamanho), color='#9333ea')
+        img = Image.new('RGB', (tamanho, tamanho), color='#047857')
         draw = ImageDraw.Draw(img)
         margem = tamanho // 4
         draw.ellipse([margem, margem, tamanho - margem, tamanho - margem], fill='white', outline='white')
@@ -48,7 +48,7 @@ def criar_icone_de_imagem_or_fallback(caminho_ico, tamanho, nome_arquivo):
         text_height = bbox[3] - bbox[1]
         tx = (tamanho - text_width) // 2
         ty = (tamanho - text_height) // 2 - bbox[1]
-        draw.text((tx, ty), texto, fill='#9333ea', font=fonte)
+        draw.text((tx, ty), texto, fill='#047857', font=fonte)
         img.save(nome_arquivo, 'PNG')
         print(f"⚠️ Fallback (genérico): {nome_arquivo} ({tamanho}x{tamanho}) - erro: {e}")
 

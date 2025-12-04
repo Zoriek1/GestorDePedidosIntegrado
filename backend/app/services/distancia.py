@@ -112,6 +112,61 @@ class DistanciaService:
                 print(f"[ERRO] ✗ Falha ao geocodificar endereço da floricultura!")
         return self._coords_floricultura
     
+    def _parsear_endereco_com_virgulas(self, endereco):
+        """
+        Tenta parsear um endereço que vem separado por vírgulas
+        Exemplo: "Rua 132,289,Setor Sul,Goiânia,GO,74093-210"
+        
+        Returns:
+            Dict com rua, numero, bairro, cidade, estado, cep
+        """
+        if not endereco:
+            return {}
+        
+        partes = [p.strip() for p in endereco.split(',') if p.strip()]
+        
+        if len(partes) < 2:
+            return {}
+        
+        resultado = {}
+        
+        # Tentar identificar cada parte
+        # Padrão comum: Rua, Número, Bairro, Cidade, Estado, CEP
+        if len(partes) >= 1:
+            resultado['rua'] = partes[0]
+        
+        if len(partes) >= 2:
+            # Pode ser número ou bairro
+            if partes[1].isdigit() or re.match(r'^\d+', partes[1]):
+                resultado['numero'] = partes[1]
+            else:
+                resultado['bairro'] = partes[1]
+        
+        if len(partes) >= 3:
+            if 'numero' in resultado:
+                resultado['bairro'] = partes[2]
+            else:
+                resultado['cidade'] = partes[2]
+        
+        if len(partes) >= 4:
+            if 'cidade' not in resultado:
+                resultado['cidade'] = partes[3]
+            elif partes[3].upper() in ['GO', 'GOIÁS', 'GOIAS']:
+                resultado['estado'] = partes[3]
+        
+        if len(partes) >= 5:
+            if 'estado' not in resultado:
+                if partes[4].upper() in ['GO', 'GOIÁS', 'GOIAS']:
+                    resultado['estado'] = partes[4]
+                elif re.match(r'^\d{5}-?\d{3}', partes[4]):
+                    resultado['cep'] = partes[4]
+        
+        if len(partes) >= 6:
+            if re.match(r'^\d{5}-?\d{3}', partes[5]):
+                resultado['cep'] = partes[5]
+        
+        return resultado
+    
     def construir_endereco_para_geocode(self, rua=None, numero=None, bairro=None, cidade=None, cep=None, endereco_completo=None):
         """
         Constrói um endereço limpo e otimizado para geocodificação.
@@ -157,7 +212,22 @@ class DistanciaService:
                 print(f"[DEBUG] Endereço dos campos separados: {endereco_geocode}")
             return endereco_geocode
         
-        # PRIORIDADE 2: Endereço completo limpo
+        # PRIORIDADE 2: Tentar parsear endereço completo com vírgulas
+        if endereco_completo and endereco_completo.strip() and ',' in endereco_completo:
+            parsed = self._parsear_endereco_com_virgulas(endereco_completo)
+            if parsed:
+                if self.DEBUG:
+                    print(f"[DEBUG] Endereço parseado: {parsed}")
+                # Tentar construir com campos parseados
+                return self.construir_endereco_para_geocode(
+                    rua=parsed.get('rua'),
+                    numero=parsed.get('numero'),
+                    bairro=parsed.get('bairro'),
+                    cidade=parsed.get('cidade', 'Goiânia'),
+                    cep=parsed.get('cep')
+                )
+        
+        # PRIORIDADE 3: Endereço completo limpo
         if endereco_completo and endereco_completo.strip():
             endereco_limpo = self.limpar_endereco(endereco_completo)
             if self.DEBUG:
@@ -416,9 +486,86 @@ class DistanciaService:
         
         return None
     
+    def _validar_coordenadas(self, coords):
+        """
+        Valida se as coordenadas são válidas
+        
+        Args:
+            coords: Tuple (lon, lat) ou (lat, lon)
+            
+        Returns:
+            bool - True se válidas
+        """
+        if not coords or len(coords) < 2:
+            return False
+        
+        lon, lat = coords[0], coords[1]
+        
+        # Validar ranges: longitude [-180, 180], latitude [-90, 90]
+        if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+            return False
+        
+        # Validar se não são zeros (pode indicar erro)
+        if lon == 0 and lat == 0:
+            return False
+        
+        return True
+    
+    def _calcular_distancia_haversine(self, coords_origem, coords_destino):
+        """
+        Calcula distância em linha reta usando fórmula de Haversine
+        Útil como último recurso quando APIs falharem
+        
+        Args:
+            coords_origem: Tuple (longitude, latitude)
+            coords_destino: Tuple (longitude, latitude)
+            
+        Returns:
+            Dict com distancia_km e duracao_min estimada, ou None
+        """
+        import math
+        
+        if not self._validar_coordenadas(coords_origem) or not self._validar_coordenadas(coords_destino):
+            return None
+        
+        try:
+            lat1, lon1 = math.radians(coords_origem[1]), math.radians(coords_origem[0])
+            lat2, lon2 = math.radians(coords_destino[1]), math.radians(coords_destino[0])
+            
+            # Raio da Terra em km
+            R = 6371.0
+            
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            
+            a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+            c = 2 * math.asin(math.sqrt(a))
+            
+            distancia_km = R * c
+            
+            # Estimar duração: média de 40 km/h em cidade
+            duracao_min = (distancia_km / 40) * 60
+            
+            if self.DEBUG:
+                print(f"[DEBUG] Distância Haversine (linha reta): {distancia_km:.2f} km")
+                print(f"[DEBUG] Duração estimada: {duracao_min:.1f} min")
+            
+            return {
+                'distancia_km': round(distancia_km, 2),
+                'duracao_min': round(duracao_min, 1),
+                'coords_origem': coords_origem,
+                'coords_destino': coords_destino,
+                'metodo': 'haversine'
+            }
+        except Exception as e:
+            if self.DEBUG:
+                print(f"[ERRO] Erro ao calcular distância Haversine: {e}")
+            return None
+    
     def calcular_distancia(self, coords_origem, coords_destino):
         """
         Calcula a distância de rota (dirigindo) entre dois pontos
+        Tenta usar GraphHopper primeiro, com fallback para OpenRouteService e Haversine
         
         Args:
             coords_origem: Tuple (longitude, latitude) do ponto de origem
@@ -427,62 +574,144 @@ class DistanciaService:
         Returns:
             Dict com distancia_km, duracao_min e coordenadas, ou None se falhar
         """
-        if not self.api_key or not coords_origem or not coords_destino:
+        if not coords_origem or not coords_destino:
+            if self.DEBUG:
+                print("[ERRO] Coordenadas de origem ou destino não fornecidas")
+            return None
+        
+        # Validar coordenadas
+        if not self._validar_coordenadas(coords_origem):
+            if self.DEBUG:
+                print(f"[ERRO] Coordenadas de origem inválidas: {coords_origem}")
+            return None
+        
+        if not self._validar_coordenadas(coords_destino):
+            if self.DEBUG:
+                print(f"[ERRO] Coordenadas de destino inválidas: {coords_destino}")
             return None
         
         if self.DEBUG:
-            print(f"\n[DEBUG] --- Calculando Distância ---")
+            print(f"\n[DEBUG] ========== CALCULANDO DISTÂNCIA ==========")
             print(f"[DEBUG] Origem:  lon={coords_origem[0]}, lat={coords_origem[1]}")
             print(f"[DEBUG] Destino: lon={coords_destino[0]}, lat={coords_destino[1]}")
         
+        # TENTATIVA 1: GraphHopper (preferido)
+        if self.DEBUG:
+            print(f"[DEBUG] Tentativa 1: GraphHopper...")
+        
         try:
-            headers = {
-                'Authorization': self.api_key,
-                'Content-Type': 'application/json'
-            }
+            from app.services.graphhopper import graphhopper_service
             
-            body = {
-                'coordinates': [
-                    list(coords_origem),  # [longitude, latitude]
-                    list(coords_destino)
-                ]
-            }
+            # GraphHopper usa (lat, lon), mas recebemos (lon, lat)
+            origem_gh = (coords_origem[1], coords_origem[0])  # Converter para (lat, lon)
+            destino_gh = (coords_destino[1], coords_destino[0])
             
-            response = requests.post(
-                self.DIRECTIONS_URL,
-                headers=headers,
-                json=body,
-                timeout=10
-            )
+            resultado_gh = graphhopper_service.calcular_rota(origem_gh, destino_gh)
             
-            if response.status_code == 200:
-                data = response.json()
-                routes = data.get('routes', [])
-                
-                if routes:
-                    summary = routes[0].get('summary', {})
-                    distancia_metros = summary.get('distance', 0)
-                    duracao_segundos = summary.get('duration', 0)
-                    
-                    distancia_km = round(distancia_metros / 1000, 2)
-                    duracao_min = round(duracao_segundos / 60, 0)
-                    
-                    if self.DEBUG:
-                        print(f"[DEBUG] Resultado: {distancia_km} km, {duracao_min} min")
-                    
-                    return {
-                        'distancia_km': distancia_km,
-                        'duracao_min': duracao_min,
-                        'coords_origem': coords_origem,
-                        'coords_destino': coords_destino
-                    }
+            if resultado_gh:
+                if self.DEBUG:
+                    print(f"[DEBUG] ✓ Sucesso com GraphHopper: {resultado_gh['distancia_km']} km")
+                # Converter de volta para (lon, lat) para manter compatibilidade
+                return {
+                    'distancia_km': resultado_gh['distancia_km'],
+                    'duracao_min': resultado_gh['duracao_min'],
+                    'coords_origem': coords_origem,
+                    'coords_destino': coords_destino,
+                    'metodo': 'graphhopper'
+                }
             else:
-                print(f"[ERRO] Cálculo de rota falhou: {response.status_code} - {response.text}")
-                
-        except requests.exceptions.Timeout:
-            print("[ERRO] Timeout ao calcular rota")
+                if self.DEBUG:
+                    print(f"[DEBUG] ✗ GraphHopper retornou None")
+        except ImportError as e:
+            if self.DEBUG:
+                print(f"[DEBUG] GraphHopper não disponível: {e}")
         except Exception as e:
-            print(f"[ERRO] Erro ao calcular rota: {e}")
+            if self.DEBUG:
+                print(f"[DEBUG] ✗ GraphHopper falhou: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # TENTATIVA 2: OpenRouteService (fallback)
+        if self.DEBUG:
+            print(f"[DEBUG] Tentativa 2: OpenRouteService...")
+        
+        if not self.api_key:
+            if self.DEBUG:
+                print(f"[DEBUG] ✗ OPENROUTE_API_KEY não configurada, pulando OpenRouteService")
+        else:
+            try:
+                headers = {
+                    'Authorization': self.api_key,
+                    'Content-Type': 'application/json'
+                }
+                
+                body = {
+                    'coordinates': [
+                        list(coords_origem),  # [longitude, latitude]
+                        list(coords_destino)
+                    ]
+                }
+                
+                if self.DEBUG:
+                    print(f"[DEBUG] Enviando requisição para OpenRouteService...")
+                
+                response = requests.post(
+                    self.DIRECTIONS_URL,
+                    headers=headers,
+                    json=body,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    routes = data.get('routes', [])
+                    
+                    if routes:
+                        summary = routes[0].get('summary', {})
+                        distancia_metros = summary.get('distance', 0)
+                        duracao_segundos = summary.get('duration', 0)
+                        
+                        distancia_km = round(distancia_metros / 1000, 2)
+                        duracao_min = round(duracao_segundos / 60, 0)
+                        
+                        if self.DEBUG:
+                            print(f"[DEBUG] ✓ Sucesso com OpenRouteService: {distancia_km} km, {duracao_min} min")
+                        
+                        return {
+                            'distancia_km': distancia_km,
+                            'duracao_min': duracao_min,
+                            'coords_origem': coords_origem,
+                            'coords_destino': coords_destino,
+                            'metodo': 'openrouteservice'
+                        }
+                    else:
+                        if self.DEBUG:
+                            print(f"[DEBUG] ✗ OpenRouteService não retornou rotas")
+                else:
+                    if self.DEBUG:
+                        print(f"[ERRO] OpenRouteService retornou status {response.status_code}: {response.text[:200]}")
+                    
+            except requests.exceptions.Timeout:
+                if self.DEBUG:
+                    print(f"[ERRO] Timeout ao calcular rota com OpenRouteService")
+            except Exception as e:
+                if self.DEBUG:
+                    print(f"[ERRO] Erro ao calcular rota com OpenRouteService: {type(e).__name__}: {e}")
+                    import traceback
+                    traceback.print_exc()
+        
+        # TENTATIVA 3: Haversine (último recurso - distância em linha reta)
+        if self.DEBUG:
+            print(f"[DEBUG] Tentativa 3: Haversine (distância em linha reta)...")
+        
+        resultado_haversine = self._calcular_distancia_haversine(coords_origem, coords_destino)
+        if resultado_haversine:
+            if self.DEBUG:
+                print(f"[DEBUG] ✓ Usando distância Haversine como último recurso")
+            return resultado_haversine
+        
+        if self.DEBUG:
+            print(f"[ERRO] ✗ Todas as tentativas falharam ao calcular distância")
         
         return None
     
@@ -530,26 +759,56 @@ class DistanciaService:
             return None
         
         # Obter coordenadas da floricultura
+        if self.DEBUG:
+            print(f"[DEBUG] Obtendo coordenadas da floricultura...")
+        
         origem = self.coords_floricultura
         if not origem:
-            print("[ERRO] Não foi possível obter coordenadas da floricultura")
+            erro_msg = "Não foi possível obter coordenadas da floricultura. Verifique se ENDERECO_FLORICULTURA está configurado corretamente no .env"
+            print(f"[ERRO] {erro_msg}")
+            if self.DEBUG:
+                print(f"[DEBUG] Endereço configurado: {self.endereco_floricultura}")
             return None
         
+        if self.DEBUG:
+            print(f"[DEBUG] ✓ Coordenadas da floricultura obtidas: lon={origem[0]}, lat={origem[1]}")
+        
         # Geocodificar endereço do pedido
+        if self.DEBUG:
+            print(f"[DEBUG] Geocodificando endereço do pedido...")
+        
         destino = self.geocodificar(endereco_geocode, normalizar=False)  # Já está normalizado
         if not destino:
             # Marcar como inválido para não tentar novamente
             self.marcar_endereco_invalido(endereco_geocode)
-            print(f"[ERRO] Não foi possível geocodificar: {endereco_geocode[:50]}...")
+            erro_msg = f"Não foi possível geocodificar o endereço: {endereco_geocode[:80]}..."
+            print(f"[ERRO] {erro_msg}")
+            if self.DEBUG:
+                print(f"[DEBUG] Endereço original: {endereco_pedido}")
+                print(f"[DEBUG] Endereço processado: {endereco_geocode}")
             return None
         
+        if self.DEBUG:
+            print(f"[DEBUG] ✓ Endereço geocodificado: lon={destino[0]}, lat={destino[1]}")
+        
         # Calcular distância
+        if self.DEBUG:
+            print(f"[DEBUG] Calculando distância entre origem e destino...")
+        
         resultado = self.calcular_distancia(origem, destino)
         
         if resultado:
-            print(f"[DEBUG] ✓ Pedido {pedido_id or '?'}: {resultado['distancia_km']} km")
+            # Adicionar coordenadas do destino ao resultado (para salvar no banco)
+            resultado['coords_destino_lat'] = destino[1]  # latitude
+            resultado['coords_destino_lon'] = destino[0]  # longitude
+            metodo = resultado.get('metodo', 'desconhecido')
+            print(f"[DEBUG] ✓ Pedido {pedido_id or '?'}: {resultado['distancia_km']} km (método: {metodo})")
         else:
-            print(f"[DEBUG] ✗ Pedido {pedido_id or '?'}: Falha no cálculo de rota")
+            erro_msg = f"Falha no cálculo de rota. Todas as tentativas (GraphHopper, OpenRouteService, Haversine) falharam."
+            print(f"[ERRO] ✗ Pedido {pedido_id or '?'}: {erro_msg}")
+            if self.DEBUG:
+                print(f"[DEBUG] Origem: {origem}")
+                print(f"[DEBUG] Destino: {destino}")
         
         return resultado
     

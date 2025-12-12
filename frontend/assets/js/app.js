@@ -4,7 +4,7 @@
  */
 
 const App = {
-    version: '3.0.0',
+    version: '3.0.1',
     initialized: false,
 
     /**
@@ -29,6 +29,21 @@ const App = {
 
             // Configurar listeners globais
             this.setupGlobalListeners();
+            
+            // Atualizar indicador de autenticação
+            this.updateAuthIndicator();
+            
+            // Atualizar indicador periodicamente (a cada 2 segundos)
+            setInterval(() => {
+                this.updateAuthIndicator();
+            }, 2000);
+            
+            // Atualizar também quando a visibilidade da página mudar (usuário volta à aba)
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    this.updateAuthIndicator();
+                }
+            });
 
             // Verificar por atualizações do Service Worker
             this.checkForUpdates();
@@ -54,6 +69,113 @@ const App = {
     },
 
     /**
+     * Atualiza indicador de autenticação e controles de navegação
+     */
+    updateAuthIndicator() {
+        const indicator = document.getElementById('auth-indicator');
+        const btnLogout = document.getElementById('btn-logout');
+        const btnLogin = document.getElementById('nav-login');
+        const btnCriarPedido = document.getElementById('nav-criar');
+        // Botão na página do painel também
+        const btnCriarPedidoPainel = document.getElementById('btn-novo-pedido-painel');
+        
+        const isAuthenticated = typeof Auth !== 'undefined' && Auth.isAuthenticated();
+        
+        console.log('🔐 Atualizando indicadores de autenticação:', { 
+            isAuthenticated, 
+            btnLogin: !!btnLogin, 
+            btnLogout: !!btnLogout,
+            btnLoginElement: btnLogin ? btnLogin.outerHTML.substring(0, 100) : 'não encontrado'
+        });
+        
+        if (isAuthenticated) {
+            // Usuário autenticado - mostrar logout e esconder login
+            if (indicator) {
+                indicator.classList.remove('hidden');
+                indicator.classList.add('flex');
+                indicator.style.display = 'flex';
+            }
+            if (btnLogout) {
+                btnLogout.classList.remove('hidden');
+                btnLogout.style.display = '';
+                btnLogout.style.visibility = 'visible';
+            }
+            if (btnLogin) {
+                // Múltiplas formas de esconder para garantir
+                btnLogin.classList.add('hidden');
+                btnLogin.classList.add('auth-hidden');
+                btnLogin.style.setProperty('display', 'none', 'important');
+                btnLogin.style.setProperty('visibility', 'hidden', 'important');
+                btnLogin.style.setProperty('opacity', '0', 'important');
+                btnLogin.style.setProperty('width', '0', 'important');
+                btnLogin.style.setProperty('height', '0', 'important');
+                btnLogin.style.setProperty('padding', '0', 'important');
+                btnLogin.style.setProperty('margin', '0', 'important');
+                btnLogin.style.setProperty('overflow', 'hidden', 'important');
+                btnLogin.setAttribute('aria-hidden', 'true');
+                btnLogin.setAttribute('hidden', 'true');
+                console.log('✅ Botão login escondido - estilos aplicados:', {
+                    display: btnLogin.style.display,
+                    visibility: btnLogin.style.visibility,
+                    classes: btnLogin.className
+                });
+            } else {
+                console.warn('⚠️ Botão login não encontrado!');
+            }
+            // Mostrar botão de criar pedido apenas se autenticado
+            if (btnCriarPedido) {
+                btnCriarPedido.classList.remove('hidden');
+                btnCriarPedido.style.display = '';
+            }
+            if (btnCriarPedidoPainel) {
+                btnCriarPedidoPainel.classList.remove('hidden');
+                btnCriarPedidoPainel.style.display = '';
+            }
+        } else {
+            // Usuário não autenticado - esconder logout e mostrar login
+            if (indicator) {
+                indicator.classList.add('hidden');
+                indicator.classList.remove('flex');
+                indicator.style.display = 'none';
+            }
+            if (btnLogout) {
+                btnLogout.classList.add('hidden');
+                btnLogout.style.display = 'none';
+                btnLogout.style.visibility = 'hidden';
+            }
+            if (btnLogin) {
+                // Remover todas as formas de esconder e mostrar o botão
+                btnLogin.classList.remove('hidden');
+                btnLogin.classList.remove('auth-hidden');
+                // Limpar todos os estilos inline que podem estar escondendo
+                btnLogin.style.cssText = '';
+                // Garantir que está visível
+                btnLogin.style.display = '';
+                btnLogin.style.visibility = 'visible';
+                btnLogin.style.opacity = '1';
+                btnLogin.removeAttribute('aria-hidden');
+                btnLogin.removeAttribute('hidden');
+                console.log('✅ Botão login mostrado - estilos aplicados:', {
+                    display: window.getComputedStyle(btnLogin).display,
+                    visibility: window.getComputedStyle(btnLogin).visibility,
+                    classes: btnLogin.className
+                });
+            } else {
+                console.warn('⚠️ Botão login não encontrado!');
+            }
+            // Esconder botão de criar pedido se não autenticado
+            if (btnCriarPedido) {
+                btnCriarPedido.classList.add('hidden');
+                btnCriarPedido.style.display = 'none';
+            }
+            if (btnCriarPedidoPainel) {
+                btnCriarPedidoPainel.classList.add('hidden');
+                btnCriarPedidoPainel.style.display = 'none';
+            }
+        }
+    },
+    
+    /**
      * Verifica conectividade e sincroniza dados
      */
     async checkConnectivity() {
@@ -78,6 +200,7 @@ const App = {
         }
     },
 
+    
     /**
      * Configura listeners globais
      */

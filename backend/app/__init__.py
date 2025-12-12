@@ -21,13 +21,56 @@ def create_app(config=None):
     app = Flask(__name__)
     
     # Habilitar CORS para permitir requisições do frontend PWA
+    # SEGURANÇA: Apenas origens do próprio servidor (localhost + hostname configurado)
+    import socket
+    import configparser
+    
+    # Descobrir hostname configurado
+    try:
+        config_file = Path(__file__).parent.parent / 'config_servidor.ini'
+        if config_file.exists():
+            parser = configparser.ConfigParser()
+            parser.read(config_file, encoding='utf-8')
+            hostname = parser.get('SERVIDOR', 'hostname', fallback='Gestor-pedidos.local')
+        else:
+            hostname = 'Gestor-pedidos.local'
+    except:
+        hostname = 'Gestor-pedidos.local'
+    
+    # Descobrir IP local
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except:
+        local_ip = "192.168.1.148"
+    
+    # Lista de origens permitidas (apenas HTTPS do próprio servidor)
+    allowed_origins = [
+        "https://localhost:5000",
+        "https://127.0.0.1:5000",
+        f"https://{hostname}:5000",
+        f"https://{local_ip}:5000"
+    ]
+    
+    # Permitir HTTP apenas para localhost (desenvolvimento)
+    if os.environ.get('FLASK_ENV') == 'development':
+        allowed_origins.extend([
+            "http://localhost:5000",
+            "http://127.0.0.1:5000"
+        ])
+    
     CORS(app, resources={
         r"/api/*": {
-            "origins": "*",
+            "origins": allowed_origins,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True
         }
     })
+    
+    print(f"[SEGURANÇA] ✓ CORS restrito a: {len(allowed_origins)} origens permitidas")
     
     # Carregar configurações
     if config:
@@ -42,8 +85,10 @@ def create_app(config=None):
     # Registrar Blueprints (apenas API REST)
     with app.app_context():
         from app.routes.api import api_bp
+        from app.routes.clientes import clientes_bp
         
         app.register_blueprint(api_bp)
+        app.register_blueprint(clientes_bp)
         
         # Criar tabelas automaticamente
         db.create_all()
@@ -96,27 +141,32 @@ def create_app(config=None):
     # ============================================
     # SEGURANÇA: Autenticação e Rate Limiting
     # ============================================
-    # Para ativar segurança, defina ENABLE_AUTH=true via variável de ambiente
-    # ou edite o middleware.py para configurar usuários
-    ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'false').lower() == 'true'
-    ENABLE_RATE_LIMIT = os.environ.get('ENABLE_RATE_LIMIT', 'false').lower() == 'true'
+    # Segurança ATIVADA por padrão se arquivo .env existir
+    # Para desativar, defina ENABLE_AUTH=false no .env
+    ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'true').lower() == 'true'
+    ENABLE_RATE_LIMIT = os.environ.get('ENABLE_RATE_LIMIT', 'true').lower() == 'true'
+    ENABLE_DEBUG_ENDPOINTS = os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true'
     
-    if ENABLE_AUTH or ENABLE_RATE_LIMIT:
-        try:
-            from app.middleware import setup_security_middleware
-            setup_security_middleware(
-                app,
-                enable_auth=ENABLE_AUTH,
-                enable_rate_limit=ENABLE_RATE_LIMIT
-            )
-            if ENABLE_AUTH:
-                print("[SEGURANÇA] Autenticação HTTP Basic ATIVADA")
-            if ENABLE_RATE_LIMIT:
-                print("[SEGURANÇA] Rate Limiting ATIVADO")
-        except ImportError:
-            print("[AVISO] Middleware de segurança não encontrado. Pule esta mensagem se não pretende usar.")
-        except Exception as e:
-            print(f"[AVISO] Erro ao configurar segurança: {e}")
+    # Sempre configurar middleware (rate limiting sempre ativo)
+    # Autenticação agora é seletiva - apenas rotas críticas exigem autenticação
+    try:
+        from app.middleware import setup_security_middleware
+        setup_security_middleware(
+            app,
+            enable_auth=False,  # Autenticação global desativada - apenas rotas específicas
+            enable_rate_limit=ENABLE_RATE_LIMIT
+        )
+        print("[SEGURANÇA] ✓ Autenticação seletiva ATIVADA")
+        print("[SEGURANÇA]   Visualização livre - Apenas criar/deletar pedidos requerem autenticação")
+        print("[SEGURANÇA]   Usuário: admin")
+        if ENABLE_RATE_LIMIT:
+            print("[SEGURANÇA] ✓ Rate Limiting ATIVADO (60/min, 1000/hora)")
+        if not ENABLE_DEBUG_ENDPOINTS:
+            print("[SEGURANÇA] ✓ Endpoints de Debug DESATIVADOS")
+    except ImportError:
+        print("[AVISO] Middleware de segurança não encontrado.")
+    except Exception as e:
+        print(f"[AVISO] Erro ao configurar segurança: {e}")
     
     return app
 

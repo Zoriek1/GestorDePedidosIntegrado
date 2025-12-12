@@ -86,60 +86,52 @@ const PedidoCard = {
                     </p>
                 ` : ''}
 
-                ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
-                    <p class="text-sm">
-                        <i class="fas fa-route text-${PedidoCard.getCorDistancia(pedido.distancia_km)}-500 w-5 inline-block"></i>
-                        <span class="font-medium text-${PedidoCard.getCorDistancia(pedido.distancia_km)}-600">
-                            ${PedidoCard.formatarDistancia(pedido.distancia_km)}
-                        </span>
-                        <span class="text-gray-400 text-xs ml-1">da floricultura</span>
+                ${pedido.tipo_pedido === 'Entrega' && pedido.endereco ? `
+                    <p class="text-sm break-words flex items-center gap-1">
+                        ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
+                            <i class="fas fa-route text-${PedidoCard.getCorDistancia(pedido.distancia_km)}-500 w-5 inline-block"></i>
+                            <span class="font-semibold text-${PedidoCard.getCorDistancia(pedido.distancia_km)}-600 break-words">
+                                ${PedidoCard.formatarDistancia(pedido.distancia_km)}
+                            </span>
+                            ${pedido.aproximado ? `
+                                <i class="fas fa-exclamation-triangle text-orange-500 text-sm" 
+                                   title="⚠️ Distância aproximada - ${pedido.aviso || 'Endereço fora da área de mapeamento'}"
+                                   style="cursor: help;">
+                                </i>
+                            ` : ''}
+                        ` : ''}
                         <button 
-                            class="ml-2 text-blue-500 hover:text-blue-700 text-xs"
-                            onclick="PedidoCard.calcularDistancia(${pedido.id}, true)"
-                            title="Recalcular distância"
+                            class="text-blue-500 hover:text-blue-700 ml-auto text-xs px-0.5 py-0 whitespace-nowrap"
+                            onclick="PedidoCard.calcularDistancia(${pedido.id}, ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? 'true' : 'false'})"
+                            title="${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? 'Recalcular distância' : 'Calcular distância'}"
                         >
-                            <i class="fas fa-sync-alt"></i>
+                            ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? 'Recalcular distância' : 'Calcular distância'}
                         </button>
                     </p>
-                ` : (pedido.tipo_pedido === 'Entrega' && pedido.endereco ? `
-                    <p class="text-sm">
-                        <i class="fas fa-route text-gray-400 w-5 inline-block"></i>
-                        <button 
-                            class="text-blue-500 hover:text-blue-700 text-xs font-medium"
-                            onclick="PedidoCard.calcularDistancia(${pedido.id})"
-                            title="Calcular distância"
-                        >
-                            <i class="fas fa-calculator mr-1"></i>Calcular distância
-                        </button>
-                    </p>
-                ` : '')}
+                    ${pedido.aproximado ? `
+                        <p class="text-sm text-orange-600 italic mt-0.5">
+                            ⚠️ Distância não exata
+                        </p>
+                    ` : ''}
+                ` : ''}
 
-                ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? `
-                    <p class="text-sm">
-                        <i class="fas fa-dollar-sign text-primary w-5 inline-block"></i>
-                        <span class="font-medium text-primary">
-                            Taxa: R$ ${pedido.taxa_entrega.toFixed(2)}
-                        </span>
+                ${pedido.tipo_pedido === 'Entrega' && pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
+                    <p class="text-sm break-words flex items-center gap-1">
+                        ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? `
+                            <i class="fas fa-dollar-sign text-primary w-5 inline-block"></i>
+                            <span class="font-semibold text-primary break-words">
+                                R$ ${pedido.taxa_entrega.toFixed(2)}
+                            </span>
+                        ` : ''}
                         <button 
-                            class="ml-2 text-blue-500 hover:text-blue-700 text-xs"
-                            onclick="PedidoCard.calcularTaxa(${pedido.id}, true)"
-                            title="Recalcular taxa"
+                            class="text-blue-500 hover:text-blue-700 ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? 'ml-auto' : ''} text-xs px-0.5 py-0 whitespace-nowrap"
+                            onclick="PedidoCard.calcularTaxa(${pedido.id}, ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? 'true' : 'false'})"
+                            title="${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? 'Recalcular frete' : 'Calcular frete'}"
                         >
-                            <i class="fas fa-sync-alt"></i>
+                            ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? 'Recalcular frete' : 'Calcular frete'}
                         </button>
                     </p>
-                ` : (pedido.distancia_km !== null && pedido.distancia_km !== undefined && pedido.tipo_pedido === 'Entrega' ? `
-                    <p class="text-sm">
-                        <i class="fas fa-dollar-sign text-gray-400 w-5 inline-block"></i>
-                        <button 
-                            class="text-blue-500 hover:text-blue-700 text-xs font-medium"
-                            onclick="PedidoCard.calcularTaxa(${pedido.id})"
-                            title="Calcular taxa de entrega"
-                        >
-                            <i class="fas fa-calculator mr-1"></i>Calcular taxa
-                        </button>
-                    </p>
-                ` : '')}
+                ` : ''}
 
                 ${pedido.valor ? `
                     <p class="text-sm break-words">
@@ -700,12 +692,18 @@ const PedidoCard = {
             if (result.success) {
                 const distancia = result.distancia_km;
                 const cached = result.cached;
+                const aproximado = result.aproximado || false;
+                const nivelAproximacao = result.nivel_aproximacao || 'exato';
+                const aviso = result.aviso || null;
                 
                 // Atualizar o pedido no PainelManager se existir
                 if (window.PainelManager && window.PainelManager.pedidos) {
                     const pedido = window.PainelManager.pedidos.find(p => p.id === pedidoId);
                     if (pedido) {
                         pedido.distancia_km = distancia;
+                        pedido.aproximado = aproximado;
+                        pedido.nivel_aproximacao = nivelAproximacao;
+                        pedido.aviso = aviso;
                     }
                 }
                 
@@ -715,11 +713,20 @@ const PedidoCard = {
                 }
                 
                 // Mostrar notificação
-                const msg = `Distância: ${PedidoCard.formatarDistancia(distancia)}${cached ? ' (cache)' : ''}`;
+                let msg = `Distância: ${PedidoCard.formatarDistancia(distancia)}${cached ? ' (cache)' : ''}`;
+                if (aproximado) {
+                    msg += ` ⚠️ (aproximada - ${nivelAproximacao})`;
+                }
                 if (result.coords_destino) {
                     console.log(`[DEBUG] Coordenadas destino: lon=${result.coords_destino[0]}, lat=${result.coords_destino[1]}`);
                 }
-                Notification.success(msg);
+                
+                // Usar aviso amarelo se for aproximado, senão sucesso verde
+                if (aproximado) {
+                    Notification.warning(msg);
+                } else {
+                    Notification.success(msg);
+                }
             } else {
                 console.error('[ERRO] Falha ao calcular distância:', result.error);
                 Notification.error(`Erro: ${result.error || 'Falha ao calcular distância'}`);
@@ -796,24 +803,26 @@ const PedidoCard = {
         
         .header h1 {
             color: #047857;
-            font-size: 20pt;
-            margin-bottom: 3px;
+            font-size: 22pt;
+            margin-bottom: 4px;
+            font-weight: bold;
         }
         
         .header p {
-            color: #666;
-            font-size: 9pt;
+            color: #6b7280;
+            font-size: 10pt;
         }
         
         .pedido-numero {
             background: #047857;
             color: white;
-            padding: 6px 15px;
+            padding: 8px 18px;
             border-radius: 6px;
             display: inline-block;
             font-weight: bold;
-            font-size: 13pt;
-            margin: 10px 0 8px 0;
+            font-size: 14pt;
+            margin: 12px 0 10px 0;
+            letter-spacing: 0.5px;
         }
         
         .section {
@@ -823,56 +832,60 @@ const PedidoCard = {
         
         .section-title {
             background: #f3f4f6;
-            padding: 5px 10px;
-            border-left: 3px solid #047857;
+            padding: 6px 12px;
+            border-left: 4px solid #047857;
             font-weight: bold;
-            font-size: 11pt;
-            margin-bottom: 6px;
+            font-size: 12pt;
+            margin-bottom: 8px;
+            color: #047857;
         }
         
         .field {
-            margin-bottom: 6px;
-            padding-left: 8px;
-            line-height: 1.3;
+            margin-bottom: 7px;
+            padding-left: 10px;
+            line-height: 1.4;
         }
         
         .field-label {
             font-weight: bold;
-            color: #555;
+            color: #374151;
             display: inline-block;
-            min-width: 130px;
-            font-size: 9.5pt;
+            min-width: 140px;
+            font-size: 10pt;
         }
         
         .field-value {
-            color: #333;
-            font-size: 9.5pt;
+            color: #1f2937;
+            font-size: 10pt;
+            line-height: 1.5;
         }
         
         .field-value.highlight {
             color: #047857;
             font-weight: bold;
-            font-size: 11pt;
+            font-size: 12pt;
         }
         
         .message-box {
             background: #fef3c7;
-            border: 1.5px solid #f59e0b;
-            padding: 10px;
+            border: 2px solid #f59e0b;
+            padding: 12px;
             border-radius: 6px;
-            margin: 8px 0;
+            margin: 10px 0;
             font-style: italic;
-            font-size: 9pt;
-            max-height: 80px;
+            font-size: 10pt;
+            max-height: 100px;
             overflow: hidden;
+            color: #78350f;
+            line-height: 1.5;
         }
         
         .delivery-box {
             background: #dbeafe;
-            border: 1.5px solid #3b82f6;
-            padding: 10px;
+            border: 2px solid #3b82f6;
+            padding: 12px;
             border-radius: 6px;
-            margin: 8px 0;
+            margin: 10px 0;
         }
         
         .footer {
@@ -980,13 +993,13 @@ const PedidoCard = {
         <div class="section">
             <div class="section-title">🌸 Produto</div>
             <div class="field">
-                <span class="field-label">Produto:</span>
-                <div class="field-value" style="margin-top: 5px; white-space: pre-wrap;">${pedido.produto}</div>
+                <span class="field-label" style="font-size: 10.5pt;">Produto:</span>
+                <div class="field-value" style="margin-top: 5px; white-space: pre-wrap; font-size: 10.5pt; font-weight: 500;">${pedido.produto}</div>
             </div>
             ${pedido.flores_cor ? `
-                <div class="field">
-                    <span class="field-label">Flores e Cor:</span>
-                    <div class="field-value" style="margin-top: 5px; white-space: pre-wrap;">${pedido.flores_cor}</div>
+                <div class="field" style="background: #fef3c7; padding: 8px; border-radius: 4px; border: 1px solid #f59e0b; margin-top: 8px;">
+                    <span class="field-label" style="color: #92400e; font-size: 10pt;">Flores e Cor:</span>
+                    <div class="field-value" style="margin-top: 5px; white-space: pre-wrap; color: #78350f; font-weight: 500; font-size: 10pt;">${pedido.flores_cor}</div>
                 </div>
             ` : ''}
             ${pedido.valor ? `
@@ -1000,16 +1013,16 @@ const PedidoCard = {
         <!-- Data e Horário -->
         <div class="section">
             <div class="delivery-box">
-                <div style="font-weight: bold; font-size: 14pt; margin-bottom: 10px;">
+                <div style="font-weight: bold; font-size: 15pt; margin-bottom: 12px; color: #1e40af;">
                     📅 Entrega Agendada
                 </div>
                 <div class="field">
-                    <span class="field-label">Data:</span>
-                    <span class="field-value highlight">${Utils.formatDate(pedido.dia_entrega)}</span>
+                    <span class="field-label" style="font-size: 10.5pt;">Data:</span>
+                    <span class="field-value highlight" style="font-size: 13pt;">${Utils.formatDate(pedido.dia_entrega)}</span>
                 </div>
                 <div class="field">
-                    <span class="field-label">Horário:</span>
-                    <span class="field-value highlight">${pedido.horario}</span>
+                    <span class="field-label" style="font-size: 10.5pt;">Horário:</span>
+                    <span class="field-value highlight" style="font-size: 13pt;">${pedido.horario}</span>
                 </div>
             </div>
         </div>
@@ -1019,8 +1032,21 @@ const PedidoCard = {
             <div class="section">
                 <div class="section-title">📍 Endereço de Entrega</div>
                 <div class="field">
-                    <div class="field-value" style="white-space: pre-wrap;">${pedido.endereco}</div>
+                    <div class="field-value" style="white-space: pre-wrap; font-size: 10pt; font-weight: 500;">${pedido.endereco}</div>
                 </div>
+                ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
+                    <div class="field" style="margin-top: 8px;">
+                        <span class="field-label" style="color: #1e40af; font-weight: bold;">Distância:</span>
+                        <span class="field-value" style="color: #1e40af; font-weight: bold; font-size: 11pt;">
+                            ${PedidoCard.formatarDistancia(pedido.distancia_km)}
+                        </span>
+                        ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? `
+                            <span style="margin-left: 15px; color: #059669; font-weight: bold; font-size: 11pt;">
+                                | Taxa: R$ ${pedido.taxa_entrega.toFixed(2)}
+                            </span>
+                        ` : ''}
+                    </div>
+                ` : ''}
                 ${pedido.obs_entrega ? `
                     <div class="field" style="margin-top: 10px;">
                         <span class="field-label">Observações:</span>

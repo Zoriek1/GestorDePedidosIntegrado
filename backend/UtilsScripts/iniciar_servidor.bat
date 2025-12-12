@@ -1,51 +1,96 @@
 @echo off
-REM ====================================================
-REM Plante Uma Flor - PWA v3.0
-REM Script para iniciar o servidor Flask em background
-REM ====================================================
+:: ===================================================
+:: PLANTE UMA FLOR - Iniciar Servidor (Modo Simples)
+:: Script simplificado para inicialização rápida
+:: ===================================================
+
+title Plante Uma Flor - Iniciar Servidor
 
 cd /d "%~dp0"
 
 echo.
-echo ====================================================
-echo  Plante Uma Flor - PWA v3.0
-echo  Iniciando servidor em segundo plano...
-echo ====================================================
+echo ============================================
+echo    PLANTE UMA FLOR - SERVIDOR
+echo ============================================
 echo.
 
-REM Verificar se o servidor já está rodando
-tasklist /FI "IMAGENAME eq python.exe" /FI "WINDOWTITLE eq *main.py*" 2>NUL | find /I /N "python.exe">NUL
-if "%ERRORLEVEL%"=="0" (
-    echo [AVISO] Servidor ja esta em execucao!
+:: Verificar se Python está disponível
+where python >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERRO] Python nao encontrado!
+    echo.
+    echo Instale Python 3.8+ em: https://www.python.org
     echo.
     pause
-    exit /b
+    exit /b 1
 )
 
-REM Descobrir IP local dinamicamente
-for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
-    set IP=%%a
-    goto :found_ip
+:: Verificar se certificados existem
+if not exist "ssl\cert.pem" (
+    echo [INFO] Certificados SSL nao encontrados.
+    echo.
+    choice /C SN /M "Deseja gerar certificados agora (S/N)? "
+    if errorlevel 2 goto :iniciar_http
+    if errorlevel 1 goto :gerar_certs
 )
 
-:found_ip
-REM Remover espaços
-set IP=%IP: =%
+goto :iniciar_https
 
-REM Iniciar o servidor em uma nova janela minimizada
-start "Plante Uma Flor - Servidor PWA" /MIN python main.py
+:gerar_certs
+echo.
+echo [INFO] Gerando certificados SSL...
+call CONFIGURAR_SERVIDOR.bat
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERRO] Falha ao gerar certificados.
+    echo [INFO] Iniciando em modo HTTP...
+    timeout /t 3 >nul
+    goto :iniciar_http
+)
+goto :iniciar_https
 
+:iniciar_https
 echo.
-echo [OK] Servidor iniciado com sucesso!
+echo [INFO] Iniciando servidor HTTPS...
+echo [INFO] Modo estavel ativado (sem auto-reload)
 echo.
-echo O servidor esta rodando em segundo plano.
-echo Para parar o servidor, feche a janela minimizada ou execute: parar_servidor.bat
+echo ============================================
+echo   Servidor HTTPS - Porta 5000
+echo ============================================
+echo   Local:    https://localhost:5000
+echo   Hostname: https://Gestor-pedidos.local:5000
+echo   Rede:     https://[SEU-IP]:5000
 echo.
-echo Acesse o sistema em:
-echo   Local:   http://localhost:5000
-echo   Rede:    http://%IP%:5000
+echo   Para parar: Pressione Ctrl+C
+echo ============================================
 echo.
-timeout /t 5
 
-exit
+python main.py --https --no-reload
+goto :fim
+
+:iniciar_http
+echo.
+echo [INFO] Iniciando servidor HTTP...
+echo [INFO] Modo estavel ativado (sem auto-reload)
+echo.
+echo ============================================
+echo   Servidor HTTP - Porta 5000
+echo ============================================
+echo   Local:    http://localhost:5000
+echo   Rede:     http://[SEU-IP]:5000
+echo.
+echo   AVISO: PWA so instala em HTTPS!
+echo   Para HTTPS: Execute CONFIGURAR_SERVIDOR.bat
+echo.
+echo   Para parar: Pressione Ctrl+C
+echo ============================================
+echo.
+
+python main.py --no-reload
+goto :fim
+
+:fim
+echo.
+echo [INFO] Servidor encerrado.
+pause
 

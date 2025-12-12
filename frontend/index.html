@@ -62,10 +62,16 @@
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center space-x-3">
                     <img class="brand-logo" src="/assets/images/Logo.png" alt="Plante Uma Flor">
-                    <h1 class="text-xl font-bold brand-title">| Gerenciador de Pedidos |</h1>
+                    <h1 class="text-xl font-bold brand-title"> Gerenciador de Pedidos </h1>
                 </div>
                 
-                <div class="flex space-x-4">
+                <div class="flex items-center space-x-4">
+                    <!-- Indicador de Autenticação -->
+                    <div id="auth-indicator" class="hidden items-center space-x-2 px-3 py-1 bg-green-100 text-green-800 rounded-lg text-sm">
+                        <i class="fas fa-check-circle"></i>
+                        <span class="hidden sm:inline">Autenticado</span>
+                    </div>
+                    
                     <button onclick="Router.navigate('/criar-pedido')" class="nav-button" id="nav-criar">
                         <i class="fas fa-plus-circle"></i>
                         <span class="hidden sm:inline ml-2">Novo Pedido</span>
@@ -73,6 +79,14 @@
                     <button onclick="Router.navigate('/painel')" class="nav-button" id="nav-painel">
                         <i class="fas fa-th-large"></i>
                         <span class="hidden sm:inline ml-2">Painel</span>
+                    </button>
+                    <button onclick="Router.navigate('/login')" class="nav-button" id="nav-login" title="Fazer Login">
+                        <i class="fas fa-sign-in-alt"></i>
+                        <span class="hidden sm:inline ml-2">Login</span>
+                    </button>
+                    <button id="btn-logout" onclick="Auth.logout(); location.reload();" class="nav-button hidden" title="Sair">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span class="hidden sm:inline ml-2">Sair</span>
                     </button>
                 </div>
             </div>
@@ -107,12 +121,14 @@
     <script src="/assets/js/utils.js"></script>
     <script src="/assets/js/api.js"></script>
     <script src="/assets/js/db.js"></script>
+    <script src="/assets/js/auth.js"></script>
     <script src="/assets/js/router.js"></script>
     <script src="/assets/js/masks.js"></script>
     <script src="/assets/js/validators.js"></script>
     <script src="/assets/js/components/notification.js"></script>
     <script src="/assets/js/components/modal.js"></script>
     <script src="/assets/js/components/pedido-card.js"></script>
+    <script src="/assets/js/components/autocomplete-cliente.js"></script>
     <script src="/assets/js/form.js"></script>
     <script src="/assets/js/painel.js"></script>
     <script src="/assets/js/app.js"></script>

@@ -1,7 +1,8 @@
-// Service Worker - Plante Uma Flor PWA v3.0
+// Service Worker - Plante Uma Flor PWA v3.0.1
 // Gerencia cache e funcionalidade offline
+// Atualizado: Nova política de taxas de entrega (faixas específicas)
 
-const CACHE_NAME = 'plante-uma-flor-v12';
+const CACHE_NAME = 'plante-uma-flor-v14';
 const CACHE_URLS = [
     '/',
     '/index.html',
@@ -14,6 +15,7 @@ const CACHE_URLS = [
     '/assets/js/router.js',
     '/assets/js/api.js',
     '/assets/js/db.js',
+    '/assets/js/auth.js',
     '/assets/js/utils.js',
     '/assets/js/form.js',
     '/assets/js/painel.js',
@@ -24,6 +26,7 @@ const CACHE_URLS = [
     '/assets/js/components/pedido-card.js',
     '/pages/criar-pedido.html',
     '/pages/painel.html',
+    '/pages/login.html',
     'https://cdn.tailwindcss.com',
     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];

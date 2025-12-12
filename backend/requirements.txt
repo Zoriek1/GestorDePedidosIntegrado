@@ -17,6 +17,10 @@ requests==2.31.0
 # Geração de PDF (para futura integração)
 reportlab==4.0.7
 
+# Segurança e Backup
+cryptography==41.0.0
+schedule==1.2.0
+
 # Servidor WSGI para produção (opcional)
 # Descomente para usar em produção
 # gunicorn==21.2.0

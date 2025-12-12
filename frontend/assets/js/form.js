@@ -21,6 +21,14 @@ const FormManager = {
         // Configurar listeners
         this.setupListeners();
         
+        // Configurar autocomplete de clientes
+        this.setupClienteAutocomplete();
+        
+        // Garantir que campos de cliente começam desabilitados
+        setTimeout(() => {
+            this.resetarCamposCliente();
+        }, 200);
+        
         // Configurar listeners de endereço (CEP e geração automática)
         // Usar setTimeout para garantir que o DOM esteja completamente renderizado
         setTimeout(() => {
@@ -95,6 +103,240 @@ const FormManager = {
 
         // Auto-aplicar máscaras
         Masks.applyAll();
+    },
+
+    /**
+     * Configura autocomplete de clientes
+     */
+    setupClienteAutocomplete() {
+        console.log('👥 Configurando autocomplete de clientes...');
+        
+        const inputAutocomplete = document.getElementById('cliente-autocomplete');
+        const resultsElement = document.getElementById('autocomplete-results');
+        const btnNovoCliente = document.getElementById('btn-novo-cliente');
+        const btnHistorico = document.getElementById('btn-historico-cliente');
+        
+        if (!inputAutocomplete || !resultsElement) {
+            console.log('⚠️ Elementos do autocomplete não encontrados');
+            return;
+        }
+        
+        // Inicializar autocomplete
+        this.autocomplete = new AutocompleteCliente({
+            inputElement: inputAutocomplete,
+            resultsElement: resultsElement,
+            onSelect: (cliente) => {
+                console.log('✅ Cliente selecionado:', cliente);
+                
+                // Preencher campos
+                document.getElementById('cliente_id').value = cliente.id;
+                
+                const campoCliente = document.getElementById('cliente');
+                const campoTelefone = document.getElementById('telefone_cliente');
+                
+                campoCliente.value = cliente.nome;
+                campoTelefone.value = cliente.telefone;
+                
+                // Habilitar campos (remover disabled/readonly e mudar estilo)
+                campoCliente.removeAttribute('readonly');
+                campoCliente.removeAttribute('disabled');
+                campoCliente.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+                campoCliente.classList.add('bg-white', 'text-gray-900');
+                
+                campoTelefone.removeAttribute('readonly');
+                campoTelefone.removeAttribute('disabled');
+                campoTelefone.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+                campoTelefone.classList.add('bg-white', 'text-gray-900');
+                
+                // Mostrar botão de histórico
+                if (btnHistorico) {
+                    btnHistorico.classList.remove('hidden');
+                    btnHistorico.dataset.clienteId = cliente.id;
+                }
+                
+                // Carregar endereços do cliente
+                this.carregarEnderecosCliente(cliente.id);
+                
+                Notification.show(`Cliente "${cliente.nome}" selecionado - Campos podem ser editados`, 'success');
+            }
+        });
+        
+        // Botão "Novo Cliente" - habilita campos para entrada manual
+        if (btnNovoCliente) {
+            // Adicionar suporte a touch para mobile
+            const handleNovoCliente = () => {
+                // Limpar valores
+                document.getElementById('cliente_id').value = '';
+                document.getElementById('cliente').value = '';
+                document.getElementById('telefone_cliente').value = '';
+                inputAutocomplete.value = '';
+                
+                // Habilitar campos para edição
+                const campoCliente = document.getElementById('cliente');
+                const campoTelefone = document.getElementById('telefone_cliente');
+                
+                campoCliente.removeAttribute('readonly');
+                campoCliente.removeAttribute('disabled');
+                campoCliente.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+                campoCliente.classList.add('bg-white', 'text-gray-900');
+                campoCliente.placeholder = 'Digite o nome do cliente';
+                
+                campoTelefone.removeAttribute('readonly');
+                campoTelefone.removeAttribute('disabled');
+                campoTelefone.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+                campoTelefone.classList.add('bg-white', 'text-gray-900');
+                campoTelefone.placeholder = '(62) 99999-9999';
+                
+                // Focar no campo nome
+                campoCliente.focus();
+                
+                // Esconder botão de histórico
+                if (btnHistorico) {
+                    btnHistorico.classList.add('hidden');
+                }
+                
+                // Esconder resultados do autocomplete
+                if (this.autocomplete) {
+                    this.autocomplete.hideResults();
+                }
+                
+                Notification.show('Campos habilitados - Digite os dados do novo cliente', 'info');
+            };
+            
+            // Suporte a click e touchstart para mobile
+            btnNovoCliente.addEventListener('click', handleNovoCliente);
+            btnNovoCliente.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleNovoCliente();
+            });
+        }
+        
+        // Botão "Ver Histórico"
+        if (btnHistorico) {
+            btnHistorico.addEventListener('click', async () => {
+                const clienteId = btnHistorico.dataset.clienteId;
+                if (clienteId) {
+                    await this.mostrarHistoricoCliente(clienteId);
+                }
+            });
+        }
+        
+        console.log('✅ Autocomplete configurado!');
+    },
+
+    /**
+     * Reseta campos de cliente ao estado inicial (desabilitados)
+     */
+    resetarCamposCliente() {
+        const campoCliente = document.getElementById('cliente');
+        const campoTelefone = document.getElementById('telefone_cliente');
+        const inputAutocomplete = document.getElementById('cliente-autocomplete');
+        const btnHistorico = document.getElementById('btn-historico-cliente');
+        
+        if (campoCliente) {
+            campoCliente.value = '';
+            campoCliente.setAttribute('readonly', 'readonly');
+            campoCliente.setAttribute('disabled', 'disabled');
+            campoCliente.classList.remove('bg-white', 'text-gray-900');
+            campoCliente.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+            campoCliente.placeholder = "Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'";
+        }
+        
+        if (campoTelefone) {
+            campoTelefone.value = '';
+            campoTelefone.setAttribute('readonly', 'readonly');
+            campoTelefone.setAttribute('disabled', 'disabled');
+            campoTelefone.classList.remove('bg-white', 'text-gray-900');
+            campoTelefone.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+            campoTelefone.placeholder = "Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'";
+        }
+        
+        if (inputAutocomplete) {
+            inputAutocomplete.value = '';
+        }
+        
+        if (btnHistorico) {
+            btnHistorico.classList.add('hidden');
+        }
+        
+        document.getElementById('cliente_id').value = '';
+    },
+
+    /**
+     * Carrega endereços salvos do cliente
+     */
+    async carregarEnderecosCliente(clienteId) {
+        try {
+            const response = await API.get(`/api/clientes/${clienteId}/enderecos`);
+            
+            if (response.success && response.data.success) {
+                const enderecos = response.data.enderecos;
+                
+                if (enderecos.length > 0) {
+                    // Buscar endereço principal ou o primeiro
+                    const enderecoPrincipal = enderecos.find(e => e.principal) || enderecos[0];
+                    
+                    // Preencher campos de endereço
+                    if (enderecoPrincipal.cep) document.getElementById('cep').value = enderecoPrincipal.cep;
+                    if (enderecoPrincipal.rua) document.getElementById('rua').value = enderecoPrincipal.rua;
+                    if (enderecoPrincipal.numero) document.getElementById('numero').value = enderecoPrincipal.numero;
+                    if (enderecoPrincipal.bairro) document.getElementById('bairro').value = enderecoPrincipal.bairro;
+                    if (enderecoPrincipal.cidade) document.getElementById('cidade').value = enderecoPrincipal.cidade;
+                    
+                    Notification.show(`Endereço ${enderecoPrincipal.apelido || 'principal'} carregado!`, 'success');
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar endereços:', error);
+        }
+    },
+
+    /**
+     * Mostra modal com histórico do cliente
+     */
+    async mostrarHistoricoCliente(clienteId) {
+        try {
+            const response = await API.get(`/api/clientes/${clienteId}/pedidos?limit=20`);
+            
+            if (response.success && response.data.success) {
+                const cliente = response.data;
+                
+                // Criar conteúdo do modal
+                const historicoHTML = `
+                    <div class="space-y-4">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h3 class="font-bold text-lg">${cliente.nome}</h3>
+                            <p class="text-sm text-gray-600">Total de pedidos: ${cliente.total_pedidos}</p>
+                        </div>
+                        
+                        <div class="max-h-96 overflow-y-auto space-y-2">
+                            ${cliente.pedidos.map(pedido => `
+                                <div class="border rounded-lg p-3 hover:bg-gray-50">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <p class="font-medium">${pedido.produto}</p>
+                                            <p class="text-sm text-gray-600">Para: ${pedido.destinatario}</p>
+                                            <p class="text-xs text-gray-500">
+                                                ${new Date(pedido.dia_entrega).toLocaleDateString('pt-BR')} - ${pedido.horario}
+                                            </p>
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="badge badge-sm">${pedido.status}</span>
+                                            ${pedido.valor ? `<p class="text-sm font-medium mt-1">${pedido.valor}</p>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                Modal.show(`Histórico - ${cliente.nome}`, historicoHTML);
+            }
+        } catch (error) {
+            console.error('Erro ao carregar histórico:', error);
+            Notification.show('Erro ao carregar histórico do cliente', 'error');
+        }
     },
 
     /**
@@ -266,7 +508,8 @@ const FormManager = {
         const partes = [];
         
         if (rua) {
-            if (numero) {
+            // Ignorar número "0" ou "S/N" (sem número)
+            if (numero && numero !== '0' && numero.toUpperCase() !== 'S/N' && numero.toUpperCase() !== 'SN') {
                 partes.push(`${rua}, ${numero}`);
             } else {
                 partes.push(rua);
@@ -285,7 +528,8 @@ const FormManager = {
             partes.push(`CEP: ${cep}`);
         }
 
-        const enderecoCompleto = partes.join(' - ');
+        // Usar vírgula como separador (padrão brasileiro)
+        const enderecoCompleto = partes.join(', ');
         
         const enderecoInput = document.getElementById('endereco');
         if (enderecoInput) {
@@ -588,6 +832,7 @@ const FormManager = {
         const formData = {};
 
         // Step 1 - Dados do Cliente
+        formData.cliente_id = document.getElementById('cliente_id')?.value || '';
         formData.cliente = document.getElementById('cliente')?.value || '';
         formData.telefone_cliente = Masks.unmaskPhone(document.getElementById('telefone_cliente')?.value || '');
         formData.destinatario = document.getElementById('destinatario')?.value || '';
@@ -744,6 +989,9 @@ const FormManager = {
             // Limpar validações visuais
             Validators.clearFieldError(field);
         });
+
+        // Resetar campos de cliente ao estado inicial (desabilitados)
+        this.resetarCamposCliente();
 
         // Voltar para o primeiro step
         this.currentStep = 1;

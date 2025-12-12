@@ -5,12 +5,14 @@
 
 const PainelManager = {
     pedidos: [],
+    pedidosAnteriores: [], // Armazenar lista anterior para detectar novos
     filtros: {
         status: '',
-        search: ''
+        search: '',
+        date: 'todos'  // todos, hoje, amanha, semana
     },
     autoRefreshInterval: null,
-    autoRefreshTime: 30000, // 30 segundos
+    autoRefreshTime: 5000, // 5 segundos (conforme mencionado pelo usuário)
     ordenadoPorDistancia: false,
     calculandoDistancias: false,
     modoSelecao: false,
@@ -47,6 +49,14 @@ const PainelManager = {
                 this.filterPedidos();
             }, 300));
         }
+
+        // Filtros de data
+        document.querySelectorAll('[data-filter-date]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const date = e.currentTarget.getAttribute('data-filter-date');
+                this.setDateFilter(date);
+            });
+        });
 
         // Filtros de status
         document.querySelectorAll('[data-filter-status]').forEach(btn => {
@@ -87,9 +97,39 @@ const PainelManager = {
         try {
             if (showNotification) Utils.showLoading();
 
-            this.pedidos = await this.fetchPedidos();
+            // Salvar lista anterior para detectar novos pedidos
+            const pedidosAnteriores = [...this.pedidos];
+            
+            // Buscar novos pedidos
+            const novosPedidos = await this.fetchPedidos();
+            
+            // Detectar pedidos novos (que não estavam na lista anterior)
+            const idsAnteriores = new Set(pedidosAnteriores.map(p => p.id));
+            const pedidosNovos = novosPedidos.filter(p => !idsAnteriores.has(p.id));
+            
+            // Marcar pedidos novos
+            novosPedidos.forEach(pedido => {
+                pedido.novo = pedidosNovos.some(novo => novo.id === pedido.id);
+            });
+            
+            // Atualizar lista
+            this.pedidosAnteriores = pedidosAnteriores;
+            this.pedidos = novosPedidos;
 
-            this.renderPedidos();
+            // Sempre manter filtros ativos - aplicar filtros se houver algum ativo
+            // Isso garante que os filtros sejam persistentes mesmo após auto-refresh
+            const temFiltrosAtivos = this.filtros.date !== 'todos' || this.filtros.status || this.filtros.search;
+            
+            if (temFiltrosAtivos) {
+                // Aplicar filtros mantendo o estado
+                this.filterPedidos();
+            } else {
+                // Sem filtros - renderizar normalmente
+                this.renderPedidos();
+            }
+            
+            // Garantir que botões de filtro mantenham estado visual
+            this.updateFilterButtons();
 
             if (showNotification) Notification.success('Pedidos atualizados!');
         } catch (error) {
@@ -183,7 +223,7 @@ const PainelManager = {
     /**
      * Renderiza lista de pedidos
      */
-    renderPedidos() {
+    renderPedidos(forceAnimation = false) {
         const container = document.getElementById('pedidos-container');
         
         if (!container) {
@@ -191,7 +231,15 @@ const PainelManager = {
             return;
         }
 
-        // Limpar container
+        // Se não for forçar animação, fazer update inteligente (não recriar tudo)
+        if (!forceAnimation && container.children.length > 0) {
+            // Atualizar apenas pedidos existentes e adicionar novos
+            this.updatePedidosInteligente();
+            this.updateFilterButtons();
+            return;
+        }
+
+        // Limpar container apenas se forçar animação ou primeira renderização
         container.innerHTML = '';
 
         if (this.pedidos.length === 0) {
@@ -217,10 +265,17 @@ const PainelManager = {
         // Criar cards
         pedidosOrdenados.forEach(pedido => {
             const card = PedidoCard.create(pedido, this.modoSelecao, this.pedidosSelecionados.has(pedido.id));
+            // Aplicar animação apenas se for pedido novo
+            if (!pedido.novo) {
+                card.classList.add('no-animation');
+            }
             container.appendChild(card);
         });
 
         console.log(`✅ ${pedidosOrdenados.length} pedidos renderizados (ordenados por proximidade)`);
+        
+        // Garantir que os botões de filtro permaneçam com estilo correto
+        this.updateFilterButtons();
     },
 
     /**
@@ -249,6 +304,112 @@ const PainelManager = {
     },
 
     /**
+     * Atualiza pedidos de forma inteligente (sem recriar tudo)
+     */
+    updatePedidosInteligente() {
+        const container = document.getElementById('pedidos-container');
+        if (!container) return;
+
+        // Obter IDs dos pedidos atualmente exibidos
+        const idsExibidos = new Set(
+            Array.from(container.children).map(card => parseInt(card.dataset.id))
+        );
+
+        // Filtrar pedidos: concluídos só aparecem se o filtro "concluido" estiver ativo
+        let pedidosParaExibir = [...this.pedidos];
+        if (this.filtros.status !== 'concluido') {
+            pedidosParaExibir = pedidosParaExibir.filter(p => p.status !== 'concluido');
+        }
+
+        // Aplicar filtros de data e busca
+        if (this.filtros.date && this.filtros.date !== 'todos') {
+            const hoje = new Date();
+            const hojeStr = hoje.toISOString().split('T')[0];
+            const amanha = new Date(hoje);
+            amanha.setDate(amanha.getDate() + 1);
+            const amanhaStr = amanha.toISOString().split('T')[0];
+            const fimSemana = new Date(hoje);
+            fimSemana.setDate(fimSemana.getDate() + 7);
+            const fimSemanaStr = fimSemana.toISOString().split('T')[0];
+
+            pedidosParaExibir = pedidosParaExibir.filter(p => {
+                const dataEntregaStr = p.dia_entrega;
+                if (this.filtros.date === 'hoje') return dataEntregaStr === hojeStr;
+                if (this.filtros.date === 'amanha') return dataEntregaStr === amanhaStr;
+                if (this.filtros.date === 'semana') return dataEntregaStr >= hojeStr && dataEntregaStr <= fimSemanaStr;
+                return true;
+            });
+        }
+
+        if (this.filtros.status && this.filtros.status !== 'concluido') {
+            pedidosParaExibir = pedidosParaExibir.filter(p => p.status === this.filtros.status);
+        } else if (this.filtros.status === 'concluido') {
+            pedidosParaExibir = this.pedidos.filter(p => p.status === 'concluido');
+        }
+
+        if (this.filtros.search) {
+            const search = this.filtros.search.toLowerCase();
+            pedidosParaExibir = pedidosParaExibir.filter(p => 
+                (p.cliente && p.cliente.toLowerCase().includes(search)) ||
+                (p.destinatario && p.destinatario.toLowerCase().includes(search)) ||
+                (p.produto && p.produto.toLowerCase().includes(search)) ||
+                (p.telefone_cliente && p.telefone_cliente.includes(search))
+            );
+        }
+
+        // Ordenar
+        pedidosParaExibir = this.sortPedidosByProximity(pedidosParaExibir);
+
+        const idsParaExibir = new Set(pedidosParaExibir.map(p => p.id));
+
+        // Remover cards de pedidos que não devem mais aparecer
+        Array.from(container.children).forEach(card => {
+            const pedidoId = parseInt(card.dataset.id);
+            if (!idsParaExibir.has(pedidoId)) {
+                card.remove();
+            }
+        });
+
+        // Atualizar ou adicionar cards mantendo ordem
+        pedidosParaExibir.forEach((pedido, index) => {
+            const cardExistente = container.querySelector(`[data-id="${pedido.id}"]`);
+            
+            if (cardExistente) {
+                // Atualizar card existente sem recriar (apenas atualizar dados se necessário)
+                // Verificar se precisa atualizar (status mudou, etc)
+                const statusAtual = cardExistente.dataset.status;
+                if (statusAtual !== pedido.status) {
+                    // Status mudou - atualizar card
+                    const novoCard = PedidoCard.create(pedido, this.modoSelecao, this.pedidosSelecionados.has(pedido.id));
+                    novoCard.classList.add('no-animation');
+                    cardExistente.replaceWith(novoCard);
+                }
+                // Se não mudou nada, manter o card como está (sem animação)
+            } else {
+                // Adicionar novo card na posição correta
+                const novoCard = PedidoCard.create(pedido, this.modoSelecao, this.pedidosSelecionados.has(pedido.id));
+                // Aplicar animação apenas se for pedido novo
+                if (!pedido.novo) {
+                    novoCard.classList.add('no-animation');
+                }
+                
+                // Inserir na posição correta baseada na ordem
+                const proximoCard = Array.from(container.children).find(card => {
+                    const cardId = parseInt(card.dataset.id);
+                    const proximoPedido = pedidosParaExibir[index + 1];
+                    return proximoPedido && cardId === proximoPedido.id;
+                });
+                
+                if (proximoCard) {
+                    container.insertBefore(novoCard, proximoCard);
+                } else {
+                    container.appendChild(novoCard);
+                }
+            }
+        });
+    },
+
+    /**
      * Filtra pedidos localmente
      */
     filterPedidos() {
@@ -257,6 +418,48 @@ const PainelManager = {
         // Ocultar pedidos concluídos da lista principal (exceto quando filtro "concluido" está ativo)
         if (this.filtros.status !== 'concluido') {
             filtered = filtered.filter(p => p.status !== 'concluido');
+        }
+
+        // Filtrar por data
+        if (this.filtros.date && this.filtros.date !== 'todos') {
+            // Usar formato de string YYYY-MM-DD para evitar problemas de timezone
+            const hoje = new Date();
+            const hojeStr = hoje.toISOString().split('T')[0]; // YYYY-MM-DD
+            
+            const amanha = new Date(hoje);
+            amanha.setDate(amanha.getDate() + 1);
+            const amanhaStr = amanha.toISOString().split('T')[0];
+            
+            const fimSemana = new Date(hoje);
+            fimSemana.setDate(fimSemana.getDate() + 7);
+            const fimSemanaStr = fimSemana.toISOString().split('T')[0];
+
+            console.log('[DEBUG] Filtro de Data:', {
+                filtro: this.filtros.date,
+                hoje: hojeStr,
+                amanha: amanhaStr,
+                fimSemana: fimSemanaStr
+            });
+
+            filtered = filtered.filter(p => {
+                // p.dia_entrega já vem no formato YYYY-MM-DD
+                const dataEntregaStr = p.dia_entrega;
+
+                if (this.filtros.date === 'hoje') {
+                    const match = dataEntregaStr === hojeStr;
+                    if (match) console.log('[DEBUG] Pedido HOJE:', p.id, dataEntregaStr);
+                    return match;
+                } else if (this.filtros.date === 'amanha') {
+                    const match = dataEntregaStr === amanhaStr;
+                    if (match) console.log('[DEBUG] Pedido AMANHÃ:', p.id, dataEntregaStr);
+                    return match;
+                } else if (this.filtros.date === 'semana') {
+                    return dataEntregaStr >= hojeStr && dataEntregaStr <= fimSemanaStr;
+                }
+                return true;
+            });
+
+            console.log('[DEBUG] Pedidos filtrados:', filtered.length);
         }
 
         // Filtrar por status específico (se não for "todos")
@@ -281,20 +484,87 @@ const PainelManager = {
         // Ordenar pedidos filtrados por proximidade
         filtered = this.sortPedidosByProximity(filtered);
 
-        // Renderizar filtrados
+        // Renderizar filtrados usando atualização inteligente
         const container = document.getElementById('pedidos-container');
         if (container) {
-            container.innerHTML = '';
-            
-            if (filtered.length === 0) {
-                container.innerHTML = this.getEmptyState();
+            // Se já tem cards, fazer update inteligente
+            if (container.children.length > 0) {
+                // Temporariamente atualizar lista de pedidos para exibir apenas os filtrados
+                const pedidosOriginais = [...this.pedidos];
+                this.pedidos = filtered;
+                this.updatePedidosInteligente();
+                this.pedidos = pedidosOriginais; // Restaurar lista completa
             } else {
-                filtered.forEach(pedido => {
-                    const card = PedidoCard.create(pedido);
-                    container.appendChild(card);
-                });
+                // Primeira renderização - criar todos os cards
+                container.innerHTML = '';
+                
+                if (filtered.length === 0) {
+                    container.innerHTML = this.getEmptyState();
+                } else {
+                    filtered.forEach(pedido => {
+                        const card = PedidoCard.create(pedido, this.modoSelecao, this.pedidosSelecionados.has(pedido.id));
+                        // Aplicar animação apenas se for pedido novo
+                        if (!pedido.novo) {
+                            card.classList.add('no-animation');
+                        }
+                        container.appendChild(card);
+                    });
+                }
             }
         }
+        
+        // Garantir que os botões de filtro permaneçam com estilo correto
+        this.updateFilterButtons();
+    },
+
+    /**
+     * Atualiza estilo visual dos botões de filtro
+     */
+    updateFilterButtons() {
+        // Atualizar botões de data
+        document.querySelectorAll('[data-filter-date]').forEach(btn => {
+            const filterValue = btn.getAttribute('data-filter-date');
+            // Limpar todas as classes de estado
+            btn.classList.remove('active', 'bg-primary', 'text-white', 'bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            
+            if (filterValue === this.filtros.date) {
+                // Botão ativo
+                btn.classList.add('active', 'bg-primary', 'text-white');
+            } else {
+                // Botão inativo
+                btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            }
+        });
+
+        // Atualizar botões de status
+        document.querySelectorAll('[data-filter-status]').forEach(btn => {
+            const filterValue = btn.getAttribute('data-filter-status');
+            const statusAtivo = this.filtros.status || 'todos';
+            
+            // Limpar todas as classes de estado
+            btn.classList.remove('active', 'bg-primary', 'text-white', 'bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            
+            if (filterValue === statusAtivo) {
+                // Botão ativo
+                btn.classList.add('active', 'bg-primary', 'text-white');
+            } else {
+                // Botão inativo
+                btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            }
+        });
+    },
+
+    /**
+     * Define filtro de data
+     */
+    setDateFilter(date) {
+        this.filtros.date = date;
+        
+        // Atualizar botões ativos
+        this.updateFilterButtons();
+
+        // Aplicar filtro
+        this.filterPedidos();
     },
 
     /**
@@ -304,16 +574,7 @@ const PainelManager = {
         this.filtros.status = status === 'todos' ? '' : status;
         
         // Atualizar botões ativos
-        document.querySelectorAll('[data-filter-status]').forEach(btn => {
-            btn.classList.remove('active', 'bg-primary', 'text-white');
-            btn.classList.add('bg-gray-200', 'text-gray-700');
-        });
-
-        const activeBtn = document.querySelector(`[data-filter-status="${status || 'todos'}"]`);
-        if (activeBtn) {
-            activeBtn.classList.remove('bg-gray-200', 'text-gray-700');
-            activeBtn.classList.add('active', 'bg-primary', 'text-white');
-        }
+        this.updateFilterButtons();
 
         // Aplicar filtro
         this.filterPedidos();
@@ -761,7 +1022,8 @@ const PainelManager = {
             if (document.hidden) return; // Não atualizar se página não está visível
             
             console.log('🔄 Auto-refresh disparado');
-            this.loadPedidos(false);
+            // Usar refreshPedidos que mantém filtros e detecta novos pedidos
+            this.refreshPedidos(false);
             this.loadStats();
         }, this.autoRefreshTime);
 

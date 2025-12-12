@@ -52,17 +52,71 @@
                 Dados do Cliente
             </h2>
 
+            <!-- Campo hidden para cliente_id -->
+            <input type="hidden" id="cliente_id" name="cliente_id">
+
+            <!-- Autocomplete de Cliente -->
+            <div class="autocomplete-wrapper">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-search text-primary"></i>
+                    Buscar Cliente Existente
+                </label>
+                <input 
+                    type="text" 
+                    id="cliente-autocomplete"
+                    class="w-full px-4 py-3 border-2 border-primary rounded-lg focus:border-primary focus:outline-none transition shadow-sm"
+                    placeholder="🔍 Digite nome ou telefone para buscar cliente..."
+                    autocomplete="off"
+                >
+                <div id="autocomplete-results" class="autocomplete-results"></div>
+                
+                <div class="mt-3 flex items-center gap-3">
+                    <div class="flex-1 border-t border-gray-300"></div>
+                    <span class="text-sm text-gray-500">ou</span>
+                    <div class="flex-1 border-t border-gray-300"></div>
+                </div>
+                
+                <div class="mt-3">
+                    <button 
+                        type="button" 
+                        id="btn-novo-cliente" 
+                        class="w-full btn-secondary py-3 text-base font-medium"
+                        style="cursor: pointer; user-select: none; min-height: 44px; touch-action: manipulation;"
+                    >
+                        <i class="fas fa-plus-circle"></i>
+                        Cadastrar Novo Cliente
+                    </button>
+                </div>
+                
+                <button 
+                    type="button" 
+                    id="btn-historico-cliente" 
+                    class="mt-2 w-full text-sm text-blue-600 hover:text-blue-700 font-medium hidden py-2"
+                >
+                    <i class="fas fa-history"></i> Ver Histórico de Pedidos
+                </button>
+            </div>
+
+            <!-- Campos tradicionais (preenchidos automaticamente ou manualmente) -->
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
-                    Quem Enviou (Cliente)
+                    Nome do Cliente <span class="text-red-500">*</span>
                 </label>
                 <input 
                     type="text" 
                     id="cliente"
                     name="cliente"
-                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Nome do remetente"
+                    required
+                    data-validation="required"
+                    data-field-name="Nome do Cliente"
+                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition bg-gray-100 text-gray-500 cursor-not-allowed"
+                    placeholder="Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'"
+                    readonly
+                    disabled
                 >
+                <p class="mt-1 text-xs text-gray-500">
+                    <i class="fas fa-info-circle"></i> Este campo será preenchido automaticamente ao buscar ou habilitado ao cadastrar novo cliente
+                </p>
             </div>
 
             <div>
@@ -77,8 +131,10 @@
                     data-mask="phone"
                     data-validation="phone"
                     data-field-name="Telefone"
-                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="(62) 99999-9999"
+                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition bg-gray-100 text-gray-500 cursor-not-allowed"
+                    placeholder="Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'"
+                    readonly
+                    disabled
                 >
             </div>
 

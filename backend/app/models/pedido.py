@@ -45,6 +45,9 @@ class Pedido(db.Model):
     quantidade = db.Column(db.Integer, default=1, comment='Quantidade (compatibilidade)')
     oculto = db.Column(db.Boolean, default=False, comment='Se True, pedido está oculto/arquivado (não aparece na lista)')
     
+    # Relacionamento com Cliente (novo sistema de gestão de clientes)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True, comment='ID do cliente (sistema novo)')
+    
     # Distância calculada (GraphHopper/OpenRouteService)
     distancia_km = db.Column(db.Float, nullable=True, comment='Distância em km da floricultura até o endereço')
     
@@ -93,6 +96,7 @@ class Pedido(db.Model):
             'status': self.status or 'agendado',
             'quantidade': self.quantidade or 1,
             'oculto': self.oculto or False,
+            'cliente_id': self.cliente_id,
             'distancia_km': self.distancia_km,
             'taxa_entrega': self.taxa_entrega,
             'coords_lat': self.coords_lat,

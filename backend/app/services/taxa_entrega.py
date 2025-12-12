@@ -117,26 +117,87 @@ class TaxaEntregaService:
         """
         faixas = config.get('faixas', [])
         
-        # Ordenar faixas por ate_km (None vai para o final)
-        faixas_ordenadas = sorted(
-            faixas,
-            key=lambda x: x.get('ate_km') if x.get('ate_km') is not None else float('inf')
-        )
+        # Verificar se as faixas usam formato novo (de_km/ate_km) ou antigo (ate_km)
+        usa_faixas_intervalo = any('de_km' in faixa for faixa in faixas)
         
-        # Encontrar a faixa correspondente
-        for faixa in faixas_ordenadas:
-            ate_km = faixa.get('ate_km')
-            taxa = faixa.get('taxa', 0)
+        if usa_faixas_intervalo:
+            # Novo formato: faixas com de_km e ate_km (intervalos específicos)
+            # Se a distância está entre faixas, usar a próxima faixa (maior)
             
-            if ate_km is None:
-                # Última faixa (sem limite superior)
-                return taxa
-            elif distancia_km <= ate_km:
-                return taxa
-        
-        # Se não encontrou nenhuma faixa, usar a última
-        if faixas_ordenadas:
-            return faixas_ordenadas[-1].get('taxa', 0)
+            for i, faixa in enumerate(faixas):
+                de_km = faixa.get('de_km', 0)
+                ate_km = faixa.get('ate_km')
+                taxa = faixa.get('taxa', 0)
+                
+                if ate_km is None:
+                    # Faixa sem limite superior (acima de de_km)
+                    if distancia_km >= de_km:
+                        if self.DEBUG:
+                            print(f"[DEBUG] Faixa encontrada: {de_km}+ km -> R$ {taxa:.2f}")
+                        return taxa
+                else:
+                    # Faixa com intervalo definido
+                    if de_km <= distancia_km <= ate_km:
+                        if self.DEBUG:
+                            print(f"[DEBUG] Faixa encontrada: {de_km}-{ate_km} km -> R$ {taxa:.2f}")
+                        return taxa
+                    # Se a distância está acima desta faixa, verificar próxima faixa
+                    elif distancia_km > ate_km:
+                        # Se há próxima faixa, verificar se a distância está antes dela (entre faixas)
+                        if i + 1 < len(faixas):
+                            proxima_faixa = faixas[i + 1]
+                            de_prox_km = proxima_faixa.get('de_km', 0)
+                            # Se a distância está entre esta faixa e a próxima, usar a próxima
+                            if distancia_km < de_prox_km:
+                                taxa_prox = proxima_faixa.get('taxa', 0)
+                                ate_prox_km = proxima_faixa.get('ate_km', '?')
+                                if self.DEBUG:
+                                    print(f"[DEBUG] Distância {distancia_km} km entre faixas, usando próxima: {de_prox_km}-{ate_prox_km} km -> R$ {taxa_prox:.2f}")
+                                return taxa_prox
+                        # Se não há próxima faixa ou a distância já passou, continuar
+                        continue
+                    # Se a distância está antes da primeira faixa, usar a primeira faixa
+                    elif distancia_km < de_km and i == 0:
+                        if self.DEBUG:
+                            print(f"[DEBUG] Distância {distancia_km} km antes da primeira faixa, usando primeira: {de_km}-{ate_km} km -> R$ {taxa:.2f}")
+                        return taxa
+            
+            # Se passou por todas as faixas e não encontrou, usar a última (para valores acima da última faixa)
+            if faixas:
+                ultima_faixa = faixas[-1]
+                taxa_fallback = ultima_faixa.get('taxa', 0)
+                if self.DEBUG:
+                    print(f"[DEBUG] Distância {distancia_km} km acima de todas as faixas, usando última: R$ {taxa_fallback:.2f}")
+                return taxa_fallback
+        else:
+            # Formato antigo: faixas cumulativas com apenas ate_km
+            # Ordenar faixas por ate_km (None vai para o final)
+            faixas_ordenadas = sorted(
+                faixas,
+                key=lambda x: x.get('ate_km') if x.get('ate_km') is not None else float('inf')
+            )
+            
+            # Encontrar a faixa correspondente
+            for faixa in faixas_ordenadas:
+                ate_km = faixa.get('ate_km')
+                taxa = faixa.get('taxa', 0)
+                
+                if ate_km is None:
+                    # Última faixa (sem limite superior)
+                    if self.DEBUG:
+                        print(f"[DEBUG] Faixa encontrada: acima do limite -> R$ {taxa:.2f}")
+                    return taxa
+                elif distancia_km <= ate_km:
+                    if self.DEBUG:
+                        print(f"[DEBUG] Faixa encontrada: até {ate_km} km -> R$ {taxa:.2f}")
+                    return taxa
+            
+            # Se não encontrou nenhuma faixa, usar a última
+            if faixas_ordenadas:
+                taxa_fallback = faixas_ordenadas[-1].get('taxa', 0)
+                if self.DEBUG:
+                    print(f"[DEBUG] Nenhuma faixa encontrada, usando última: R$ {taxa_fallback:.2f}")
+                return taxa_fallback
         
         return 0.0
     
@@ -170,17 +231,42 @@ class TaxaEntregaService:
         """
         faixas = self.config.get('faixas', [])
         
-        for faixa in sorted(
-            faixas,
-            key=lambda x: x.get('ate_km') if x.get('ate_km') is not None else float('inf')
-        ):
-            ate_km = faixa.get('ate_km')
-            descricao = faixa.get('descricao', '')
+        # Verificar se as faixas usam formato novo (de_km/ate_km) ou antigo (ate_km)
+        usa_faixas_intervalo = any('de_km' in faixa for faixa in faixas)
+        
+        if usa_faixas_intervalo:
+            # Novo formato: faixas com de_km e ate_km
+            for faixa in faixas:
+                de_km = faixa.get('de_km', 0)
+                ate_km = faixa.get('ate_km')
+                descricao = faixa.get('descricao', '')
+                
+                if ate_km is None:
+                    # Faixa sem limite superior
+                    if distancia_km >= de_km:
+                        return descricao or f"Acima de {de_km} km"
+                else:
+                    # Faixa com intervalo definido
+                    if de_km <= distancia_km <= ate_km:
+                        return descricao or f"{de_km}-{ate_km} km"
             
-            if ate_km is None:
-                return descricao or f"Acima de {faixas[-2].get('ate_km') if len(faixas) > 1 else 0} km"
-            elif distancia_km <= ate_km:
-                return descricao or f"Até {ate_km} km"
+            # Se não encontrou, usar a última faixa
+            if faixas:
+                ultima_faixa = faixas[-1]
+                return ultima_faixa.get('descricao', 'Distância não categorizada')
+        else:
+            # Formato antigo: faixas cumulativas
+            for faixa in sorted(
+                faixas,
+                key=lambda x: x.get('ate_km') if x.get('ate_km') is not None else float('inf')
+            ):
+                ate_km = faixa.get('ate_km')
+                descricao = faixa.get('descricao', '')
+                
+                if ate_km is None:
+                    return descricao or f"Acima de {faixas[-2].get('ate_km') if len(faixas) > 1 else 0} km"
+                elif distancia_km <= ate_km:
+                    return descricao or f"Até {ate_km} km"
         
         return "Distância não categorizada"
 

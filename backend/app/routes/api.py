@@ -5,13 +5,15 @@ API completa para o frontend PWA
 """
 from flask import Blueprint, request, jsonify
 from app import db
-from app.models import Pedido, RotaOtimizada
+from app.models import Pedido, RotaOtimizada, Cliente
+from app.middleware import requires_edit_auth
 from datetime import datetime
 import re
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 @api_bp.route('/pedidos', methods=['POST'])
+@requires_edit_auth
 def criar_pedido():
     """
     Cria novo pedido via API (usado pelo PWA)
@@ -104,6 +106,38 @@ def criar_pedido():
                 'detalhes': str(e)
             }), 400
         
+        # Gerenciar cliente_id - criar cliente se necessário
+        cliente_id = data.get('cliente_id', '').strip()
+        
+        # Se cliente_id não foi fornecido mas temos nome e telefone, buscar ou criar cliente
+        if not cliente_id and cliente and telefone_cliente:
+            # Buscar cliente existente por telefone
+            cliente_existente = Cliente.buscar_por_telefone(telefone_cliente)
+            
+            if cliente_existente:
+                # Cliente já existe, usar o ID
+                cliente_id = cliente_existente.id
+            else:
+                # Criar novo cliente
+                try:
+                    novo_cliente = Cliente(
+                        nome=cliente,
+                        telefone=telefone_cliente,
+                        email=None,
+                        observacoes=None
+                    )
+                    db.session.add(novo_cliente)
+                    db.session.flush()  # Para obter o ID sem fazer commit
+                    cliente_id = novo_cliente.id
+                    print(f"[INFO] Novo cliente criado: ID={cliente_id}, Nome={cliente}, Telefone={telefone_cliente}")
+                except Exception as e:
+                    print(f"[ERRO] Erro ao criar cliente: {e}")
+                    # Continuar sem cliente_id se houver erro
+                    cliente_id = None
+        
+        # Converter cliente_id para int se não for None
+        cliente_id_int = int(cliente_id) if cliente_id else None
+        
         # Criar instância do pedido
         pedido = Pedido(
             # Step 1
@@ -131,7 +165,9 @@ def criar_pedido():
             observacoes=observacoes if observacoes else None,
             # Controle
             status='agendado',
-            quantidade=quantidade
+            quantidade=quantidade,
+            # Relacionamento com cliente
+            cliente_id=cliente_id_int
         )
         
         # Inserir no banco de dados
@@ -363,6 +399,7 @@ def atualizar_pedido(pedido_id):
 
 
 @api_bp.route('/pedidos/<int:pedido_id>', methods=['DELETE'])
+@requires_edit_auth
 def deletar_pedido(pedido_id):
     """Deleta pedido"""
     try:
@@ -478,13 +515,11 @@ def calcular_distancia_pedido_endpoint(pedido_id):
         
         print(f"\n[DEBUG] ========== CALCULANDO DISTÂNCIA INDIVIDUAL ==========")
         print(f"[DEBUG] Pedido ID: {pedido_id}")
-        print(f"[DEBUG] Endereço completo: {pedido.endereco}")
         print(f"[DEBUG] Campos: rua={pedido.rua}, num={pedido.numero}, bairro={pedido.bairro}, cidade={pedido.cidade}, cep={pedido.cep}")
         print(f"[DEBUG] Forçar recálculo: {force_recalc}")
         
-        # Calcular distância usando campos separados para melhor precisão
+        # Calcular distância usando APENAS campos separados (não usa pedido.endereco)
         resultado = distancia_service.calcular_distancia_pedido(
-            endereco_pedido=pedido.endereco,
             pedido_id=pedido_id,
             rua=pedido.rua,
             numero=pedido.numero,
@@ -492,6 +527,17 @@ def calcular_distancia_pedido_endpoint(pedido_id):
             cidade=pedido.cidade,
             cep=pedido.cep
         )
+        
+        # Verificar se houve erro de validação
+        if resultado and 'error' in resultado:
+            print(f"[ERRO] Validação falhou: {resultado['error']}")
+            return jsonify({
+                'success': False,
+                'pedido_id': pedido_id,
+                'error': resultado['error'],
+                'detalhes': resultado.get('detalhes'),
+                'campos_recebidos': resultado.get('campos_recebidos')
+            }), 400
         
         if resultado:
             # Salvar no banco para cache
@@ -508,8 +554,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
                 'pedido_id': pedido_id,
                 'distancia_km': resultado['distancia_km'],
                 'duracao_min': resultado['duracao_min'],
-                'endereco': pedido.endereco,
-                'coords_destino': resultado.get('coords_destino'),
+                'metodo': resultado.get('metodo'),
                 'cached': False
             })
         else:
@@ -517,8 +562,8 @@ def calcular_distancia_pedido_endpoint(pedido_id):
                 'success': False,
                 'pedido_id': pedido_id,
                 'error': 'Não foi possível calcular a distância',
-                'endereco': pedido.endereco
-            })
+                'detalhes': 'Resultado inesperado do serviço de distância'
+            }), 500
             
     except Exception as e:
         print(f"[ERRO] Exceção ao calcular distância do pedido {pedido_id}: {e}")
@@ -747,6 +792,7 @@ def calcular_taxa_pedido(pedido_id):
 def calcular_rota_otimizada():
     """Calcula rota otimizada para múltiplos pedidos"""
     try:
+        import os
         from app.services.distancia import distancia_service
         from app.services.graphhopper import graphhopper_service
         from app.models import RotaOtimizada
@@ -795,9 +841,8 @@ def calcular_rota_otimizada():
                 waypoints.append((pedido.coords_lat, pedido.coords_lon))
                 pedidos_com_coords.append(pedido)
             else:
-                # Tentar geocodificar se não tiver coordenadas
+                # Tentar geocodificar se não tiver coordenadas (usando apenas campos separados)
                 resultado = distancia_service.calcular_distancia_pedido(
-                    endereco_pedido=pedido.endereco,
                     pedido_id=pedido.id,
                     rua=pedido.rua,
                     numero=pedido.numero,
@@ -806,13 +851,16 @@ def calcular_rota_otimizada():
                     cep=pedido.cep
                 )
                 
-                if resultado and 'coords_destino_lat' in resultado:
+                # Verificar se houve erro ou se obteve coordenadas
+                if resultado and 'error' not in resultado and 'coords_destino_lat' in resultado:
                     lat = resultado['coords_destino_lat']
                     lon = resultado['coords_destino_lon']
                     waypoints.append((lat, lon))
                     pedido.coords_lat = lat
                     pedido.coords_lon = lon
                     pedidos_com_coords.append(pedido)
+                elif resultado and 'error' in resultado:
+                    print(f"[AVISO] Pedido {pedido.id} não pôde ser geocodificado: {resultado['error']}")
         
         if len(waypoints) < 2:
             return jsonify({
@@ -826,8 +874,20 @@ def calcular_rota_otimizada():
         )
         
         if not resultado_rota:
+            # Verificar se é problema de API key
+            import os
+            graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
+            
+            mensagem_erro = 'Não foi possível calcular rota otimizada. '
+            if not graphhopper_key:
+                mensagem_erro += 'GRAPHHOPPER_API_KEY não está configurada. Configure no arquivo .env para habilitar rotas otimizadas.'
+            else:
+                mensagem_erro += 'A API do GraphHopper pode estar fora do ar ou a chave API pode ser inválida/expirada. Verifique em /api/debug/testar-apis'
+            
             return jsonify({
-                'error': 'Não foi possível calcular rota otimizada'
+                'error': mensagem_erro,
+                'sugestao': 'Execute GET /api/debug/testar-apis para diagnosticar o problema',
+                'num_pedidos_tentados': len(pedidos_com_coords)
             }), 500
         
         # Mapear waypoints otimizados de volta para pedidos
@@ -899,6 +959,23 @@ def calcular_rota_otimizada():
             db.session.rollback()
             raise
         
+        # Gerar link do GraphHopper Maps para visualização
+        graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
+        graphhopper_maps_url = None
+        
+        if graphhopper_key:
+            # Construir URL do GraphHopper Maps com todos os pontos
+            waypoints_coords = rota.get_waypoints_coords()
+            points_params = f"point={origem[1]},{origem[0]}"  # Origem (lat,lon)
+            
+            for wp in waypoints_coords:
+                points_params += f"&point={wp[0]},{wp[1]}"
+            
+            # Sempre adicionar retorno à origem
+            points_params += f"&point={origem[1]},{origem[0]}"  # Retornar à origem
+            
+            graphhopper_maps_url = f"https://graphhopper.com/maps/?{points_params}&profile=car&layer=Omniscale&key={graphhopper_key}"
+        
         return jsonify({
             'success': True,
             'rota_id': rota.id,
@@ -912,7 +989,8 @@ def calcular_rota_otimizada():
                 'lat': rota.origem_lat,
                 'lon': rota.origem_lon
             },
-            'waypoints': rota.get_waypoints_coords()
+            'waypoints': rota.get_waypoints_coords(),
+            'graphhopper_maps_url': graphhopper_maps_url
         })
         
     except Exception as e:
@@ -988,6 +1066,74 @@ def health_check():
         }), 500
 
 
+# ============================================
+# ENDPOINTS DE AUTENTICAÇÃO
+# ============================================
+
+@api_bp.route('/auth/login', methods=['POST'])
+def login():
+    """Valida credenciais e retorna confirmação"""
+    try:
+        from app.middleware import check_auth
+        
+        data = request.get_json() or {}
+        username = data.get('username', '').strip()
+        password = data.get('password', '').strip()
+        
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'error': 'Usuário e senha são obrigatórios'
+            }), 400
+        
+        if check_auth(username, password):
+            return jsonify({
+                'success': True,
+                'message': 'Login realizado com sucesso',
+                'username': username
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Credenciais inválidas'
+            }), 401
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': 'Erro ao processar login',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/auth/check', methods=['GET'])
+def check_auth_status():
+    """Verifica se a requisição está autenticada"""
+    try:
+        from app.middleware import check_auth
+        
+        auth = request.authorization
+        
+        if auth and check_auth(auth.username, auth.password):
+            return jsonify({
+                'success': True,
+                'authenticated': True,
+                'username': auth.username
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'authenticated': False
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': 'Erro ao verificar autenticação',
+            'detalhes': str(e)
+        }), 500
+
+
 @api_bp.route('/debug/geocode', methods=['GET', 'POST'])
 def debug_geocode():
     """
@@ -997,7 +1143,17 @@ def debug_geocode():
     GET: /api/debug/geocode?endereco=Rua+X,+123
     GET: /api/debug/geocode?rua=Rua+X&numero=123&bairro=Centro&cidade=Goiania&cep=74000000
     POST: {"endereco": "Rua X, 123"} ou {"rua": "Rua X", "numero": "123", ...}
+    
+    SEGURANÇA: Requer autenticação
     """
+    # Verificar se debug endpoints estão habilitados
+    import os
+    if not os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true':
+        return jsonify({
+            'error': 'Endpoint de debug desabilitado',
+            'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
+        }), 403
+    
     try:
         from app.services.distancia import distancia_service
         import requests
@@ -1038,18 +1194,23 @@ def debug_geocode():
         print(f"[DEBUG] Campos separados: rua={rua}, num={numero}, bairro={bairro}, cidade={cidade}, cep={cep}")
         
         # Construir endereço otimizado para geocodificação
-        if tem_campos_separados:
+        if tem_campos_separados and rua and bairro:
+            # Se tem campos separados válidos (rua + bairro), usar construir_endereco_para_geocode
             endereco_para_geocode = distancia_service.construir_endereco_para_geocode(
                 rua=rua,
                 numero=numero,
                 bairro=bairro,
                 cidade=cidade,
-                cep=cep,
-                endereco_completo=endereco
+                cep=cep
             )
-            print(f"[DEBUG] Endereço construído dos campos: {endereco_para_geocode}")
+            if endereco_para_geocode:
+                print(f"[DEBUG] Endereço construído dos campos: {endereco_para_geocode}")
+            else:
+                print(f"[DEBUG] Validação de campos falhou, tentando com endereço completo...")
+                endereco_para_geocode = distancia_service.limpar_endereco(endereco) if endereco else None
         else:
-            endereco_para_geocode = distancia_service.limpar_endereco(endereco)
+            # Fallback: usar endereço completo limpo
+            endereco_para_geocode = distancia_service.limpar_endereco(endereco) if endereco else None
             print(f"[DEBUG] Endereço limpo: {endereco_para_geocode}")
         
         # Usar a função de geocodificação do serviço (usa Nominatim + OpenRouteService)
@@ -1122,7 +1283,17 @@ def debug_limpar_distancias():
     """
     Endpoint de debug para limpar todas as distâncias cacheadas.
     Força recálculo na próxima chamada.
+    
+    SEGURANÇA: Requer autenticação
     """
+    # Verificar se debug endpoints estão habilitados
+    import os
+    if not os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true':
+        return jsonify({
+            'error': 'Endpoint de debug desabilitado',
+            'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
+        }), 403
+    
     try:
         # Limpar todas as distâncias
         pedidos = Pedido.query.filter(Pedido.distancia_km.isnot(None)).all()
@@ -1152,7 +1323,17 @@ def debug_config_floricultura():
     """
     Endpoint de debug para verificar a configuração da floricultura.
     Mostra o endereço configurado e as coordenadas geocodificadas.
+    
+    SEGURANÇA: Requer autenticação - Expõe informações sensíveis
     """
+    # Verificar se debug endpoints estão habilitados
+    import os
+    if not os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true':
+        return jsonify({
+            'error': 'Endpoint de debug desabilitado',
+            'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
+        }), 403
+    
     try:
         from app.services.distancia import distancia_service
         import os
@@ -1188,7 +1369,17 @@ def debug_config_floricultura():
 def debug_reset_floricultura():
     """
     Força recálculo das coordenadas da floricultura.
+    
+    SEGURANÇA: Requer autenticação
     """
+    # Verificar se debug endpoints estão habilitados
+    import os
+    if not os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true':
+        return jsonify({
+            'error': 'Endpoint de debug desabilitado',
+            'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
+        }), 403
+    
     try:
         from app.services.distancia import distancia_service
         
@@ -1216,3 +1407,173 @@ def debug_reset_floricultura():
             'detalhes': str(e)
         }), 500
 
+
+@api_bp.route('/debug/testar-apis', methods=['GET'])
+def debug_testar_apis():
+    """
+    Testa conectividade com as APIs externas (GraphHopper, OpenRouteService, Nominatim)
+    
+    SEGURANÇA: Requer autenticação - Expõe API keys parcialmente
+    """
+    # Verificar se debug endpoints estão habilitados
+    import os
+    if not os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true':
+        return jsonify({
+            'error': 'Endpoint de debug desabilitado',
+            'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
+        }), 403
+    
+    try:
+        from app.services.distancia import distancia_service
+        from app.services.graphhopper import graphhopper_service
+        import requests
+        import os
+        
+        resultados = {
+            'graphhopper': {'status': 'não testado', 'details': {}},
+            'openroute': {'status': 'não testado', 'details': {}},
+            'nominatim': {'status': 'não testado', 'details': {}}
+        }
+        
+        # Teste 1: GraphHopper API
+        graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
+        if graphhopper_key:
+            try:
+                # Testar com uma rota simples (Goiânia)
+                test_params = {
+                    'point': ['-16.6869,-49.2648', '-16.6941,-49.2587'],
+                    'vehicle': 'car',
+                    'key': graphhopper_key,
+                    'type': 'json'
+                }
+                response = requests.get(
+                    'https://graphhopper.com/api/1/route',
+                    params=test_params,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    resultados['graphhopper']['status'] = 'OK'
+                    resultados['graphhopper']['details'] = {
+                        'message': 'API funcionando corretamente',
+                        'key_preview': graphhopper_key[:20] + '...'
+                    }
+                else:
+                    resultados['graphhopper']['status'] = 'ERRO'
+                    resultados['graphhopper']['details'] = {
+                        'code': response.status_code,
+                        'message': response.text[:300],
+                        'key_preview': graphhopper_key[:20] + '...'
+                    }
+            except Exception as e:
+                resultados['graphhopper']['status'] = 'ERRO'
+                resultados['graphhopper']['details'] = {'error': str(e)}
+        else:
+            resultados['graphhopper']['status'] = 'NÃO CONFIGURADO'
+            resultados['graphhopper']['details'] = {
+                'message': 'GRAPHHOPPER_API_KEY não definida no .env'
+            }
+        
+        # Teste 2: OpenRouteService API
+        openroute_key = os.environ.get('OPENROUTE_API_KEY', '')
+        if openroute_key:
+            try:
+                test_body = {
+                    'coordinates': [[-49.2648, -16.6869], [-49.2587, -16.6941]]
+                }
+                response = requests.post(
+                    'https://api.openrouteservice.org/v2/directions/driving-car',
+                    headers={'Authorization': openroute_key},
+                    json=test_body,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    resultados['openroute']['status'] = 'OK'
+                    resultados['openroute']['details'] = {
+                        'message': 'API funcionando corretamente',
+                        'key_preview': openroute_key[:20] + '...'
+                    }
+                else:
+                    resultados['openroute']['status'] = 'ERRO'
+                    resultados['openroute']['details'] = {
+                        'code': response.status_code,
+                        'message': response.text[:300],
+                        'key_preview': openroute_key[:20] + '...'
+                    }
+            except Exception as e:
+                resultados['openroute']['status'] = 'ERRO'
+                resultados['openroute']['details'] = {'error': str(e)}
+        else:
+            resultados['openroute']['status'] = 'NÃO CONFIGURADO'
+            resultados['openroute']['details'] = {
+                'message': 'OPENROUTE_API_KEY não definida no .env'
+            }
+        
+        # Teste 3: Nominatim (não precisa de API key)
+        try:
+            response = requests.get(
+                'https://nominatim.openstreetmap.org/search',
+                headers={'User-Agent': 'PlanteumaFlor-GestorPedidos/1.0'},
+                params={'q': 'Goiânia, GO, Brasil', 'format': 'json', 'limit': 1},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                results = response.json()
+                if results:
+                    resultados['nominatim']['status'] = 'OK'
+                    resultados['nominatim']['details'] = {
+                        'message': 'API funcionando corretamente (gratuita)',
+                        'found': results[0].get('display_name', '')[:100]
+                    }
+                else:
+                    resultados['nominatim']['status'] = 'AVISO'
+                    resultados['nominatim']['details'] = {
+                        'message': 'API respondeu mas não encontrou resultados'
+                    }
+            else:
+                resultados['nominatim']['status'] = 'ERRO'
+                resultados['nominatim']['details'] = {
+                    'code': response.status_code,
+                    'message': response.text[:300]
+                }
+        except Exception as e:
+            resultados['nominatim']['status'] = 'ERRO'
+            resultados['nominatim']['details'] = {'error': str(e)}
+        
+        # Resumo geral
+        status_geral = 'OK'
+        problemas = []
+        
+        if resultados['graphhopper']['status'] in ['ERRO', 'NÃO CONFIGURADO']:
+            problemas.append('GraphHopper não disponível (rotas otimizadas podem falhar)')
+        
+        if resultados['openroute']['status'] in ['ERRO', 'NÃO CONFIGURADO']:
+            problemas.append('OpenRouteService não disponível (fallback de rotas)')
+        
+        if resultados['nominatim']['status'] == 'ERRO':
+            problemas.append('Nominatim não disponível (geocodificação pode falhar)')
+        
+        if problemas:
+            status_geral = 'PARCIAL' if resultados['nominatim']['status'] == 'OK' else 'ERRO'
+        
+        return jsonify({
+            'success': True,
+            'status_geral': status_geral,
+            'problemas': problemas,
+            'apis': resultados,
+            'recomendacoes': {
+                'graphhopper': 'Configure GRAPHHOPPER_API_KEY para rotas otimizadas (gratuito até 500 req/dia)',
+                'openroute': 'Configure OPENROUTE_API_KEY para backup de rotas (gratuito até 2000 req/dia)',
+                'nominatim': 'Não precisa configuração, mas respeite o limite de uso (1 req/segundo)'
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Erro ao testar APIs',
+            'detalhes': str(e)
+        }), 500

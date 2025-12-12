@@ -7,25 +7,115 @@ const API = {
     baseURL: window.location.origin,
 
     /**
+     * Verifica se uma rota requer autenticação
+     * @param {string} endpoint - Endpoint da API
+     * @param {string} method - Método HTTP
+     * @returns {boolean} True se requer autenticação
+     */
+    requiresAuth(endpoint, method) {
+        // Apenas rotas críticas requerem autenticação
+        const criticalRoutes = [
+            { path: '/api/pedidos', method: 'POST' },  // Criar pedido
+        ];
+        
+        // DELETE /api/pedidos/<id> - verificar por padrão
+        if (method === 'DELETE' && endpoint.startsWith('/api/pedidos/') && 
+            endpoint.match(/^\/api\/pedidos\/\d+$/)) {
+            return true;
+        }
+        
+        // Verificar outras rotas críticas
+        return criticalRoutes.some(route => 
+            endpoint === route.path && method === route.method
+        );
+    },
+    
+    /**
      * Faz requisição HTTP
      */
     async request(endpoint, options = {}) {
         const url = `${this.baseURL}${endpoint}`;
+        const method = options.method || 'GET';
+        
+        // Verificar se esta rota requer autenticação
+        const needsAuth = this.requiresAuth(endpoint, method);
+        
+        // Se requer autenticação e não está autenticado, pedir senha
+        if (needsAuth && typeof Auth !== 'undefined' && !Auth.isAuthenticated()) {
+            const creds = await Auth.promptPassword(
+                'Esta ação requer autenticação. Por favor, faça login para continuar.'
+            );
+            
+            if (!creds) {
+                return { 
+                    success: false, 
+                    error: 'Autenticação cancelada',
+                    cancelled: true 
+                };
+            }
+        }
+        
+        // Adicionar header de autenticação se necessário
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        
+        if (needsAuth && typeof Auth !== 'undefined') {
+            const authHeader = Auth.getAuthHeader();
+            Object.assign(headers, authHeader);
+        }
         
         const config = {
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            },
+            headers,
             ...options
         };
 
         try {
             const response = await fetch(url, config);
-            const data = await response.json();
+            
+            // Tentar parsear JSON, mas pode não ser JSON em caso de erro
+            let data;
+            try {
+                data = await response.json();
+            } catch (e) {
+                data = { error: `Erro ${response.status}` };
+            }
 
             if (!response.ok) {
-                throw new Error(data.error || `Erro ${response.status}`);
+                // Se for erro 401 e requer autenticação, tentar novamente após login
+                if (response.status === 401 && needsAuth && typeof Auth !== 'undefined') {
+                    // Limpar credenciais inválidas
+                    Auth.logout();
+                    
+                    // Pedir senha novamente
+                    const creds = await Auth.promptPassword(
+                        'Credenciais inválidas ou expiradas. Por favor, faça login novamente.'
+                    );
+                    
+                    if (creds) {
+                        // Tentar novamente com novas credenciais
+                        const authHeader = Auth.getAuthHeader();
+                        const retryConfig = {
+                            ...config,
+                            headers: {
+                                ...config.headers,
+                                ...authHeader
+                            }
+                        };
+                        
+                        const retryResponse = await fetch(url, retryConfig);
+                        const retryData = await retryResponse.json();
+                        
+                        if (!retryResponse.ok) {
+                            throw new Error(retryData.error || `Erro ${retryResponse.status}`);
+                        }
+                        
+                        return { success: true, data: retryData, status: retryResponse.status };
+                    }
+                }
+                
+                throw new Error(data.error || data.message || `Erro ${response.status}`);
             }
 
             return { success: true, data, status: response.status };

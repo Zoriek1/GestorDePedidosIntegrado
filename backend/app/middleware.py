@@ -81,6 +81,31 @@ def requires_auth(f):
     return decorated
 
 
+def requires_edit_auth(f):
+    """
+    Decorator para proteger apenas rotas críticas de edição (criar/deletar pedidos)
+    Permite acesso livre para visualização e atualização de status
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        
+        if not auth or not check_auth(auth.username, auth.password):
+            from flask import jsonify
+            return jsonify({
+                'error': 'Acesso negado',
+                'message': 'Esta operação requer autenticação. Por favor, faça login.',
+                'requires_auth': True
+            }), 401
+        
+        # Armazenar usuário autenticado no request
+        request.authenticated_user = auth.username
+        
+        return f(*args, **kwargs)
+    
+    return decorated
+
+
 # ============================================
 # RATE LIMITING SIMPLES
 # ============================================
@@ -190,26 +215,33 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
     def before_request():
         """Executado antes de cada requisição"""
         
-        # Pular autenticação para health check
-        if request.path == '/api/health':
-            return None
+        # Lista de paths públicos (não precisam autenticação)
+        # Esses arquivos são necessários para o PWA funcionar corretamente
+        public_paths = [
+            '/api/health',
+            '/api/auth',  # Endpoints de autenticação são públicos
+            '/manifest.json',
+            '/sw.js',
+            '/favicon.ico',
+        ]
         
-        # Aplicar autenticação se habilitada
-        if enable_auth:
-            auth = request.authorization
-            if not auth or not check_auth(auth.username, auth.password):
-                return Response(
-                    'Acesso negado. Credenciais necessárias.',
-                    401,
-                    {
-                        'WWW-Authenticate': 'Basic realm="Gestor de Pedidos"',
-                        'Content-Type': 'application/json'
-                    }
-                )
-            request.authenticated_user = auth.username
+        # Verificar se o path começa com algum path público
+        is_public = any(request.path == path or request.path.startswith(path + '/') for path in public_paths)
         
-        # Rate limiting (exceto health check)
-        if enable_rate_limit and request.path != '/api/health':
+        # Assets também são públicos (ícones, CSS, JS, imagens)
+        # Esses arquivos são necessários para o frontend funcionar
+        if request.path.startswith('/assets/'):
+            is_public = True
+        
+        # Rotas de API GET são públicas (visualização livre)
+        if request.path.startswith('/api/') and request.method == 'GET':
+            is_public = True
+        
+        # NÃO aplicar autenticação global - apenas rotas específicas usarão @requires_edit_auth
+        # Isso permite visualização livre mas protege criação/deleção
+        
+        # Rate limiting (aplicado a todas as rotas, exceto assets estáticos)
+        if enable_rate_limit and not request.path.startswith('/assets/'):
             ip = request.remote_addr
             if request.headers.get('X-Real-IP'):
                 ip = request.headers.get('X-Real-IP')

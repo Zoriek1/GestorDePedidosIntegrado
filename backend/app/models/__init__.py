@@ -4,6 +4,8 @@ Models do sistema
 """
 from app.models.pedido import Pedido
 from app.models.rota_otimizada import RotaOtimizada
+from app.models.cliente import Cliente
+from app.models.endereco_cliente import EnderecoCliente
 
-__all__ = ['Pedido', 'RotaOtimizada']
+__all__ = ['Pedido', 'RotaOtimizada', 'Cliente', 'EnderecoCliente']
 

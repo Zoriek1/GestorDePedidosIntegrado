@@ -23,7 +23,8 @@ class GraphHopperService:
         self.api_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
         if not self.api_key:
             print("[AVISO] GRAPHHOPPER_API_KEY não configurada no .env")
-            print("[INFO] Usando API key gratuita (limitada a 500 requisições/dia)")
+            print("[INFO] Rotas otimizadas usarão cálculo local (sem API externa)")
+            print("[INFO] Para melhor precisão, configure GRAPHHOPPER_API_KEY no arquivo .env")
         else:
             if self.DEBUG:
                 print(f"[DEBUG] GraphHopper API key configurada")
@@ -45,6 +46,12 @@ class GraphHopperService:
         if not coords_origem or not coords_destino:
             return None
         
+        # Se não tiver API key, retornar None imediatamente (não tentar usar API)
+        if not self.api_key:
+            if self.DEBUG:
+                print(f"[DEBUG] GraphHopper: API key não configurada, pulando...")
+            return None
+        
         # GraphHopper usa formato: point=lat,lon
         origem_str = f"{coords_origem[0]},{coords_origem[1]}"
         destino_str = f"{coords_destino[0]},{coords_destino[1]}"
@@ -56,18 +63,15 @@ class GraphHopperService:
             print(f"[DEBUG] Veículo: {vehicle}")
         
         try:
-            params = {
-                'point': [origem_str, destino_str],
-                'vehicle': vehicle,
-                'key': self.api_key if self.api_key else 'demo',  # demo key para testes
-                'type': 'json',
-                'instructions': 'false',  # Não precisa de instruções detalhadas
-                'calc_points': 'false'   # Não precisa dos pontos da rota
-            }
+            # Construir URL manualmente para garantir múltiplos parâmetros 'point'
+            # A biblioteca requests não monta corretamente listas em query params
+            url = f"{self.ROUTE_URL}?point={origem_str}&point={destino_str}&vehicle={vehicle}&key={self.api_key}&type=json&instructions=false&calc_points=false"
+            
+            if self.DEBUG:
+                print(f"[DEBUG] URL: {url[:100]}...")
             
             response = requests.get(
-                self.ROUTE_URL,
-                params=params,
+                url,
                 timeout=15
             )
             
@@ -93,12 +97,15 @@ class GraphHopperService:
                         'coords_destino': coords_destino
                     }
             else:
-                print(f"[ERRO] Cálculo de rota falhou: {response.status_code} - {response.text[:200]}")
+                if self.DEBUG:
+                    print(f"[DEBUG] GraphHopper erro: {response.status_code} - {response.text[:200]}")
                 
         except requests.exceptions.Timeout:
-            print("[ERRO] Timeout ao calcular rota com GraphHopper")
+            if self.DEBUG:
+                print("[DEBUG] Timeout ao calcular rota com GraphHopper")
         except Exception as e:
-            print(f"[ERRO] Erro ao calcular rota: {e}")
+            if self.DEBUG:
+                print(f"[DEBUG] Erro GraphHopper: {e}")
         
         return None
     

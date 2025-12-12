@@ -10,7 +10,7 @@ Progressive Web App (PWA) moderno e completo para gerenciamento de pedidos de fl
 
 ---
 
-## 📋 Índice
+## Índice
 
 - [Visão Geral](#-visão-geral)
 - [Características Principais](#-características-principais)
@@ -28,7 +28,7 @@ Progressive Web App (PWA) moderno e completo para gerenciamento de pedidos de fl
 
 ---
 
-## 🎯 Visão Geral
+## Visão Geral
 
 **Plante Uma Flor** é um sistema completo de gestão de pedidos desenvolvido especificamente para floriculturas. O sistema foi projetado para substituir aplicações desktop antigas por uma solução moderna, multiplataforma e acessível de qualquer dispositivo.
 
@@ -49,7 +49,7 @@ Progressive Web App (PWA) moderno e completo para gerenciamento de pedidos de fl
 
 ---
 
-## ✨ Características Principais
+## Características Principais
 
 ### Multiplataforma
 - ✅ Funciona em Windows, Android, iOS, Linux, macOS
@@ -85,7 +85,7 @@ Progressive Web App (PWA) moderno e completo para gerenciamento de pedidos de fl
 
 ---
 
-## 🏗️ Arquitetura do Sistema
+## Arquitetura do Sistema
 
 ### Componentes Principais
 
@@ -149,7 +149,7 @@ Progressive Web App (PWA) moderno e completo para gerenciamento de pedidos de fl
 
 ---
 
-## 🚀 Instalação e Configuração
+## Instalação e Configuração
 
 ### Requisitos
 
@@ -385,7 +385,7 @@ O sistema funciona completamente offline:
 
 ---
 
-## 🎯 API REST - Documentação Completa
+## API REST - Documentação Completa
 
 ### Base URL
 
@@ -683,7 +683,7 @@ Content-Type: application/json
 
 ---
 
-## 💰 Configuração de Taxas de Entrega
+##  Configuração de Taxas de Entrega
 
 ### Arquivo de Configuração
 
@@ -766,7 +766,7 @@ backend/config/taxa_entrega.json
 
 ---
 
-## 🔒 HTTPS e Certificados SSL
+## HTTPS e Certificados SSL
 
 ### Por que HTTPS?
 
@@ -891,7 +891,7 @@ abrir_sistema_https.bat
 
 ---
 
-## 🔧 Scripts e Ferramentas
+## Scripts e Ferramentas
 
 ### Estrutura de Scripts
 
@@ -994,7 +994,7 @@ backend\UtilsScripts\parar_servidor.bat
 
 ---
 
-## 📂 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 Gestor de Pedidos Plante uma flor/
@@ -1074,7 +1074,7 @@ Gestor de Pedidos Plante uma flor/
 
 ---
 
-## 🛠️ Desenvolvimento
+## Desenvolvimento
 
 ### Estrutura do Código
 
@@ -1193,7 +1193,7 @@ Endpoints de debug disponíveis:
 
 ---
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
 ### Problemas Comuns
 
@@ -1387,7 +1387,7 @@ MIT License - veja LICENSE para detalhes.
 
 ---
 
-## 🙏 Agradecimentos
+## Agradecimentos
 
 Projeto desenvolvido para modernizar o sistema de gestão de pedidos, substituindo aplicação desktop Tkinter por PWA multiplataforma.
 
@@ -1400,5 +1400,4 @@ Projeto desenvolvido para modernizar o sistema de gestão de pedidos, substituin
 
 ---
 
-**Plante Uma Flor** © 2024 - Sistema de Gestão de Pedidos PWA  
-Desenvolvido com ❤️ para floricultura
+**Plante Uma Flor** © 2024 - Sistema de Gestão de Pedidos PWA 

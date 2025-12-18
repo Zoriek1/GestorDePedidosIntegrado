@@ -16,6 +16,7 @@ const API = {
         // Apenas rotas críticas requerem autenticação
         const criticalRoutes = [
             { path: '/api/pedidos', method: 'POST' },  // Criar pedido
+            { path: '/api/exportar-planilha', method: 'POST' },  // Exportar planilha
         ];
         
         // DELETE /api/pedidos/<id> - verificar por padrão
@@ -72,19 +73,26 @@ const API = {
         };
 
         try {
+            console.log(`[API] ${method} ${endpoint}`, { needsAuth, hasBody: !!options.body });
             const response = await fetch(url, config);
+            
+            console.log(`[API] Resposta recebida:`, { status: response.status, ok: response.ok, url });
             
             // Tentar parsear JSON, mas pode não ser JSON em caso de erro
             let data;
             try {
-                data = await response.json();
+                const text = await response.text();
+                console.log(`[API] Resposta texto:`, text.substring(0, 200));
+                data = text ? JSON.parse(text) : {};
             } catch (e) {
-                data = { error: `Erro ${response.status}` };
+                console.warn(`[API] Erro ao parsear JSON:`, e);
+                data = { error: `Erro ${response.status} - Resposta não é JSON válido` };
             }
 
             if (!response.ok) {
                 // Se for erro 401 e requer autenticação, tentar novamente após login
                 if (response.status === 401 && needsAuth && typeof Auth !== 'undefined') {
+                    console.log('[API] Erro 401 - Tentando reautenticar...');
                     // Limpar credenciais inválidas
                     Auth.logout();
                     
@@ -115,19 +123,36 @@ const API = {
                     }
                 }
                 
-                throw new Error(data.error || data.message || `Erro ${response.status}`);
+                const errorMsg = data.error || data.message || `Erro ${response.status}`;
+                console.error(`[API] Erro na resposta:`, { status: response.status, error: errorMsg, data });
+                throw new Error(errorMsg);
             }
 
             return { success: true, data, status: response.status };
         } catch (error) {
-            console.error('API Error:', error);
+            console.error('[API] Erro na requisição:', { 
+                endpoint, 
+                method, 
+                error: error.message, 
+                name: error.name,
+                stack: error.stack 
+            });
             
             // Se está offline, tentar usar cache do IndexedDB
             if (!Utils.isOnline()) {
                 return { success: false, offline: true, error: error.message };
             }
             
-            return { success: false, error: error.message };
+            // NetworkError específico
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                return { 
+                    success: false, 
+                    error: 'Erro de conexão. Verifique sua internet e se o servidor está rodando.',
+                    networkError: true
+                };
+            }
+            
+            return { success: false, error: error.message || 'Erro desconhecido na requisição' };
         }
     },
 
@@ -222,6 +247,33 @@ const API = {
     },
 
     /**
+     * Marcar pedido como impresso
+     */
+    async marcarImpresso(pedidoId) {
+        const url = `/api/pedidos/${pedidoId}/marcar-impresso`;
+        console.log(`[API] marcarImpresso(${pedidoId}) - URL: ${url}`);
+        
+        try {
+            console.log(`[API] Enviando requisição POST para ${url}`);
+            const result = await this.post(url);
+            console.log(`[API] Resposta recebida:`, { 
+                success: result.success, 
+                status: result.status,
+                data: result.data 
+            });
+            
+            if (!result.success) {
+                console.error(`[API] Erro na resposta:`, result.error);
+            }
+            
+            return result;
+        } catch (error) {
+            console.error(`[API] Erro na requisição marcarImpresso:`, error);
+            throw error;
+        }
+    },
+
+    /**
      * Atualizar pedido completo
      */
     async updatePedido(pedidoId, pedidoData) {
@@ -310,6 +362,47 @@ const API = {
      */
     async obterRotaOtimizada(rotaId) {
         return this.get(`/api/pedidos/rota-otimizada/${rotaId}`);
+    },
+
+    // ==================== ENDPOINTS DE FONTES DE PEDIDO ====================
+
+    /**
+     * Listar fontes de pedido (apenas ativas)
+     */
+    async getFontesPedido() {
+        return this.get('/api/fontes-pedido');
+    },
+
+    /**
+     * Listar todas as fontes (ativas e inativas)
+     */
+    async getAllFontesPedido() {
+        return this.get('/api/fontes-pedido/all');
+    },
+
+    /**
+     * Criar nova fonte de pedido
+     * @param {Object} data - { nome, ativo }
+     */
+    async createFontePedido(data) {
+        return this.post('/api/fontes-pedido', data);
+    },
+
+    /**
+     * Atualizar fonte de pedido
+     * @param {Number} id - ID da fonte
+     * @param {Object} data - { nome, ativo }
+     */
+    async updateFontePedido(id, data) {
+        return this.put(`/api/fontes-pedido/${id}`, data);
+    },
+
+    /**
+     * Desativar fonte de pedido (soft delete)
+     * @param {Number} id - ID da fonte
+     */
+    async deleteFontePedido(id) {
+        return this.delete(`/api/fontes-pedido/${id}`);
     }
 };
 

@@ -114,12 +114,27 @@ body {
     background: var(--color-secondary);
 }
 
+/* Navbar fixa com suporte ao notch do iPhone */
+nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background-color: var(--color-primary) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    /* Suporte ao safe-area do iPhone */
+    padding-top: env(safe-area-inset-top);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
 /* Botões de navegação */
 .nav-button {
     padding: 0.5rem 1rem;
     border-radius: var(--border-radius-md);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.15);
     position: relative;
     overflow: hidden;
 }
@@ -240,6 +255,9 @@ body {
     border: 1px solid var(--color-neutral-200);
     animation: fadeInScale 0.4s ease-out;
     animation-fill-mode: both;
+    /* Melhorias mobile - evitar overflow */
+    overflow: hidden;
+    word-wrap: break-word;
 }
 
 .pedido-card:nth-child(1) { animation-delay: 0s; }
@@ -252,6 +270,50 @@ body {
 /* Desabilitar animação para pedidos que não são novos */
 .pedido-card.no-animation {
     animation: none !important;
+}
+
+/* ==================== SEÇÃO DE ENTREGA ==================== */
+
+.entrega-section {
+    transition: all 0.2s ease;
+}
+
+.entrega-section:hover {
+    background-color: #f9fafb;
+    border-color: var(--color-primary);
+}
+
+.entrega-item {
+    padding-bottom: 0.5rem;
+}
+
+.entrega-info {
+    background: white;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-neutral-200);
+}
+
+.entrega-recalcular-btn {
+    font-size: 0.75rem;
+    color: #2563eb;
+    background: transparent;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.entrega-recalcular-btn:hover {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+}
+
+.entrega-recalcular-btn:active {
+    transform: scale(0.95);
 }
 
 .pedido-card:hover {
@@ -537,6 +599,9 @@ select:focus {
     box-shadow: var(--shadow-xl);
     animation: scaleIn 0.2s ease-out;
     border: 1px solid var(--color-neutral-200);
+    /* Melhorias mobile - garantir que não ultrapasse viewport */
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
 }
 
 @keyframes scaleIn {
@@ -612,38 +677,99 @@ p {
         max-height: calc(100vh - 2rem);
     }
     
-    /* Navbar responsivo */
+    /* Navbar responsivo - layout horizontal compacto */
     nav {
-        height: 60px;
+        height: 56px;
+        min-height: 56px;
     }
     
     nav .container {
-        padding-left: 1rem;
-        padding-right: 1rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        height: 100%;
     }
     
-    nav .flex.items-center {
-        gap: 0.75rem;
+    /* Container principal da navbar - horizontal compacto */
+    nav > .container > .flex.items-center.justify-between {
+        height: 100%;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    /* Logo e título - compacto */
+    nav .flex.items-center.space-x-3 {
+        flex-shrink: 1;
+        min-width: 0;
+        gap: 0.5rem;
     }
     
     nav .brand-title {
-        font-size: 0.8125rem;
+        font-size: 0.75rem;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 200px;
+        max-width: 120px;
         font-weight: 600;
         line-height: 1.2;
-    }
-    
-    /* Esconder botões de navegação no mobile */
-    nav .flex.space-x-4,
-    nav .nav-button {
-        display: none !important;
+        display: none; /* Esconder título no mobile para economizar espaço */
     }
     
     nav .brand-logo {
-        height: 36px;
+        height: 28px;
+        flex-shrink: 0;
+    }
+    
+    /* Container dos botões - horizontal compacto */
+    nav .flex.items-center.space-x-4 {
+        display: flex !important;
+        flex-wrap: nowrap;
+        gap: 0.25rem;
+        flex-shrink: 0;
+        justify-content: flex-end;
+        align-items: center;
+    }
+    
+    /* Botões de navegação - apenas ícones no mobile */
+    .nav-button {
+        padding: 0.375rem 0.5rem !important;
+        font-size: 0.75rem !important;
+        min-height: 36px;
+        min-width: 36px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .nav-button i {
+        font-size: 0.875rem;
+    }
+    
+    .nav-button span {
+        display: none !important;
+    }
+    
+    /* Indicador de autenticação - apenas ícone no mobile */
+    #auth-indicator {
+        padding: 0.25rem 0.375rem !important;
+        font-size: 0.6875rem !important;
+        min-height: 28px;
+        min-width: 28px;
+        flex-shrink: 0;
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    #auth-indicator span {
+        display: none !important;
+    }
+    
+    /* Ajustar padding do main para compensar navbar fixa */
+    main#app {
+        padding-top: calc(56px + env(safe-area-inset-top) + 1.5rem) !important;
     }
     
     /* Botões em cards de pedido */
@@ -874,10 +1000,7 @@ p {
         max-width: 100%;
     }
     
-    main.container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-    }
+    /* Padding já ajustado acima para main#app.container */
     
     /* Espaçamento reduzido mas consistente */
     .mb-6 {
@@ -966,6 +1089,25 @@ p {
             padding: 0.5rem 0.625rem;
             font-size: 0.75rem;
         }
+    }
+    
+    /* Mobile: ajustes para seção de entrega */
+    .entrega-section {
+        padding: 0.75rem;
+    }
+    
+    .entrega-info {
+        padding: 0.5rem 0.625rem;
+    }
+    
+    .entrega-recalcular-btn {
+        font-size: 0.6875rem;
+        padding: 0.2rem 0.4rem;
+    }
+    
+    /* Grid em coluna única no mobile */
+    .entrega-section .grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -1080,6 +1222,26 @@ select:focus {
     z-index: 1000;
     margin-top: 4px;
     display: none;
+    /* Melhorias para mobile */
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Ajustes mobile para autocomplete */
+@media (max-width: 768px) {
+    .autocomplete-results {
+        max-height: 250px;
+        z-index: 1001; /* Acima do drawer mobile */
+        position: fixed; /* Em mobile, usar fixed para evitar problemas de scroll */
+        left: 0.5rem;
+        right: 0.5rem;
+        width: auto;
+    }
+    
+    .autocomplete-wrapper {
+        position: relative;
+    }
 }
 
 .autocomplete-results.active {
@@ -1176,4 +1338,81 @@ input[readonly][disabled]::placeholder {
 input:not([disabled]):not([readonly]) {
     transition: all 0.3s ease;
 }
+
+/* ==================== ESTILOS DE IMPRESSÃO ==================== */
+
+@media print {
+    /* Esconder elementos não relevantes para impressão */
+    nav,
+    #notification-container,
+    #loading-overlay,
+    .no-print,
+    button:not(.print-button) {
+        display: none !important;
+    }
+    
+    /* Container de impressão */
+    #print-container-temp {
+        position: static !important;
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    
+    /* Garantir que o conteúdo de impressão seja visível */
+    #print-container-temp * {
+        visibility: visible !important;
+    }
+    
+    /* Ajustes de página */
+    @page {
+        size: A4;
+        margin: 1cm;
+    }
+    
+    /* Corrigir cores para impressão */
+    * {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+        color-adjust: exact;
+    }
+    
+    /* Garantir que backgrounds sejam impressos */
+    .status-badge,
+    .pedido-numero,
+    .section-title {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    /* Evitar quebra de página em seções importantes */
+    .section {
+        page-break-inside: avoid;
+    }
+    
+    /* Garantir que o body não tenha margens extras */
+    body {
+        margin: 0;
+        padding: 0;
+        background: white;
+    }
+    
+    /* Ajustar fontes para impressão */
+    body,
+    p,
+    span,
+    div {
+        font-size: 10pt;
+        line-height: 1.4;
+    }
+    
+    /* Garantir que imagens sejam impressas */
+    img {
+        max-width: 100%;
+        height: auto;
+    }
+}
+
 

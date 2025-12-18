@@ -1,0 +1,87 @@
+# Configuração do Google Sheets API
+
+## Passo 1: Criar Projeto no Google Cloud Console
+
+1. Acesse: https://console.cloud.google.com/
+2. Clique em "Select a project" → "New Project"
+3. Nome: `GestorPedidosExport` (ou outro de sua preferência)
+4. Clique em "Create"
+
+## Passo 2: Ativar Google Sheets API
+
+1. No menu lateral, vá em "APIs & Services" → "Library"
+2. Pesquise por "Google Sheets API"
+3. Clique em "Enable"
+4. Também ative "Google Drive API" (necessário para criar/buscar planilhas)
+
+## Passo 3: Criar Credenciais (Service Account)
+
+1. Vá em "APIs & Services" → "Credentials"
+2. Clique em "Create Credentials" → "Service Account"
+3. Preencha:
+   - Nome: `gestor-pedidos-export`
+   - Clique em "Create and Continue"
+   - Role: "Editor" (ou pule esta etapa)
+   - Clique em "Done"
+
+4. Na lista de Service Accounts, clique no email criado
+5. Vá na aba "Keys" → "Add Key" → "Create new key"
+6. Escolha "JSON" e clique em "Create"
+7. O arquivo será baixado automaticamente
+
+## Passo 4: Salvar Credenciais
+
+1. Renomeie o arquivo baixado para `google_credentials.json`
+2. Mova para: `backend/config/google_credentials.json`
+
+**IMPORTANTE**: Este arquivo contém credenciais sensíveis. Ele já está no `.gitignore`.
+
+## Passo 5: Compartilhar Acesso
+
+O email da Service Account (ex: `gestor-pedidos-export@projeto.iam.gserviceaccount.com`) 
+precisa ter acesso às planilhas.
+
+**Opção A - Planilha específica:**
+- Abra a planilha no Google Sheets
+- Clique em "Compartilhar"
+- Cole o email da Service Account
+- Dê permissão de "Editor"
+
+**Opção B - Pasta do Drive:**
+- Crie uma pasta no Google Drive
+- Compartilhe a pasta com o email da Service Account (Editor)
+- As planilhas criadas pelo script ficarão nessa pasta
+
+## Passo 6: Instalar Dependências
+
+```bash
+pip install gspread google-auth
+```
+
+## Passo 7: Testar
+
+```bash
+cd backend
+python scripts/exportar_vendas_sheets.py --teste
+```
+
+---
+
+## Estrutura do arquivo google_credentials.json
+
+O arquivo deve ter este formato (os valores serão diferentes):
+
+```json
+{
+  "type": "service_account",
+  "project_id": "seu-projeto",
+  "private_key_id": "xxx",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+  "client_email": "gestor-pedidos-export@seu-projeto.iam.gserviceaccount.com",
+  "client_id": "123456789",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/..."
+}
+```

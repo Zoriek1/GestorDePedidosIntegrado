@@ -16,43 +16,40 @@ const App = {
             return;
         }
 
-        console.log(`🌺 Plante Uma Flor PWA v${this.version}`);
-        console.log('Inicializando aplicação...');
-
         try {
             // Inicializar IndexedDB
             await DB.init();
-            console.log('✅ IndexedDB inicializado');
 
-            // Verificar conectividade
-            this.checkConnectivity();
-
-            // Configurar listeners globais
+            // Configurar listeners globais (crítico - fazer primeiro)
             this.setupGlobalListeners();
             
-            // Atualizar indicador de autenticação
+            // Atualizar indicador de autenticação (crítico)
             this.updateAuthIndicator();
             
-            // Atualizar indicador periodicamente (a cada 2 segundos)
-            setInterval(() => {
-                this.updateAuthIndicator();
-            }, 2000);
-            
-            // Atualizar também quando a visibilidade da página mudar (usuário volta à aba)
+            // Atualizar apenas quando a visibilidade da página mudar (usuário volta à aba)
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) {
                     this.updateAuthIndicator();
                 }
             });
 
-            // Verificar por atualizações do Service Worker
-            this.checkForUpdates();
-
-            // Prompt de instalação PWA
-            this.setupInstallPrompt();
-
             this.initialized = true;
-            console.log('✅ Aplicação inicializada com sucesso');
+
+            // Operações não críticas - adiar para não bloquear inicialização
+            // Verificar conectividade de forma assíncrona
+            setTimeout(() => {
+                this.checkConnectivity();
+            }, 100);
+
+            // Verificar por atualizações do Service Worker (adiar)
+            setTimeout(() => {
+                this.checkForUpdates();
+            }, 2000);
+
+            // Prompt de instalação PWA (adiar)
+            setTimeout(() => {
+                this.setupInstallPrompt();
+            }, 2000);
 
             // Mostrar notificação de boas-vindas
             setTimeout(() => {
@@ -76,102 +73,32 @@ const App = {
         const btnLogout = document.getElementById('btn-logout');
         const btnLogin = document.getElementById('nav-login');
         const btnCriarPedido = document.getElementById('nav-criar');
-        // Botão na página do painel também
         const btnCriarPedidoPainel = document.getElementById('btn-novo-pedido-painel');
         
+        // Cachear resultado para evitar múltiplas chamadas na mesma execução
         const isAuthenticated = typeof Auth !== 'undefined' && Auth.isAuthenticated();
         
-        console.log('🔐 Atualizando indicadores de autenticação:', { 
-            isAuthenticated, 
-            btnLogin: !!btnLogin, 
-            btnLogout: !!btnLogout,
-            btnLoginElement: btnLogin ? btnLogin.outerHTML.substring(0, 100) : 'não encontrado'
-        });
+        // Usar classes CSS ao invés de múltiplas manipulações de estilo
+        if (indicator) {
+            indicator.classList.toggle('hidden', !isAuthenticated);
+            indicator.classList.toggle('flex', isAuthenticated);
+        }
         
-        if (isAuthenticated) {
-            // Usuário autenticado - mostrar logout e esconder login
-            if (indicator) {
-                indicator.classList.remove('hidden');
-                indicator.classList.add('flex');
-                indicator.style.display = 'flex';
-            }
-            if (btnLogout) {
-                btnLogout.classList.remove('hidden');
-                btnLogout.style.display = '';
-                btnLogout.style.visibility = 'visible';
-            }
-            if (btnLogin) {
-                // Múltiplas formas de esconder para garantir
-                btnLogin.classList.add('hidden');
-                btnLogin.classList.add('auth-hidden');
-                btnLogin.style.setProperty('display', 'none', 'important');
-                btnLogin.style.setProperty('visibility', 'hidden', 'important');
-                btnLogin.style.setProperty('opacity', '0', 'important');
-                btnLogin.style.setProperty('width', '0', 'important');
-                btnLogin.style.setProperty('height', '0', 'important');
-                btnLogin.style.setProperty('padding', '0', 'important');
-                btnLogin.style.setProperty('margin', '0', 'important');
-                btnLogin.style.setProperty('overflow', 'hidden', 'important');
-                btnLogin.setAttribute('aria-hidden', 'true');
-                btnLogin.setAttribute('hidden', 'true');
-                console.log('✅ Botão login escondido - estilos aplicados:', {
-                    display: btnLogin.style.display,
-                    visibility: btnLogin.style.visibility,
-                    classes: btnLogin.className
-                });
-            } else {
-                console.warn('⚠️ Botão login não encontrado!');
-            }
-            // Mostrar botão de criar pedido apenas se autenticado
-            if (btnCriarPedido) {
-                btnCriarPedido.classList.remove('hidden');
-                btnCriarPedido.style.display = '';
-            }
-            if (btnCriarPedidoPainel) {
-                btnCriarPedidoPainel.classList.remove('hidden');
-                btnCriarPedidoPainel.style.display = '';
-            }
-        } else {
-            // Usuário não autenticado - esconder logout e mostrar login
-            if (indicator) {
-                indicator.classList.add('hidden');
-                indicator.classList.remove('flex');
-                indicator.style.display = 'none';
-            }
-            if (btnLogout) {
-                btnLogout.classList.add('hidden');
-                btnLogout.style.display = 'none';
-                btnLogout.style.visibility = 'hidden';
-            }
-            if (btnLogin) {
-                // Remover todas as formas de esconder e mostrar o botão
-                btnLogin.classList.remove('hidden');
-                btnLogin.classList.remove('auth-hidden');
-                // Limpar todos os estilos inline que podem estar escondendo
-                btnLogin.style.cssText = '';
-                // Garantir que está visível
-                btnLogin.style.display = '';
-                btnLogin.style.visibility = 'visible';
-                btnLogin.style.opacity = '1';
-                btnLogin.removeAttribute('aria-hidden');
-                btnLogin.removeAttribute('hidden');
-                console.log('✅ Botão login mostrado - estilos aplicados:', {
-                    display: window.getComputedStyle(btnLogin).display,
-                    visibility: window.getComputedStyle(btnLogin).visibility,
-                    classes: btnLogin.className
-                });
-            } else {
-                console.warn('⚠️ Botão login não encontrado!');
-            }
-            // Esconder botão de criar pedido se não autenticado
-            if (btnCriarPedido) {
-                btnCriarPedido.classList.add('hidden');
-                btnCriarPedido.style.display = 'none';
-            }
-            if (btnCriarPedidoPainel) {
-                btnCriarPedidoPainel.classList.add('hidden');
-                btnCriarPedidoPainel.style.display = 'none';
-            }
+        if (btnLogout) {
+            btnLogout.classList.toggle('hidden', !isAuthenticated);
+        }
+        
+        if (btnLogin) {
+            btnLogin.classList.toggle('hidden', isAuthenticated);
+            btnLogin.classList.toggle('auth-hidden', isAuthenticated);
+        }
+        
+        if (btnCriarPedido) {
+            btnCriarPedido.classList.toggle('hidden', !isAuthenticated);
+        }
+        
+        if (btnCriarPedidoPainel) {
+            btnCriarPedidoPainel.classList.toggle('hidden', !isAuthenticated);
         }
     },
     
@@ -180,22 +107,16 @@ const App = {
      */
     async checkConnectivity() {
         if (Utils.isOnline()) {
-            console.log('✅ Online - Sincronizando dados...');
-            
             try {
                 // Sincronizar pedidos pendentes do IndexedDB
                 await DB.syncPendingPedidos();
                 
                 // Verificar health do servidor
-                const health = await API.healthCheck();
-                if (health.success) {
-                    console.log('✅ Servidor acessível');
-                }
+                await API.healthCheck();
             } catch (error) {
-                console.warn('⚠️ Erro ao verificar conectividade:', error);
+                // Silencioso - não precisa logar erros de conectividade
             }
         } else {
-            console.log('⚠️ Offline - Modo offline ativado');
             Notification.warning('Você está offline. As alterações serão sincronizadas quando voltar online.');
         }
     },
@@ -207,12 +128,11 @@ const App = {
     setupGlobalListeners() {
         // Online/Offline events
         window.addEventListener('online', () => {
-            console.log('✅ Conexão restaurada');
             this.checkConnectivity();
         });
 
         window.addEventListener('offline', () => {
-            console.log('⚠️ Conexão perdida');
+            // Silencioso
         });
 
         // Antes de sair da página
@@ -253,15 +173,13 @@ const App = {
         // Visibilidade da página
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                // Página voltou a ser visível
-                console.log('👁️ Página visível novamente');
-                
                 // Recarregar dados se estiver no painel
                 if (Router.currentRoute === '/painel' && typeof PainelManager !== 'undefined') {
                     PainelManager.loadPedidos();
                 }
             }
         });
+        
     },
 
     /**
@@ -328,7 +246,6 @@ const App = {
 
         // Detectar quando app é instalado
         window.addEventListener('appinstalled', () => {
-            console.log('✅ PWA instalado!');
             Notification.success('App instalado com sucesso! 🎉');
             deferredPrompt = null;
         });
@@ -363,8 +280,7 @@ const App = {
         document.getElementById('install-app').addEventListener('click', async () => {
             if (deferredPrompt) {
                 deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log(`Install prompt outcome: ${outcome}`);
+                await deferredPrompt.userChoice;
                 
                 localStorage.setItem('pwa-install-prompt-shown', 'true');
                 banner.remove();

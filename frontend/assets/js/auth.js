@@ -7,13 +7,25 @@
 const Auth = {
     STORAGE_KEY: 'plante_uma_flor_auth',
     SESSION_KEY: 'plante_uma_flor_auth_session',
+    _authCache: null, // Cache do estado de autenticação
+    _cacheTimestamp: 0, // Timestamp do cache
+    CACHE_DURATION: 5000, // Cache válido por 5 segundos
     
     /**
-     * Inicializa o módulo de autenticação
+     * Inicializa o módulo de autenticação (lazy - apenas cache básico)
      */
     init() {
-        console.log('🔐 Inicializando módulo de autenticação');
-        this.loadStoredCredentials();
+        // Inicialização lazy - apenas popular cache se houver credenciais
+        // Não fazer parse completo para não bloquear
+        const hasStored = localStorage.getItem(this.STORAGE_KEY) || 
+                          sessionStorage.getItem(this.SESSION_KEY);
+        if (hasStored) {
+            this._authCache = true;
+            this._cacheTimestamp = Date.now();
+        } else {
+            this._authCache = false;
+            this._cacheTimestamp = Date.now();
+        }
     },
     
     /**
@@ -63,11 +75,13 @@ const Auth = {
                 
                 if (remember) {
                     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(authData));
-                    console.log('💾 Credenciais salvas no localStorage');
                 } else {
                     sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(authData));
-                    console.log('💾 Credenciais salvas no sessionStorage');
                 }
+                
+                // Atualizar cache
+                this._authCache = true;
+                this._cacheTimestamp = Date.now();
                 
                 // Atualizar indicadores de autenticação imediatamente após login
                 if (typeof App !== 'undefined' && App.updateAuthIndicator) {
@@ -95,7 +109,10 @@ const Auth = {
     logout() {
         localStorage.removeItem(this.STORAGE_KEY);
         sessionStorage.removeItem(this.SESSION_KEY);
-        console.log('🚪 Logout realizado');
+        
+        // Limpar cache
+        this._authCache = false;
+        this._cacheTimestamp = Date.now();
         
         // Atualizar indicadores de autenticação após logout
         if (typeof App !== 'undefined' && App.updateAuthIndicator) {
@@ -106,13 +123,28 @@ const Auth = {
     },
     
     /**
-     * Verifica se está autenticado
+     * Verifica se está autenticado (com cache e inicialização lazy)
      * @returns {boolean} True se autenticado
      */
     isAuthenticated() {
+        // Se cache não foi inicializado, inicializar agora (lazy init)
+        if (this._cacheTimestamp === 0) {
+            this.init();
+        }
+        
+        // Verificar se cache é válido
+        const now = Date.now();
+        if (this._authCache !== null && (now - this._cacheTimestamp) < this.CACHE_DURATION) {
+            return this._authCache;
+        }
+        
+        // Atualizar cache
         const stored = localStorage.getItem(this.STORAGE_KEY) || 
                       sessionStorage.getItem(this.SESSION_KEY);
-        return stored !== null;
+        this._authCache = stored !== null;
+        this._cacheTimestamp = now;
+        
+        return this._authCache;
     },
     
     /**
@@ -301,8 +333,6 @@ const Auth = {
     }
 };
 
-// Inicializar quando o módulo for carregado
-if (typeof window !== 'undefined') {
-    Auth.init();
-}
+// Inicialização lazy - não executar automaticamente
+// Será inicializado na primeira chamada de isAuthenticated()
 

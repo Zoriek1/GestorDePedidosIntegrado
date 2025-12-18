@@ -5,7 +5,7 @@ API completa para o frontend PWA
 """
 from flask import Blueprint, request, jsonify
 from app import db
-from app.models import Pedido, RotaOtimizada, Cliente
+from app.models import Pedido, RotaOtimizada, Cliente, FontePedido
 from app.middleware import requires_edit_auth
 from datetime import datetime
 import re
@@ -32,6 +32,9 @@ def criar_pedido():
         telefone_cliente = data.get('telefone_cliente', data.get('telefone', '')).strip()
         destinatario = data.get('destinatario', '').strip()
         tipo_pedido = data.get('tipo_pedido', 'Entrega')
+        # Aceitar tanto fonte_pedido_id (novo) quanto fonte_pedido (string) para compatibilidade
+        fonte_pedido_id = data.get('fonte_pedido_id')
+        fonte_pedido = data.get('fonte_pedido', '').strip()  # Mantido para compatibilidade
         
         # Step 2 - Produto e Agendamento
         produto = data.get('produto', '').strip()
@@ -53,6 +56,7 @@ def criar_pedido():
         mensagem = data.get('mensagem', '').strip()
         pagamento = data.get('pagamento', '').strip()
         observacoes = data.get('observacoes', '').strip()
+        status_pagamento = data.get('status_pagamento', '').strip()
         
         # Quantidade (compatibilidade)
         quantidade_raw = data.get('quantidade', 1)
@@ -138,6 +142,22 @@ def criar_pedido():
         # Converter cliente_id para int se não for None
         cliente_id_int = int(cliente_id) if cliente_id else None
         
+        # Processar fonte_pedido_id
+        fonte_pedido_id_int = None
+        if fonte_pedido_id:
+            try:
+                fonte_pedido_id_int = int(fonte_pedido_id)
+            except (ValueError, TypeError):
+                fonte_pedido_id_int = None
+        elif fonte_pedido:  # Compatibilidade: se enviou string, buscar ID
+            fonte = FontePedido.query.filter_by(nome=fonte_pedido, ativo=True).first()
+            if fonte:
+                fonte_pedido_id_int = fonte.id
+        
+        # Debug: Log dos campos recebidos
+        print(f"[DEBUG] Criando pedido - fonte_pedido_id: {fonte_pedido_id_int}, fonte_pedido (legacy): '{fonte_pedido}', pagamento: '{pagamento}'")
+        print(f"[DEBUG] Dados recebidos: {list(data.keys())}")
+        
         # Criar instância do pedido
         pedido = Pedido(
             # Step 1
@@ -145,6 +165,8 @@ def criar_pedido():
             telefone_cliente=telefone_cliente,
             destinatario=destinatario,
             tipo_pedido=tipo_pedido,
+            fonte_pedido=fonte_pedido if fonte_pedido else None,  # Mantido para compatibilidade
+            fonte_pedido_id=fonte_pedido_id_int,
             # Step 2
             produto=produto,
             flores_cor=flores_cor if flores_cor else None,
@@ -163,6 +185,7 @@ def criar_pedido():
             mensagem=mensagem if mensagem else None,
             pagamento=pagamento if pagamento else None,
             observacoes=observacoes if observacoes else None,
+            status_pagamento=status_pagamento if status_pagamento else None,
             # Controle
             status='agendado',
             quantidade=quantidade,
@@ -173,6 +196,26 @@ def criar_pedido():
         # Inserir no banco de dados
         db.session.add(pedido)
         db.session.commit()
+        
+        # Debug: Verificar se os campos foram salvos
+        print(f"[DEBUG] Pedido #{pedido.id} criado - fonte_pedido salvo: '{pedido.fonte_pedido}', pagamento salvo: '{pedido.pagamento}'")
+        
+        # Inserir pedido na tabela auxiliar da fonte (se houver fonte)
+        if fonte_pedido_id_int:
+            try:
+                from app.models.pedido_fonte import PedidoFonte
+                resultado_fonte = PedidoFonte.adicionar_pedido(
+                    pedido.id,
+                    fonte_pedido_id_int,
+                    valor if valor else None
+                )
+                if resultado_fonte:
+                    print(f"[DEBUG] Pedido #{pedido.id} inserido na tabela da fonte: {resultado_fonte.get('tabela')}, número sequencial: {resultado_fonte.get('numero_sequencial')}")
+                else:
+                    print(f"[WARN] Não foi possível inserir pedido #{pedido.id} na tabela da fonte (fonte_id: {fonte_pedido_id_int})")
+            except Exception as e:
+                # Não falhar a criação do pedido se houver erro na inserção na tabela auxiliar
+                print(f"[ERRO] Erro ao inserir pedido na tabela da fonte: {e}")
         
         # Resposta de sucesso
         return jsonify({
@@ -307,19 +350,71 @@ def atualizar_status(pedido_id):
         }), 500
 
 
+@api_bp.route('/pedidos/<int:pedido_id>/marcar-impresso', methods=['POST', 'PUT', 'OPTIONS'])
+def marcar_impresso(pedido_id):
+    """Marca pedido como impresso"""
+    print(f"[BACKEND] marcar_impresso: Recebido pedido_id={pedido_id}, method={request.method}")
+    
+    # Suporte a OPTIONS para CORS
+    if request.method == 'OPTIONS':
+        print(f"[BACKEND] marcar_impresso: Respondendo OPTIONS para CORS")
+        return jsonify({'success': True}), 200
+    
+    try:
+        print(f"[BACKEND] marcar_impresso: Buscando pedido {pedido_id} no banco...")
+        pedido = Pedido.query.get(pedido_id)
+        
+        if not pedido:
+            print(f"[BACKEND] marcar_impresso: Pedido {pedido_id} não encontrado")
+            return jsonify({
+                'error': 'Pedido não encontrado',
+                'pedido_id': pedido_id
+            }), 404
+        
+        print(f"[BACKEND] marcar_impresso: Pedido encontrado - ID={pedido.id}, Cliente={pedido.cliente}, Impresso atual={pedido.impresso}")
+        print(f"[BACKEND] marcar_impresso: Marcando como impresso...")
+        
+        pedido.impresso = True
+        pedido.updated_at = datetime.utcnow()
+        
+        print(f"[BACKEND] marcar_impresso: Fazendo commit no banco...")
+        db.session.commit()
+        
+        print(f"[BACKEND] marcar_impresso: Sucesso - pedido {pedido_id} marcado como impresso")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Pedido marcado como impresso',
+            'pedido': pedido.to_dict()
+        })
+        
+    except Exception as e:
+        print(f"[BACKEND] marcar_impresso: Erro - {str(e)}")
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
+        return jsonify({
+            'error': 'Erro ao marcar pedido como impresso',
+            'detalhes': str(e)
+        }), 500
+
+
 @api_bp.route('/pedidos/<int:pedido_id>', methods=['PUT'])
 def atualizar_pedido(pedido_id):
     """Atualiza dados completos do pedido"""
     try:
+        print(f"[API] Atualizando pedido {pedido_id}")
         pedido = Pedido.query.get(pedido_id)
         
         if not pedido:
+            print(f"[API] Pedido {pedido_id} não encontrado")
             return jsonify({
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
         
         data = request.get_json()
+        print(f"[API] Dados recebidos: {list(data.keys()) if data else 'Nenhum dado'}")
         
         # Atualizar campos fornecidos
         if 'cliente' in data:
@@ -330,6 +425,16 @@ def atualizar_pedido(pedido_id):
             pedido.destinatario = data['destinatario']
         if 'tipo_pedido' in data:
             pedido.tipo_pedido = data['tipo_pedido']
+        if 'fonte_pedido_id' in data:
+            try:
+                pedido.fonte_pedido_id = int(data['fonte_pedido_id']) if data['fonte_pedido_id'] else None
+            except (ValueError, TypeError):
+                pedido.fonte_pedido_id = None
+        elif 'fonte_pedido' in data:  # Compatibilidade: aceitar string também
+            fonte = FontePedido.query.filter_by(nome=data['fonte_pedido'], ativo=True).first()
+            if fonte:
+                pedido.fonte_pedido_id = fonte.id
+            pedido.fonte_pedido = data['fonte_pedido']  # Mantido para compatibilidade
         if 'produto' in data:
             pedido.produto = data['produto']
         if 'flores_cor' in data:
@@ -377,12 +482,15 @@ def atualizar_pedido(pedido_id):
             pedido.pagamento = data['pagamento']
         if 'observacoes' in data:
             pedido.observacoes = data['observacoes']
+        if 'status_pagamento' in data:
+            pedido.status_pagamento = data['status_pagamento']
         if 'status' in data:
             pedido.status = data['status']
         
         pedido.updated_at = datetime.utcnow()
         
         db.session.commit()
+        print(f"[API] Pedido {pedido_id} atualizado com sucesso")
         
         return jsonify({
             'success': True,
@@ -392,6 +500,9 @@ def atualizar_pedido(pedido_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"[API] Erro ao atualizar pedido {pedido_id}: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Erro ao atualizar pedido',
             'detalhes': str(e)
@@ -1067,6 +1178,287 @@ def health_check():
 
 
 # ============================================
+# ENDPOINTS DE FONTES DE PEDIDO
+# ============================================
+
+@api_bp.route('/fontes-pedido', methods=['GET'])
+def listar_fontes_pedido():
+    """Lista todas as fontes de pedido ativas"""
+    try:
+        apenas_ativas = request.args.get('ativas', 'true').lower() == 'true'
+        print(f"[API] Listando fontes (apenas ativas: {apenas_ativas})...")
+        
+        if apenas_ativas:
+            fontes = FontePedido.get_ativas()
+        else:
+            fontes = FontePedido.get_all()
+        
+        print(f"[API] {len(fontes)} fontes encontradas")
+        
+        return jsonify({
+            'success': True,
+            'count': len(fontes),
+            'fontes': [f.to_dict() for f in fontes]
+        })
+    except Exception as e:
+        print(f"[API] Erro ao listar fontes: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Erro ao listar fontes',
+            'detalhes': str(e),
+            'sugestao': 'Execute a migração: python backend/scripts/migrations/migrate_fonte_pedido.py'
+        }), 500
+
+
+@api_bp.route('/fontes-pedido/all', methods=['GET'])
+def listar_todas_fontes():
+    """Lista todas as fontes (ativas e inativas)"""
+    try:
+        print("[API] Listando todas as fontes...")
+        fontes = FontePedido.get_all()
+        print(f"[API] {len(fontes)} fontes encontradas")
+        
+        return jsonify({
+            'success': True,
+            'count': len(fontes),
+            'fontes': [f.to_dict() for f in fontes]
+        })
+    except Exception as e:
+        print(f"[API] Erro ao listar fontes: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Erro ao listar fontes',
+            'detalhes': str(e),
+            'sugestao': 'Execute a migração: python backend/scripts/migrations/migrate_fonte_pedido.py'
+        }), 500
+
+
+@api_bp.route('/fontes-pedido', methods=['POST'])
+@requires_edit_auth
+def criar_fonte_pedido():
+    """Cria nova fonte de pedido"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'Nenhum dado fornecido'}), 400
+        
+        nome = data.get('nome', '').strip()
+        
+        if not nome:
+            return jsonify({'error': 'Nome da fonte é obrigatório'}), 400
+        
+        # Verificar se já existe
+        fonte_existente = FontePedido.query.filter_by(nome=nome).first()
+        if fonte_existente:
+            return jsonify({
+                'error': 'Fonte com este nome já existe',
+                'fonte_id': fonte_existente.id
+            }), 400
+        
+        # Criar nova fonte
+        fonte = FontePedido(
+            nome=nome,
+            ativo=data.get('ativo', True)
+        )
+        
+        db.session.add(fonte)
+        db.session.commit()
+        
+        # Criar tabela auxiliar para a nova fonte (se estiver ativa)
+        if fonte.ativo:
+            try:
+                from app.models.pedido_fonte import PedidoFonte
+                sucesso, nome_tabela = PedidoFonte.criar_tabela_para_fonte(fonte.id)
+                if sucesso:
+                    print(f"[INFO] Tabela '{nome_tabela}' criada para fonte '{fonte.nome}'")
+            except Exception as e:
+                print(f"[WARN] Erro ao criar tabela para nova fonte: {e}")
+                # Não falhar a criação da fonte se houver erro na tabela
+        
+        return jsonify({
+            'success': True,
+            'message': 'Fonte criada com sucesso',
+            'fonte': fonte.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Erro ao criar fonte',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/fontes-pedido/<int:fonte_id>', methods=['PUT'])
+@requires_edit_auth
+def atualizar_fonte_pedido(fonte_id):
+    """Atualiza fonte de pedido"""
+    try:
+        fonte = FontePedido.query.get(fonte_id)
+        
+        if not fonte:
+            return jsonify({
+                'error': 'Fonte não encontrada',
+                'fonte_id': fonte_id
+            }), 404
+        
+        data = request.get_json()
+        
+        if 'nome' in data:
+            novo_nome = data['nome'].strip()
+            if novo_nome and novo_nome != fonte.nome:
+                # Verificar se outro já tem este nome
+                existente = FontePedido.query.filter_by(nome=novo_nome).first()
+                if existente and existente.id != fonte_id:
+                    return jsonify({
+                        'error': 'Fonte com este nome já existe'
+                    }), 400
+                fonte.nome = novo_nome
+        
+        if 'ativo' in data:
+            fonte.ativo = bool(data['ativo'])
+        
+        fonte.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Fonte atualizada com sucesso',
+            'fonte': fonte.to_dict()
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Erro ao atualizar fonte',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/fontes-pedido/<int:fonte_id>', methods=['DELETE'])
+@requires_edit_auth
+def deletar_fonte_pedido(fonte_id):
+    """Desativa fonte de pedido (soft delete)"""
+    try:
+        fonte = FontePedido.query.get(fonte_id)
+        
+        if not fonte:
+            return jsonify({
+                'error': 'Fonte não encontrada',
+                'fonte_id': fonte_id
+            }), 404
+        
+        # Soft delete: apenas desativar
+        fonte.ativo = False
+        fonte.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Fonte desativada com sucesso',
+            'fonte': fonte.to_dict()
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Erro ao desativar fonte',
+            'detalhes': str(e)
+        }), 500
+
+
+# ============================================
+# ENDPOINTS DE PEDIDOS POR FONTE
+# ============================================
+
+@api_bp.route('/pedidos/fonte/<int:fonte_id>', methods=['GET'])
+def listar_pedidos_fonte(fonte_id):
+    """
+    Lista pedidos de uma fonte específica
+    Retorna pedidos com numeração sequencial da fonte
+    """
+    try:
+        from app.models.pedido_fonte import PedidoFonte
+        
+        # Verificar se fonte existe
+        fonte = FontePedido.query.get(fonte_id)
+        if not fonte:
+            return jsonify({
+                'error': 'Fonte não encontrada',
+                'fonte_id': fonte_id
+            }), 404
+        
+        # Parâmetros de paginação
+        limit = request.args.get('limit', type=int)
+        offset = request.args.get('offset', type=int) or 0
+        
+        # Buscar pedidos da fonte
+        pedidos = PedidoFonte.obter_pedidos(fonte_id, limit=limit, offset=offset)
+        
+        return jsonify({
+            'success': True,
+            'fonte': fonte.to_dict(),
+            'count': len(pedidos),
+            'pedidos': pedidos
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Erro ao listar pedidos da fonte',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/pedidos/fonte/<int:fonte_id>/consolidado', methods=['GET'])
+def estatisticas_fonte(fonte_id):
+    """
+    Retorna estatísticas consolidadas de uma fonte
+    Inclui: total de pedidos, total de vendas, último número sequencial
+    """
+    try:
+        from app.models.pedido_fonte import PedidoFonte
+        
+        # Verificar se fonte existe
+        fonte = FontePedido.query.get(fonte_id)
+        if not fonte:
+            return jsonify({
+                'error': 'Fonte não encontrada',
+                'fonte_id': fonte_id
+            }), 404
+        
+        # Obter estatísticas
+        estatisticas = PedidoFonte.obter_estatisticas(fonte_id)
+        
+        # Obter nome da tabela
+        from app.utils.fonte_helper import get_tabela_fonte
+        nome_tabela = get_tabela_fonte(fonte_id)
+        
+        return jsonify({
+            'success': True,
+            'fonte': fonte.to_dict(),
+            'tabela': nome_tabela,
+            'estatisticas': estatisticas
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Erro ao obter estatísticas da fonte',
+            'detalhes': str(e)
+        }), 500
+
+
+# ============================================
 # ENDPOINTS DE AUTENTICAÇÃO
 # ============================================
 
@@ -1575,5 +1967,48 @@ def debug_testar_apis():
         traceback.print_exc()
         return jsonify({
             'error': 'Erro ao testar APIs',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/exportar-planilha', methods=['POST'])
+@requires_edit_auth
+def exportar_planilha():
+    """Exporta vendas do mês atual para Google Sheets"""
+    try:
+        import sys
+        import os
+        
+        # Adiciona o diretório de scripts ao path
+        scripts_path = os.path.join(os.path.dirname(__file__), '..', '..', 'scripts')
+        sys.path.insert(0, scripts_path)
+        
+        from exportar_vendas_sheets import exportar_vendas
+        
+        resultado = exportar_vendas()
+        
+        if resultado:
+            return jsonify({
+                'success': True,
+                'message': 'Planilha atualizada com sucesso!'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Erro ao exportar. Verifique as credenciais do Google.'
+            }), 500
+            
+    except FileNotFoundError as e:
+        return jsonify({
+            'success': False,
+            'error': 'Credenciais do Google não configuradas',
+            'detalhes': str(e)
+        }), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Erro ao exportar planilha',
             'detalhes': str(e)
         }), 500

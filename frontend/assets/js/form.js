@@ -14,30 +14,33 @@ const FormManager = {
      */
     init() {
         console.log('📝 Inicializando formulário');
-        
+
         // Carregar dados do rascunho se existir
         this.loadDraft();
-        
+
         // Configurar listeners
         this.setupListeners();
-        
+
         // Configurar autocomplete de clientes
         this.setupClienteAutocomplete();
-        
+
+        // Carregar fontes de pedido
+        this.carregarFontesPedido();
+
         // Garantir que campos de cliente começam desabilitados
         setTimeout(() => {
             this.resetarCamposCliente();
         }, 200);
-        
+
         // Configurar listeners de endereço (CEP e geração automática)
         // Usar setTimeout para garantir que o DOM esteja completamente renderizado
         setTimeout(() => {
             this.setupEnderecoListeners();
         }, 100);
-        
+
         // Mostrar primeiro step
         this.showStep(1);
-        
+
         // Atualizar progress bar
         this.updateProgress();
     },
@@ -106,61 +109,111 @@ const FormManager = {
     },
 
     /**
+     * Carrega fontes de pedido e popula o select
+     */
+    async carregarFontesPedido() {
+        try {
+            console.log('[FORM] Carregando fontes de pedido...');
+            const response = await API.getFontesPedido();
+            console.log('[FORM] Resposta de fontes:', response);
+            
+            // Verificar estrutura da resposta
+            if (!response.success) {
+                console.warn('[FORM] ⚠️ Erro na requisição:', response.error);
+                return;
+            }
+            
+            if (!response.data) {
+                console.warn('[FORM] ⚠️ Resposta sem dados');
+                return;
+            }
+            
+            // Simplificar verificação - response.data já contém o objeto retornado pela API
+            const fontes = response.data.fontes || [];
+            
+            if (Array.isArray(fontes) && fontes.length > 0) {
+                const select = document.getElementById('fonte_pedido_id');
+                
+                if (select) {
+                    // Limpar opções existentes (exceto a primeira "Selecione...")
+                    select.innerHTML = '<option value="">Selecione a fonte...</option>';
+                    
+                    // Adicionar opções
+                    fontes.forEach(fonte => {
+                        const option = document.createElement('option');
+                        option.value = fonte.id;
+                        option.textContent = fonte.nome;
+                        select.appendChild(option);
+                    });
+                    
+                    console.log(`[FORM] ✅ ${fontes.length} fontes carregadas`);
+                } else {
+                    console.warn('[FORM] ⚠️ Select fonte_pedido_id não encontrado');
+                }
+            } else {
+                console.warn('[FORM] ⚠️ Nenhuma fonte encontrada ou estrutura inválida. Fontes:', fontes);
+            }
+        } catch (error) {
+            console.error('[FORM] Erro ao carregar fontes de pedido:', error);
+        }
+    },
+
+    /**
      * Configura autocomplete de clientes
      */
     setupClienteAutocomplete() {
         console.log('👥 Configurando autocomplete de clientes...');
-        
+
         const inputAutocomplete = document.getElementById('cliente-autocomplete');
         const resultsElement = document.getElementById('autocomplete-results');
         const btnNovoCliente = document.getElementById('btn-novo-cliente');
         const btnHistorico = document.getElementById('btn-historico-cliente');
-        
+
         if (!inputAutocomplete || !resultsElement) {
             console.log('⚠️ Elementos do autocomplete não encontrados');
             return;
         }
-        
+
         // Inicializar autocomplete
         this.autocomplete = new AutocompleteCliente({
             inputElement: inputAutocomplete,
             resultsElement: resultsElement,
             onSelect: (cliente) => {
                 console.log('✅ Cliente selecionado:', cliente);
-                
+
                 // Preencher campos
                 document.getElementById('cliente_id').value = cliente.id;
-                
+
                 const campoCliente = document.getElementById('cliente');
                 const campoTelefone = document.getElementById('telefone_cliente');
-                
+
                 campoCliente.value = cliente.nome;
                 campoTelefone.value = cliente.telefone;
-                
+
                 // Habilitar campos (remover disabled/readonly e mudar estilo)
                 campoCliente.removeAttribute('readonly');
                 campoCliente.removeAttribute('disabled');
                 campoCliente.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
                 campoCliente.classList.add('bg-white', 'text-gray-900');
-                
+
                 campoTelefone.removeAttribute('readonly');
                 campoTelefone.removeAttribute('disabled');
                 campoTelefone.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
                 campoTelefone.classList.add('bg-white', 'text-gray-900');
-                
+
                 // Mostrar botão de histórico
                 if (btnHistorico) {
                     btnHistorico.classList.remove('hidden');
                     btnHistorico.dataset.clienteId = cliente.id;
                 }
-                
+
                 // Carregar endereços do cliente
                 this.carregarEnderecosCliente(cliente.id);
-                
+
                 Notification.show(`Cliente "${cliente.nome}" selecionado - Campos podem ser editados`, 'success');
             }
         });
-        
+
         // Botão "Novo Cliente" - habilita campos para entrada manual
         if (btnNovoCliente) {
             // Adicionar suporte a touch para mobile
@@ -170,39 +223,39 @@ const FormManager = {
                 document.getElementById('cliente').value = '';
                 document.getElementById('telefone_cliente').value = '';
                 inputAutocomplete.value = '';
-                
+
                 // Habilitar campos para edição
                 const campoCliente = document.getElementById('cliente');
                 const campoTelefone = document.getElementById('telefone_cliente');
-                
+
                 campoCliente.removeAttribute('readonly');
                 campoCliente.removeAttribute('disabled');
                 campoCliente.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
                 campoCliente.classList.add('bg-white', 'text-gray-900');
                 campoCliente.placeholder = 'Digite o nome do cliente';
-                
+
                 campoTelefone.removeAttribute('readonly');
                 campoTelefone.removeAttribute('disabled');
                 campoTelefone.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
                 campoTelefone.classList.add('bg-white', 'text-gray-900');
                 campoTelefone.placeholder = '(62) 99999-9999';
-                
+
                 // Focar no campo nome
                 campoCliente.focus();
-                
+
                 // Esconder botão de histórico
                 if (btnHistorico) {
                     btnHistorico.classList.add('hidden');
                 }
-                
+
                 // Esconder resultados do autocomplete
                 if (this.autocomplete) {
                     this.autocomplete.hideResults();
                 }
-                
+
                 Notification.show('Campos habilitados - Digite os dados do novo cliente', 'info');
             };
-            
+
             // Suporte a click e touchstart para mobile
             btnNovoCliente.addEventListener('click', handleNovoCliente);
             btnNovoCliente.addEventListener('touchstart', (e) => {
@@ -210,7 +263,7 @@ const FormManager = {
                 handleNovoCliente();
             });
         }
-        
+
         // Botão "Ver Histórico"
         if (btnHistorico) {
             btnHistorico.addEventListener('click', async () => {
@@ -220,7 +273,7 @@ const FormManager = {
                 }
             });
         }
-        
+
         console.log('✅ Autocomplete configurado!');
     },
 
@@ -232,7 +285,7 @@ const FormManager = {
         const campoTelefone = document.getElementById('telefone_cliente');
         const inputAutocomplete = document.getElementById('cliente-autocomplete');
         const btnHistorico = document.getElementById('btn-historico-cliente');
-        
+
         if (campoCliente) {
             campoCliente.value = '';
             campoCliente.setAttribute('readonly', 'readonly');
@@ -241,7 +294,7 @@ const FormManager = {
             campoCliente.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
             campoCliente.placeholder = "Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'";
         }
-        
+
         if (campoTelefone) {
             campoTelefone.value = '';
             campoTelefone.setAttribute('readonly', 'readonly');
@@ -250,15 +303,15 @@ const FormManager = {
             campoTelefone.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
             campoTelefone.placeholder = "Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'";
         }
-        
+
         if (inputAutocomplete) {
             inputAutocomplete.value = '';
         }
-        
+
         if (btnHistorico) {
             btnHistorico.classList.add('hidden');
         }
-        
+
         document.getElementById('cliente_id').value = '';
     },
 
@@ -268,21 +321,21 @@ const FormManager = {
     async carregarEnderecosCliente(clienteId) {
         try {
             const response = await API.get(`/api/clientes/${clienteId}/enderecos`);
-            
+
             if (response.success && response.data.success) {
                 const enderecos = response.data.enderecos;
-                
+
                 if (enderecos.length > 0) {
                     // Buscar endereço principal ou o primeiro
                     const enderecoPrincipal = enderecos.find(e => e.principal) || enderecos[0];
-                    
+
                     // Preencher campos de endereço
                     if (enderecoPrincipal.cep) document.getElementById('cep').value = enderecoPrincipal.cep;
                     if (enderecoPrincipal.rua) document.getElementById('rua').value = enderecoPrincipal.rua;
                     if (enderecoPrincipal.numero) document.getElementById('numero').value = enderecoPrincipal.numero;
                     if (enderecoPrincipal.bairro) document.getElementById('bairro').value = enderecoPrincipal.bairro;
                     if (enderecoPrincipal.cidade) document.getElementById('cidade').value = enderecoPrincipal.cidade;
-                    
+
                     Notification.show(`Endereço ${enderecoPrincipal.apelido || 'principal'} carregado!`, 'success');
                 }
             }
@@ -297,10 +350,10 @@ const FormManager = {
     async mostrarHistoricoCliente(clienteId) {
         try {
             const response = await API.get(`/api/clientes/${clienteId}/pedidos?limit=20`);
-            
+
             if (response.success && response.data.success) {
                 const cliente = response.data;
-                
+
                 // Criar conteúdo do modal
                 const historicoHTML = `
                     <div class="space-y-4">
@@ -330,7 +383,7 @@ const FormManager = {
                         </div>
                     </div>
                 `;
-                
+
                 Modal.show(`Histórico - ${cliente.nome}`, historicoHTML);
             }
         } catch (error) {
@@ -344,16 +397,16 @@ const FormManager = {
      */
     setupEnderecoListeners() {
         console.log('🏠 Configurando listeners de endereço...');
-        
+
         // Botão de buscar CEP
         const btnBuscarCep = document.getElementById('btn-buscar-cep');
         console.log('Botão Buscar CEP:', btnBuscarCep ? 'Encontrado' : 'NÃO encontrado');
-        
+
         if (btnBuscarCep) {
             // Remover listeners antigos clonando o elemento
             const newBtnCep = btnBuscarCep.cloneNode(true);
             btnBuscarCep.parentNode.replaceChild(newBtnCep, btnBuscarCep);
-            
+
             newBtnCep.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -366,7 +419,7 @@ const FormManager = {
         // Buscar CEP ao pressionar Enter no campo
         const cepInput = document.getElementById('cep');
         console.log('Campo CEP:', cepInput ? 'Encontrado' : 'NÃO encontrado');
-        
+
         if (cepInput) {
             cepInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -388,12 +441,12 @@ const FormManager = {
         // Botão de gerar endereço completo
         const btnGerarEndereco = document.getElementById('btn-gerar-endereco');
         console.log('Botão Gerar Endereço:', btnGerarEndereco ? 'Encontrado' : 'NÃO encontrado');
-        
+
         if (btnGerarEndereco) {
             // Remover listeners antigos clonando o elemento
             const newBtnEndereco = btnGerarEndereco.cloneNode(true);
             btnGerarEndereco.parentNode.replaceChild(newBtnEndereco, btnGerarEndereco);
-            
+
             newBtnEndereco.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -412,11 +465,11 @@ const FormManager = {
 
         const cepInput = document.getElementById('cep');
         const cepStatus = document.getElementById('cep-status');
-        
+
         if (!cepInput) return;
 
         const cep = Masks.unmaskCep(cepInput.value);
-        
+
         if (cep.length !== 8) {
             this.showCepStatus('Digite um CEP válido com 8 dígitos', 'error');
             return;
@@ -476,7 +529,7 @@ const FormManager = {
 
         cepStatus.textContent = message;
         cepStatus.classList.remove('hidden', 'text-red-600', 'text-primary', 'text-blue-600');
-        
+
         switch (type) {
             case 'error':
                 cepStatus.classList.add('text-red-600');
@@ -506,7 +559,7 @@ const FormManager = {
 
         // Montar endereço completo
         const partes = [];
-        
+
         if (rua) {
             // Ignorar número "0" ou "S/N" (sem número)
             if (numero && numero !== '0' && numero.toUpperCase() !== 'S/N' && numero.toUpperCase() !== 'SN') {
@@ -515,26 +568,26 @@ const FormManager = {
                 partes.push(rua);
             }
         }
-        
+
         if (bairro) {
             partes.push(bairro);
         }
-        
+
         if (cidade) {
             partes.push(cidade);
         }
-        
+
         if (cep) {
             partes.push(`CEP: ${cep}`);
         }
 
         // Usar vírgula como separador (padrão brasileiro)
         const enderecoCompleto = partes.join(', ');
-        
+
         const enderecoInput = document.getElementById('endereco');
         if (enderecoInput) {
             enderecoInput.value = enderecoCompleto;
-            
+
             if (enderecoCompleto) {
                 Notification.success('Endereço gerado com sucesso!');
             } else {
@@ -575,7 +628,7 @@ const FormManager = {
                     field.value = '';
                 }
             });
-            
+
             // Mudar título do step 3
             if (step3Title) {
                 step3Title.innerHTML = `
@@ -642,10 +695,10 @@ const FormManager = {
 
         // IMPORTANTE: Atualizar currentStep ANTES de chamar updateButtons
         this.currentStep = step;
-        
+
         // Atualizar botões (agora com currentStep correto)
         this.updateButtons();
-        
+
         // Atualizar número do step
         const stepNumber = document.getElementById('step-number');
         if (stepNumber) {
@@ -691,10 +744,8 @@ const FormManager = {
         if (btnProximo) {
             if (this.currentStep === this.totalSteps) {
                 btnProximo.classList.add('hidden');
-                console.log('🚫 Botão Próximo ESCONDIDO');
             } else {
                 btnProximo.classList.remove('hidden');
-                console.log('✅ Botão Próximo VISÍVEL');
             }
         }
 
@@ -702,19 +753,16 @@ const FormManager = {
         if (btnFinalizar) {
             if (this.currentStep === this.totalSteps) {
                 btnFinalizar.classList.remove('hidden');
-                console.log('✅ Botão Finalizar VISÍVEL');
-                
+
                 // Reconfigurar listener para garantir
                 const newBtn = btnFinalizar.cloneNode(true);
                 btnFinalizar.parentNode.replaceChild(newBtn, btnFinalizar);
                 newBtn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    console.log('✅ Clicou em Finalizar (listener recém-adicionado)');
                     this.submitForm();
                 });
             } else {
                 btnFinalizar.classList.add('hidden');
-                console.log('🚫 Botão Finalizar ESCONDIDO');
             }
         } else {
             console.warn('⚠️ Botão Finalizar NÃO encontrado em updateButtons()');
@@ -727,7 +775,7 @@ const FormManager = {
     updateProgress() {
         const progress = (this.currentStep / this.totalSteps) * 100;
         const progressBar = document.getElementById('progress-bar');
-        
+
         if (progressBar) {
             progressBar.style.width = `${progress}%`;
         }
@@ -754,7 +802,7 @@ const FormManager = {
      */
     validateCurrentStep() {
         console.log(`🔍 Validando Step ${this.currentStep}...`);
-        
+
         const currentStepElement = document.getElementById(`step-${this.currentStep}`);
         if (!currentStepElement) {
             console.log('⚠️ Step element não encontrado');
@@ -763,23 +811,23 @@ const FormManager = {
 
         const requiredFields = currentStepElement.querySelectorAll('[required]');
         console.log(`📋 Campos obrigatórios encontrados: ${requiredFields.length}`);
-        
+
         let isValid = true;
         const errors = [];
 
         requiredFields.forEach(field => {
             const fieldName = field.getAttribute('data-field-name') || field.name || 'Campo';
             const validationType = field.getAttribute('data-validation') || 'required';
-            
+
             console.log(`   - Validando campo: ${fieldName} (${field.id}) = "${field.value}"`);
-            
+
             const result = Validators.validateField(field, validationType, fieldName);
-            
+
             if (!result.valid) {
                 isValid = false;
                 errors.push(result.message);
                 console.log(`   ❌ ${result.message}`);
-                
+
                 // Scroll para o primeiro erro
                 if (errors.length === 1) {
                     Utils.scrollToElement(field);
@@ -805,7 +853,7 @@ const FormManager = {
     nextStep() {
         if (this.validateCurrentStep()) {
             this.saveDraft();
-            
+
             if (this.currentStep < this.totalSteps) {
                 this.showStep(this.currentStep + 1);
                 this.updateProgress();
@@ -818,7 +866,7 @@ const FormManager = {
      */
     previousStep() {
         this.saveDraft();
-        
+
         if (this.currentStep > 1) {
             this.showStep(this.currentStep - 1);
             this.updateProgress();
@@ -837,6 +885,8 @@ const FormManager = {
         formData.telefone_cliente = Masks.unmaskPhone(document.getElementById('telefone_cliente')?.value || '');
         formData.destinatario = document.getElementById('destinatario')?.value || '';
         formData.tipo_pedido = document.querySelector('input[name="tipo_pedido"]:checked')?.value || 'Entrega';
+        const fontePedidoId = document.getElementById('fonte_pedido_id')?.value || '';
+        formData.fonte_pedido_id = fontePedidoId ? parseInt(fontePedidoId) : null;
 
         // Step 2 - Produto e Agendamento
         formData.produto = document.getElementById('produto')?.value || '';
@@ -858,6 +908,7 @@ const FormManager = {
         formData.mensagem = document.getElementById('mensagem')?.value || '';
         formData.pagamento = document.getElementById('pagamento')?.value || '';
         formData.observacoes = document.getElementById('observacoes')?.value || '';
+        formData.status_pagamento = document.getElementById('status_pagamento')?.value || '';
 
         return formData;
     },
@@ -876,11 +927,11 @@ const FormManager = {
      */
     loadDraft() {
         const draft = localStorage.getItem('form-draft');
-        
+
         if (draft) {
             try {
                 const data = JSON.parse(draft);
-                
+
                 // Preencher campos
                 Object.keys(data).forEach(key => {
                     const field = document.getElementById(key);
@@ -916,7 +967,7 @@ const FormManager = {
     async submitForm() {
         console.log('🚀 submitForm() CHAMADO!');
         console.log('Step atual:', this.currentStep);
-        
+
         // Validar último step
         if (!this.validateCurrentStep()) {
             console.log('❌ Validação falhou');
@@ -924,7 +975,7 @@ const FormManager = {
         }
 
         console.log('✅ Validação OK! Coletando dados...');
-        
+
         // Coletar dados
         const formData = this.collectFormData();
         console.log('📦 Dados coletados:', formData);
@@ -941,9 +992,9 @@ const FormManager = {
             // Se está offline, salvar no IndexedDB
             if (!Utils.isOnline()) {
                 await DB.savePendingPedido(formData);
-                
+
                 Notification.success('Pedido salvo offline! Será sincronizado quando voltar online.');
-                
+
                 this.resetForm();
                 Router.navigate('/painel');
                 return;
@@ -954,10 +1005,10 @@ const FormManager = {
 
             if (result.success) {
                 Notification.success('Pedido criado com sucesso! 🎉');
-                
+
                 this.clearDraft();
                 this.resetForm();
-                
+
                 // Navegar para o painel após 1 segundo
                 setTimeout(() => {
                     Router.navigate('/painel');
@@ -985,7 +1036,7 @@ const FormManager = {
             } else {
                 field.value = '';
             }
-            
+
             // Limpar validações visuais
             Validators.clearFieldError(field);
         });

@@ -40,13 +40,20 @@ class Pedido(db.Model):
     pagamento = db.Column(db.String(50), nullable=True, comment='Forma de pagamento')
     observacoes = db.Column(db.Text, nullable=True, comment='Observações gerais')
     
+    # Novos campos solicitados
+    fonte_pedido = db.Column(db.String(50), nullable=True, comment='Fonte do pedido (Ifood, Site, etc) - DEPRECATED: usar fonte_pedido_id')
+    fonte_pedido_id = db.Column(db.Integer, db.ForeignKey('fontes_pedido.id'), nullable=True, index=True, comment='ID da fonte do pedido (referência)')
+    status_pagamento = db.Column(db.String(50), nullable=True, comment='Status do pagamento (Realizado, Pendente, etc)')
+    
     # Controle e Status
     status = db.Column(db.String(30), default='agendado', comment='Status do pedido')
     quantidade = db.Column(db.Integer, default=1, comment='Quantidade (compatibilidade)')
     oculto = db.Column(db.Boolean, default=False, comment='Se True, pedido está oculto/arquivado (não aparece na lista)')
+    impresso = db.Column(db.Boolean, default=False, comment='Se True, pedido já foi impresso no painel')
     
-    # Relacionamento com Cliente (novo sistema de gestão de clientes)
+    # Relacionamentos
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True, index=True, comment='ID do cliente (sistema novo)')
+    fonte_pedido_rel = db.relationship('FontePedido', backref='pedidos', lazy='joined', foreign_keys=[fonte_pedido_id])
     
     # Distância calculada (GraphHopper/OpenRouteService)
     distancia_km = db.Column(db.Float, nullable=True, comment='Distância em km da floricultura até o endereço')
@@ -92,10 +99,15 @@ class Pedido(db.Model):
             'mensagem': self.mensagem or '',
             'pagamento': self.pagamento or '',
             'observacoes': self.observacoes or '',
+            'fonte_pedido': self.fonte_pedido or '',  # Mantido para compatibilidade
+            'fonte_pedido_id': self.fonte_pedido_id,
+            'fonte_pedido_nome': self.fonte_pedido_rel.nome if self.fonte_pedido_rel else '',
+            'status_pagamento': self.status_pagamento or '',
             # Controle
             'status': self.status or 'agendado',
             'quantidade': self.quantidade or 1,
             'oculto': self.oculto or False,
+            'impresso': self.impresso or False,
             'cliente_id': self.cliente_id,
             'distancia_km': self.distancia_km,
             'taxa_entrega': self.taxa_entrega,

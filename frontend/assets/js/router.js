@@ -9,7 +9,8 @@ const Router = {
         '/login': () => Router.loadPage('login'),
         '/criar-pedido': () => Router.loadPage('criar-pedido'),
         '/painel': () => Router.loadPage('painel'),
-        '/rota-entrega': () => Router.loadPage('rota-entrega')
+        '/rota-entrega': () => Router.loadPage('rota-entrega'),
+        '/fontes-pedido': () => Router.loadPage('fontes-pedido')
     },
 
     currentRoute: null,
@@ -139,7 +140,34 @@ const Router = {
 
             const html = await response.text();
             console.log(`✅ HTML recebido (${html.length} caracteres)`);
-            app.innerHTML = html;
+            
+            // Para páginas com scripts inline, precisamos executá-los manualmente
+            // pois innerHTML não executa scripts por segurança
+            if (page === 'fontes-pedido') {
+                // Criar um elemento temporário para parsear o HTML
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                
+                // Extrair e executar scripts antes de inserir no DOM
+                const scripts = temp.querySelectorAll('script');
+                scripts.forEach(script => {
+                    if (script.textContent) {
+                        try {
+                            // Executar o script
+                            eval(script.textContent);
+                            // Remover o script do HTML para evitar duplicação
+                            script.remove();
+                        } catch (e) {
+                            console.error('Erro ao executar script inline:', e);
+                        }
+                    }
+                });
+                
+                // Inserir o HTML sem os scripts (já executados)
+                app.innerHTML = temp.innerHTML;
+            } else {
+                app.innerHTML = html;
+            }
 
             // Executar função de inicialização da página
             this.initPage(page);
@@ -181,6 +209,18 @@ const Router = {
                 if (typeof App !== 'undefined' && App.updateAuthIndicator) {
                     setTimeout(() => App.updateAuthIndicator(), 100);
                 }
+                break;
+            case 'fontes-pedido':
+                // FontesManager já foi definido quando executamos o script inline acima
+                // Agora só precisamos inicializá-lo
+                setTimeout(() => {
+                    if (typeof FontesManager !== 'undefined' && FontesManager.init) {
+                        console.log('📁 Inicializando FontesManager via Router...');
+                        FontesManager.init();
+                    } else {
+                        console.error('❌ FontesManager não encontrado. O script pode não ter sido executado corretamente.');
+                    }
+                }, 50);
                 break;
         }
 

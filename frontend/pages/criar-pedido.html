@@ -16,9 +16,10 @@
                 Etapa <span id="step-number">1</span> de 4
             </span>
         </div>
-        
+
         <div class="w-full bg-gray-200 rounded-full h-3">
-            <div id="progress-bar" class="bg-primary h-3 rounded-full transition-all duration-300" style="width: 25%"></div>
+            <div id="progress-bar" class="bg-primary h-3 rounded-full transition-all duration-300" style="width: 25%">
+            </div>
         </div>
 
         <!-- Progress Steps -->
@@ -44,7 +45,7 @@
 
     <!-- Formulário -->
     <form id="pedido-form" class="bg-white rounded-lg shadow-md p-6">
-        
+
         <!-- Step 1: Dados do Cliente -->
         <div id="step-1" class="form-step active space-y-4">
             <h2 class="text-2xl font-bold text-gray-800 mb-4">
@@ -61,38 +62,27 @@
                     <i class="fas fa-search text-primary"></i>
                     Buscar Cliente Existente
                 </label>
-                <input 
-                    type="text" 
-                    id="cliente-autocomplete"
+                <input type="text" id="cliente-autocomplete"
                     class="w-full px-4 py-3 border-2 border-primary rounded-lg focus:border-primary focus:outline-none transition shadow-sm"
-                    placeholder="🔍 Digite nome ou telefone para buscar cliente..."
-                    autocomplete="off"
-                >
+                    placeholder="🔍 Digite nome ou telefone para buscar cliente..." autocomplete="off">
                 <div id="autocomplete-results" class="autocomplete-results"></div>
-                
+
                 <div class="mt-3 flex items-center gap-3">
                     <div class="flex-1 border-t border-gray-300"></div>
                     <span class="text-sm text-gray-500">ou</span>
                     <div class="flex-1 border-t border-gray-300"></div>
                 </div>
-                
+
                 <div class="mt-3">
-                    <button 
-                        type="button" 
-                        id="btn-novo-cliente" 
-                        class="w-full btn-secondary py-3 text-base font-medium"
-                        style="cursor: pointer; user-select: none; min-height: 44px; touch-action: manipulation;"
-                    >
+                    <button type="button" id="btn-novo-cliente" class="w-full btn-secondary py-3 text-base font-medium"
+                        style="cursor: pointer; user-select: none; min-height: 44px; touch-action: manipulation;">
                         <i class="fas fa-plus-circle"></i>
                         Cadastrar Novo Cliente
                     </button>
                 </div>
-                
-                <button 
-                    type="button" 
-                    id="btn-historico-cliente" 
-                    class="mt-2 w-full text-sm text-blue-600 hover:text-blue-700 font-medium hidden py-2"
-                >
+
+                <button type="button" id="btn-historico-cliente"
+                    class="mt-2 w-full text-sm text-blue-600 hover:text-blue-700 font-medium hidden py-2">
                     <i class="fas fa-history"></i> Ver Histórico de Pedidos
                 </button>
             </div>
@@ -102,20 +92,13 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Nome do Cliente <span class="text-red-500">*</span>
                 </label>
-                <input 
-                    type="text" 
-                    id="cliente"
-                    name="cliente"
-                    required
-                    data-validation="required"
+                <input type="text" id="cliente" name="cliente" required data-validation="required"
                     data-field-name="Nome do Cliente"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition bg-gray-100 text-gray-500 cursor-not-allowed"
-                    placeholder="Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'"
-                    readonly
-                    disabled
-                >
+                    placeholder="Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'" readonly disabled>
                 <p class="mt-1 text-xs text-gray-500">
-                    <i class="fas fa-info-circle"></i> Este campo será preenchido automaticamente ao buscar ou habilitado ao cadastrar novo cliente
+                    <i class="fas fa-info-circle"></i> Este campo será preenchido automaticamente ao buscar ou
+                    habilitado ao cadastrar novo cliente
                 </p>
             </div>
 
@@ -123,35 +106,20 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Telefone do Cliente <span class="text-red-500">*</span>
                 </label>
-                <input 
-                    type="tel" 
-                    id="telefone_cliente"
-                    name="telefone_cliente"
-                    required
-                    data-mask="phone"
-                    data-validation="phone"
-                    data-field-name="Telefone"
+                <input type="tel" id="telefone_cliente" name="telefone_cliente" required data-mask="phone"
+                    data-validation="phone" data-field-name="Telefone"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition bg-gray-100 text-gray-500 cursor-not-allowed"
-                    placeholder="Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'"
-                    readonly
-                    disabled
-                >
+                    placeholder="Busque um cliente acima ou clique em 'Cadastrar Novo Cliente'" readonly disabled>
             </div>
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Para (Destinatário) <span class="text-red-500">*</span>
                 </label>
-                <input 
-                    type="text" 
-                    id="destinatario"
-                    name="destinatario"
-                    required
-                    data-validation="required"
+                <input type="text" id="destinatario" name="destinatario" required data-validation="required"
                     data-field-name="Destinatário"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Nome do destinatário"
-                >
+                    placeholder="Nome do destinatário">
             </div>
 
             <div>
@@ -161,19 +129,33 @@
                 <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <label class="flex-1 cursor-pointer">
                         <input type="radio" name="tipo_pedido" value="Entrega" checked class="hidden peer">
-                        <div class="px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
+                        <div
+                            class="px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
                             <i class="fas fa-truck text-xl sm:text-2xl mb-2"></i>
                             <p class="text-sm sm:text-base">Entrega</p>
                         </div>
                     </label>
                     <label class="flex-1 cursor-pointer">
                         <input type="radio" name="tipo_pedido" value="Retirada" class="hidden peer">
-                        <div class="px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
+                        <div
+                            class="px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 rounded-lg text-center peer-checked:border-primary peer-checked:bg-primary peer-checked:bg-opacity-10 peer-checked:font-semibold transition">
                             <i class="fas fa-store text-xl sm:text-2xl mb-2"></i>
                             <p class="text-sm sm:text-base">Retirada</p>
                         </div>
                     </label>
                 </div>
+            </div>
+
+            <!-- Fonte do Pedido -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Fonte do Pedido
+                </label>
+                <select id="fonte_pedido_id" name="fonte_pedido_id"
+                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition">
+                    <option value="">Selecione a fonte...</option>
+                    <!-- Opções serão carregadas dinamicamente via JavaScript -->
+                </select>
             </div>
         </div>
 
@@ -188,43 +170,28 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Nome do Produto <span class="text-red-500">*</span>
                 </label>
-                <textarea 
-                    id="produto"
-                    name="produto"
-                    required
-                    data-validation="required"
-                    data-field-name="Produto"
+                <textarea id="produto" name="produto" required data-validation="required" data-field-name="Produto"
                     rows="3"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Ex.: Buquê 12 rosas vermelhas"
-                ></textarea>
+                    placeholder="Ex.: Buquê 12 rosas vermelhas"></textarea>
             </div>
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Flores que Vão e Cor
                 </label>
-                <textarea 
-                    id="flores_cor"
-                    name="flores_cor"
-                    rows="3"
+                <textarea id="flores_cor" name="flores_cor" rows="3"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Ex.: 12 rosas vermelhas, gipsófilas brancas"
-                ></textarea>
+                    placeholder="Ex.: 12 rosas vermelhas, gipsófilas brancas"></textarea>
             </div>
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Valor Total (R$)
                 </label>
-                <input 
-                    type="text" 
-                    id="valor"
-                    name="valor"
-                    data-mask="currency"
+                <input type="text" id="valor" name="valor" data-mask="currency"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="R$ 120,00"
-                >
+                    placeholder="R$ 120,00">
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -232,34 +199,20 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Data de Entrega <span class="text-red-500">*</span>
                     </label>
-                    <input 
-                        type="text" 
-                        id="dia_entrega"
-                        name="dia_entrega"
-                        required
-                        data-mask="date"
-                        data-validation="date"
-                        data-field-name="Data"
+                    <input type="text" id="dia_entrega" name="dia_entrega" required data-mask="date"
+                        data-validation="date" data-field-name="Data"
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="DD/MM/AAAA"
-                    >
+                        placeholder="DD/MM/AAAA">
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Horário <span class="text-red-500">*</span>
                     </label>
-                    <input 
-                        type="text" 
-                        id="horario"
-                        name="horario"
-                        required
-                        data-mask="time"
-                        data-validation="time"
+                    <input type="text" id="horario" name="horario" required data-mask="time" data-validation="time"
                         data-field-name="Horário"
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="14:30"
-                    >
+                        placeholder="14:30">
                 </div>
             </div>
         </div>
@@ -277,19 +230,11 @@
                     CEP
                 </label>
                 <div class="flex gap-2">
-                    <input 
-                        type="text" 
-                        id="cep"
-                        name="cep"
-                        data-mask="cep"
+                    <input type="text" id="cep" name="cep" data-mask="cep"
                         class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="00000-000"
-                    >
-                    <button 
-                        type="button" 
-                        id="btn-buscar-cep"
-                        class="px-4 py-3 bg-primary text-white rounded-lg hover:bg-secondary transition flex items-center gap-2"
-                    >
+                        placeholder="00000-000">
+                    <button type="button" id="btn-buscar-cep"
+                        class="px-4 py-3 bg-primary text-white rounded-lg hover:bg-secondary transition flex items-center gap-2">
                         <i class="fas fa-search"></i>
                         <span class="hidden sm:inline">Buscar</span>
                     </button>
@@ -303,26 +248,18 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Rua / Logradouro
                     </label>
-                    <input 
-                        type="text" 
-                        id="rua"
-                        name="rua"
+                    <input type="text" id="rua" name="rua"
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="Nome da rua"
-                    >
+                        placeholder="Nome da rua">
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Número
                     </label>
-                    <input 
-                        type="text" 
-                        id="numero"
-                        name="numero"
+                    <input type="text" id="numero" name="numero"
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="Nº"
-                    >
+                        placeholder="Nº">
                 </div>
             </div>
 
@@ -331,26 +268,18 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Bairro
                     </label>
-                    <input 
-                        type="text" 
-                        id="bairro"
-                        name="bairro"
+                    <input type="text" id="bairro" name="bairro"
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="Nome do bairro"
-                    >
+                        placeholder="Nome do bairro">
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Cidade
                     </label>
-                    <input 
-                        type="text" 
-                        id="cidade"
-                        name="cidade"
+                    <input type="text" id="cidade" name="cidade"
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="Nome da cidade"
-                    >
+                        placeholder="Nome da cidade">
                 </div>
             </div>
 
@@ -360,18 +289,11 @@
                     Endereço Completo
                 </label>
                 <div class="flex flex-col gap-2">
-                    <textarea 
-                        id="endereco"
-                        name="endereco"
-                        rows="3"
+                    <textarea id="endereco" name="endereco" rows="3"
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                        placeholder="Endereço completo para entrega"
-                    ></textarea>
-                    <button 
-                        type="button" 
-                        id="btn-gerar-endereco"
-                        class="self-start px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 text-sm"
-                    >
+                        placeholder="Endereço completo para entrega"></textarea>
+                    <button type="button" id="btn-gerar-endereco"
+                        class="self-start px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 text-sm">
                         <i class="fas fa-magic"></i>
                         Gerar automaticamente
                     </button>
@@ -382,13 +304,9 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Como Entregar / Observações de Entrega
                 </label>
-                <textarea 
-                    id="obs_entrega"
-                    name="obs_entrega"
-                    rows="3"
+                <textarea id="obs_entrega" name="obs_entrega" rows="3"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Instruções especiais para entrega (complemento, referência, etc.)"
-                ></textarea>
+                    placeholder="Instruções especiais para entrega (complemento, referência, etc.)"></textarea>
             </div>
         </div>
 
@@ -403,24 +321,17 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Carta / Mensagem
                 </label>
-                <textarea 
-                    id="mensagem"
-                    name="mensagem"
-                    rows="4"
+                <textarea id="mensagem" name="mensagem" rows="4"
                     class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Mensagem para o cartão"
-                ></textarea>
+                    placeholder="Mensagem para o cartão"></textarea>
             </div>
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Forma de Pagamento
                 </label>
-                <select 
-                    id="pagamento"
-                    name="pagamento"
-                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                >
+                <select id="pagamento" name="pagamento"
+                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition">
                     <option value="">Selecione...</option>
                     <option value="Dinheiro">Dinheiro</option>
                     <option value="Cartão de Crédito">Cartão de Crédito</option>
@@ -434,15 +345,15 @@
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
-                    Observações Gerais
+                    Faturamento (Status Pagamento)
                 </label>
-                <textarea 
-                    id="observacoes"
-                    name="observacoes"
-                    rows="3"
-                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
-                    placeholder="Outras informações relevantes"
-                ></textarea>
+                <select id="status_pagamento" name="status_pagamento"
+                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition">
+                    <option value="">Selecione o status...</option>
+                    <option value="PAGAMENTO REALIZADO">PAGAMENTO REALIZADO</option>
+                    <option value="50% PAGO">50% PAGO</option>
+                    <option value="PAGAMENTO PENDENTE">PAGAMENTO PENDENTE</option>
+                </select>
             </div>
 
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -455,30 +366,18 @@
 
         <!-- Botões de Navegação -->
         <div class="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t">
-            <button 
-                type="button" 
-                id="btn-anterior"
-                class="btn btn-secondary hidden sm:flex order-2 sm:order-1"
-            >
+            <button type="button" id="btn-anterior" class="btn btn-secondary hidden sm:flex order-2 sm:order-1">
                 <i class="fas fa-arrow-left"></i>
                 <span class="ml-1">Anterior</span>
             </button>
 
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto order-1 sm:order-2 sm:ml-auto">
-                <button 
-                    type="button" 
-                    id="btn-proximo"
-                    class="btn btn-primary w-full sm:w-auto"
-                >
+                <button type="button" id="btn-proximo" class="btn btn-primary w-full sm:w-auto">
                     <span>Próximo</span>
                     <i class="fas fa-arrow-right ml-1"></i>
                 </button>
 
-                <button 
-                    type="button" 
-                    id="btn-finalizar"
-                    class="btn btn-success hidden w-full sm:w-auto"
-                >
+                <button type="button" id="btn-finalizar" class="btn btn-success hidden w-full sm:w-auto">
                     <i class="fas fa-check"></i>
                     <span class="ml-1">Finalizar Pedido</span>
                 </button>
@@ -486,4 +385,3 @@
         </div>
     </form>
 </div>
-

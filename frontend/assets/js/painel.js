@@ -12,7 +12,7 @@ const PainelManager = {
         date: 'todos'  // todos, hoje, amanha, semana
     },
     autoRefreshInterval: null,
-    autoRefreshTime: 5000, // 5 segundos (conforme mencionado pelo usuário)
+    autoRefreshTime: 30000, // 30 segundos (otimizado para melhor performance)
     ordenadoPorDistancia: false,
     calculandoDistancias: false,
     modoSelecao: false,
@@ -22,7 +22,6 @@ const PainelManager = {
      * Inicializa o painel
      */
     async init() {
-        console.log('📊 Inicializando painel');
 
         // Configurar listeners
         this.setupListeners();
@@ -40,7 +39,7 @@ const PainelManager = {
     /**
      * Configura event listeners
      */
-   setupListeners() {
+    setupListeners() {
         // Busca
         const searchInput = document.getElementById('search-input');
         if (searchInput) {
@@ -83,35 +82,73 @@ const PainelManager = {
         if (btnDistancia) {
             btnDistancia.addEventListener('click', () => this.ordenarPorDistancia());
         }
-        
+
         const btnRotaOtimizada = document.getElementById('btn-rota-otimizada');
         if (btnRotaOtimizada) {
             btnRotaOtimizada.addEventListener('click', () => this.calcularRotaOtimizada());
+        }
+
+        // Botão exportar planilha
+        const btnExportarPlanilha = document.getElementById('btn-exportar-planilha');
+        if (btnExportarPlanilha) {
+            btnExportarPlanilha.addEventListener('click', () => this.exportarPlanilha());
+        }
+    },
+
+    /**
+     * Exporta vendas para Google Sheets
+     */
+    async exportarPlanilha() {
+        try {
+            const confirmou = await Modal.confirm(
+                'Exportar para Planilha',
+                'Deseja atualizar a planilha do Google Sheets com as vendas do mês atual?',
+                'Exportar',
+                'Cancelar'
+            );
+
+            if (!confirmou) return;
+
+            Utils.showLoading('Exportando para Google Sheets...');
+
+            const response = await API.post('/api/exportar-planilha', {});
+
+            Utils.hideLoading();
+
+            if (response.success) {
+                Notification.success('Planilha atualizada com sucesso!');
+            } else {
+                Notification.error(response.error || 'Erro ao exportar');
+            }
+        } catch (error) {
+            Utils.hideLoading();
+            console.error('Erro ao exportar:', error);
+            Notification.error('Erro ao exportar. Verifique se as credenciais do Google estão configuradas.');
         }
     },
 
     /**
      * Carrega pedidos da API
      */
-     async refreshPedidos(showNotification = false) {
+    async refreshPedidos(showNotification = false) {
         try {
             if (showNotification) Utils.showLoading();
 
             // Salvar lista anterior para detectar novos pedidos
             const pedidosAnteriores = [...this.pedidos];
-            
+
             // Buscar novos pedidos
             const novosPedidos = await this.fetchPedidos();
-            
+
             // Detectar pedidos novos (que não estavam na lista anterior)
             const idsAnteriores = new Set(pedidosAnteriores.map(p => p.id));
             const pedidosNovos = novosPedidos.filter(p => !idsAnteriores.has(p.id));
-            
+
             // Marcar pedidos novos
             novosPedidos.forEach(pedido => {
                 pedido.novo = pedidosNovos.some(novo => novo.id === pedido.id);
             });
-            
+
             // Atualizar lista
             this.pedidosAnteriores = pedidosAnteriores;
             this.pedidos = novosPedidos;
@@ -119,7 +156,7 @@ const PainelManager = {
             // Sempre manter filtros ativos - aplicar filtros se houver algum ativo
             // Isso garante que os filtros sejam persistentes mesmo após auto-refresh
             const temFiltrosAtivos = this.filtros.date !== 'todos' || this.filtros.status || this.filtros.search;
-            
+
             if (temFiltrosAtivos) {
                 // Aplicar filtros mantendo o estado
                 this.filterPedidos();
@@ -127,7 +164,7 @@ const PainelManager = {
                 // Sem filtros - renderizar normalmente
                 this.renderPedidos();
             }
-            
+
             // Garantir que botões de filtro mantenham estado visual
             this.updateFilterButtons();
 
@@ -193,7 +230,7 @@ const PainelManager = {
         document.getElementById('stat-agendado')?.setAttribute('data-count', stats.agendado || 0);
         document.getElementById('stat-producao')?.setAttribute('data-count', stats.em_producao || 0);
         document.getElementById('stat-pronto')?.setAttribute('data-count', (stats.pronto_entrega || 0) + (stats.pronto_retirada || 0));
-        
+
         // Animar números
         this.animateNumbers();
     },
@@ -225,7 +262,7 @@ const PainelManager = {
      */
     renderPedidos(forceAnimation = false) {
         const container = document.getElementById('pedidos-container');
-        
+
         if (!container) {
             console.warn('Container de pedidos não encontrado');
             return;
@@ -272,8 +309,6 @@ const PainelManager = {
             container.appendChild(card);
         });
 
-        console.log(`✅ ${pedidosOrdenados.length} pedidos renderizados (ordenados por proximidade)`);
-        
         // Garantir que os botões de filtro permaneçam com estilo correto
         this.updateFilterButtons();
     },
@@ -291,9 +326,9 @@ const PainelManager = {
                 <i class="fas fa-inbox text-6xl text-gray-300 mb-4"></i>
                 <h3 class="text-xl font-semibold text-gray-600 mb-2">${message}</h3>
                 <p class="text-gray-500 mb-6">
-                    ${this.filtros.status || this.filtros.search 
-                        ? 'Tente ajustar os filtros ou fazer uma nova busca' 
-                        : 'Crie seu primeiro pedido clicando no botão acima'}
+                    ${this.filtros.status || this.filtros.search
+                ? 'Tente ajustar os filtros ou fazer uma nova busca'
+                : 'Crie seu primeiro pedido clicando no botão acima'}
                 </p>
                 <button onclick="Router.navigate('/criar-pedido')" class="btn btn-primary">
                     <i class="fas fa-plus-circle"></i>
@@ -349,7 +384,7 @@ const PainelManager = {
 
         if (this.filtros.search) {
             const search = this.filtros.search.toLowerCase();
-            pedidosParaExibir = pedidosParaExibir.filter(p => 
+            pedidosParaExibir = pedidosParaExibir.filter(p =>
                 (p.cliente && p.cliente.toLowerCase().includes(search)) ||
                 (p.destinatario && p.destinatario.toLowerCase().includes(search)) ||
                 (p.produto && p.produto.toLowerCase().includes(search)) ||
@@ -373,7 +408,7 @@ const PainelManager = {
         // Atualizar ou adicionar cards mantendo ordem
         pedidosParaExibir.forEach((pedido, index) => {
             const cardExistente = container.querySelector(`[data-id="${pedido.id}"]`);
-            
+
             if (cardExistente) {
                 // Atualizar card existente sem recriar (apenas atualizar dados se necessário)
                 // Verificar se precisa atualizar (status mudou, etc)
@@ -392,14 +427,14 @@ const PainelManager = {
                 if (!pedido.novo) {
                     novoCard.classList.add('no-animation');
                 }
-                
+
                 // Inserir na posição correta baseada na ordem
                 const proximoCard = Array.from(container.children).find(card => {
                     const cardId = parseInt(card.dataset.id);
                     const proximoPedido = pedidosParaExibir[index + 1];
                     return proximoPedido && cardId === proximoPedido.id;
                 });
-                
+
                 if (proximoCard) {
                     container.insertBefore(novoCard, proximoCard);
                 } else {
@@ -425,41 +460,28 @@ const PainelManager = {
             // Usar formato de string YYYY-MM-DD para evitar problemas de timezone
             const hoje = new Date();
             const hojeStr = hoje.toISOString().split('T')[0]; // YYYY-MM-DD
-            
+
             const amanha = new Date(hoje);
             amanha.setDate(amanha.getDate() + 1);
             const amanhaStr = amanha.toISOString().split('T')[0];
-            
+
             const fimSemana = new Date(hoje);
             fimSemana.setDate(fimSemana.getDate() + 7);
             const fimSemanaStr = fimSemana.toISOString().split('T')[0];
-
-            console.log('[DEBUG] Filtro de Data:', {
-                filtro: this.filtros.date,
-                hoje: hojeStr,
-                amanha: amanhaStr,
-                fimSemana: fimSemanaStr
-            });
 
             filtered = filtered.filter(p => {
                 // p.dia_entrega já vem no formato YYYY-MM-DD
                 const dataEntregaStr = p.dia_entrega;
 
                 if (this.filtros.date === 'hoje') {
-                    const match = dataEntregaStr === hojeStr;
-                    if (match) console.log('[DEBUG] Pedido HOJE:', p.id, dataEntregaStr);
-                    return match;
+                    return dataEntregaStr === hojeStr;
                 } else if (this.filtros.date === 'amanha') {
-                    const match = dataEntregaStr === amanhaStr;
-                    if (match) console.log('[DEBUG] Pedido AMANHÃ:', p.id, dataEntregaStr);
-                    return match;
+                    return dataEntregaStr === amanhaStr;
                 } else if (this.filtros.date === 'semana') {
                     return dataEntregaStr >= hojeStr && dataEntregaStr <= fimSemanaStr;
                 }
                 return true;
             });
-
-            console.log('[DEBUG] Pedidos filtrados:', filtered.length);
         }
 
         // Filtrar por status específico (se não for "todos")
@@ -473,7 +495,7 @@ const PainelManager = {
         // Filtrar por busca
         if (this.filtros.search) {
             const search = this.filtros.search.toLowerCase();
-            filtered = filtered.filter(p => 
+            filtered = filtered.filter(p =>
                 (p.cliente && p.cliente.toLowerCase().includes(search)) ||
                 (p.destinatario && p.destinatario.toLowerCase().includes(search)) ||
                 (p.produto && p.produto.toLowerCase().includes(search)) ||
@@ -497,7 +519,7 @@ const PainelManager = {
             } else {
                 // Primeira renderização - criar todos os cards
                 container.innerHTML = '';
-                
+
                 if (filtered.length === 0) {
                     container.innerHTML = this.getEmptyState();
                 } else {
@@ -512,7 +534,7 @@ const PainelManager = {
                 }
             }
         }
-        
+
         // Garantir que os botões de filtro permaneçam com estilo correto
         this.updateFilterButtons();
     },
@@ -526,7 +548,7 @@ const PainelManager = {
             const filterValue = btn.getAttribute('data-filter-date');
             // Limpar todas as classes de estado
             btn.classList.remove('active', 'bg-primary', 'text-white', 'bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-            
+
             if (filterValue === this.filtros.date) {
                 // Botão ativo
                 btn.classList.add('active', 'bg-primary', 'text-white');
@@ -540,10 +562,10 @@ const PainelManager = {
         document.querySelectorAll('[data-filter-status]').forEach(btn => {
             const filterValue = btn.getAttribute('data-filter-status');
             const statusAtivo = this.filtros.status || 'todos';
-            
+
             // Limpar todas as classes de estado
             btn.classList.remove('active', 'bg-primary', 'text-white', 'bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-            
+
             if (filterValue === statusAtivo) {
                 // Botão ativo
                 btn.classList.add('active', 'bg-primary', 'text-white');
@@ -559,7 +581,7 @@ const PainelManager = {
      */
     setDateFilter(date) {
         this.filtros.date = date;
-        
+
         // Atualizar botões ativos
         this.updateFilterButtons();
 
@@ -572,7 +594,7 @@ const PainelManager = {
      */
     setStatusFilter(status) {
         this.filtros.status = status === 'todos' ? '' : status;
-        
+
         // Atualizar botões ativos
         this.updateFilterButtons();
 
@@ -600,7 +622,7 @@ const PainelManager = {
                 this.renderPedidos();
 
                 Notification.success('Status atualizado!');
-                
+
                 // Recarregar estatísticas
                 this.loadStats();
             } else {
@@ -610,7 +632,7 @@ const PainelManager = {
         } catch (error) {
             console.error('Erro ao atualizar status:', error);
             Notification.error('Erro ao atualizar status');
-            
+
             // Reverter select
             const select = document.querySelector(`[data-id="${pedidoId}"] select`);
             if (select) {
@@ -643,7 +665,7 @@ const PainelManager = {
                 this.renderPedidos();
 
                 Notification.success('Pedido deletado com sucesso!');
-                
+
                 // Recarregar estatísticas
                 this.loadStats();
             } else {
@@ -664,22 +686,22 @@ const PainelManager = {
      */
     sortPedidosByProximity(pedidos) {
         const now = new Date();
-        
+
         // Filtrar pedidos concluídos (não devem ser ordenados por proximidade)
         const pedidosPendentes = pedidos.filter(p => p.status !== 'concluido');
         const pedidosConcluidos = pedidos.filter(p => p.status === 'concluido');
-        
+
         // Ordenar apenas os pendentes por proximidade
         pedidosPendentes.sort((a, b) => {
             try {
                 // Criar objetos Date para cada pedido
                 const dateA = new Date(a.dia_entrega + 'T' + a.horario);
                 const dateB = new Date(b.dia_entrega + 'T' + b.horario);
-                
+
                 // Calcular diferença em relação ao momento atual
                 const diffA = Math.abs(dateA - now);
                 const diffB = Math.abs(dateB - now);
-                
+
                 // Ordenar por proximidade (menor diferença primeiro)
                 return diffA - diffB;
             } catch (error) {
@@ -687,7 +709,7 @@ const PainelManager = {
                 return 0;
             }
         });
-        
+
         // Retornar pendentes ordenados + concluídos no final (se houver)
         return [...pedidosPendentes, ...pedidosConcluidos];
     },
@@ -703,10 +725,10 @@ const PainelManager = {
         }
 
         const btnDistancia = document.getElementById('btn-ordenar-distancia');
-        
+
         try {
             this.calculandoDistancias = true;
-            
+
             // Atualizar botão para mostrar loading
             if (btnDistancia) {
                 btnDistancia.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="hidden sm:inline">Calculando...</span>';
@@ -716,16 +738,16 @@ const PainelManager = {
             Notification.info('Calculando distâncias... Isso pode levar alguns segundos.');
 
             // Chamar API para calcular distâncias em lote com timeout
-            const timeoutPromise = new Promise((_, reject) => 
+            const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout - tente novamente')), 60000)
             );
-            
+
             const apiPromise = API.calcularDistanciasLote();
             const result = await Promise.race([apiPromise, timeoutPromise]);
 
             if (result && result.success) {
                 const data = result.data;
-                
+
                 // Atualizar distâncias nos pedidos locais
                 if (data.resultados && Array.isArray(data.resultados)) {
                     data.resultados.forEach(res => {
@@ -755,11 +777,11 @@ const PainelManager = {
                 const doCache = data.do_cache || 0;
                 const ignorados = data.ignorados || 0;
                 const erros = data.erros || 0;
-                
+
                 let msg = `${calculados} calculadas, ${doCache} do cache`;
                 if (ignorados > 0) msg += `, ${ignorados} ignorados`;
                 if (erros > 0) msg += `, ${erros} com erro`;
-                
+
                 Notification.success(`Pedidos ordenados! ${msg}`);
 
                 // Atualizar estilo do botão
@@ -776,7 +798,7 @@ const PainelManager = {
             Notification.error(`Erro: ${error.message || 'Falha ao calcular distâncias'}`);
         } finally {
             this.calculandoDistancias = false;
-            
+
             // Restaurar botão
             if (btnDistancia) {
                 btnDistancia.innerHTML = '<i class="fas fa-route"></i> <span class="hidden sm:inline">Distância</span>';
@@ -791,9 +813,9 @@ const PainelManager = {
     toggleModoSelecao() {
         this.modoSelecao = !this.modoSelecao;
         this.pedidosSelecionados.clear();
-        
+
         const btnRota = document.getElementById('btn-rota-otimizada');
-        
+
         if (this.modoSelecao) {
             // Modo seleção ativado
             if (btnRota) {
@@ -810,9 +832,10 @@ const PainelManager = {
                 btnRota.classList.add('bg-green-100', 'text-green-700');
             }
         }
-        
+
         // Re-renderizar pedidos para mostrar/ocultar checkboxes
-        this.renderPedidos();
+        // Forçar animação/re-render completo para garantir que os checkboxes apareçam
+        this.renderPedidos(true);
     },
 
     /**
@@ -824,7 +847,7 @@ const PainelManager = {
         } else {
             this.pedidosSelecionados.add(pedidoId);
         }
-        
+
         // Atualizar visual do card
         const card = document.querySelector(`.pedido-card[data-id="${pedidoId}"]`);
         if (card) {
@@ -834,7 +857,7 @@ const PainelManager = {
             }
             card.classList.toggle('selected', this.pedidosSelecionados.has(pedidoId));
         }
-        
+
         // Atualizar contador no botão
         this.atualizarContadorSelecao();
     },
@@ -845,7 +868,7 @@ const PainelManager = {
     atualizarContadorSelecao() {
         const btnRota = document.getElementById('btn-rota-otimizada');
         const count = this.pedidosSelecionados.size;
-        
+
         if (btnRota && this.modoSelecao) {
             if (count > 0) {
                 btnRota.innerHTML = `<i class="fas fa-check-circle"></i> <span class="hidden sm:inline">Calcular Rota (${count})</span>`;
@@ -860,38 +883,38 @@ const PainelManager = {
      */
     async calcularRotaOtimizada() {
         const btnRota = document.getElementById('btn-rota-otimizada');
-        
+
         // Se estiver em modo seleção, calcular rota com pedidos selecionados
         if (this.modoSelecao) {
             const pedidosSelecionados = Array.from(this.pedidosSelecionados);
-            
+
             if (pedidosSelecionados.length < 2) {
                 Notification.warning('Selecione pelo menos 2 pedidos para calcular a rota otimizada.');
                 return;
             }
-            
+
             // Verificar se os pedidos selecionados têm distância calculada
-            const pedidosComDistancia = this.pedidos.filter(p => 
+            const pedidosComDistancia = this.pedidos.filter(p =>
                 pedidosSelecionados.includes(p.id) &&
-                p.distancia_km !== null && 
+                p.distancia_km !== null &&
                 p.distancia_km !== undefined &&
                 p.tipo_pedido === 'Entrega'
             );
-            
+
             if (pedidosComDistancia.length < 2) {
                 Notification.warning('É necessário que pelo menos 2 pedidos selecionados tenham distância calculada e sejam do tipo Entrega.');
                 return;
             }
-            
+
             // Desativar modo seleção
             this.modoSelecao = false;
             this.renderPedidos();
-            
+
             // Calcular rota
             await this.executarCalculoRota(pedidosComDistancia.map(p => p.id));
             return;
         }
-        
+
         // Se não estiver em modo seleção, ativar modo seleção
         this.toggleModoSelecao();
     },
@@ -901,38 +924,38 @@ const PainelManager = {
      */
     async executarCalculoRota(pedidoIds) {
         const btnRota = document.getElementById('btn-rota-otimizada');
-        
+
         try {
             // Atualizar botão para mostrar loading
             if (btnRota) {
                 btnRota.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="hidden sm:inline">Calculando...</span>';
                 btnRota.disabled = true;
             }
-            
+
             Notification.info('Calculando rota otimizada... Isso pode levar alguns segundos.');
-            
+
             // Chamar API para calcular rota otimizada
-            const timeoutPromise = new Promise((_, reject) => 
+            const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout - tente novamente')), 120000)
             );
-            
+
             const apiPromise = API.calcularRotaOtimizada(pedidoIds);
             const result = await Promise.race([apiPromise, timeoutPromise]);
-            
+
             if (result && result.success) {
                 const rota = result.data;
-                
+
                 Notification.success(`Rota otimizada calculada! ${rota.distancia_total_km} km, ${rota.duracao_total_min} min`);
-                
+
                 // Limpar seleção
                 this.pedidosSelecionados.clear();
-                
+
                 // Redirecionar para página de visualização da rota
                 window.location.href = `/pages/rota-entrega.html?id=${rota.rota_id}`;
             } else {
                 throw new Error(result?.error || 'Erro ao calcular rota otimizada');
             }
-            
+
         } catch (error) {
             console.error('Erro ao calcular rota otimizada:', error);
             Notification.error(`Erro: ${error.message || 'Falha ao calcular rota otimizada'}`);
@@ -993,7 +1016,7 @@ const PainelManager = {
 
             if (result.success) {
                 Notification.success(`${result.data.count} pedidos arquivados (ocultos da lista)`);
-                
+
                 // Recarregar lista
                 await this.loadPedidos();
             } else {
@@ -1020,14 +1043,11 @@ const PainelManager = {
         // Configurar novo intervalo
         this.autoRefreshInterval = setInterval(() => {
             if (document.hidden) return; // Não atualizar se página não está visível
-            
-            console.log('🔄 Auto-refresh disparado');
+
             // Usar refreshPedidos que mantém filtros e detecta novos pedidos
             this.refreshPedidos(false);
             this.loadStats();
         }, this.autoRefreshTime);
-
-        console.log(`✅ Auto-refresh configurado (${this.autoRefreshTime / 1000}s)`);
     },
 
     /**
@@ -1037,7 +1057,6 @@ const PainelManager = {
         if (this.autoRefreshInterval) {
             clearInterval(this.autoRefreshInterval);
             this.autoRefreshInterval = null;
-            console.log('⏸️ Auto-refresh parado');
         }
     },
 

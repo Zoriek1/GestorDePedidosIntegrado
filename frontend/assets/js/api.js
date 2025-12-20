@@ -73,16 +73,12 @@ const API = {
         };
 
         try {
-            console.log(`[API] ${method} ${endpoint}`, { needsAuth, hasBody: !!options.body });
             const response = await fetch(url, config);
-            
-            console.log(`[API] Resposta recebida:`, { status: response.status, ok: response.ok, url });
             
             // Tentar parsear JSON, mas pode não ser JSON em caso de erro
             let data;
             try {
                 const text = await response.text();
-                console.log(`[API] Resposta texto:`, text.substring(0, 200));
                 data = text ? JSON.parse(text) : {};
             } catch (e) {
                 console.warn(`[API] Erro ao parsear JSON:`, e);
@@ -92,7 +88,6 @@ const API = {
             if (!response.ok) {
                 // Se for erro 401 e requer autenticação, tentar novamente após login
                 if (response.status === 401 && needsAuth && typeof Auth !== 'undefined') {
-                    console.log('[API] Erro 401 - Tentando reautenticar...');
                     // Limpar credenciais inválidas
                     Auth.logout();
                     
@@ -259,16 +254,9 @@ const API = {
      */
     async marcarImpresso(pedidoId) {
         const url = `/api/pedidos/${pedidoId}/marcar-impresso`;
-        console.log(`[API] marcarImpresso(${pedidoId}) - URL: ${url}`);
         
         try {
-            console.log(`[API] Enviando requisição POST para ${url}`);
             const result = await this.post(url);
-            console.log(`[API] Resposta recebida:`, { 
-                success: result.success, 
-                status: result.status,
-                data: result.data 
-            });
             
             if (!result.success) {
                 console.error(`[API] Erro na resposta:`, result.error);

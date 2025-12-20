@@ -260,7 +260,7 @@ const PedidoCard = {
 
             // Conteúdo do modal com formulário compacto e layout fixo
             const modalHtml = `
-                <div class="flex flex-col max-h-[calc(100vh-2rem)]">
+                <div class="flex flex-col h-full max-h-[90vh] overflow-hidden">
                     <!-- Header Fixo -->
                     <div class="flex justify-between items-center p-4 border-b bg-white rounded-t-lg shrink-0">
                         <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -273,7 +273,7 @@ const PedidoCard = {
                     </div>
 
                     <!-- Body Scrollable -->
-                    <div class="flex-1 overflow-y-auto p-4 bg-gray-50">
+                    <div class="flex-1 overflow-y-auto overflow-x-hidden p-4 bg-gray-50">
                         <form id="form-editar-pedido" class="space-y-4">
                             <!-- Seção 1: Dados Básicos -->
                             <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">

@@ -125,13 +125,11 @@ const Router = {
         }
 
         try {
-            console.log(`📄 Carregando página: ${page}`);
             // Mostrar loading
             Utils.showLoading();
 
             // Buscar HTML da página
             const url = `/pages/${page}.html`;
-            console.log(`🔗 Buscando: ${url}`);
             const response = await fetch(url);
             
             if (!response.ok) {
@@ -215,7 +213,6 @@ const Router = {
                 // Agora só precisamos inicializá-lo
                 setTimeout(() => {
                     if (typeof FontesManager !== 'undefined' && FontesManager.init) {
-                        console.log('📁 Inicializando FontesManager via Router...');
                         FontesManager.init();
                     } else {
                         console.error('❌ FontesManager não encontrado. O script pode não ter sido executado corretamente.');

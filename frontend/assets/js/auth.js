@@ -36,7 +36,6 @@ const Auth = {
             const stored = localStorage.getItem(this.STORAGE_KEY);
             if (stored) {
                 const data = JSON.parse(stored);
-                console.log('📦 Credenciais encontradas no localStorage');
                 return data;
             }
         } catch (error) {

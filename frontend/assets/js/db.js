@@ -22,7 +22,6 @@ const DB = {
 
             request.onsuccess = () => {
                 this.db = request.result;
-                console.log('✅ IndexedDB inicializado');
                 resolve(this.db);
             };
 
@@ -70,7 +69,6 @@ const DB = {
             const request = store.add(pedido);
 
             request.onsuccess = () => {
-                console.log('✅ Pedido salvo offline:', request.result);
                 resolve(request.result);
             };
 
@@ -131,11 +129,8 @@ const DB = {
         const pending = await this.getPendingPedidos();
 
         if (pending.length === 0) {
-            console.log('✅ Nenhum pedido pendente para sincronizar');
             return { success: true, synced: 0 };
         }
-
-        console.log(`🔄 Sincronizando ${pending.length} pedidos pendentes...`);
 
         let syncedCount = 0;
         const errors = [];
@@ -214,7 +209,6 @@ const DB = {
             const request = store.getAll();
 
             request.onsuccess = () => {
-                console.log(`✅ ${request.result.length} pedidos obtidos do cache`);
                 resolve(request.result);
             };
 
@@ -236,7 +230,6 @@ const DB = {
             const request = store.clear();
 
             request.onsuccess = () => {
-                console.log('✅ Cache limpo');
                 resolve();
             };
 

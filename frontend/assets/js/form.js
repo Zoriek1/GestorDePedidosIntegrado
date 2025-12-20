@@ -13,7 +13,6 @@ const FormManager = {
      * Inicializa o formulário
      */
     init() {
-        console.log('📝 Inicializando formulário');
 
         // Carregar dados do rascunho se existir
         this.loadDraft();
@@ -54,15 +53,10 @@ const FormManager = {
         const btnProximo = document.getElementById('btn-proximo');
         const btnFinalizar = document.getElementById('btn-finalizar');
 
-        console.log('🔧 Configurando listeners dos botões...');
-        console.log('Botão Anterior:', btnAnterior ? 'Encontrado' : 'NÃO encontrado');
-        console.log('Botão Próximo:', btnProximo ? 'Encontrado' : 'NÃO encontrado');
-        console.log('Botão Finalizar:', btnFinalizar ? 'Encontrado' : 'NÃO encontrado');
 
         if (btnAnterior) {
             btnAnterior.addEventListener('click', (e) => {
                 e.preventDefault();
-                console.log('⬅️ Clicou em Anterior');
                 this.previousStep();
             });
         }
@@ -78,10 +72,8 @@ const FormManager = {
         if (btnFinalizar) {
             btnFinalizar.addEventListener('click', (e) => {
                 e.preventDefault();
-                console.log('✅ Clicou em Finalizar');
                 this.submitForm();
             });
-            console.log('✅ Listener do botão Finalizar configurado!');
         } else {
             console.warn('⚠️ Botão Finalizar NÃO encontrado ao configurar listeners');
         }
@@ -162,7 +154,6 @@ const FormManager = {
                         select.appendChild(option);
                     });
                     
-                    console.log(`[FORM] ✅ ${fontes.length} fontes carregadas`);
                 } else {
                     console.warn('[FORM] ⚠️ Select fonte_pedido_id não encontrado');
                 }
@@ -186,7 +177,6 @@ const FormManager = {
         const btnHistorico = document.getElementById('btn-historico-cliente');
 
         if (!inputAutocomplete || !resultsElement) {
-            console.log('⚠️ Elementos do autocomplete não encontrados');
             return;
         }
 
@@ -290,7 +280,6 @@ const FormManager = {
             });
         }
 
-        console.log('✅ Autocomplete configurado!');
     },
 
     /**
@@ -426,10 +415,8 @@ const FormManager = {
             newBtnCep.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('🔍 Clicou em Buscar CEP');
                 this.buscarCep();
             });
-            console.log('✅ Listener do botão Buscar CEP configurado!');
         }
 
         // Buscar CEP ao pressionar Enter no campo
@@ -440,7 +427,6 @@ const FormManager = {
             cepInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    console.log('⌨️ Enter no campo CEP');
                     this.buscarCep();
                 }
             });
@@ -456,7 +442,6 @@ const FormManager = {
 
         // Botão de gerar endereço completo
         const btnGerarEndereco = document.getElementById('btn-gerar-endereco');
-        console.log('Botão Gerar Endereço:', btnGerarEndereco ? 'Encontrado' : 'NÃO encontrado');
 
         if (btnGerarEndereco) {
             // Remover listeners antigos clonando o elemento
@@ -526,7 +511,6 @@ const FormManager = {
                 numeroInput.focus();
             }
 
-            console.log('✅ CEP encontrado:', data);
 
         } catch (error) {
             console.error('Erro ao buscar CEP:', error);
@@ -611,7 +595,6 @@ const FormManager = {
             }
         }
 
-        console.log('📍 Endereço gerado:', enderecoCompleto);
     },
 
     /**
@@ -690,7 +673,6 @@ const FormManager = {
                 }
             }
 
-            console.log('🚚 Modo: Entrega - Campos de endereço visíveis');
         }
     },
 
@@ -733,8 +715,6 @@ const FormManager = {
 
         // Scroll para o topo
         window.scrollTo(0, 0);
-
-        console.log(`✅ Mudou para Step ${step}`);
     },
 
     /**
@@ -817,16 +797,12 @@ const FormManager = {
      * Valida step atual
      */
     validateCurrentStep() {
-        console.log(`🔍 Validando Step ${this.currentStep}...`);
-
         const currentStepElement = document.getElementById(`step-${this.currentStep}`);
         if (!currentStepElement) {
-            console.log('⚠️ Step element não encontrado');
             return true;
         }
 
         const requiredFields = currentStepElement.querySelectorAll('[required]');
-        console.log(`📋 Campos obrigatórios encontrados: ${requiredFields.length}`);
 
         let isValid = true;
         const errors = [];
@@ -848,8 +824,6 @@ const FormManager = {
                 if (errors.length === 1) {
                     Utils.scrollToElement(field);
                 }
-            } else {
-                console.log(`   ✅ OK`);
             }
         });
 
@@ -935,7 +909,6 @@ const FormManager = {
     saveDraft() {
         const data = this.collectFormData();
         localStorage.setItem('form-draft', JSON.stringify(data));
-        console.log('💾 Rascunho salvo');
     },
 
     /**
@@ -961,7 +934,6 @@ const FormManager = {
                     }
                 });
 
-                console.log('✅ Rascunho carregado');
                 Notification.info('Rascunho anterior carregado');
             } catch (error) {
                 console.error('Erro ao carregar rascunho:', error);
@@ -981,20 +953,13 @@ const FormManager = {
      * Submete formulário
      */
     async submitForm() {
-        console.log('🚀 submitForm() CHAMADO!');
-        console.log('Step atual:', this.currentStep);
-
         // Validar último step
         if (!this.validateCurrentStep()) {
-            console.log('❌ Validação falhou');
             return;
         }
 
-        console.log('✅ Validação OK! Coletando dados...');
-
         // Coletar dados
         const formData = this.collectFormData();
-        console.log('📦 Dados coletados:', formData);
 
         // Validação final
         if (!formData.telefone_cliente || !formData.destinatario || !formData.produto || !formData.dia_entrega || !formData.horario) {
@@ -1064,8 +1029,6 @@ const FormManager = {
         this.currentStep = 1;
         this.showStep(1);
         this.updateProgress();
-
-        console.log('🔄 Formulário resetado');
     },
 
     /**

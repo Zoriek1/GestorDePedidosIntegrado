@@ -226,21 +226,68 @@ const Modal = {
 
         overlay.appendChild(content);
 
-        // Fechar ao clicar no overlay
+        // Prevenir drag do modal
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+        
+        content.addEventListener('mousedown', (e) => {
+            // Só permitir drag no header
+            const header = content.querySelector('h2, .modal-header');
+            if (header && header.contains(e.target)) {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = content.getBoundingClientRect();
+                startLeft = rect.left;
+                startTop = rect.top;
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                // Não permitir drag - manter modal centralizado
+                isDragging = false;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // Prevenir fechamento acidental - só fechar se clicar diretamente no overlay (não no content)
         overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                this.close(overlay);
-                if (onClose) onClose();
+            if (e.target === overlay && !isDragging) {
+                // Não fechar automaticamente - requer clique no botão de fechar
+                // this.close(overlay);
+                // if (onClose) onClose();
             }
         });
 
         // Botões de fechar
         content.querySelectorAll('[data-modal-close]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 this.close(overlay);
                 if (onClose) onClose();
             });
         });
+
+        // Prevenir fechamento com ESC apenas se não houver formulário ativo
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                const activeElement = document.activeElement;
+                // Não fechar se estiver digitando em um input
+                if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'SELECT')) {
+                    return;
+                }
+                this.close(overlay);
+                if (onClose) onClose();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
 
         this.show(overlay);
 

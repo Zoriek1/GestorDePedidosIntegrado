@@ -92,7 +92,7 @@ const PedidoCard = {
 
                 <p class="text-sm break-words">
                     <i class="fas fa-flower text-gray-400 w-5 inline-block"></i>
-                    <span class="break-words">${Utils.escapeHtml(Utils.truncate(pedido.produto, 60))}</span>
+                    <strong>Produto:</strong> <span class="break-words">${Utils.escapeHtml(Utils.truncate(pedido.produto, 60))}</span>
                 </p>
 
                 ${pedido.tipo_pedido ? `
@@ -104,12 +104,6 @@ const PedidoCard = {
 
                 ${pedido.tipo_pedido === 'Entrega' && pedido.endereco ? `
                     <div class="entrega-section bg-gray-50 rounded-lg p-3 mt-2 border border-gray-200">
-                        <!-- Header -->
-                        <div class="flex items-center gap-2 mb-2">
-                            <i class="fas fa-truck text-gray-500"></i>
-                            <h4 class="text-sm font-semibold text-gray-700">Entrega</h4>
-                        </div>
-                        
                         <!-- Endereço -->
                         <div class="entrega-item mb-2">
                             <div class="flex items-start gap-2">
@@ -339,7 +333,14 @@ const PedidoCard = {
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-gray-600 mb-1">Horário</label>
-                                            <input id="edit-horario" type="time" class="w-full border rounded px-3 py-2 text-sm" value="${Utils.escapeHtml(p.horario || '')}">
+                                            <div class="flex gap-2">
+                                                <input id="edit-horario" type="text" class="flex-1 border rounded px-3 py-2 text-sm" value="${Utils.escapeHtml(p.horario || '')}" placeholder="14:30 ou 14:00 - 16:00">
+                                                <button type="button" id="btn-modal-horario-edit"
+                                                    class="px-3 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition text-sm flex items-center justify-center"
+                                                    title="Escolher horário">
+                                                    <i class="fas fa-calendar-alt"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -513,6 +514,336 @@ const PedidoCard = {
                 });
             } else {
                 console.warn('[EDITAR] Botão btn-salvar-edicao não encontrado');
+            }
+
+            // Configurar modal de horário no editor
+            const campoHorarioEdit = overlay.querySelector('#edit-horario');
+            const btnModalHorarioEdit = overlay.querySelector('#btn-modal-horario-edit');
+            const campoDataEdit = overlay.querySelector('#edit-dia');
+            
+            const abrirModalHorarioEdit = async () => {
+                const valorAtual = campoHorarioEdit?.value || '';
+                const dataEntrega = campoDataEdit?.value || '';
+                
+                // Detectar se já é um intervalo
+                const isIntervalo = valorAtual.includes(' - ');
+                let horarioInicial = '';
+                let horarioFinal = '';
+                
+                if (isIntervalo) {
+                    const partes = valorAtual.split(' - ');
+                    horarioInicial = partes[0] || '';
+                    horarioFinal = partes[1] || '';
+                } else {
+                    horarioInicial = valorAtual;
+                }
+
+                // Converter data para formato YYYY-MM-DD se necessário
+                let dataFormatada = '';
+                if (dataEntrega) {
+                    // Campo de data já vem no formato YYYY-MM-DD
+                    dataFormatada = dataEntrega;
+                }
+
+                // Buscar pedidos da data se houver data selecionada
+                let horariosOcupados = {};
+                if (dataFormatada) {
+                    try {
+                        const response = await API.getPedidosPorData(dataFormatada);
+                        if (response.success && response.data && response.data.horarios) {
+                            horariosOcupados = response.data.horarios;
+                        }
+                    } catch (error) {
+                        console.warn('Erro ao buscar pedidos da data:', error);
+                    }
+                }
+
+                // Gerar lista de horários de 15 em 15 minutos (07:30 até 18:30)
+                const horarios = [];
+                horarios.push('07:30');
+                for (let h = 8; h <= 18; h++) {
+                    for (let m = 0; m < 60; m += 15) {
+                        const hora = String(h).padStart(2, '0');
+                        const minuto = String(m).padStart(2, '0');
+                        horarios.push(`${hora}:${minuto}`);
+                    }
+                }
+                horarios.push('18:30');
+
+                // Função para verificar se um horário está ocupado
+                const getContadorHorario = (horario) => {
+                    if (horariosOcupados[horario]) {
+                        return horariosOcupados[horario];
+                    }
+                    for (const [horarioKey, count] of Object.entries(horariosOcupados)) {
+                        if (horarioKey.includes(' - ')) {
+                            const [inicio, fim] = horarioKey.split(' - ');
+                            if (horarioEstaNoIntervalo(horario, inicio, fim)) {
+                                return count;
+                            }
+                        }
+                    }
+                    return 0;
+                };
+
+                // Função auxiliar para verificar se horário está no intervalo
+                const horarioEstaNoIntervalo = (horario, inicio, fim) => {
+                    if (!inicio || !fim) return false;
+                    const [h, m] = horario.split(':').map(Number);
+                    const [h1, m1] = inicio.split(':').map(Number);
+                    const [h2, m2] = fim.split(':').map(Number);
+                    const minutos = h * 60 + m;
+                    const minutosInicio = h1 * 60 + m1;
+                    const minutosFim = h2 * 60 + m2;
+                    return minutos >= minutosInicio && minutos <= minutosFim;
+                };
+
+                // Gerar HTML do calendário
+                const calendarioHtml = horarios.map(horario => {
+                    const contador = getContadorHorario(horario);
+                    const ocupado = contador > 0;
+                    const selecionado = horario === horarioInicial || 
+                                       (isIntervalo && horarioEstaNoIntervalo(horario, horarioInicial, horarioFinal));
+                    
+                    let classes = 'horario-btn relative w-12 h-12 rounded-full flex items-center justify-center text-xs font-semibold transition-all border-2';
+                    
+                    if (selecionado) {
+                        classes += ' bg-primary border-primary text-white';
+                    } else if (ocupado) {
+                        classes += ' bg-amber-50 border-amber-500 text-gray-800 hover:bg-amber-100';
+                    } else {
+                        classes += ' bg-white border-primary text-gray-800 hover:bg-green-50 hover:border-secondary';
+                    }
+                    
+                    return `
+                        <button 
+                            type="button"
+                            class="${classes}"
+                            data-horario="${horario}"
+                            title="${horario}${ocupado ? ` - ${contador} pedido(s)` : ''}"
+                        >
+                            ${horario}
+                            ${contador > 0 ? `
+                                <span class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold shadow-sm">
+                                    ${contador}
+                                </span>
+                            ` : ''}
+                        </button>
+                    `;
+                }).join('');
+
+                const modalHtml = `
+                    <div class="space-y-4">
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Escolher Horário</h3>
+                        ${dataEntrega ? `
+                            <p class="text-sm text-gray-600 mb-4">
+                                <i class="fas fa-calendar mr-1"></i>
+                                Data: ${new Date(dataEntrega + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </p>
+                        ` : `
+                            <p class="text-sm text-yellow-600 mb-4">
+                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                Selecione uma data de entrega primeiro para ver horários ocupados
+                            </p>
+                        `}
+                        
+                        <div class="space-y-3">
+                            <div class="flex gap-4 mb-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="tipo_horario_edit" value="especifico" ${!isIntervalo ? 'checked' : ''} 
+                                        class="mr-2 w-4 h-4 text-primary focus:ring-primary">
+                                    <span class="text-gray-700">Horário Específico</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="tipo_horario_edit" value="intervalo" ${isIntervalo ? 'checked' : ''}
+                                        class="mr-2 w-4 h-4 text-primary focus:ring-primary">
+                                    <span class="text-gray-700">Intervalo de Horário</span>
+                                </label>
+                            </div>
+
+                            <!-- Calendário de Horários -->
+                            <div class="border-2 border-gray-200 rounded-lg p-4 bg-gray-50 max-h-96 overflow-y-auto">
+                                <div class="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2" id="calendario-horarios-edit">
+                                    ${calendarioHtml}
+                                </div>
+                            </div>
+
+                            <!-- Preview da seleção -->
+                            <div id="preview-selecao-edit" class="bg-blue-50 p-3 rounded-lg hidden">
+                                <p class="text-sm font-medium text-gray-700">
+                                    <i class="fas fa-clock mr-1"></i>
+                                    <span id="preview-texto-edit"></span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-3 justify-end pt-4 border-t border-gray-200">
+                            <button 
+                                data-modal-close
+                                class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                id="btn-confirmar-horario-edit"
+                                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition"
+                            >
+                                Confirmar
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                const modalHorario = Modal.custom(modalHtml);
+
+                // Estado da seleção
+                let tipoSelecionado = isIntervalo ? 'intervalo' : 'especifico';
+                let horarioSelecionado = horarioInicial;
+                let horarioInicialSelecionado = horarioInicial;
+                let horarioFinalSelecionado = horarioFinal;
+
+                // Atualizar preview
+                const atualizarPreview = () => {
+                    const preview = modalHorario.querySelector('#preview-selecao-edit');
+                    const previewTexto = modalHorario.querySelector('#preview-texto-edit');
+                    
+                    if (tipoSelecionado === 'especifico' && horarioSelecionado) {
+                        preview.classList.remove('hidden');
+                        previewTexto.textContent = `Horário: ${horarioSelecionado}`;
+                    } else if (tipoSelecionado === 'intervalo' && horarioInicialSelecionado && horarioFinalSelecionado) {
+                        preview.classList.remove('hidden');
+                        previewTexto.textContent = `Intervalo: ${horarioInicialSelecionado} - ${horarioFinalSelecionado}`;
+                    } else {
+                        preview.classList.add('hidden');
+                    }
+                };
+
+                // Atualizar visual dos botões
+                const atualizarBotoes = () => {
+                    modalHorario.querySelectorAll('.horario-btn').forEach(btn => {
+                        const horario = btn.dataset.horario;
+                        let selecionado = false;
+                        let primeiroIntervalo = false;
+                        
+                        if (tipoSelecionado === 'especifico') {
+                            selecionado = horario === horarioSelecionado;
+                        } else {
+                            if (horarioInicialSelecionado && !horarioFinalSelecionado) {
+                                primeiroIntervalo = horario === horarioInicialSelecionado;
+                            } else if (horarioInicialSelecionado && horarioFinalSelecionado) {
+                                selecionado = horarioEstaNoIntervalo(horario, horarioInicialSelecionado, horarioFinalSelecionado);
+                            }
+                        }
+                        
+                        btn.classList.remove(
+                            'ring-4', 'ring-primary', 'ring-offset-2',
+                            'bg-gray-700', 'bg-black', 'bg-primary', 'bg-white', 'bg-gray-50',
+                            'bg-yellow-200', 'bg-yellow-50', 'bg-amber-50', 'bg-green-100', 'bg-green-50',
+                            'border-gray-800', 'border-yellow-600', 'border-amber-500', 'border-black', 'border-primary', 'border-secondary',
+                            'text-white', 'text-gray-800', 'text-gray-700',
+                            'hover:bg-yellow-300', 'hover:bg-yellow-100', 'hover:bg-amber-100', 'hover:bg-green-200', 'hover:bg-green-50', 'hover:bg-gray-100', 
+                            'hover:border-gray-900', 'hover:border-secondary'
+                        );
+                        
+                        if (primeiroIntervalo || selecionado) {
+                            btn.classList.add('bg-primary', 'border-primary', 'text-white');
+                        } else {
+                            const contador = getContadorHorario(horario);
+                            if (contador > 0) {
+                                btn.classList.add('bg-amber-50', 'border-amber-500', 'text-gray-800', 'hover:bg-amber-100');
+                            } else {
+                                btn.classList.add('bg-white', 'border-primary', 'text-gray-800', 'hover:bg-green-50', 'hover:border-secondary');
+                            }
+                        }
+                    });
+                };
+
+                // Toggle entre específico e intervalo
+                const radioButtons = modalHorario.querySelectorAll('input[name="tipo_horario_edit"]');
+                radioButtons.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        tipoSelecionado = e.target.value;
+                        if (tipoSelecionado === 'especifico') {
+                            horarioInicialSelecionado = '';
+                            horarioFinalSelecionado = '';
+                        }
+                        atualizarBotoes();
+                        atualizarPreview();
+                    });
+                });
+
+                // Event listeners nos botões de horário
+                modalHorario.querySelectorAll('.horario-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const horario = btn.dataset.horario;
+                        
+                        if (tipoSelecionado === 'especifico') {
+                            horarioSelecionado = horario;
+                            atualizarBotoes();
+                            atualizarPreview();
+                        } else {
+                            if (!horarioInicialSelecionado) {
+                                horarioInicialSelecionado = horario;
+                                horarioFinalSelecionado = '';
+                            } else if (!horarioFinalSelecionado) {
+                                const [h1, m1] = horarioInicialSelecionado.split(':').map(Number);
+                                const [h2, m2] = horario.split(':').map(Number);
+                                const minutosInicial = h1 * 60 + m1;
+                                const minutosFinal = h2 * 60 + m2;
+                                
+                                if (minutosFinal <= minutosInicial) {
+                                    Notification.warning('O horário final deve ser depois do horário inicial');
+                                    horarioInicialSelecionado = horario;
+                                    horarioFinalSelecionado = '';
+                                } else {
+                                    horarioFinalSelecionado = horario;
+                                }
+                            } else {
+                                horarioInicialSelecionado = horario;
+                                horarioFinalSelecionado = '';
+                            }
+                            atualizarBotoes();
+                            atualizarPreview();
+                        }
+                    });
+                });
+
+                // Botão confirmar
+                const btnConfirmar = modalHorario.querySelector('#btn-confirmar-horario-edit');
+                btnConfirmar.addEventListener('click', () => {
+                    if (tipoSelecionado === 'especifico') {
+                        if (!horarioSelecionado) {
+                            Notification.warning('Por favor, selecione um horário');
+                            return;
+                        }
+                        campoHorarioEdit.value = horarioSelecionado;
+                    } else {
+                        if (!horarioInicialSelecionado || !horarioFinalSelecionado) {
+                            Notification.warning('Por favor, selecione um intervalo completo (início e fim)');
+                            return;
+                        }
+                        campoHorarioEdit.value = `${horarioInicialSelecionado} - ${horarioFinalSelecionado}`;
+                    }
+
+                    Modal.close(modalHorario);
+                });
+
+                // Atualizar visual inicial dos botões e preview
+                atualizarBotoes();
+                atualizarPreview();
+            };
+
+            // Configurar listeners
+            if (btnModalHorarioEdit) {
+                btnModalHorarioEdit.addEventListener('click', () => {
+                    abrirModalHorarioEdit();
+                });
+            }
+
+            if (campoHorarioEdit) {
+                campoHorarioEdit.addEventListener('click', () => {
+                    abrirModalHorarioEdit();
+                });
             }
 
         } catch (error) {
@@ -1330,6 +1661,23 @@ const PedidoCard = {
         } finally {
             Utils.hideLoading();
         }
+    },
+
+    /**
+     * Verifica se um horário está dentro de um intervalo
+     */
+    horarioEstaNoIntervalo(horario, inicio, fim) {
+        if (!inicio || !fim) return false;
+        
+        const [h, m] = horario.split(':').map(Number);
+        const [h1, m1] = inicio.split(':').map(Number);
+        const [h2, m2] = fim.split(':').map(Number);
+        
+        const minutos = h * 60 + m;
+        const minutosInicio = h1 * 60 + m1;
+        const minutosFim = h2 * 60 + m2;
+        
+        return minutos >= minutosInicio && minutos <= minutosFim;
     }
 };
 

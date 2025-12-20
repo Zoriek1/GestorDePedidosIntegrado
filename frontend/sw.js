@@ -2,7 +2,7 @@
 // Gerencia cache e funcionalidade offline
 // Atualizado: Nova política de taxas de entrega (faixas específicas)
 
-const CACHE_NAME = 'plante-uma-flor-v14';
+const CACHE_NAME = 'plante-uma-flor-v16';
 const CACHE_URLS = [
     '/',
     '/index.html',

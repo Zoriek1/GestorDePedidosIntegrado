@@ -280,6 +280,70 @@ def listar_pedidos():
         }), 500
 
 
+@api_bp.route('/pedidos/por-data', methods=['GET'])
+def get_pedidos_por_data():
+    """Retorna contagem de pedidos por horário para uma data específica"""
+    try:
+        data_str = request.args.get('data')
+        
+        if not data_str:
+            return jsonify({
+                'error': 'Parâmetro "data" é obrigatório',
+                'formato_esperado': 'YYYY-MM-DD (ex: 2025-12-20)'
+            }), 400
+        
+        # Converter data para formato do banco (YYYY-MM-DD)
+        try:
+            # Aceita formatos: YYYY-MM-DD ou DD/MM/YYYY
+            if '/' in data_str:
+                # Formato DD/MM/YYYY -> YYYY-MM-DD
+                partes = data_str.split('/')
+                if len(partes) == 3:
+                    dia, mes, ano = partes
+                    data_entrega = datetime.strptime(f'{ano}-{mes}-{dia}', '%Y-%m-%d').date()
+                else:
+                    return jsonify({'error': 'Formato de data inválido'}), 400
+            else:
+                # Formato YYYY-MM-DD
+                data_entrega = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError as e:
+            return jsonify({
+                'error': 'Formato de data inválido',
+                'detalhes': str(e),
+                'formato_esperado': 'YYYY-MM-DD ou DD/MM/YYYY'
+            }), 400
+        
+        # Buscar todos os pedidos do dia (não ocultos)
+        pedidos = Pedido.query.filter(
+            Pedido.dia_entrega == data_entrega,
+            Pedido.oculto == False
+        ).all()
+        
+        # Agrupar por horário e contar
+        horarios = {}
+        for pedido in pedidos:
+            horario = pedido.horario.strip() if pedido.horario else ''
+            if horario:
+                if horario in horarios:
+                    horarios[horario] += 1
+                else:
+                    horarios[horario] = 1
+        
+        return jsonify({
+            'success': True,
+            'data': data_str,
+            'data_formatada': data_entrega.strftime('%Y-%m-%d'),
+            'total_pedidos': len(pedidos),
+            'horarios': horarios
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Erro interno do servidor',
+            'detalhes': str(e)
+        }), 500
+
+
 @api_bp.route('/pedidos/<int:pedido_id>', methods=['GET'])
 def obter_pedido(pedido_id):
     """Obtém pedido específico"""

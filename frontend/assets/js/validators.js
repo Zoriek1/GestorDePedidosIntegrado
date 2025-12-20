@@ -40,40 +40,45 @@ const Validators = {
 
     /**
      * Valida data
-     * Formato esperado: DD/MM/YYYY
+     * Aceita qualquer formato válido de data
      */
     date(value) {
         if (!value) {
             return { valid: false, message: 'Data é obrigatória' };
         }
 
-        // Verificar formato
-        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-            return {
-                valid: false,
-                message: 'Data deve estar no formato DD/MM/YYYY'
-            };
+        // Tentar criar objeto Date a partir do valor
+        let dateObj;
+        
+        // Tentar formato DD/MM/YYYY
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+            const [day, month, year] = value.split('/').map(Number);
+            dateObj = new Date(year, month - 1, day);
+            
+            // Verificar se a data é válida
+            if (dateObj.getDate() !== day || dateObj.getMonth() !== month - 1 || dateObj.getFullYear() !== year) {
+                return { valid: false, message: 'Data inválida' };
+            }
+        } 
+        // Tentar formato YYYY-MM-DD
+        else if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            dateObj = new Date(value + 'T00:00:00');
+            if (isNaN(dateObj.getTime())) {
+                return { valid: false, message: 'Data inválida' };
+            }
+        }
+        // Tentar parse direto
+        else {
+            dateObj = new Date(value);
+            if (isNaN(dateObj.getTime())) {
+                return { valid: false, message: 'Data inválida' };
+            }
         }
 
-        // Validar valores
-        const [day, month, year] = value.split('/').map(Number);
-
-        if (month < 1 || month > 12) {
-            return { valid: false, message: 'Mês inválido' };
-        }
-
-        if (day < 1 || day > 31) {
-            return { valid: false, message: 'Dia inválido' };
-        }
-
+        // Validar se a data está em um range razoável
+        const year = dateObj.getFullYear();
         if (year < 2000 || year > 2100) {
             return { valid: false, message: 'Ano inválido' };
-        }
-
-        // Verificar se a data é válida
-        const date = new Date(year, month - 1, day);
-        if (date.getDate() !== day || date.getMonth() !== month - 1 || date.getFullYear() !== year) {
-            return { valid: false, message: 'Data inválida' };
         }
 
         return { valid: true };
@@ -81,33 +86,92 @@ const Validators = {
 
     /**
      * Valida horário
-     * Formato esperado: HH:MM
+     * Formato esperado: HH:MM ou HH:MM - HH:MM (intervalo)
      */
     time(value) {
         if (!value) {
             return { valid: false, message: 'Horário é obrigatório' };
         }
 
-        // Verificar formato
-        if (!/^\d{2}:\d{2}$/.test(value)) {
-            return {
-                valid: false,
-                message: 'Horário deve estar no formato HH:MM'
-            };
+        // Verificar se é intervalo
+        const isIntervalo = value.includes(' - ');
+        
+        if (isIntervalo) {
+            // Validar formato de intervalo: HH:MM - HH:MM
+            const partes = value.split(' - ');
+            if (partes.length !== 2) {
+                return {
+                    valid: false,
+                    message: 'Intervalo deve estar no formato HH:MM - HH:MM'
+                };
+            }
+
+            const [horarioInicial, horarioFinal] = partes;
+            
+            // Validar horário inicial
+            if (!/^\d{2}:\d{2}$/.test(horarioInicial.trim())) {
+                return {
+                    valid: false,
+                    message: 'Horário inicial deve estar no formato HH:MM'
+                };
+            }
+
+            // Validar horário final
+            if (!/^\d{2}:\d{2}$/.test(horarioFinal.trim())) {
+                return {
+                    valid: false,
+                    message: 'Horário final deve estar no formato HH:MM'
+                };
+            }
+
+            // Validar valores do horário inicial
+            const [h1, m1] = horarioInicial.trim().split(':').map(Number);
+            if (h1 < 0 || h1 > 23) {
+                return { valid: false, message: 'Hora inicial inválida (00-23)' };
+            }
+            if (m1 < 0 || m1 > 59) {
+                return { valid: false, message: 'Minutos iniciais inválidos (00-59)' };
+            }
+
+            // Validar valores do horário final
+            const [h2, m2] = horarioFinal.trim().split(':').map(Number);
+            if (h2 < 0 || h2 > 23) {
+                return { valid: false, message: 'Hora final inválida (00-23)' };
+            }
+            if (m2 < 0 || m2 > 59) {
+                return { valid: false, message: 'Minutos finais inválidos (00-59)' };
+            }
+
+            // Validar que horário final é depois do inicial
+            const minutosInicial = h1 * 60 + m1;
+            const minutosFinal = h2 * 60 + m2;
+            if (minutosFinal <= minutosInicial) {
+                return { valid: false, message: 'O horário final deve ser depois do horário inicial' };
+            }
+
+            return { valid: true };
+        } else {
+            // Validar formato de horário específico: HH:MM
+            if (!/^\d{2}:\d{2}$/.test(value)) {
+                return {
+                    valid: false,
+                    message: 'Horário deve estar no formato HH:MM'
+                };
+            }
+
+            // Validar valores
+            const [hours, minutes] = value.split(':').map(Number);
+
+            if (hours < 0 || hours > 23) {
+                return { valid: false, message: 'Hora inválida (00-23)' };
+            }
+
+            if (minutes < 0 || minutes > 59) {
+                return { valid: false, message: 'Minutos inválidos (00-59)' };
+            }
+
+            return { valid: true };
         }
-
-        // Validar valores
-        const [hours, minutes] = value.split(':').map(Number);
-
-        if (hours < 0 || hours > 23) {
-            return { valid: false, message: 'Hora inválida (00-23)' };
-        }
-
-        if (minutes < 0 || minutes > 59) {
-            return { valid: false, message: 'Minutos inválidos (00-59)' };
-        }
-
-        return { valid: true };
     },
 
     /**

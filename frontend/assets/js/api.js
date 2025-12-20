@@ -238,6 +238,14 @@ const API = {
     },
 
     /**
+     * Obter pedidos por data (retorna contagem por horário)
+     * @param {string} data - Data no formato YYYY-MM-DD ou DD/MM/YYYY
+     */
+    async getPedidosPorData(data) {
+        return this.get(`/api/pedidos/por-data?data=${encodeURIComponent(data)}`);
+    },
+
+    /**
      * Atualizar status do pedido
      */
     async updatePedidoStatus(pedidoId, novoStatus) {

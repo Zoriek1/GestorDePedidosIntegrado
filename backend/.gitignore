@@ -53,3 +53,7 @@ htmlcov/
 *.bak
 *.backup
 
+
+# Google Cloud credentials
+google_credentials.json
+backend/config/google_credentials.json

@@ -13,6 +13,7 @@ SQLAlchemy==2.0.23
 python-dateutil==2.8.2
 python-dotenv==1.0.0
 requests==2.31.0
+pydantic==2.7.1
 
 # Geração de PDF (para futura integração)
 reportlab==4.0.7
@@ -25,4 +26,3 @@ schedule==1.2.0
 # Descomente para usar em produção
 # gunicorn==21.2.0
 # waitress==2.1.2
-

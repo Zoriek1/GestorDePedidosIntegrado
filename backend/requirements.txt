@@ -5,6 +5,7 @@
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-CORS==4.0.0
+Flask-Migrate==4.0.5
 
 # Banco de dados
 SQLAlchemy==2.0.23
@@ -25,4 +26,3 @@ schedule==1.2.0
 # Descomente para usar em produção
 # gunicorn==21.2.0
 # waitress==2.1.2
-

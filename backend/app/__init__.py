@@ -6,6 +6,7 @@ Sistema de Gerenciamento de Pedidos - Backend Flask API
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_migrate import Migrate
 import os
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from app.utils.logger import configure_logging, get_logger
 
 # Instância global do SQLAlchemy
 db = SQLAlchemy()
+migrate = Migrate()
 
 def create_app(config=None):
     """
@@ -87,6 +89,7 @@ def create_app(config=None):
     
     # Inicializar extensões
     db.init_app(app)
+    migrate.init_app(app, db)
     
     # Registrar Blueprints (apenas API REST)
     with app.app_context():

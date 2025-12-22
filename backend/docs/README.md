@@ -19,6 +19,7 @@ A documentação principal do projeto está no [README.md](../../README.md) na r
 Documentação adicional específica do backend pode ser adicionada nesta pasta conforme necessário:
 
 - Guias de migração do banco de dados
+- Fluxo de migrações (ver [MIGRATIONS.md](MIGRATIONS.md))
 - Documentação de serviços internos
 - Guias de configuração avançada
 - Documentação de APIs externas integradas
@@ -175,4 +176,3 @@ python restore.py caminho_do_backup.zip
 ## Desenvolvimento
 
 Para mais informações sobre desenvolvimento, veja a seção [Desenvolvimento](../../README.md#-desenvolvimento) no README principal.
-

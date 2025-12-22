@@ -9,6 +9,8 @@ from flask_cors import CORS
 import os
 from pathlib import Path
 
+from app.utils.logger import configure_logging, get_logger
+
 # Instância global do SQLAlchemy
 db = SQLAlchemy()
 
@@ -70,14 +72,18 @@ def create_app(config=None):
         }
     })
     
-    print(f"[SEGURANÇA] ✓ CORS restrito a: {len(allowed_origins)} origens permitidas")
-    
     # Carregar configurações
     if config:
         app.config.update(config)
     else:
         from app.config import Config
         app.config.from_object(Config)
+
+    # Inicializar logging
+    configure_logging(app.config.get("DEBUG"))
+    logger = get_logger(__name__)
+
+    logger.info("✓ CORS restrito a: %s origens permitidas", len(allowed_origins))
     
     # Inicializar extensões
     db.init_app(app)
@@ -93,8 +99,8 @@ def create_app(config=None):
         # Criar tabelas automaticamente
         db.create_all()
         
-        print("[OK] Banco de dados inicializado")
-        print(f"[OK] Tabelas criadas: {db.metadata.tables.keys()}")
+        logger.info("Banco de dados inicializado")
+        logger.info("Tabelas criadas: %s", db.metadata.tables.keys())
     
     # Configurar tratamento de erros
     @app.errorhandler(404)
@@ -107,7 +113,7 @@ def create_app(config=None):
     @app.errorhandler(500)
     def internal_error(e):
         """Tratamento de erro 500"""
-        print(f"[ERRO 500] {e}")
+        logger.error("ERRO 500: %s", e)
         return {"error": "Erro interno do servidor"}, 500
     
     # Servir arquivos estáticos do frontend PWA
@@ -131,7 +137,7 @@ def create_app(config=None):
             # Caso contrário, serve o index.html (SPA routing)
             return send_from_directory(str(frontend_dir), 'index.html')
         except Exception as e:
-            print(f"[ERRO] Erro ao servir arquivo '{path}': {e}")
+            logger.error("Erro ao servir arquivo '%s': %s", path, e)
             # Tentar servir o index.html como fallback
             try:
                 return send_from_directory(str(frontend_dir), 'index.html')
@@ -156,17 +162,16 @@ def create_app(config=None):
             enable_auth=False,  # Autenticação global desativada - apenas rotas específicas
             enable_rate_limit=ENABLE_RATE_LIMIT
         )
-        print("[SEGURANÇA] ✓ Autenticação seletiva ATIVADA")
-        print("[SEGURANÇA]   Visualização livre - Apenas criar/deletar pedidos requerem autenticação")
-        print("[SEGURANÇA]   Usuário: admin")
+        logger.info("✓ Autenticação seletiva ATIVADA")
+        logger.info("  Visualização livre - Apenas criar/deletar pedidos requerem autenticação")
+        logger.info("  Usuário: admin")
         if ENABLE_RATE_LIMIT:
-            print("[SEGURANÇA] ✓ Rate Limiting ATIVADO (60/min, 1000/hora)")
+            logger.info("✓ Rate Limiting ATIVADO (60/min, 1000/hora)")
         if not ENABLE_DEBUG_ENDPOINTS:
-            print("[SEGURANÇA] ✓ Endpoints de Debug DESATIVADOS")
+            logger.info("✓ Endpoints de Debug DESATIVADOS")
     except ImportError:
-        print("[AVISO] Middleware de segurança não encontrado.")
+        logger.warning("Middleware de segurança não encontrado.")
     except Exception as e:
-        print(f"[AVISO] Erro ao configurar segurança: {e}")
+        logger.warning("Erro ao configurar segurança: %s", e)
     
     return app
-

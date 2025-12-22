@@ -6,11 +6,13 @@ Sistema de Gerenciamento de Pedidos - Backend Flask API
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_migrate import Migrate
 import os
 from pathlib import Path
 
 # Instância global do SQLAlchemy
 db = SQLAlchemy()
+migrate = Migrate()
 
 def create_app(config=None):
     """
@@ -81,20 +83,24 @@ def create_app(config=None):
     
     # Inicializar extensões
     db.init_app(app)
+    migrate.init_app(app, db)
     
     # Registrar Blueprints (apenas API REST)
-    with app.app_context():
-        from app.routes.api import api_bp
-        from app.routes.clientes import clientes_bp
-        
-        app.register_blueprint(api_bp)
-        app.register_blueprint(clientes_bp)
-        
-        # Criar tabelas automaticamente
-        db.create_all()
-        
-        print("[OK] Banco de dados inicializado")
-        print(f"[OK] Tabelas criadas: {db.metadata.tables.keys()}")
+    from app.routes.api import api_bp
+    from app.routes.clientes import clientes_bp
+    
+    app.register_blueprint(api_bp)
+    app.register_blueprint(clientes_bp)
+
+    # Informar status do banco (sem criação automática)
+    db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+    if db_uri.startswith("sqlite:///"):
+        db_path = Path(db_uri.replace("sqlite:///", ""))
+        if db_path.exists():
+            print(f"[OK] Banco de dados encontrado: {db_path}")
+        else:
+            print(f"[AVISO] Banco de dados nao encontrado: {db_path}")
+            print("[AVISO] Execute as migracoes: flask db upgrade")
     
     # Configurar tratamento de erros
     @app.errorhandler(404)
@@ -169,4 +175,3 @@ def create_app(config=None):
         print(f"[AVISO] Erro ao configurar segurança: {e}")
     
     return app
-

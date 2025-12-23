@@ -38,18 +38,18 @@ if %errorlevel% equ 0 (
 
 echo.
 echo [3/6] Verificando certificados SSL...
-if exist "ssl\cert.pem" (
-    echo [OK] Certificado encontrado: ssl\cert.pem
+if exist "config\ssl\cert.pem" (
+    echo [OK] Certificado encontrado: config\ssl\cert.pem
 ) else (
     echo [AVISO] Certificado nao encontrado
-    echo    Execute: ssl\GERAR_CERTIFICADOS.bat
+    echo    Execute: scripts\ssl\GERAR_CERTIFICADOS.bat
 )
 
-if exist "ssl\key.pem" (
-    echo [OK] Chave privada encontrada: ssl\key.pem
+if exist "config\ssl\key.pem" (
+    echo [OK] Chave privada encontrada: config\ssl\key.pem
 ) else (
     echo [AVISO] Chave privada nao encontrada
-    echo    Execute: ssl\GERAR_CERTIFICADOS.bat
+    echo    Execute: scripts\ssl\GERAR_CERTIFICADOS.bat
 )
 
 echo.

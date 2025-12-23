@@ -187,22 +187,40 @@ const PainelManager = {
         try {
             if (Utils.isOnline()) {
                 const result = await API.getPedidos(this.filtros);
+                
+                // Log para debug
+                console.log('[DEBUG] Resultado da API:', {
+                    success: result.success,
+                    hasData: !!result.data,
+                    dataKeys: result.data ? Object.keys(result.data) : [],
+                    pedidosCount: result.data?.pedidos?.length ?? 'undefined'
+                });
 
-                if (result.success) {
-                    await DB.cachePedidos(result.data.pedidos);
-                    return result.data.pedidos;
+                if (result.success && result.data) {
+                    // Validar se pedidos existe e é array
+                    const pedidos = result.data.pedidos;
+                    
+                    if (Array.isArray(pedidos)) {
+                        await DB.cachePedidos(pedidos);
+                        return pedidos;
+                    } else {
+                        console.error('[ERRO] result.data.pedidos não é um array:', pedidos);
+                        // Fallback para cache
+                    }
+                } else {
+                    console.warn('⚠️ Falha na API, carregando do cache...');
                 }
-
-                console.warn('⚠️ Falha na API, carregando do cache...');
             }
 
             // fallback offline
             const cached = await DB.getCachedPedidos();
-            Notification.warning('Mostrando dados em cache (offline)');
-            return cached;
+            if (cached && cached.length > 0) {
+                Notification.warning('Mostrando dados em cache (offline)');
+            }
+            return cached || [];
         } catch (error) {
             console.error('Erro ao buscar pedidos:', error);
-            return await DB.getCachedPedidos();
+            return await DB.getCachedPedidos() || [];
         }
     },
 

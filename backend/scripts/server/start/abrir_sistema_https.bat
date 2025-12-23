@@ -15,13 +15,13 @@ echo ============================================
 echo.
 
 :: Verificar certificados
-if not exist "ssl\cert.pem" (
-    if not exist "ssl\localhost+2.pem" (
+if not exist "config\ssl\cert.pem" (
+    if not exist "config\ssl\localhost+2.pem" (
         echo [ERRO] Certificados nao encontrados!
         echo.
         echo Execute primeiro:
-        echo   1. ssl\INSTALAR_MKCERT_SIMPLES.bat
-        echo   2. ssl\GERAR_CERTIFICADOS_AUTO.bat
+        echo   1. scripts\ssl\INSTALAR_MKCERT_SIMPLES.bat
+        echo   2. scripts\ssl\GERAR_CERTIFICADOS_AUTO.bat
         echo.
         pause
         exit /b 1
@@ -30,7 +30,7 @@ if not exist "ssl\cert.pem" (
 
 :: Iniciar servidor invisível
 echo [1/2] Iniciando servidor HTTPS em background...
-start /min "" wscript.exe "UtilsScripts\iniciar_servidor_https_invisivel.vbs"
+start /min "" wscript.exe "scripts\server\start\iniciar_servidor_https_invisivel.vbs"
 
 :: Aguardar servidor iniciar
 echo [2/2] Aguardando servidor inicializar...
@@ -62,7 +62,7 @@ echo Acesse de outros dispositivos:
 echo   https://%IP%:5000
 echo.
 echo Para parar o servidor:
-echo   Execute: UtilsScripts\parar_servidor.bat
+echo   Execute: scripts\server\stop\parar_tudo_incluindo_vbs.bat
 echo.
 echo ============================================
 echo.

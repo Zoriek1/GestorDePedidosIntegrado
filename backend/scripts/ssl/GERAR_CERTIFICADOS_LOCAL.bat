@@ -53,12 +53,20 @@ echo Se nao, pressione Ctrl+C e edite este arquivo na linha 40.
 echo.
 pause
 
+:: Ir para pasta de certificados (config/ssl)
+cd /d "%~dp0\..\.."
+if not exist "config\ssl" (
+    mkdir "config\ssl"
+)
+cd /d "config\ssl"
+
 echo.
 echo [2/4] Instalando CA raiz local...
 echo (Pode pedir senha de administrador - isso e normal!)
 echo.
 
-:: Instalar CA raiz
+:: Instalar CA raiz (voltar para pasta ssl para usar mkcert.exe)
+cd /d "%~dp0"
 .\mkcert.exe -install
 
 if %errorlevel% neq 0 (
@@ -81,8 +89,13 @@ echo.
 echo [3/4] Gerando certificados SSL...
 echo.
 
-:: Gerar certificados
-.\mkcert.exe -cert-file cert.pem -key-file key.pem localhost 127.0.0.1 %IP% ::1
+:: Voltar para pasta de certificados e gerar
+cd /d "%~dp0\..\..\config\ssl"
+
+:: Gerar certificados (usar caminho completo do mkcert)
+cd /d "%~dp0"
+.\mkcert.exe -cert-file "..\..\config\ssl\cert.pem" -key-file "..\..\config\ssl\key.pem" localhost 127.0.0.1 %IP% ::1
+cd /d "%~dp0\..\..\config\ssl"
 
 if %errorlevel% neq 0 (
     echo.
@@ -116,7 +129,7 @@ echo ============================================
 echo   CERTIFICADOS PRONTOS!
 echo ============================================
 echo.
-echo Arquivos criados:
+echo Arquivos criados em config\ssl\:
 echo   - cert.pem (certificado publico)
 echo   - key.pem (chave privada)
 echo.

@@ -170,6 +170,12 @@ const DB = {
      */
     async cachePedidos(pedidos) {
         if (!this.db) await this.init();
+        
+        // Validar entrada
+        if (!Array.isArray(pedidos)) {
+            console.error('[DB] cachePedidos recebeu dados inválidos:', pedidos);
+            return Promise.reject(new Error('Pedidos deve ser um array'));
+        }
 
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['pedidosCache'], 'readwrite');
@@ -192,6 +198,7 @@ const DB = {
             };
 
             transaction.onerror = () => {
+                console.error('[DB] Erro ao cachear pedidos:', transaction.error);
                 reject(transaction.error);
             };
         });

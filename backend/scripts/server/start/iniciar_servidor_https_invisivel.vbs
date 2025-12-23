@@ -10,22 +10,31 @@ Dim objShell, scriptDir, backendDir, pythonCmd, strCommand
 ' Criar objeto Shell
 Set objShell = CreateObject("WScript.Shell")
 
-' Obter diretório do script (backend/UtilsScripts)
-scriptDir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+' Obter diretório do script (backend/scripts/server/start)
+Dim objFSO
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+scriptDir = objFSO.GetParentFolderName(WScript.ScriptFullName)
 
-' Obter diretório do backend (um nível acima)
-backendDir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(scriptDir)
+' Obter diretório do backend (3 níveis acima: start -> server -> scripts -> backend)
+' scriptDir = backend/scripts/server/start
+' Nível 1: backend/scripts/server
+' Nível 2: backend/scripts
+' Nível 3: backend
+Dim tempDir
+tempDir = objFSO.GetParentFolderName(scriptDir)  ' server
+tempDir = objFSO.GetParentFolderName(tempDir)     ' scripts
+backendDir = objFSO.GetParentFolderName(tempDir)  ' backend
 objShell.CurrentDirectory = backendDir
 
 ' Verificar se certificados existem
 Dim fso
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-If Not fso.FileExists(backendDir & "\ssl\cert.pem") Or Not fso.FileExists(backendDir & "\ssl\key.pem") Then
+If Not fso.FileExists(backendDir & "\config\ssl\cert.pem") Or Not fso.FileExists(backendDir & "\config\ssl\key.pem") Then
     MsgBox "Certificados SSL não encontrados!" & vbCrLf & vbCrLf & _
            "Execute primeiro:" & vbCrLf & _
-           "1. ssl\INSTALAR_MKCERT.bat" & vbCrLf & _
-           "2. ssl\GERAR_CERTIFICADOS.bat", _
+           "1. scripts\ssl\INSTALAR_MKCERT.bat" & vbCrLf & _
+           "2. scripts\ssl\GERAR_CERTIFICADOS.bat", _
            vbCritical, "Plante Uma Flor - Erro"
     WScript.Quit 1
 End If

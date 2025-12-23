@@ -2040,16 +2040,59 @@ def debug_testar_apis():
 def exportar_planilha():
     """Exporta vendas do mês atual para Google Sheets"""
     try:
+        import importlib.util
         import sys
-        import os
+        from pathlib import Path
         
-        # Adiciona o diretório de scripts ao path
-        scripts_path = os.path.join(os.path.dirname(__file__), '..', '..', 'scripts')
-        sys.path.insert(0, scripts_path)
+        # Obter caminho absoluto do script
+        backend_dir = Path(__file__).parent.parent.parent
+        script_path = backend_dir / 'scripts' / 'export' / 'exportar_vendas_sheets.py'
         
-        from exportar_vendas_sheets import exportar_vendas
+        # Verificar se arquivo existe
+        if not script_path.exists():
+            return jsonify({
+                'success': False,
+                'error': f'Script não encontrado: {script_path}',
+                'detalhes': 'Arquivo exportar_vendas_sheets.py não encontrado'
+            }), 500
         
-        resultado = exportar_vendas()
+        # Adicionar backend ao path (necessário para imports do app dentro do script)
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        
+        # Carregar módulo dinamicamente
+        spec = importlib.util.spec_from_file_location("exportar_vendas_sheets", str(script_path))
+        if spec is None or spec.loader is None:
+            return jsonify({
+                'success': False,
+                'error': 'Erro ao carregar módulo',
+                'detalhes': 'Não foi possível criar spec do módulo'
+            }), 500
+        
+        module = importlib.util.module_from_spec(spec)
+        
+        # Definir __file__ no módulo para que o script possa calcular caminhos corretamente
+        module.__file__ = str(script_path)
+        
+        # Executar o módulo
+        spec.loader.exec_module(module)
+        
+        # Se o CREDENTIALS_PATH foi calculado incorretamente, corrigir
+        expected_creds_path = backend_dir / 'config' / 'google_credentials.json'
+        if hasattr(module, 'CREDENTIALS_PATH'):
+            # Verificar se o caminho calculado existe, se não, usar o caminho esperado
+            from pathlib import Path as PathLib
+            if not PathLib(module.CREDENTIALS_PATH).exists() and PathLib(expected_creds_path).exists():
+                module.CREDENTIALS_PATH = str(expected_creds_path)
+        
+        # Chamar função exportar_vendas
+        if not hasattr(module, 'exportar_vendas'):
+            return jsonify({
+                'success': False,
+                'error': 'Função exportar_vendas não encontrada no módulo'
+            }), 500
+        
+        resultado = module.exportar_vendas()
         
         if resultado:
             return jsonify({

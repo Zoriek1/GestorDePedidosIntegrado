@@ -1224,7 +1224,7 @@ const PedidoCard = {
         }
         
         body {
-            font-family: Arial, sans-serif;
+            font-family: Helvetica, Arial, sans-serif;
             font-size: 10pt;
             line-height: 1.4;
             color: #333;
@@ -1271,6 +1271,7 @@ const PedidoCard = {
         .section {
             margin-bottom: 12px;
             page-break-inside: avoid;
+            text-align: center;
         }
         
         .section-title {
@@ -1281,12 +1282,13 @@ const PedidoCard = {
             font-size: 12pt;
             margin-bottom: 8px;
             color: #047857;
+            text-align: center;
         }
         
         .field {
             margin-bottom: 7px;
-            padding-left: 10px;
             line-height: 1.4;
+            text-align: center;
         }
         
         .field-label {
@@ -1295,12 +1297,14 @@ const PedidoCard = {
             display: inline-block;
             min-width: 140px;
             font-size: 10pt;
+            text-align: center;
         }
         
         .field-value {
             color: #1f2937;
             font-size: 10pt;
             line-height: 1.5;
+            text-align: center;
         }
         
         .field-value.highlight {
@@ -1321,6 +1325,7 @@ const PedidoCard = {
             overflow: hidden;
             color: #78350f;
             line-height: 1.4;
+            text-align: center;
         }
         
         .delivery-box {
@@ -1329,6 +1334,7 @@ const PedidoCard = {
             padding: 8px;
             border-radius: 6px;
             margin: 6px 0;
+            text-align: center;
         }
         
         .footer {
@@ -1353,6 +1359,32 @@ const PedidoCard = {
         .status-pronto_entrega, .status-pronto_retirada { background: #d1fae5; color: #065f46; }
         .status-em_rota { background: #dbeafe; color: #1e40af; }
         .status-concluido { background: #d1fae5; color: #166534; }
+        
+        .status-pagamento-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 15px;
+            font-weight: bold;
+            font-size: 10pt;
+            margin: 8px 0;
+            text-align: center;
+        }
+        
+        .status-pagamento-realizado { background: #10b981; color: white; }
+        .status-pagamento-50pago { background: #f59e0b; color: white; }
+        .status-pagamento-pendente { background: #ef4444; color: white; }
+        
+        .produto-destaque {
+            background: #f0fdf4;
+            border: 2px solid #047857;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 8px 0;
+            font-size: 16pt;
+            font-weight: bold;
+            text-align: center;
+            color: #047857;
+        }
         
         /* Otimizações para garantir 1 página */
         .compact .field {
@@ -1395,6 +1427,13 @@ const PedidoCard = {
         <div class="header">
             <h1>🌺 Plante Uma Flor</h1>
             <p>Sistema de Gestão de Pedidos</p>
+            ${pedido.status_pagamento ? `
+                <div style="margin: 12px 0;">
+                    <span class="status-pagamento-badge status-pagamento-${pedido.status_pagamento === 'PAGAMENTO REALIZADO' ? 'realizado' : pedido.status_pagamento === '50% PAGO' ? '50pago' : 'pendente'}">
+                        ${pedido.status_pagamento}
+                    </span>
+                </div>
+            ` : ''}
         </div>
 
         <!-- Número do Pedido -->
@@ -1441,12 +1480,11 @@ const PedidoCard = {
         <!-- Produto -->
         <div class="section">
             <div class="section-title">🌸 Produto</div>
-            <div class="field">
-                <span class="field-label" style="font-size: 9pt;">Produto:</span>
-                <div class="field-value" style="margin-top: 3px; white-space: pre-wrap; font-size: 9pt; font-weight: 500;">${pedido.produto}</div>
+            <div class="produto-destaque">
+                ${pedido.produto}
             </div>
             ${pedido.flores_cor ? `
-                <div class="field" style="background: #fef3c7; padding: 6px; border-radius: 4px; border: 1px solid #f59e0b; margin-top: 4px;">
+                <div class="field" style="background: #fef3c7; padding: 6px; border-radius: 4px; border: 1px solid #f59e0b; margin-top: 4px; text-align: center;">
                     <span class="field-label" style="color: #92400e; font-size: 9pt;">Flores e Cor:</span>
                     <div class="field-value" style="margin-top: 3px; white-space: pre-wrap; color: #78350f; font-weight: 500; font-size: 9pt;">${pedido.flores_cor}</div>
                 </div>
@@ -1490,7 +1528,7 @@ const PedidoCard = {
                             ${PedidoCard.formatarDistancia(pedido.distancia_km)}
                         </span>
                         ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? `
-                            <span style="margin-left: 12px; color: #059669; font-weight: bold; font-size: 9pt;">
+                            <span style="margin: 0 6px; color: #059669; font-weight: bold; font-size: 9pt;">
                                 | Taxa: R$ ${pedido.taxa_entrega.toFixed(2)}
                             </span>
                         ` : ''}

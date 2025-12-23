@@ -31,19 +31,29 @@ backend/
 │   ├── models/            # Modelos de dados (SQLAlchemy)
 │   ├── routes/            # Endpoints da API REST
 │   ├── services/          # Lógica de negócio
-│   └── utils/              # Utilitários
+│   └── utils/             # Utilitários
+├── data/                   # Dados do sistema
+│   └── database.db         # Banco de dados SQLite
 ├── config/                 # Arquivos de configuração
-│   └── taxa_entrega.json  # Configuração de taxas
-├── scripts/                # Scripts de manutenção
-│   ├── migrations/        # Scripts de migração do banco
-│   ├── tests/             # Scripts de teste
-│   └── backup.py          # Scripts de backup
-├── ssl/                    # Certificados SSL
-├── run/                    # Scripts de uso diário
-├── UtilsScripts/           # Scripts utilitários
+│   ├── google_credentials.json
+│   ├── taxa_entrega.json
+│   └── config_servidor.ini
+├── scripts/                # Scripts organizados por categoria
+│   ├── server/             # Scripts de servidor
+│   │   ├── start/          # Scripts de iniciar servidor
+│   │   ├── stop/           # Scripts de parar servidor
+│   │   └── utils/          # Scripts utilitários (diagnóstico, verificação)
+│   ├── ssl/                # Scripts de certificados SSL
+│   ├── backup/             # Scripts de backup e restauração
+│   ├── export/             # Scripts de exportação de dados
+│   ├── migrations/         # Scripts de migração do banco
+│   └── tests/              # Scripts de teste
+├── ssl/                    # Certificados SSL (apenas certificados)
 ├── backups/                # Backups do banco de dados
 ├── logs/                   # Logs do servidor
-└── main.py                 # Ponto de entrada
+├── docs/                   # Documentação
+├── main.py                 # Ponto de entrada
+└── requirements.txt        # Dependências Python
 ```
 
 ## Serviços Principais

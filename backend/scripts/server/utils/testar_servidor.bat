@@ -24,16 +24,16 @@ if exist "config_servidor.ini" (
 echo.
 
 echo [3/4] Verificando certificados SSL...
-if exist "ssl\cert.pem" (
-    echo [OK] cert.pem existe
+if exist "config\ssl\cert.pem" (
+    echo [OK] cert.pem existe em config\ssl\
 ) else (
-    echo [AVISO] cert.pem NAO encontrado
+    echo [AVISO] cert.pem NAO encontrado em config\ssl\
 )
 
-if exist "ssl\key.pem" (
-    echo [OK] key.pem existe
+if exist "config\ssl\key.pem" (
+    echo [OK] key.pem existe em config\ssl\
 ) else (
-    echo [AVISO] key.pem NAO encontrado
+    echo [AVISO] key.pem NAO encontrado em config\ssl\
 )
 echo.
 

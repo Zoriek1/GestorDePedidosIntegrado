@@ -102,6 +102,13 @@ echo   - Via IP em TODAS as interfaces de rede
 echo.
 pause
 
+:: Ir para pasta de certificados (config/ssl)
+cd /d "%~dp0\..\.."
+if not exist "config\ssl" (
+    mkdir "config\ssl"
+)
+cd /d "config\ssl"
+
 echo.
 echo [2/4] Instalando CA raiz local...
 echo (Pode pedir senha de administrador - isso e normal!)
@@ -149,13 +156,13 @@ echo [4/4] Verificando arquivos...
 echo.
 
 if exist "cert.pem" (
-    echo [OK] cert.pem criado
+    echo [OK] cert.pem criado em config\ssl\
 ) else (
     echo [ERRO] cert.pem NAO encontrado!
 )
 
 if exist "key.pem" (
-    echo [OK] key.pem criado
+    echo [OK] key.pem criado em config\ssl\
 ) else (
     echo [ERRO] key.pem NAO encontrado!
 )
@@ -165,7 +172,7 @@ echo ============================================
 echo   CERTIFICADOS PRONTOS!
 echo ============================================
 echo.
-echo Arquivos criados:
+echo Arquivos criados em config\ssl\:
 echo   - cert.pem (certificado publico)
 echo   - key.pem (chave privada)
 echo.

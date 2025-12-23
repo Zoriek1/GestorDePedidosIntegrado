@@ -29,7 +29,32 @@ from app import create_app, db
 from app.models.pedido import Pedido
 
 # Configurações
-CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'google_credentials.json')
+# Calcular caminho do arquivo de credenciais
+# Quando executado via importlib, __file__ pode não estar definido corretamente
+try:
+    # Tentar usar __file__ (funciona quando executado diretamente)
+    script_file = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_file)
+    # Volta de scripts/export para backend
+    backend_dir = os.path.dirname(os.path.dirname(script_dir))
+except (NameError, AttributeError):
+    # Se __file__ não estiver definido (importlib), procurar backend no sys.path
+    backend_dir = None
+    for path in sys.path:
+        path_abs = os.path.abspath(path)
+        if os.path.exists(os.path.join(path_abs, 'app', '__init__.py')):
+            backend_dir = path_abs
+            break
+    if not backend_dir:
+        # Fallback: usar caminho relativo ao script atual
+        # Assumir que estamos em scripts/export, então backend está 2 níveis acima
+        try:
+            current_dir = os.path.abspath(os.path.dirname(sys.modules[__name__].__file__))
+        except:
+            current_dir = os.path.abspath('.')
+        backend_dir = os.path.dirname(os.path.dirname(current_dir))
+
+CREDENTIALS_PATH = os.path.join(backend_dir, 'config', 'google_credentials.json')
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'

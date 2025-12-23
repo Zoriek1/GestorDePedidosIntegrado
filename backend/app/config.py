@@ -15,8 +15,11 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'plante-uma-flor-pwa-secret-key-2024'
     
     # Banco de dados SQLite
-    DATABASE_PATH = BASE_DIR / 'database.db'
-    SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH}'
+    DATABASE_PATH = BASE_DIR / 'data' / 'database.db'
+    # Garantir que o diretório existe
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Formatar caminho para SQLite (Windows precisa de barras normais ou r'')
+    SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH.as_posix()}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Configurações gerais

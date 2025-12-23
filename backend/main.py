@@ -37,7 +37,7 @@ def get_local_ip():
 
 def get_hostname():
     """Lê o hostname configurado do arquivo config_servidor.ini"""
-    config_file = Path(__file__).parent / 'config_servidor.ini'
+    config_file = Path(__file__).parent / 'config' / 'config_servidor.ini'
     
     if not config_file.exists():
         return "Gestor-pedidos.local"  # Padrão
@@ -52,7 +52,7 @@ def get_hostname():
 
 def check_ssl_certificates():
     """Verifica se os certificados SSL existem"""
-    ssl_dir = Path(__file__).parent / 'ssl'
+    ssl_dir = Path(__file__).parent / 'config' / 'ssl'
     cert_file = ssl_dir / 'cert.pem'
     key_file = ssl_dir / 'key.pem'
     
@@ -122,7 +122,7 @@ def main():
             print("\n[HTTPS] Modo HTTPS ativado!")
         else:
             print("\n[AVISO] Modo HTTPS solicitado mas certificados nao encontrados!")
-            print("   Execute: ssl/GERAR_CERTIFICADOS.bat")
+            print("   Execute: scripts/ssl/GERAR_CERTIFICADOS.bat")
             print("   Iniciando em HTTP...\n")
     
     # Informações de inicialização
@@ -153,7 +153,7 @@ def main():
     else:
         print("\n[AVISO] Modo HTTP: PWA so instala em localhost")
         print("   Para instalar em outros dispositivos, use HTTPS:")
-        print("   1. Execute: ssl/GERAR_CERTIFICADOS.bat")
+        print("   1. Execute: scripts/ssl/GERAR_CERTIFICADOS.bat")
         print("   2. Inicie com: iniciar_servidor_https.bat")
     
     # Configurar opções de execução

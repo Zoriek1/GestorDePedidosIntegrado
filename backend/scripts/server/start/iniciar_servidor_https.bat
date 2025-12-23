@@ -16,12 +16,12 @@ echo.
 cd /d "%~dp0\.."
 
 :: Verificar se os certificados existem
-if not exist "ssl\cert.pem" (
+if not exist "config\ssl\cert.pem" (
     echo [ERRO] Certificados SSL nao encontrados!
     echo.
     echo Primeiro, gere os certificados:
-    echo   1. Abra: ssl\INSTALAR_MKCERT.bat
-    echo   2. Depois: ssl\GERAR_CERTIFICADOS.bat
+    echo   1. Abra: scripts\ssl\INSTALAR_MKCERT.bat
+    echo   2. Depois: scripts\ssl\GERAR_CERTIFICADOS.bat
     echo   3. Execute este arquivo novamente
     echo.
     pause

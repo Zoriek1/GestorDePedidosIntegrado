@@ -95,12 +95,20 @@ echo   - Via IP em TODAS as interfaces de rede
 echo.
 pause
 
+:: Ir para pasta de certificados (config/ssl)
+cd /d "%~dp0\..\.."
+if not exist "config\ssl" (
+    mkdir "config\ssl"
+)
+cd /d "config\ssl"
+
 echo.
 echo [2/4] Instalando CA raiz local...
 echo (Pode pedir senha de administrador - isso e normal!)
 echo.
 
 :: Instalar CA raiz
+cd /d "%~dp0"
 %MKCERT_CMD% -install
 
 if %errorlevel% neq 0 (
@@ -123,8 +131,13 @@ echo.
 echo [3/4] Gerando certificados SSL multi-IP + hostname...
 echo.
 
+:: Voltar para pasta de certificados e gerar
+cd /d "%~dp0\..\..\config\ssl"
+
 :: Gerar certificados com hostname + todos os IPs
-%MKCERT_CMD% -cert-file cert.pem -key-file key.pem %HOSTNAME% %IP_LIST%
+cd /d "%~dp0"
+%MKCERT_CMD% -cert-file "..\..\config\ssl\cert.pem" -key-file "..\..\config\ssl\key.pem" %HOSTNAME% %IP_LIST%
+cd /d "%~dp0\..\..\config\ssl"
 
 if %errorlevel% neq 0 (
     echo.
@@ -158,7 +171,7 @@ echo ============================================
 echo   CERTIFICADOS PRONTOS!
 echo ============================================
 echo.
-echo Arquivos criados:
+echo Arquivos criados em config\ssl\:
 echo   - cert.pem (certificado publico)
 echo   - key.pem (chave privada)
 echo.

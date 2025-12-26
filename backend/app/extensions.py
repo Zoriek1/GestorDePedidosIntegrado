@@ -42,3 +42,4 @@ def init_database(app):
         print("[OK] Banco de dados inicializado")
         print(f"[OK] Tabelas criadas: {db.metadata.tables.keys()}")
 
+

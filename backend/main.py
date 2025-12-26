@@ -82,10 +82,19 @@ def main():
         print("   Para parar: Execute parar_servidor.bat")
         print("   Ou tente acessar: https://localhost:5000\n")
         
-        resposta = input("Deseja tentar iniciar mesmo assim? (s/n): ")
-        if resposta.lower() != 's':
-            print("\n[INFO] Inicializacao cancelada.")
-            return
+        # Verificar se foi passado --force ou --yes para pular input
+        force_start = '--force' in sys.argv or '--yes' in sys.argv or os.environ.get('FORCE_START', '').lower() == 'true'
+        
+        if not force_start:
+            try:
+                resposta = input("Deseja tentar iniciar mesmo assim? (s/n): ")
+                if resposta.lower() != 's':
+                    print("\n[INFO] Inicializacao cancelada.")
+                    return
+            except (EOFError, KeyboardInterrupt):
+                print("\n[INFO] Input nao disponivel. Use --force para iniciar automaticamente.")
+                print("[INFO] Inicializacao cancelada.")
+                return
     
     # Determinar ambiente (development ou production)
     env = os.environ.get('FLASK_ENV', 'development')

@@ -40,3 +40,4 @@ def register_error_handlers(app):
         print(f"[ERRO 500] {e}")
         return {"error": "Erro interno do servidor"}, 500
 
+

@@ -963,11 +963,152 @@ def calcular_taxa_pedido(pedido_id):
         }), 500
 
 
+def agrupar_pedidos_por_horario(pedidos):
+    """
+    Agrupa pedidos por data de entrega e ordena por horário dentro de cada grupo.
+    Cria grupos de horários próximos (janela de 2 horas).
+    
+    Returns:
+        Lista de grupos, onde cada grupo é uma lista de pedidos ordenados por horário
+    """
+    from collections import defaultdict
+    from datetime import datetime, timedelta
+    
+    # Agrupar por data de entrega
+    pedidos_por_data = defaultdict(list)
+    for pedido in pedidos:
+        if pedido.dia_entrega:
+            pedidos_por_data[pedido.dia_entrega].append(pedido)
+    
+    grupos_finais = []
+    
+    # Para cada data, ordenar por horário e criar grupos de horários próximos
+    for data_entrega in sorted(pedidos_por_data.keys()):
+        pedidos_do_dia = pedidos_por_data[data_entrega]
+        
+        # Ordenar por horário (mais cedo primeiro)
+        def parse_horario(horario_str):
+            try:
+                if ':' in horario_str:
+                    h, m = map(int, horario_str.split(':'))
+                    return h * 60 + m  # Converter para minutos desde meia-noite
+                return 0
+            except:
+                return 0
+        
+        pedidos_do_dia.sort(key=lambda p: parse_horario(p.horario or '00:00'))
+        
+        # Criar grupos de horários próximos (janela de 2 horas)
+        grupos_horario = []
+        grupo_atual = []
+        horario_base = None
+        
+        for pedido in pedidos_do_dia:
+            horario_minutos = parse_horario(pedido.horario or '00:00')
+            
+            if horario_base is None:
+                horario_base = horario_minutos
+                grupo_atual = [pedido]
+            elif horario_minutos - horario_base <= 120:  # 2 horas em minutos
+                grupo_atual.append(pedido)
+            else:
+                # Novo grupo
+                if grupo_atual:
+                    grupos_horario.append(grupo_atual)
+                horario_base = horario_minutos
+                grupo_atual = [pedido]
+        
+        # Adicionar último grupo
+        if grupo_atual:
+            grupos_horario.append(grupo_atual)
+        
+        grupos_finais.extend(grupos_horario)
+    
+    return grupos_finais
+
+
+def mapear_waypoints_para_pedidos(waypoints_otimizados, pedidos_com_coords):
+    """
+    Mapeia waypoints otimizados de volta para pedidos com validação rigorosa.
+    Evita duplicatas e usa tolerância precisa.
+    
+    Returns:
+        Lista de IDs de pedidos na ordem correta
+    """
+    import math
+    
+    sequencia_pedidos = []
+    pedidos_disponiveis = pedidos_com_coords.copy()
+    pedidos_mapeados = set()  # Para evitar duplicatas
+    
+    # Criar mapeamento inicial de coordenadas para pedidos
+    coords_para_pedido = {}
+    for pedido in pedidos_com_coords:
+        if pedido.coords_lat and pedido.coords_lon:
+            coords_para_pedido[(pedido.coords_lat, pedido.coords_lon)] = pedido
+    
+    # Tolerância de distância (em graus) - aproximadamente 11 metros
+    TOLERANCIA_DISTANCIA = 0.0001
+    
+    for waypoint in waypoints_otimizados:
+        if not pedidos_disponiveis:
+            break
+        
+        pedido_encontrado = None
+        menor_dist = float('inf')
+        indice_encontrado = -1
+        
+        # Tentar match exato primeiro
+        coords_waypoint = (round(waypoint[0], 6), round(waypoint[1], 6))
+        if coords_waypoint in coords_para_pedido:
+            pedido_exato = coords_para_pedido[coords_waypoint]
+            if pedido_exato.id not in pedidos_mapeados:
+                pedido_encontrado = pedido_exato
+                # Encontrar índice na lista disponível
+                for i, p in enumerate(pedidos_disponiveis):
+                    if p.id == pedido_exato.id:
+                        indice_encontrado = i
+                        break
+        
+        # Se não encontrou match exato, buscar por proximidade
+        if not pedido_encontrado:
+            for i, pedido in enumerate(pedidos_disponiveis):
+                if pedido.id in pedidos_mapeados:
+                    continue  # Já mapeado
+                    
+                if pedido.coords_lat and pedido.coords_lon:
+                    # Calcular distância usando fórmula de Haversine aproximada
+                    lat_diff = pedido.coords_lat - waypoint[0]
+                    lon_diff = pedido.coords_lon - waypoint[1]
+                    dist = math.sqrt(lat_diff**2 + lon_diff**2)
+                    
+                    if dist < menor_dist and dist <= TOLERANCIA_DISTANCIA:
+                        menor_dist = dist
+                        pedido_encontrado = pedido
+                        indice_encontrado = i
+        
+        # Adicionar pedido encontrado à sequência
+        if pedido_encontrado and pedido_encontrado.id not in pedidos_mapeados:
+            sequencia_pedidos.append(pedido_encontrado.id)
+            pedidos_mapeados.add(pedido_encontrado.id)
+            if indice_encontrado >= 0:
+                pedidos_disponiveis.pop(indice_encontrado)
+    
+    # Adicionar pedidos restantes que não foram mapeados (não devem ter coordenadas válidas)
+    for pedido in pedidos_disponiveis:
+        if pedido.id not in pedidos_mapeados:
+            sequencia_pedidos.append(pedido.id)
+            pedidos_mapeados.add(pedido.id)
+    
+    return sequencia_pedidos
+
+
 @api_bp.route('/pedidos/rota-otimizada', methods=['POST'])
 def calcular_rota_otimizada():
-    """Calcula rota otimizada para múltiplos pedidos"""
+    """Calcula rota otimizada para múltiplos pedidos considerando horário de agendamento"""
     try:
         import os
+        import math
         from app.services.distancia import distancia_service
         from app.services.graphhopper import graphhopper_service
         from app.models import RotaOtimizada
@@ -1008,12 +1149,10 @@ def calcular_rota_otimizada():
         origem_gh = (origem[1], origem[0])
         
         # Coletar waypoints dos pedidos (apenas os que têm coordenadas)
-        waypoints = []
         pedidos_com_coords = []
         
         for pedido in pedidos:
             if pedido.coords_lat and pedido.coords_lon:
-                waypoints.append((pedido.coords_lat, pedido.coords_lon))
                 pedidos_com_coords.append(pedido)
             else:
                 # Tentar geocodificar se não tiver coordenadas (usando apenas campos separados)
@@ -1030,99 +1169,155 @@ def calcular_rota_otimizada():
                 if resultado and 'error' not in resultado and 'coords_destino_lat' in resultado:
                     lat = resultado['coords_destino_lat']
                     lon = resultado['coords_destino_lon']
-                    waypoints.append((lat, lon))
                     pedido.coords_lat = lat
                     pedido.coords_lon = lon
                     pedidos_com_coords.append(pedido)
                 elif resultado and 'error' in resultado:
                     print(f"[AVISO] Pedido {pedido.id} não pôde ser geocodificado: {resultado['error']}")
         
-        if len(waypoints) < 2:
+        if len(pedidos_com_coords) < 2:
             return jsonify({
                 'error': 'É necessário pelo menos 2 pedidos com coordenadas válidas',
-                'waypoints_encontrados': len(waypoints)
+                'waypoints_encontrados': len(pedidos_com_coords)
             }), 400
         
-        # Calcular rota otimizada
-        resultado_rota = graphhopper_service.calcular_rota_otimizada(
-            origem_gh, waypoints, retornar_origem=True
-        )
+        # NOVA LÓGICA: Agrupar pedidos por horário antes de otimizar
+        grupos_horario = agrupar_pedidos_por_horario(pedidos_com_coords)
         
-        if not resultado_rota:
-            # Verificar se é problema de API key
-            import os
-            graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
+        sequencia_pedidos_final = []
+        waypoints_finais = []
+        distancia_total = 0.0
+        duracao_total = 0.0
+        
+        # Para cada grupo de horário, otimizar geograficamente
+        for grupo in grupos_horario:
+            if len(grupo) == 0:
+                continue
             
-            mensagem_erro = 'Não foi possível calcular rota otimizada. '
-            if not graphhopper_key:
-                mensagem_erro += 'GRAPHHOPPER_API_KEY não está configurada. Configure no arquivo .env para habilitar rotas otimizadas.'
+            # Se grupo tem apenas 1 pedido, adicionar diretamente
+            if len(grupo) == 1:
+                pedido = grupo[0]
+                sequencia_pedidos_final.append(pedido.id)
+                waypoints_finais.append((pedido.coords_lat, pedido.coords_lon))
+                continue
+            
+            # Coletar waypoints do grupo
+            waypoints_grupo = [(p.coords_lat, p.coords_lon) for p in grupo]
+            
+            # Otimizar ordem geográfica dentro do grupo
+            resultado_grupo = graphhopper_service.calcular_rota_otimizada(
+                origem_gh, waypoints_grupo, retornar_origem=False
+            )
+            
+            if resultado_grupo:
+                waypoints_otimizados_grupo = resultado_grupo.get('sequencia_otimizada', waypoints_grupo)
+                distancia_total += resultado_grupo.get('distancia_total_km', 0)
+                duracao_total += resultado_grupo.get('duracao_total_min', 0)
             else:
-                mensagem_erro += 'A API do GraphHopper pode estar fora do ar ou a chave API pode ser inválida/expirada. Verifique em /api/debug/testar-apis'
+                # Se falhar otimização, usar ordem original por horário
+                waypoints_otimizados_grupo = waypoints_grupo
             
-            return jsonify({
-                'error': mensagem_erro,
-                'sugestao': 'Execute GET /api/debug/testar-apis para diagnosticar o problema',
-                'num_pedidos_tentados': len(pedidos_com_coords)
-            }), 500
-        
-        # Mapear waypoints otimizados de volta para pedidos
-        sequencia_pedidos = []
-        waypoints_otimizados = resultado_rota.get('sequencia_otimizada', [])
-        
-        # Criar mapeamento de coordenadas para pedidos (com tolerância para diferenças de precisão)
-        import math
-        
-        # Se não temos waypoints otimizados, usar ordem original
-        if not waypoints_otimizados:
-            sequencia_pedidos = [p.id for p in pedidos_com_coords]
-        else:
-            # Criar lista de pedidos disponíveis (não usados ainda)
-            pedidos_disponiveis = pedidos_com_coords.copy()
+            # Mapear waypoints otimizados de volta para pedidos do grupo
+            sequencia_grupo = mapear_waypoints_para_pedidos(waypoints_otimizados_grupo, grupo)
             
-            # Para cada waypoint otimizado, encontrar o pedido mais próximo
-            for waypoint in waypoints_otimizados:
-                if not pedidos_disponiveis:
-                    break
-                
-                pedido_encontrado = None
-                menor_dist = float('inf')
-                indice_encontrado = -1
-                
-                # Encontrar pedido mais próximo deste waypoint
-                for i, pedido in enumerate(pedidos_disponiveis):
-                    if pedido.coords_lat and pedido.coords_lon:
-                        # Calcular distância em graus (aproximação)
-                        dist = math.sqrt(
-                            (pedido.coords_lat - waypoint[0])**2 + 
-                            (pedido.coords_lon - waypoint[1])**2
-                        )
-                        if dist < menor_dist:
-                            menor_dist = dist
-                            pedido_encontrado = pedido
-                            indice_encontrado = i
-                
-                # Adicionar pedido encontrado à sequência e remover da lista disponível
-                if pedido_encontrado:
-                    sequencia_pedidos.append(pedido_encontrado.id)
-                    pedidos_disponiveis.pop(indice_encontrado)
+            # Adicionar à sequência final
+            sequencia_pedidos_final.extend(sequencia_grupo)
+            waypoints_finais.extend(waypoints_otimizados_grupo)
+        
+        # Validar sequência final (verificar duplicatas)
+        sequencia_validada = []
+        ids_vistos = set()
+        for pedido_id in sequencia_pedidos_final:
+            if pedido_id not in ids_vistos:
+                sequencia_validada.append(pedido_id)
+                ids_vistos.add(pedido_id)
+            else:
+                print(f"[AVISO] Pedido {pedido_id} duplicado na sequência, removendo duplicata")
+        
+        # Se a sequência validada tem menos pedidos, usar a original mas sem duplicatas
+        if len(sequencia_validada) < len(pedidos_com_coords):
+            print(f"[AVISO] Sequência validada perdeu pedidos. Original: {len(sequencia_pedidos_final)}, Validada: {len(sequencia_validada)}")
+            # Tentar recuperar pedidos faltantes
+            for pedido in pedidos_com_coords:
+                if pedido.id not in ids_vistos:
+                    sequencia_validada.append(pedido.id)
+                    ids_vistos.add(pedido.id)
+        
+        sequencia_pedidos = sequencia_validada
+        
+        # Verificar se a sequência está invertida comparando com ordem esperada por horário
+        def get_horario_pedido(pedido_id):
+            for p in pedidos_com_coords:
+                if p.id == pedido_id:
+                    try:
+                        if p.horario and ':' in p.horario:
+                            h, m = map(int, p.horario.split(':'))
+                            return h * 60 + m
+                    except:
+                        pass
+            return 9999  # Valor alto para pedidos sem horário válido
+        
+        # Verificar ordem temporal da sequência
+        if len(sequencia_pedidos) >= 2:
+            horarios_sequencia = [get_horario_pedido(pid) for pid in sequencia_pedidos]
             
-            # Adicionar pedidos restantes que não foram mapeados
-            for pedido in pedidos_disponiveis:
-                if pedido.id not in sequencia_pedidos:
-                    sequencia_pedidos.append(pedido.id)
+            # Verificar se a sequência está em ordem crescente de horário
+            # Se não estiver, pode estar invertida
+            ordem_crescente = all(horarios_sequencia[i] <= horarios_sequencia[i+1] 
+                                 for i in range(len(horarios_sequencia)-1))
+            
+            # Se a ordem está decrescente e não há valores inválidos, provavelmente está invertida
+            ordem_decrescente = all(horarios_sequencia[i] >= horarios_sequencia[i+1] 
+                                   for i in range(len(horarios_sequencia)-1))
+            
+            if ordem_decrescente and not ordem_crescente and all(h < 9999 for h in horarios_sequencia):
+                print(f"[INFO] Detectada sequência invertida (ordem decrescente de horários). Revertendo...")
+                sequencia_pedidos = sequencia_pedidos[::-1]
+                waypoints_finais = waypoints_finais[::-1]
+        
+        # Calcular distância e duração total se não foram calculadas por grupos
+        if distancia_total == 0 or duracao_total == 0:
+            # Calcular rota completa para obter distância e duração totais
+            # Converter waypoints para formato (lat, lon) do GraphHopper
+            waypoints_gh = [(wp[0], wp[1]) for wp in waypoints_finais]
+            resultado_rota_completa = graphhopper_service.calcular_rota_otimizada(
+                origem_gh, waypoints_gh, retornar_origem=True
+            )
+            
+            if resultado_rota_completa:
+                distancia_total = resultado_rota_completa.get('distancia_total_km', 0)
+                duracao_total = resultado_rota_completa.get('duracao_total_min', 0)
+                # Atualizar waypoints finais com a sequência otimizada completa
+                waypoints_otimizados_completa = resultado_rota_completa.get('sequencia_otimizada', waypoints_finais)
+                
+                # Re-mapear waypoints otimizados para pedidos mantendo a ordem temporal
+                # Mas respeitando a otimização geográfica dentro dos grupos
+                sequencia_pedidos_nova = mapear_waypoints_para_pedidos(waypoints_otimizados_completa, pedidos_com_coords)
+                
+                # Validar que não perdemos pedidos
+                if len(sequencia_pedidos_nova) == len(sequencia_pedidos):
+                    sequencia_pedidos = sequencia_pedidos_nova
+                    waypoints_finais = waypoints_otimizados_completa
+                else:
+                    print(f"[AVISO] Re-mapeamento perdeu pedidos. Mantendo sequência original baseada em horário.")
+            else:
+                # Fallback: usar estimativa baseada em distâncias individuais
+                distancia_total = sum(p.distancia_km or 0 for p in pedidos_com_coords)
+                duracao_total = distancia_total * 2  # Estimativa: 2 min/km
+                print(f"[AVISO] Não foi possível calcular rota completa. Usando estimativas.")
         
         # Salvar rota no banco
         rota = RotaOtimizada(
             nome=nome_rota,
-            distancia_total_km=resultado_rota['distancia_total_km'],
-            duracao_total_min=resultado_rota['duracao_total_min'],
+            distancia_total_km=round(distancia_total, 2),
+            duracao_total_min=round(duracao_total, 1),
             origem_lat=origem[1],
             origem_lon=origem[0],
             num_pedidos=len(sequencia_pedidos),
-            metodo_otimizacao=resultado_rota.get('metodo', 'nearest_neighbor')
+            metodo_otimizacao='hybrid_temporal_geographic'  # Novo método híbrido
         )
         rota.set_sequencia_pedidos(sequencia_pedidos)
-        rota.set_waypoints_coords(waypoints_otimizados)
+        rota.set_waypoints_coords(waypoints_finais)
         
         db.session.add(rota)
         
@@ -1183,6 +1378,7 @@ def calcular_rota_otimizada():
 def obter_rota_otimizada(rota_id):
     """Obtém detalhes de uma rota otimizada"""
     try:
+        import os
         from app.models import RotaOtimizada
         
         rota = RotaOtimizada.query.get(rota_id)
@@ -1208,9 +1404,54 @@ def obter_rota_otimizada(rota_id):
                     'coords_lon': pedido.coords_lon
                 })
         
+        # Gerar URL do GraphHopper Maps ou Google Maps
+        graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
+        graphhopper_maps_url = None
+        google_maps_url = None
+        
+        # Coletar coordenadas dos pedidos se waypoints não estiverem salvos
+        waypoints_coords = rota.get_waypoints_coords()
+        if not waypoints_coords or len(waypoints_coords) == 0:
+            # Usar coordenadas dos pedidos como fallback
+            waypoints_coords = []
+            for pedido_info in pedidos_info:
+                if pedido_info.get('coords_lat') and pedido_info.get('coords_lon'):
+                    waypoints_coords.append([pedido_info['coords_lat'], pedido_info['coords_lon']])
+        
+        # Gerar URL do GraphHopper Maps se tiver chave e waypoints
+        if graphhopper_key and waypoints_coords and len(waypoints_coords) > 0:
+            points_params = f"point={rota.origem_lat},{rota.origem_lon}"  # Origem
+            
+            for wp in waypoints_coords:
+                points_params += f"&point={wp[0]},{wp[1]}"
+            
+            # Sempre adicionar retorno à origem
+            points_params += f"&point={rota.origem_lat},{rota.origem_lon}"
+            
+            graphhopper_maps_url = f"https://graphhopper.com/maps/?{points_params}&profile=car&layer=Omniscale&key={graphhopper_key}"
+        
+        # Gerar URL do Google Maps como alternativa (sempre disponível)
+        if waypoints_coords and len(waypoints_coords) > 0:
+            # Construir URL do Google Maps com waypoints
+            origem_str = f"{rota.origem_lat},{rota.origem_lon}"
+            
+            # Se houver apenas um waypoint, usar formato simples
+            if len(waypoints_coords) == 1:
+                wp = waypoints_coords[0]
+                google_maps_url = f"https://www.google.com/maps/dir/{origem_str}/{wp[0]},{wp[1]}/{origem_str}"
+            else:
+                # Para múltiplos waypoints, usar formato com waypoints intermediários
+                waypoints_str = '/'.join([f"{wp[0]},{wp[1]}" for wp in waypoints_coords])
+                destino_str = f"{waypoints_coords[-1][0]},{waypoints_coords[-1][1]}"
+                google_maps_url = f"https://www.google.com/maps/dir/{origem_str}/{waypoints_str}/{destino_str}/{origem_str}"
+        
+        rota_dict = rota.to_dict()
+        rota_dict['graphhopper_maps_url'] = graphhopper_maps_url
+        rota_dict['google_maps_url'] = google_maps_url
+        
         return jsonify({
             'success': True,
-            'rota': rota.to_dict(),
+            'rota': rota_dict,
             'pedidos': pedidos_info
         })
         

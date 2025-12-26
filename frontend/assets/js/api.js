@@ -7,27 +7,74 @@ const API = {
     baseURL: window.location.origin,
 
     /**
+     * Parseia resposta HTTP de forma robusta
+     * @param {Response} response - Objeto Response do fetch
+     * @returns {Promise<{data: any, isJson: boolean, parseError: Error|null}>}
+     */
+    async parseResponse(response) {
+        // 204 No Content - não tem body
+        if (response.status === 204) {
+            return { data: null, isJson: false, parseError: null };
+        }
+
+        // Verificar Content-Type se disponível
+        const contentType = response.headers.get('content-type');
+        const isLikelyJson = contentType && contentType.includes('application/json');
+
+        try {
+            const text = await response.text();
+            
+            // Se não há texto, retornar null
+            if (!text || text.trim() === '') {
+                return { data: null, isJson: false, parseError: null };
+            }
+
+            // Tentar parsear como JSON se parece ser JSON
+            if (isLikelyJson || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(text);
+                    return { data: parsed, isJson: true, parseError: null };
+                } catch (e) {
+                    // Se falhou parsear como JSON mas tinha indicação de JSON, retornar erro
+                    if (isLikelyJson) {
+                        return { data: null, isJson: false, parseError: e };
+                    }
+                    // Caso contrário, retornar como texto
+                    return { data: text, isJson: false, parseError: null };
+                }
+            }
+
+            // Retornar como texto
+            return { data: text, isJson: false, parseError: null };
+        } catch (e) {
+            return { data: null, isJson: false, parseError: e };
+        }
+    },
+
+    /**
      * Verifica se uma rota requer autenticação
      * @param {string} endpoint - Endpoint da API
      * @param {string} method - Método HTTP
      * @returns {boolean} True se requer autenticação
      */
     requiresAuth(endpoint, method) {
+        // Remover query string do endpoint para verificação
+        const pathname = endpoint.split('?')[0];
+        
         // Apenas rotas críticas requerem autenticação
         const criticalRoutes = [
             { path: '/api/pedidos', method: 'POST' },  // Criar pedido
             { path: '/api/exportar-planilha', method: 'POST' },  // Exportar planilha
         ];
         
-        // DELETE /api/pedidos/<id> - verificar por padrão
-        if (method === 'DELETE' && endpoint.startsWith('/api/pedidos/') && 
-            endpoint.match(/^\/api\/pedidos\/\d+$/)) {
+        // DELETE /api/pedidos/<id> - verificar por padrão (aceita UUIDs e IDs não-numéricos)
+        if (method === 'DELETE' && pathname.match(/^\/api\/pedidos\/[^\/]+$/)) {
             return true;
         }
         
-        // Verificar outras rotas críticas
+        // Verificar outras rotas críticas usando startsWith para prefixos
         return criticalRoutes.some(route => 
-            endpoint === route.path && method === route.method
+            pathname.startsWith(route.path) && method === route.method
         );
     },
     
@@ -56,33 +103,55 @@ const API = {
             }
         }
         
-        // Adicionar header de autenticação se necessário
+        // Headers condicionais: só Content-Type quando há body JSON
         const headers = {
-            'Content-Type': 'application/json',
+            'Accept': 'application/json',
             ...options.headers
         };
         
+        // Só adicionar Content-Type se for POST/PUT e houver body
+        if ((method === 'POST' || method === 'PUT') && options.body) {
+            headers['Content-Type'] = 'application/json';
+        }
+        
+        // Adicionar header de autenticação se necessário
         if (needsAuth && typeof Auth !== 'undefined') {
             const authHeader = Auth.getAuthHeader();
             Object.assign(headers, authHeader);
         }
         
+        // Timeout com AbortController
+        const timeoutMs = options.timeoutMs ?? 10000;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        
         const config = {
+            method,
             headers,
-            ...options
+            ...options,
+            signal: controller.signal
         };
 
         try {
             const response = await fetch(url, config);
+            clearTimeout(timeoutId);
             
-            // Tentar parsear JSON, mas pode não ser JSON em caso de erro
-            let data;
-            try {
-                const text = await response.text();
-                data = text ? JSON.parse(text) : {};
-            } catch (e) {
-                console.warn(`[API] Erro ao parsear JSON:`, e);
-                data = { error: `Erro ${response.status} - Resposta não é JSON válido` };
+            // Usar parseResponse() unificada
+            const parseResult = await this.parseResponse(response);
+            
+            // Se houve erro de parse, tratar adequadamente
+            if (parseResult.parseError) {
+                console.warn(`[API] Erro ao parsear resposta:`, parseResult.parseError);
+                // Se response.ok, ainda pode ser sucesso (resposta não-JSON válida)
+                if (response.ok) {
+                    return { 
+                        success: true, 
+                        data: parseResult.data || null, 
+                        status: response.status 
+                    };
+                }
+                // Se não ok, tratar como erro
+                throw new Error(`Erro ${response.status} - Resposta não é JSON válido`);
             }
 
             if (!response.ok) {
@@ -97,34 +166,83 @@ const API = {
                     );
                     
                     if (creds) {
-                        // Tentar novamente com novas credenciais
-                        const authHeader = Auth.getAuthHeader();
-                        const retryConfig = {
-                            ...config,
-                            headers: {
-                                ...config.headers,
-                                ...authHeader
+                        // Criar novo AbortController para retry
+                        const retryController = new AbortController();
+                        const retryTimeoutId = setTimeout(() => retryController.abort(), timeoutMs);
+                        
+                        try {
+                            // Tentar novamente com novas credenciais
+                            const authHeader = Auth.getAuthHeader();
+                            const retryConfig = {
+                                ...config,
+                                signal: retryController.signal,
+                                headers: {
+                                    ...config.headers,
+                                    ...authHeader
+                                }
+                            };
+                            
+                            const retryResponse = await fetch(url, retryConfig);
+                            clearTimeout(retryTimeoutId);
+                            
+                            // Usar parseResponse() no retry também
+                            const retryParseResult = await this.parseResponse(retryResponse);
+                            
+                            if (retryParseResult.parseError) {
+                                console.warn(`[API] Erro ao parsear resposta do retry:`, retryParseResult.parseError);
+                                if (retryResponse.ok) {
+                                    return { 
+                                        success: true, 
+                                        data: retryParseResult.data || null, 
+                                        status: retryResponse.status 
+                                    };
+                                }
+                                throw new Error(`Erro ${retryResponse.status} - Resposta não é JSON válido`);
                             }
-                        };
-                        
-                        const retryResponse = await fetch(url, retryConfig);
-                        const retryData = await retryResponse.json();
-                        
-                        if (!retryResponse.ok) {
-                            throw new Error(retryData.error || `Erro ${retryResponse.status}`);
+                            
+                            if (!retryResponse.ok) {
+                                // Preservar erro do backend se for JSON
+                                const errorMsg = retryParseResult.isJson && retryParseResult.data 
+                                    ? (retryParseResult.data.error || retryParseResult.data.message || `Erro ${retryResponse.status}`)
+                                    : `Erro ${retryResponse.status}`;
+                                throw new Error(errorMsg);
+                            }
+                            
+                            // Sucesso no retry
+                            return { 
+                                success: true, 
+                                data: retryParseResult.data, 
+                                status: retryResponse.status 
+                            };
+                        } catch (retryError) {
+                            clearTimeout(retryTimeoutId);
+                            throw retryError;
                         }
-                        
-                        return { success: true, data: retryData, status: retryResponse.status };
                     }
                 }
                 
-                const errorMsg = data.error || data.message || `Erro ${response.status}`;
-                console.error(`[API] Erro na resposta:`, { status: response.status, error: errorMsg, data });
+                // Preservar erro do backend se for JSON
+                const errorMsg = parseResult.isJson && parseResult.data
+                    ? (parseResult.data.error || parseResult.data.message || `Erro ${response.status}`)
+                    : `Erro ${response.status}`;
+                
+                console.error(`[API] Erro na resposta:`, { 
+                    status: response.status, 
+                    error: errorMsg, 
+                    data: parseResult.data 
+                });
                 throw new Error(errorMsg);
             }
 
-            return { success: true, data, status: response.status };
+            // Sucesso: response.ok e sem erro de parse
+            return { 
+                success: true, 
+                data: parseResult.data, 
+                status: response.status 
+            };
         } catch (error) {
+            clearTimeout(timeoutId);
+            
             console.error('[API] Erro na requisição:', { 
                 endpoint, 
                 method, 
@@ -133,8 +251,17 @@ const API = {
                 stack: error.stack 
             });
             
+            // Tratar AbortError (timeout)
+            if (error.name === 'AbortError') {
+                return { 
+                    success: false, 
+                    error: 'Timeout na requisição', 
+                    timeout: true 
+                };
+            }
+            
             // Se está offline, tentar usar cache do IndexedDB
-            if (!Utils.isOnline()) {
+            if (typeof Utils !== 'undefined' && !Utils.isOnline()) {
                 return { success: false, offline: true, error: error.message };
             }
             
@@ -406,8 +533,10 @@ const API = {
 window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
     
-    if (!Utils.isOnline()) {
-        Notification.show('Sem conexão com a internet', 'warning');
+    if (typeof Utils !== 'undefined' && !Utils.isOnline()) {
+        if (typeof Notification !== 'undefined') {
+            Notification.show('Sem conexão com a internet', 'warning');
+        }
     }
 });
 

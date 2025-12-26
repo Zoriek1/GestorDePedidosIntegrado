@@ -43,7 +43,16 @@ def register_static_routes(app):
             # Se o arquivo existe, serve ele
             file_path = frontend_dir / path
             if file_path.exists() and file_path.is_file():
-                return send_from_directory(str(frontend_dir), path)
+                response = send_from_directory(str(frontend_dir), path)
+                
+                # Service Worker deve ser servido com no-cache para garantir updates
+                # Isso evita que o navegador cacheie o SW e impeça atualizações
+                if path == 'sw.js':
+                    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    response.headers['Pragma'] = 'no-cache'
+                    response.headers['Expires'] = '0'
+                
+                return response
             
             # Caso contrário, serve o index.html (SPA routing)
             return send_from_directory(str(frontend_dir), 'index.html')
@@ -55,4 +64,5 @@ def register_static_routes(app):
                 return send_from_directory(str(frontend_dir), 'index.html')
             except:
                 abort(404)
+
 

@@ -35,12 +35,41 @@
                     </h1>
                     <p class="text-gray-600 mt-1" id="rota-nome">Carregando...</p>
                 </div>
-                <button 
-                    onclick="window.history.back()"
-                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-                >
-                    <i class="fas fa-arrow-left mr-2"></i>Voltar
-                </button>
+                <div class="flex gap-2 flex-wrap">
+                    <button 
+                        id="btn-abrir-maps"
+                        onclick="abrirNoMaps()"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+                        style="display: none;"
+                        title="Abrir rota no navegador (Google Maps ou GraphHopper)"
+                    >
+                        <i class="fas fa-external-link-alt mr-2"></i>Abrir no Maps
+                    </button>
+                    <button 
+                        id="btn-navegar-maps"
+                        onclick="navegarNoMaps()"
+                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                        style="display: none;"
+                        title="Abrir no aplicativo Google Maps para navegação"
+                    >
+                        <i class="fas fa-directions mr-2"></i>Navegar
+                    </button>
+                    <button 
+                        id="btn-abrir-waze"
+                        onclick="abrirNoWaze()"
+                        class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2"
+                        style="display: none;"
+                        title="Abrir no aplicativo Waze para navegação"
+                    >
+                        <i class="fas fa-car mr-2"></i>Waze
+                    </button>
+                    <button 
+                        onclick="window.history.back()"
+                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                    >
+                        <i class="fas fa-arrow-left mr-2"></i>Voltar
+                    </button>
+                </div>
             </div>
             
             <!-- Estatísticas da Rota -->
@@ -100,14 +129,18 @@
     </div>
     
     <!-- Scripts -->
-    <script type="module">
-        // Obter ID da rota da URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const rotaId = urlParams.get('id') || window.location.hash.split('/').pop();
-        
+    <script>
+        // Variáveis globais
         let map = null;
         let markers = [];
         let polyline = null;
+        let mapsUrl = null;
+        let rotaData = null;
+        let pedidosData = [];
+        
+        // Obter ID da rota da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const rotaId = urlParams.get('id') || window.location.hash.split('/').pop();
         
         // Carregar dados da rota
         async function carregarRota() {
@@ -121,6 +154,39 @@
                 
                 const rota = result.rota;
                 const pedidos = result.pedidos || [];
+                
+                // Armazenar dados globalmente
+                rotaData = rota;
+                pedidosData = pedidos;
+                
+                // Debug: log dos dados recebidos
+                console.log('Dados da rota recebidos:', {
+                    graphhopper_maps_url: rota.graphhopper_maps_url,
+                    google_maps_url: rota.google_maps_url,
+                    waypoints_coords: rota.waypoints_coords,
+                    origem_lat: rota.origem_lat,
+                    origem_lon: rota.origem_lon
+                });
+                
+                // Armazenar URL do Maps (priorizar GraphHopper, usar Google Maps como fallback)
+                if (rota.graphhopper_maps_url) {
+                    mapsUrl = rota.graphhopper_maps_url;
+                } else if (rota.google_maps_url) {
+                    mapsUrl = rota.google_maps_url;
+                } else {
+                    // Gerar URL do Google Maps no frontend se não vier do backend
+                    mapsUrl = gerarGoogleMapsUrl(rota, pedidos);
+                }
+                
+                // Sempre mostrar botões se tiver coordenadas
+                const temCoordenadas = rota.origem_lat && rota.origem_lon && 
+                    (rota.waypoints_coords?.length > 0 || pedidos.some(p => p.coords_lat && p.coords_lon));
+                
+                if (temCoordenadas || mapsUrl) {
+                    mostrarBotoesNavegacao();
+                } else {
+                    console.warn('Nenhuma coordenada disponível para esta rota');
+                }
                 
                 // Atualizar header
                 document.getElementById('rota-nome').textContent = rota.nome || 'Rota Otimizada';
@@ -144,6 +210,164 @@
                 `;
             }
         }
+        
+        // Função para gerar URL do Google Maps no frontend
+        function gerarGoogleMapsUrl(rota, pedidos) {
+            if (!rota.origem_lat || !rota.origem_lon) return null;
+            
+            const origem = `${rota.origem_lat},${rota.origem_lon}`;
+            const waypoints = rota.waypoints_coords || [];
+            
+            // Se não tiver waypoints salvos, usar coordenadas dos pedidos
+            if (waypoints.length === 0) {
+                pedidos.forEach(pedido => {
+                    if (pedido.coords_lat && pedido.coords_lon) {
+                        waypoints.push([pedido.coords_lat, pedido.coords_lon]);
+                    }
+                });
+            }
+            
+            if (waypoints.length === 0) return null;
+            
+            // Construir URL do Google Maps
+            if (waypoints.length === 1) {
+                const destino = `${waypoints[0][0]},${waypoints[0][1]}`;
+                return `https://www.google.com/maps/dir/${origem}/${destino}/${origem}`;
+            } else {
+                const waypointsStr = waypoints.map(wp => `${wp[0]},${wp[1]}`).join('/');
+                const destino = `${waypoints[waypoints.length - 1][0]},${waypoints[waypoints.length - 1][1]}`;
+                return `https://www.google.com/maps/dir/${origem}/${waypointsStr}/${destino}/${origem}`;
+            }
+        }
+        
+        // Função para mostrar botões de navegação
+        function mostrarBotoesNavegacao() {
+            const btnMaps = document.getElementById('btn-abrir-maps');
+            const btnNavegar = document.getElementById('btn-navegar-maps');
+            const btnWaze = document.getElementById('btn-abrir-waze');
+            
+            // Verificar se tem coordenadas disponíveis
+            const temCoordenadas = rotaData && rotaData.origem_lat && rotaData.origem_lon && 
+                (rotaData.waypoints_coords?.length > 0 || pedidosData.some(p => p.coords_lat && p.coords_lon));
+            
+            // Sempre mostrar botão "Abrir no Maps" se tiver URL ou coordenadas
+            if ((mapsUrl || temCoordenadas) && btnMaps) {
+                btnMaps.style.display = 'flex';
+            }
+            
+            // Mostrar botões de navegação se tiver coordenadas
+            if (temCoordenadas) {
+                if (btnNavegar) btnNavegar.style.display = 'flex';
+                if (btnWaze) btnWaze.style.display = 'flex';
+            }
+            
+            console.log('Botões de navegação:', {
+                temCoordenadas,
+                mapsUrl: !!mapsUrl,
+                btnMaps: btnMaps?.style.display,
+                btnNavegar: btnNavegar?.style.display,
+                btnWaze: btnWaze?.style.display
+            });
+        }
+        
+        // Função para abrir no Maps (navegador) - GLOBAL
+        window.abrirNoMaps = function() {
+            console.log('abrirNoMaps chamado', { mapsUrl, rotaData });
+            
+            // Se não tiver URL, gerar um agora
+            if (!mapsUrl && rotaData) {
+                mapsUrl = gerarGoogleMapsUrl(rotaData, pedidosData);
+                console.log('URL gerado:', mapsUrl);
+            }
+            
+            if (mapsUrl) {
+                console.log('Abrindo URL:', mapsUrl);
+                window.open(mapsUrl, '_blank');
+            } else {
+                alert('URL do Maps não disponível para esta rota. Verifique se a rota tem coordenadas válidas.');
+                console.error('URL não disponível', { rotaData, pedidosData });
+            }
+        };
+        
+        // Função para navegar no Google Maps app - GLOBAL
+        window.navegarNoMaps = function() {
+            console.log('navegarNoMaps chamado', { rotaData });
+            
+            if (!rotaData) {
+                alert('Dados da rota não disponíveis.');
+                return;
+            }
+            
+            const origem = `${rotaData.origem_lat},${rotaData.origem_lon}`;
+            const waypoints = rotaData.waypoints_coords || [];
+            
+            // Se não tiver waypoints, usar coordenadas dos pedidos
+            let coordsParaNavegar = [];
+            if (waypoints.length === 0) {
+                pedidosData.forEach(pedido => {
+                    if (pedido.coords_lat && pedido.coords_lon) {
+                        coordsParaNavegar.push([pedido.coords_lat, pedido.coords_lon]);
+                    }
+                });
+            } else {
+                coordsParaNavegar = waypoints;
+            }
+            
+            if (coordsParaNavegar.length === 0) {
+                alert('Nenhuma coordenada disponível para navegação.');
+                return;
+            }
+            
+            // URL para Google Maps app (mobile)
+            const destino = `${coordsParaNavegar[0][0]},${coordsParaNavegar[0][1]}`;
+            let url = `https://www.google.com/maps/dir/?api=1&origin=${origem}&destination=${destino}&travelmode=driving`;
+            
+            // Adicionar waypoints se houver mais de um destino
+            if (coordsParaNavegar.length > 1) {
+                const waypointsStr = coordsParaNavegar.slice(1).map(wp => `${wp[0]},${wp[1]}`).join('|');
+                url += `&waypoints=${waypointsStr}`;
+            }
+            
+            console.log('Abrindo Google Maps:', url);
+            window.open(url, '_blank');
+        };
+        
+        // Função para abrir no Waze - GLOBAL
+        window.abrirNoWaze = function() {
+            console.log('abrirNoWaze chamado', { rotaData });
+            
+            if (!rotaData) {
+                alert('Dados da rota não disponíveis.');
+                return;
+            }
+            
+            const waypoints = rotaData.waypoints_coords || [];
+            
+            // Se não tiver waypoints, usar coordenadas dos pedidos
+            let coordsParaNavegar = [];
+            if (waypoints.length === 0) {
+                pedidosData.forEach(pedido => {
+                    if (pedido.coords_lat && pedido.coords_lon) {
+                        coordsParaNavegar.push([pedido.coords_lat, pedido.coords_lon]);
+                    }
+                });
+            } else {
+                coordsParaNavegar = waypoints;
+            }
+            
+            if (coordsParaNavegar.length === 0) {
+                alert('Nenhuma coordenada disponível para navegação.');
+                return;
+            }
+            
+            // Waze usa o primeiro destino para iniciar navegação
+            // Para múltiplos pontos, o usuário pode adicionar waypoints manualmente no app
+            const destino = coordsParaNavegar[0];
+            const url = `https://waze.com/ul?ll=${destino[0]},${destino[1]}&navigate=yes`;
+            
+            console.log('Abrindo Waze:', url);
+            window.open(url, '_blank');
+        };
         
         function inicializarMapa(rota, pedidos) {
             // Coordenadas centrais (origem)
@@ -171,7 +395,7 @@
             markers.push(origemMarker);
             
             // Adicionar marcadores dos pedidos
-            const waypoints = rota.waypoints || [];
+            const waypoints = rota.waypoints_coords || [];
             pedidos.forEach((pedido, index) => {
                 if (pedido.coords_lat && pedido.coords_lon) {
                     const coords = [pedido.coords_lat, pedido.coords_lon];

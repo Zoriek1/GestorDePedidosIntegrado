@@ -1204,6 +1204,10 @@ const PedidoCard = {
             const pedido = result.data.pedido;
             console.log(`[IMPRESSAO] Pedido carregado:`, { id: pedido.id, cliente: pedido.cliente, destinatario: pedido.destinatario });
 
+            // Construir caminho absoluto para a logo
+            const baseUrl = window.location.origin;
+            const logoPath = `${baseUrl}/assets/images/logo_print.png`;
+
             // HTML para impressão em A4
             const printHTML = `
 <!DOCTYPE html>
@@ -1212,6 +1216,24 @@ const PedidoCard = {
     <meta charset="UTF-8">
     <title>Pedido #${pedido.id} - Plante Uma Flor</title>
     <style>
+        :root {
+            --primary: #047857;
+            --primary-light: #10b981;
+            --text: #1f2937;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --bg: #ffffff;
+            --bg-light: #fafafa;
+            --bg-section: #f9fafb;
+            --radius: 12px;
+            --gap: 16px;
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 12px;
+            --spacing-lg: 16px;
+            --spacing-xl: 24px;
+        }
+        
         @page {
             size: A4;
             margin: 1cm;
@@ -1224,320 +1246,467 @@ const PedidoCard = {
         }
         
         body {
-            font-family: Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             font-size: 10pt;
-            line-height: 1.4;
-            color: #333;
+            line-height: 1.5;
+            color: var(--text);
+            background: var(--bg);
+            overflow: visible;
         }
         
         .container {
             max-width: 100%;
             margin: 0 auto;
-            max-height: 27cm;
-            overflow: hidden;
+            overflow: visible;
         }
         
-        .header {
+        /* Header Flex */
+        .header-flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: var(--spacing-lg);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .header-left {
+            flex: 0 0 auto;
+        }
+        
+        .header-center {
+            flex: 1;
             text-align: center;
-            border-bottom: 2px solid #047857;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
         }
         
-        .header h1 {
-            color: #047857;
-            font-size: 22pt;
-            margin-bottom: 4px;
-            font-weight: bold;
+        .header-right {
+            flex: 0 0 auto;
         }
         
-        .header p {
-            color: #6b7280;
-            font-size: 10pt;
-        }
-        
-        .pedido-numero {
-            background: #047857;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 6px;
+        .tipo-tag {
             display: inline-block;
-            font-weight: bold;
-            font-size: 12pt;
-            margin: 8px 0 6px 0;
-            letter-spacing: 0.5px;
-        }
-        
-        .section {
-            margin-bottom: 12px;
-            page-break-inside: avoid;
-            text-align: center;
-        }
-        
-        .section-title {
-            background: #f3f4f6;
-            padding: 6px 12px;
-            border-left: 4px solid #047857;
-            font-weight: bold;
-            font-size: 12pt;
-            margin-bottom: 8px;
-            color: #047857;
-            text-align: center;
-        }
-        
-        .field {
-            margin-bottom: 7px;
-            line-height: 1.4;
-            text-align: center;
-        }
-        
-        .field-label {
-            font-weight: bold;
-            color: #374151;
-            display: inline-block;
-            min-width: 140px;
-            font-size: 10pt;
-            text-align: center;
-        }
-        
-        .field-value {
-            color: #1f2937;
-            font-size: 10pt;
-            line-height: 1.5;
-            text-align: center;
-        }
-        
-        .field-value.highlight {
-            color: #047857;
-            font-weight: bold;
-            font-size: 12pt;
-        }
-        
-        .message-box {
-            background: #fef3c7;
-            border: 2px solid #f59e0b;
-            padding: 8px;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            background: var(--bg-section);
+            border: 1px solid var(--border);
             border-radius: 6px;
-            margin: 6px 0;
-            font-style: italic;
             font-size: 9pt;
-            max-height: 80px;
-            overflow: hidden;
-            color: #78350f;
-            line-height: 1.4;
-            text-align: center;
+            font-weight: 600;
+            color: var(--text-muted);
         }
         
-        .delivery-box {
-            background: #dbeafe;
-            border: 2px solid #3b82f6;
-            padding: 8px;
-            border-radius: 6px;
-            margin: 6px 0;
-            text-align: center;
+        .logo-title {
+            font-size: 20pt;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: var(--spacing-xs);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-sm);
         }
         
-        .footer {
-            margin-top: 10px;
-            padding-top: 6px;
-            border-top: 1px solid #e5e7eb;
+        .logo-img {
+            height: 45px;
+            width: auto;
+            vertical-align: middle;
+            display: inline-block;
+        }
+        
+        .logo-subtitle {
+            font-size: 9pt;
+            color: var(--text-muted);
+        }
+        
+        .pedido-badge {
+            display: inline-block;
+            padding: var(--spacing-sm) var(--spacing-md);
+            background: var(--primary);
+            color: white;
+            border-radius: var(--radius);
+            font-weight: 700;
+            font-size: 11pt;
+        }
+        
+        .status-payment-row {
             text-align: center;
-            color: #666;
-            font-size: 8pt;
+            margin-top: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .status-payment-badge {
+            display: inline-block;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 9pt;
+        }
+        
+        .status-payment-realizado {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-payment-50pago {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-payment-pendente {
+            background: #fee2e2;
+            color: #991b1b;
         }
         
         .status-badge {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 15px;
-            font-weight: bold;
-            font-size: 9pt;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 8pt;
+            margin-top: var(--spacing-sm);
         }
         
-        .status-agendado { background: #e5e7eb; color: #374151; }
+        .status-agendado { background: #f3f4f6; color: #374151; }
         .status-em_producao { background: #fef3c7; color: #92400e; }
         .status-pronto_entrega, .status-pronto_retirada { background: #d1fae5; color: #065f46; }
-        .status-em_rota { background: #dbeafe; color: #1e40af; }
+        .status-em_rota { background: #e0e7ff; color: #3730a3; }
         .status-concluido { background: #d1fae5; color: #166534; }
         
-        .status-pagamento-badge {
-            display: inline-block;
-            padding: 6px 16px;
-            border-radius: 15px;
-            font-weight: bold;
+        /* Card System */
+        .card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+            page-break-inside: avoid;
+            overflow: visible;
+        }
+        
+        .card-header {
+            background: var(--bg-section);
+            margin: calc(-1 * var(--spacing-lg)) calc(-1 * var(--spacing-lg)) var(--spacing-md);
+            padding: var(--spacing-sm) var(--spacing-lg);
+            border-radius: var(--radius) var(--radius) 0 0;
+            font-weight: 700;
+            font-size: 11pt;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+        
+        .card-header-icon {
             font-size: 10pt;
-            margin: 8px 0;
-            text-align: center;
         }
         
-        .status-pagamento-realizado { background: #10b981; color: white; }
-        .status-pagamento-50pago { background: #f59e0b; color: white; }
-        .status-pagamento-pendente { background: #ef4444; color: white; }
-        
-        .produto-destaque {
-            background: #f0fdf4;
-            border: 2px solid #047857;
-            padding: 12px;
-            border-radius: 8px;
-            margin: 8px 0;
-            font-size: 16pt;
-            font-weight: bold;
-            text-align: center;
-            color: #047857;
+        /* Grid para Cliente */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: var(--spacing-sm) var(--spacing-md);
+            align-items: start;
         }
         
-        /* Otimizações para garantir 1 página */
-        .compact .field {
-            margin-bottom: 4px;
-        }
-        
-        .compact .section {
-            margin-bottom: 10px;
-        }
-        
-        .compact textarea-content {
-            max-height: 60px;
-            overflow: hidden;
+        .info-label {
+            font-weight: 600;
+            color: var(--text-muted);
             font-size: 9pt;
+        }
+        
+        .info-value {
+            color: var(--text);
+            font-size: 10pt;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        .info-value.highlight {
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 11pt;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        /* Produto */
+        .produto-title {
+            font-size: 14pt;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: var(--spacing-md);
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        .produto-flores {
+            font-size: 9pt;
+            color: var(--text-muted);
+            margin-bottom: var(--spacing-md);
+            line-height: 1.5;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        .produto-valor {
+            text-align: right;
+            font-size: 13pt;
+            font-weight: 800;
+            color: var(--primary);
+            margin-top: var(--spacing-md);
+        }
+        
+        /* Agenda */
+        .agenda-row {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .agenda-icon {
+            color: var(--text-muted);
+            font-size: 9pt;
+        }
+        
+        .agenda-label {
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 9pt;
+            min-width: 60px;
+        }
+        
+        .agenda-value {
+            color: var(--text);
+            font-weight: 600;
+            font-size: 10pt;
+        }
+        
+        .agenda-pill {
+            display: inline-block;
+            padding: 2px var(--spacing-sm);
+            background: var(--bg-section);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 8pt;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-left: var(--spacing-sm);
+        }
+        
+        /* Endereço */
+        .endereco-text {
+            font-size: 11pt;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            margin-bottom: var(--spacing-sm);
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        .endereco-meta {
+            font-size: 8pt;
+            color: var(--text-muted);
+            margin-top: var(--spacing-sm);
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        /* Mensagem */
+        .message-box {
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            padding: var(--spacing-md);
+            border-radius: 8px;
+            font-style: italic;
+            font-size: 9pt;
+            color: var(--text);
+            line-height: 1.6;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        /* Observações */
+        .observacoes-text {
+            font-size: 9pt;
+            color: var(--text);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+        
+        /* Footer */
+        .footer {
+            margin-top: var(--spacing-xl);
+            padding-top: var(--spacing-md);
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 8pt;
+            line-height: 1.6;
+        }
+        
+        .footer-item {
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        /* Botões */
+        .no-print {
+            text-align: center;
+            margin-top: var(--spacing-xl);
+        }
+        
+        .btn {
+            padding: 15px 40px;
+            font-size: 14pt;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: var(--text-muted);
+            color: white;
+            margin-left: 10px;
         }
         
         @media print {
             body {
                 print-color-adjust: exact;
                 -webkit-print-color-adjust: exact;
+                overflow: visible !important;
+            }
+            
+            .container {
+                overflow: visible !important;
+            }
+            
+            .card {
+                page-break-inside: avoid;
+                overflow: visible !important;
             }
             
             .no-print {
                 display: none !important;
-            }
-            
-            .container {
-                page-break-after: avoid;
-            }
-            
-            .section {
-                page-break-inside: avoid;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Cabeçalho -->
-        <div class="header">
-            <h1>🌺 Plante Uma Flor</h1>
-            <p>Sistema de Gestão de Pedidos</p>
-            ${pedido.status_pagamento ? `
-                <div style="margin: 12px 0;">
-                    <span class="status-pagamento-badge status-pagamento-${pedido.status_pagamento === 'PAGAMENTO REALIZADO' ? 'realizado' : pedido.status_pagamento === '50% PAGO' ? '50pago' : 'pendente'}">
-                        ${pedido.status_pagamento}
-                    </span>
-                </div>
-            ` : ''}
-        </div>
-
-        <!-- Número do Pedido -->
-        <div style="text-align: center;">
-            <div class="pedido-numero">
-                PEDIDO #${pedido.id}
+        <!-- Header Flex -->
+        <div class="header-flex">
+            <div class="header-left">
+                <span class="tipo-tag">${pedido.tipo_pedido === 'Entrega' ? 'Entrega' : pedido.tipo_pedido === 'Retirada' ? 'Retirada' : 'Pedido'}</span>
             </div>
-            <p style="margin-top: 6px;">
+            <div class="header-center">
+                <div class="logo-title">
+                    <img src="${logoPath}" alt="Plante Uma Flor" class="logo-img">
+                    <span>Plante Uma Flor</span>
+                </div>
+                <div class="logo-subtitle">Sistema de Gestão de Pedidos</div>
+            </div>
+            <div class="header-right">
+                <div class="pedido-badge">PEDIDO #${pedido.id}</div>
+            </div>
+        </div>
+        
+        <!-- Status de Pagamento e Pedido -->
+        <div class="status-payment-row">
+            ${pedido.status_pagamento ? `
+                <span class="status-payment-badge status-payment-${pedido.status_pagamento === 'PAGAMENTO REALIZADO' ? 'realizado' : pedido.status_pagamento === '50% PAGO' ? '50pago' : 'pendente'}">
+                    ${Utils.escapeHtml(pedido.status_pagamento)}
+                </span>
+            ` : ''}
+            <div>
                 <span class="status-badge status-${pedido.status}">
                     ${Utils.translateStatus(pedido.status).toUpperCase()}
                 </span>
-            </p>
+            </div>
         </div>
 
         <!-- Informações do Cliente -->
-        <div class="section">
-            <div class="section-title">👤 Informações do Cliente</div>
-            ${pedido.cliente ? `
-                <div class="field">
-                    <span class="field-label">De (Remetente):</span>
-                    <span class="field-value">${pedido.cliente}</span>
-                </div>
-            ` : ''}
-            <div class="field">
-                <span class="field-label">Telefone:</span>
-                <span class="field-value">${Utils.formatPhone(pedido.telefone_cliente)}</span>
+        <div class="card">
+            <div class="card-header">
+                <span class="card-header-icon">👤</span>
+                <span>Informações do Cliente</span>
             </div>
-            <div class="field">
-                <span class="field-label">Para (Destinatário):</span>
-                <span class="field-value highlight">${pedido.destinatario}</span>
+            <div class="info-grid">
+                ${pedido.cliente ? `
+                    <div class="info-label">De (Remetente):</div>
+                    <div class="info-value">${Utils.escapeHtml(pedido.cliente)}</div>
+                ` : ''}
+                <div class="info-label">Telefone:</div>
+                <div class="info-value">${Utils.formatPhone(pedido.telefone_cliente)}</div>
+                <div class="info-label">Para (Destinatário):</div>
+                <div class="info-value highlight">${Utils.escapeHtml(pedido.destinatario)}</div>
+                ${pedido.fonte_pedido ? `
+                    <div class="info-label">Fonte do Pedido:</div>
+                    <div class="info-value">${Utils.escapeHtml(pedido.fonte_pedido)}</div>
+                ` : ''}
             </div>
-            <div class="field">
-                <span class="field-label">Tipo de Pedido:</span>
-                <span class="field-value">${Utils.translateType(pedido.tipo_pedido)}</span>
-            </div>
-            ${pedido.fonte_pedido ? `
-                <div class="field">
-                    <span class="field-label">Fonte do Pedido:</span>
-                    <span class="field-value">${pedido.fonte_pedido}</span>
-                </div>
-            ` : ''}
         </div>
 
         <!-- Produto -->
-        <div class="section">
-            <div class="section-title">🌸 Produto</div>
-            <div class="produto-destaque">
-                ${pedido.produto}
+        <div class="card">
+            <div class="card-header">
+                <span class="card-header-icon">🌸</span>
+                <span>Produto</span>
             </div>
+            <div class="produto-title">${Utils.escapeHtml(pedido.produto)}</div>
             ${pedido.flores_cor ? `
-                <div class="field" style="background: #fef3c7; padding: 6px; border-radius: 4px; border: 1px solid #f59e0b; margin-top: 4px; text-align: center;">
-                    <span class="field-label" style="color: #92400e; font-size: 9pt;">Flores e Cor:</span>
-                    <div class="field-value" style="margin-top: 3px; white-space: pre-wrap; color: #78350f; font-weight: 500; font-size: 9pt;">${pedido.flores_cor}</div>
-                </div>
+                <div class="produto-flores">${Utils.escapeHtml(pedido.flores_cor).replace(/\n/g, '<br>')}</div>
             ` : ''}
             ${pedido.valor ? `
-                <div class="field">
-                    <span class="field-label">Valor:</span>
-                    <span class="field-value" style="font-size: 12pt; color: #059669; font-weight: bold;">${pedido.valor}</span>
-                </div>
+                <div class="produto-valor">${Utils.escapeHtml(pedido.valor)}</div>
             ` : ''}
         </div>
 
-        <!-- Data e Horário -->
-        <div class="section">
-            <div class="delivery-box">
-                <div style="font-weight: bold; font-size: 11pt; margin-bottom: 6px; color: #1e40af;">
-                    📅 Entrega Agendada
-                </div>
-                <div class="field">
-                    <span class="field-label" style="font-size: 9pt;">Data:</span>
-                    <span class="field-value highlight" style="font-size: 10pt;">${Utils.formatDate(pedido.dia_entrega)}</span>
-                </div>
-                <div class="field">
-                    <span class="field-label" style="font-size: 9pt;">Horário:</span>
-                    <span class="field-value highlight" style="font-size: 10pt;">${pedido.horario}</span>
-                </div>
+        <!-- Agenda -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-header-icon">📅</span>
+                <span>Agendamento</span>
+            </div>
+            <div class="agenda-row">
+                <span class="agenda-icon">📅</span>
+                <span class="agenda-label">Data:</span>
+                <span class="agenda-value">${Utils.formatDate(pedido.dia_entrega)}</span>
+                <span class="agenda-pill">${pedido.tipo_pedido === 'Entrega' ? 'Entrega' : pedido.tipo_pedido === 'Retirada' ? 'Retirada' : ''}</span>
+            </div>
+            <div class="agenda-row">
+                <span class="agenda-icon">🕐</span>
+                <span class="agenda-label">Horário:</span>
+                <span class="agenda-value">${Utils.escapeHtml(pedido.horario)}</span>
             </div>
         </div>
 
         <!-- Endereço -->
         ${pedido.endereco ? `
-            <div class="section">
-                <div class="section-title">📍 Endereço de Entrega</div>
-                <div class="field">
-                    <div class="field-value" style="white-space: pre-wrap; font-size: 9pt; font-weight: 500;">${pedido.endereco}</div>
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-header-icon">📍</span>
+                    <span>Endereço de Entrega</span>
                 </div>
+                <div class="endereco-text">${Utils.escapeHtml(pedido.endereco)}</div>
                 ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
-                    <div class="field" style="margin-top: 6px;">
-                        <span class="field-label" style="color: #1e40af; font-weight: bold;">Distância:</span>
-                        <span class="field-value" style="color: #1e40af; font-weight: bold; font-size: 9pt;">
-                            ${PedidoCard.formatarDistancia(pedido.distancia_km)}
-                        </span>
-                        ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? `
-                            <span style="margin: 0 6px; color: #059669; font-weight: bold; font-size: 9pt;">
-                                | Taxa: R$ ${pedido.taxa_entrega.toFixed(2)}
-                            </span>
-                        ` : ''}
+                    <div class="endereco-meta">
+                        Distância: ${PedidoCard.formatarDistancia(pedido.distancia_km)}
+                        ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? ` | Taxa: R$ ${pedido.taxa_entrega.toFixed(2)}` : ''}
                     </div>
                 ` : ''}
                 ${pedido.obs_entrega ? `
-                    <div class="field" style="margin-top: 6px;">
-                        <span class="field-label">Observações:</span>
-                        <div class="field-value" style="margin-top: 3px; white-space: pre-wrap; font-size: 9pt;">${pedido.obs_entrega}</div>
+                    <div class="endereco-meta" style="margin-top: var(--spacing-sm);">
+                        <strong>Observações:</strong> ${Utils.escapeHtml(pedido.obs_entrega)}
                     </div>
                 ` : ''}
             </div>
@@ -1545,73 +1714,100 @@ const PedidoCard = {
 
         <!-- Mensagem -->
         ${pedido.mensagem ? `
-            <div class="section">
-                <div class="section-title">💌 Carta/Mensagem</div>
-                <div class="message-box">
-                    ${pedido.mensagem.replace(/\n/g, '<br>')}
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-header-icon">💌</span>
+                    <span>Carta/Mensagem</span>
                 </div>
-            </div>
-        ` : ''}
-
-        <!-- Pagamento -->
-        ${pedido.pagamento ? `
-            <div class="section">
-                <div class="section-title">💳 Pagamento</div>
-                <div class="field">
-                    <span class="field-label">Forma de Pagamento:</span>
-                    <span class="field-value">${pedido.pagamento}</span>
+                <div class="message-box">
+                    ${Utils.escapeHtml(pedido.mensagem).replace(/\n/g, '<br>')}
                 </div>
             </div>
         ` : ''}
 
         <!-- Observações Gerais -->
         ${pedido.observacoes ? `
-            <div class="section">
-                <div class="section-title">📝 Observações Gerais</div>
-                <div class="field">
-                    <div class="field-value" style="white-space: pre-wrap;">${pedido.observacoes}</div>
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-header-icon">📝</span>
+                    <span>Observações Gerais</span>
                 </div>
+                <div class="observacoes-text">${Utils.escapeHtml(pedido.observacoes)}</div>
             </div>
         ` : ''}
 
         <!-- Rodapé -->
         <div class="footer">
-            <p>Impresso em: ${new Date().toLocaleString('pt-BR')}</p>
-            <p style="margin-top: 5px;">Plante Uma Flor - Sistema de Gestão de Pedidos v3.0</p>
+            ${pedido.pagamento ? `
+                <div class="footer-item">Forma de Pagamento: ${Utils.escapeHtml(pedido.pagamento)}</div>
+            ` : ''}
+            <div class="footer-item">Impresso em: ${new Date().toLocaleString('pt-BR')}</div>
+            <div class="footer-item">Plante Uma Flor - Sistema de Gestão de Pedidos v3.0</div>
         </div>
 
         <!-- Botão de Impressão (esconde ao imprimir) -->
-        <div class="no-print" style="text-align: center; margin-top: 30px;">
-            <button onclick="window.print()" style="
-                background: #047857;
-                color: white;
-                border: none;
-                padding: 15px 40px;
-                font-size: 14pt;
-                border-radius: 8px;
-                cursor: pointer;
-                font-weight: bold;
-            ">
+        <div class="no-print">
+            <button onclick="window.print()" class="btn btn-primary">
                 🖨️ Imprimir Pedido
             </button>
-            <button onclick="window.close()" style="
-                background: #6b7280;
-                color: white;
-                border: none;
-                padding: 15px 40px;
-                font-size: 14pt;
-                border-radius: 8px;
-                cursor: pointer;
-                margin-left: 10px;
-            ">
+            <button onclick="window.close()" class="btn btn-secondary">
                 ✕ Fechar
             </button>
         </div>
     </div>
 
     <script>
-        // Auto-imprimir após carregar (opcional)
-        // window.onload = () => window.print();
+        // Função para marcar pedido como impresso - chama API diretamente
+        async function marcarComoImpresso(pedidoId) {
+            try {
+                const response = await fetch(\`/api/pedidos/\${pedidoId}/marcar-impresso\`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result && result.success) {
+                    console.log('[IMPRESSAO] Pedido ' + pedidoId + ' marcado como impresso');
+                    
+                    // Tentar atualizar a janela pai se disponível
+                    const parentWindow = window.opener || window.parent;
+                    if (parentWindow && parentWindow.PainelManager && typeof parentWindow.PainelManager.renderPedidos === 'function') {
+                        try {
+                            parentWindow.PainelManager.renderPedidos(true);
+                        } catch (e) {
+                            console.log('[IMPRESSAO] Não foi possível atualizar janela pai');
+                        }
+                    }
+                } else {
+                    console.warn('[IMPRESSAO] Erro ao marcar como impresso:', result.error || 'Resposta inválida');
+                }
+            } catch (err) {
+                console.error('[IMPRESSAO] Erro ao marcar como impresso:', err);
+            }
+        }
+        
+        // Marcar como impresso assim que a página carregar
+        const pedidoId = ${pedidoId};
+        let jaMarcado = false;
+        
+        // Marcar imediatamente ao carregar a página
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!jaMarcado) {
+                marcarComoImpresso(pedidoId);
+                jaMarcado = true;
+            }
+        });
+        
+        // Fallback: marcar também quando a página estiver totalmente carregada
+        window.addEventListener('load', () => {
+            if (!jaMarcado) {
+                marcarComoImpresso(pedidoId);
+                jaMarcado = true;
+            }
+        });
     </script>
 </body>
 </html>
@@ -1670,27 +1866,7 @@ const PedidoCard = {
                 };
             }
 
-            // Marcar pedido como impresso
-            console.log(`[IMPRESSAO] Chamando API.marcarImpresso(${pedidoId})`);
-            try {
-                const result = await API.marcarImpresso(pedidoId);
-                console.log(`[IMPRESSAO] Resposta da API:`, result);
-
-                if (result.success) {
-                    console.log(`[IMPRESSAO] Pedido ${pedidoId} marcado como impresso com sucesso`);
-                } else {
-                    console.warn(`[IMPRESSAO] Falha ao marcar como impresso:`, result.error);
-                }
-
-                // Atualizar o card se estiver no painel
-                if (window.PainelManager) {
-                    window.PainelManager.renderPedidos(true);
-                }
-            } catch (error) {
-                console.error(`[IMPRESSAO] Erro ao marcar como impresso:`, error);
-                // Não mostrar erro ao usuário, apenas log
-            }
-
+            // Marcação de impresso agora acontece apenas após ação explícita (via script na página de impressão)
             Notification.success('Janela de impressão aberta!');
 
         } catch (error) {
@@ -1718,4 +1894,5 @@ const PedidoCard = {
         return minutos >= minutosInicio && minutos <= minutosFim;
     }
 };
+
 

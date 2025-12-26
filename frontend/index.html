@@ -122,6 +122,9 @@
     </div>
 
     <!-- Scripts -->
+    <!-- Workbox Window para gerenciamento do Service Worker -->
+    <script src="https://cdn.jsdelivr.net/npm/workbox-window@7.0.0/build/workbox-window.prod.min.js"></script>
+    
     <script src="/assets/js/utils.js"></script>
     <script src="/assets/js/api.js"></script>
     <script src="/assets/js/db.js"></script>
@@ -135,22 +138,14 @@
     <script src="/assets/js/components/autocomplete-cliente.js"></script>
     <script src="/assets/js/form.js"></script>
     <script src="/assets/js/painel.js"></script>
+    
+    <!-- Workbox Window - Gerencia registro e atualizações do Service Worker -->
+    <!-- Carregar versão UMD que expõe workbox globalmente -->
+    <script src="https://storage.googleapis.com/workbox-cdn/releases/7.0.0/workbox-window.prod.umd.js"></script>
+    
     <script src="/assets/js/app.js"></script>
-
-    <!-- Registrar Service Worker -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('✅ Service Worker registrado:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.log('❌ Erro ao registrar Service Worker:', error);
-                    });
-            });
-        }
-    </script>
+    
+    <!-- Nota: O registro do Service Worker é feito via workbox-window em app.js -->
 
 </body>
 

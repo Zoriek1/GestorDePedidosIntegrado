@@ -6,6 +6,7 @@
 const App = {
     version: '3.0.1',
     initialized: false,
+    _swRegistration: null, // Cache do registro do Service Worker
 
     /**
      * Inicializa a aplicação
@@ -183,49 +184,228 @@ const App = {
     },
 
     /**
-     * Verifica por atualizações do Service Worker
+     * Verifica por atualizações do Service Worker usando Workbox
      */
     checkForUpdates() {
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.ready.then(registration => {
-                // Verificar por atualizações a cada 1 hora
-                setInterval(() => {
-                    registration.update();
-                }, 60 * 60 * 1000);
-
-                // Listener para nova versão disponível
-                registration.addEventListener('updatefound', () => {
-                    const newWorker = registration.installing;
-                    
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // Nova versão disponível
-                            this.showUpdateNotification();
-                        }
-                    });
+            // Evitar múltiplos registros
+            if (this._swRegistration) {
+                return;
+            }
+            
+            // Usar workbox-window se disponível (carregado via CDN no index.html)
+            if (typeof workbox !== 'undefined' && workbox.Workbox) {
+                const wb = new workbox.Workbox('/sw.js');
+                
+                // Detectar quando há uma atualização disponível
+                wb.addEventListener('waiting', () => {
+                    // Nova versão disponível - mostrar notificação
+                    this.showUpdateNotification(wb);
                 });
-            });
+                
+                // NÃO adicionar listener 'controlling' com reload automático
+                // Isso causa loop infinito com "Update on reload" do Chrome DevTools
+                // O reload será controlado pelo usuário via banner de atualização
+                
+                // Registrar o SW
+                wb.register().then((registration) => {
+                    this._swRegistration = registration;
+                    console.log('✅ Service Worker registrado (Workbox)');
+                    // Configurar UI de atualização
+                    this.setupServiceWorkerUpdateUI(registration);
+                }).catch(error => {
+                    console.warn('Erro ao registrar Service Worker:', error);
+                });
+            } else {
+                // Fallback: registro manual do SW (compatibilidade)
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        this._swRegistration = registration;
+                        console.log('✅ Service Worker registrado (fallback)');
+                        
+                        // NÃO usar setInterval para update - workbox-window já gerencia
+                        // Configurar UI de atualização
+                        this.setupServiceWorkerUpdateUI(registration);
+                    })
+                    .catch(error => {
+                        console.warn('Erro ao registrar Service Worker:', error);
+                    });
+            }
         }
     },
 
     /**
-     * Mostra notificação de atualização disponível
+     * Configura UI de atualização do Service Worker (isolada e reutilizável)
+     * Detecta SW waiting/installed e mostra banner para atualização controlada pelo usuário
      */
-    showUpdateNotification() {
-        const notification = Notification.info('Nova versão disponível! Clique para atualizar.', 999999);
+    setupServiceWorkerUpdateUI(registration) {
+        const RELOAD_GUARD_KEY = 'sw-reload-guard';
         
-        notification.addEventListener('click', () => {
-            window.location.reload();
+        // Guard: evitar múltiplos reloads na mesma sessão
+        if (sessionStorage.getItem(RELOAD_GUARD_KEY)) {
+            return; // Já recarregou nesta sessão
+        }
+
+        // Detectar SW waiting (já instalado, aguardando ativação)
+        if (registration.waiting) {
+            this.showUpdateBanner(registration);
+            return;
+        }
+
+        // Escutar updatefound para detectar nova versão sendo instalada
+        registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                    // Quando o novo SW está instalado e há um controller ativo
+                    // significa que há uma atualização disponível
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        this.showUpdateBanner(registration);
+                    }
+                });
+            }
+        });
+    },
+
+    /**
+     * Mostra banner de atualização com botão controlado pelo usuário
+     */
+    showUpdateBanner(registration) {
+        // Evitar múltiplos banners
+        if (document.getElementById('sw-update-banner')) {
+            return;
+        }
+
+        const RELOAD_GUARD_KEY = 'sw-reload-guard';
+        
+        // Criar banner
+        const banner = document.createElement('div');
+        banner.id = 'sw-update-banner';
+        banner.className = 'fixed bottom-4 right-4 bg-primary text-white p-4 rounded-lg shadow-xl z-50 max-w-sm';
+        banner.innerHTML = `
+            <div class="flex items-start space-x-3">
+                <i class="fas fa-sync-alt text-xl mt-1"></i>
+                <div class="flex-1">
+                    <p class="font-semibold mb-1">Nova versão disponível!</p>
+                    <p class="text-sm opacity-90 mb-3">Clique em "Atualizar agora" para aplicar as mudanças.</p>
+                    <div class="flex gap-2">
+                        <button id="sw-update-btn" class="px-4 py-2 bg-white text-primary rounded hover:bg-gray-100 font-medium transition">
+                            Atualizar agora
+                        </button>
+                        <button id="sw-update-dismiss" class="px-4 py-2 bg-white bg-opacity-20 rounded hover:bg-opacity-30 transition">
+                            Depois
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(banner);
+
+        // Botão "Atualizar agora"
+        document.getElementById('sw-update-btn').addEventListener('click', () => {
+            // Enviar SKIP_WAITING ao SW waiting (não ao controller)
+            const waitingWorker = registration.waiting;
+            if (waitingWorker) {
+                waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+            } else if (navigator.serviceWorker.controller) {
+                // Fallback: tentar enviar ao controller se waiting não estiver disponível
+                navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+            }
+
+            // Remover banner
+            banner.remove();
+
+            // Escutar controllerchange com guard para recarregar apenas uma vez
+            if (!sessionStorage.getItem(RELOAD_GUARD_KEY)) {
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    // Marcar guard antes de recarregar
+                    sessionStorage.setItem(RELOAD_GUARD_KEY, 'true');
+                    window.location.reload();
+                }, { once: true });
+            }
         });
 
-        // Adicionar botão de atualizar
-        const updateBtn = document.createElement('button');
-        updateBtn.textContent = 'Atualizar';
-        updateBtn.className = 'ml-2 px-3 py-1 bg-white text-blue-600 rounded hover:bg-gray-100';
-        updateBtn.onclick = () => {
-            window.location.reload();
-        };
-        notification.appendChild(updateBtn);
+        // Botão "Depois"
+        document.getElementById('sw-update-dismiss').addEventListener('click', () => {
+            banner.remove();
+        });
+
+        // Auto-remover após 30 segundos
+        setTimeout(() => {
+            if (banner.parentElement) {
+                banner.remove();
+            }
+        }, 30000);
+    },
+
+    /**
+     * Mostra notificação de atualização disponível com botão para atualizar (Workbox)
+     * Mantida para compatibilidade com workbox-window, mas agora usa a função isolada
+     */
+    showUpdateNotification(wb) {
+        // Usar a função isolada setupServiceWorkerUpdateUI se tiver registration
+        if (this._swRegistration) {
+            this.setupServiceWorkerUpdateUI(this._swRegistration);
+        } else {
+            // Fallback: usar workbox-window messageSW
+            const RELOAD_GUARD_KEY = 'sw-reload-guard';
+            if (sessionStorage.getItem(RELOAD_GUARD_KEY)) {
+                return;
+            }
+
+            if (document.getElementById('sw-update-banner')) {
+                return;
+            }
+
+            const banner = document.createElement('div');
+            banner.id = 'sw-update-banner';
+            banner.className = 'fixed bottom-4 right-4 bg-primary text-white p-4 rounded-lg shadow-xl z-50 max-w-sm';
+            banner.innerHTML = `
+                <div class="flex items-start space-x-3">
+                    <i class="fas fa-sync-alt text-xl mt-1"></i>
+                    <div class="flex-1">
+                        <p class="font-semibold mb-1">Nova versão disponível!</p>
+                        <p class="text-sm opacity-90 mb-3">Clique em "Atualizar agora" para aplicar as mudanças.</p>
+                        <div class="flex gap-2">
+                            <button id="sw-update-btn-wb" class="px-4 py-2 bg-white text-primary rounded hover:bg-gray-100 font-medium transition">
+                                Atualizar agora
+                            </button>
+                            <button id="sw-update-dismiss-wb" class="px-4 py-2 bg-white bg-opacity-20 rounded hover:bg-opacity-30 transition">
+                                Depois
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(banner);
+
+            document.getElementById('sw-update-btn-wb').addEventListener('click', () => {
+                if (wb && wb.messageSW) {
+                    wb.messageSW({ type: 'SKIP_WAITING' });
+                }
+
+                banner.remove();
+
+                if (!sessionStorage.getItem(RELOAD_GUARD_KEY)) {
+                    navigator.serviceWorker.addEventListener('controllerchange', () => {
+                        sessionStorage.setItem(RELOAD_GUARD_KEY, 'true');
+                        window.location.reload();
+                    }, { once: true });
+                }
+            });
+
+            document.getElementById('sw-update-dismiss-wb').addEventListener('click', () => {
+                banner.remove();
+            });
+
+            setTimeout(() => {
+                if (banner.parentElement) {
+                    banner.remove();
+                }
+            }, 30000);
+        }
     },
 
     /**
@@ -320,7 +500,7 @@ const App = {
                 // Limpar Cache do Service Worker
                 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                     navigator.serviceWorker.controller.postMessage({
-                        type: 'CLEAR_CACHE'
+                        type: 'CLEAR_CACHES'
                     });
                 }
 

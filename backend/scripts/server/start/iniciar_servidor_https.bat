@@ -12,8 +12,8 @@ echo    PLANTE UMA FLOR - SERVIDOR HTTPS
 echo ============================================
 echo.
 
-:: Mudar para o diretório do backend (pasta pai)
-cd /d "%~dp0\.."
+:: Mudar para o diretório do backend (subir 3 níveis: start -> server -> scripts -> backend)
+cd /d "%~dp0\..\..\.."
 
 :: Verificar se os certificados existem (agora em instance/ssl/)
 if not exist "instance\ssl\cert.pem" (

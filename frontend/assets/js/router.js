@@ -39,7 +39,7 @@ const Router = {
     /**
      * Navega para uma rota
      */
-    navigate(path) {
+    async navigate(path) {
         // Verificar se a rota requer autenticação
         if (path === '/criar-pedido') {
             if (typeof Auth === 'undefined' || !Auth.isAuthenticated()) {
@@ -48,9 +48,8 @@ const Router = {
                     Auth.promptPassword('Para criar um pedido, é necessário fazer login.')
                         .then((creds) => {
                             if (creds) {
-                                // Se autenticou, navegar
-                                window.history.pushState({}, '', path);
-                                this.loadRoute(path);
+                                // Se autenticou, mostrar modal de fonte e navegar
+                                this.navigateComSelecaoFonte(path);
                             } else {
                                 // Se cancelou, redirecionar para login
                                 Notification.warning('É necessário fazer login para criar pedidos');
@@ -66,9 +65,37 @@ const Router = {
                     this.loadRoute('/login');
                     return;
                 }
+            } else {
+                // Já autenticado, mostrar modal de fonte
+                await this.navigateComSelecaoFonte(path);
+                return;
             }
         }
         
+        window.history.pushState({}, '', path);
+        this.loadRoute(path);
+    },
+
+    /**
+     * Navega para criar-pedido após seleção de fonte
+     */
+    async navigateComSelecaoFonte(path) {
+        // Mostrar modal de seleção de fonte
+        if (typeof FormManager !== 'undefined' && FormManager.mostrarModalFonte) {
+            const fonteId = await FormManager.mostrarModalFonte();
+            
+            if (fonteId === null) {
+                // Usuário cancelou, não navegar
+                return;
+            }
+            
+            // Armazenar fonte selecionada para usar no formulário
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('fonte_pedido_selecionada', fonteId.toString());
+            }
+        }
+        
+        // Navegar para o formulário
         window.history.pushState({}, '', path);
         this.loadRoute(path);
     },

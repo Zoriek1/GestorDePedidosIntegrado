@@ -24,7 +24,42 @@ const FormManager = {
         this.setupClienteAutocomplete();
 
         // Carregar fontes de pedido
-        this.carregarFontesPedido();
+        this.carregarFontesPedido().then(() => {
+            // Após carregar fontes, verificar se há fonte pré-selecionada
+            if (typeof sessionStorage !== 'undefined') {
+                const fonteSelecionada = sessionStorage.getItem('fonte_pedido_selecionada');
+                if (fonteSelecionada) {
+                    const selectFonte = document.getElementById('fonte_pedido_id');
+                    if (selectFonte) {
+                        selectFonte.value = fonteSelecionada;
+                        
+                        // Desabilitar o campo de fonte após seleção (similar aos campos de cliente)
+                        // Nota: disabled impede envio do valor, então usamos uma abordagem diferente
+                        // Vamos criar um input hidden para manter o valor e desabilitar visualmente o select
+                        selectFonte.setAttribute('disabled', 'disabled');
+                        selectFonte.classList.remove('bg-white', 'text-gray-900', 'border-gray-300');
+                        selectFonte.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed', 'border-gray-200');
+                        
+                        // Criar input hidden para garantir que o valor seja enviado mesmo com disabled
+                        const hiddenInput = document.createElement('input');
+                        hiddenInput.type = 'hidden';
+                        hiddenInput.id = 'fonte_pedido_id_hidden';
+                        hiddenInput.name = 'fonte_pedido_id';
+                        hiddenInput.value = fonteSelecionada;
+                        selectFonte.parentElement.appendChild(hiddenInput);
+                        
+                        // Adicionar mensagem informativa
+                        const infoMsg = document.createElement('p');
+                        infoMsg.className = 'mt-1 text-xs text-gray-500';
+                        infoMsg.innerHTML = '<i class="fas fa-info-circle"></i> Fonte selecionada no modal - não pode ser alterada';
+                        selectFonte.parentElement.appendChild(infoMsg);
+                        
+                        // Limpar do sessionStorage após usar
+                        sessionStorage.removeItem('fonte_pedido_selecionada');
+                    }
+                }
+            }
+        });
 
         // Garantir que campos de cliente começam desabilitados
         setTimeout(() => {
@@ -118,6 +153,7 @@ const FormManager = {
 
     /**
      * Carrega fontes de pedido e popula o select
+     * @returns {Promise<void>}
      */
     async carregarFontesPedido() {
         try {
@@ -875,7 +911,9 @@ const FormManager = {
         formData.telefone_cliente = Masks.unmaskPhone(document.getElementById('telefone_cliente')?.value || '');
         formData.destinatario = document.getElementById('destinatario')?.value || '';
         formData.tipo_pedido = document.querySelector('input[name="tipo_pedido"]:checked')?.value || 'Entrega';
-        const fontePedidoId = document.getElementById('fonte_pedido_id')?.value || '';
+        // Coletar fonte - verificar input hidden primeiro (quando campo está desabilitado)
+        const fontePedidoHidden = document.getElementById('fonte_pedido_id_hidden')?.value || '';
+        const fontePedidoId = fontePedidoHidden || document.getElementById('fonte_pedido_id')?.value || '';
         formData.fonte_pedido_id = fontePedidoId ? parseInt(fontePedidoId) : null;
 
         // Step 2 - Produto e Agendamento
@@ -1021,6 +1059,26 @@ const FormManager = {
             // Limpar validações visuais
             Validators.clearFieldError(field);
         });
+
+        // Resetar campo de fonte ao estado inicial (habilitado)
+        const selectFonte = document.getElementById('fonte_pedido_id');
+        if (selectFonte) {
+            selectFonte.removeAttribute('disabled');
+            selectFonte.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed', 'border-gray-200');
+            selectFonte.classList.add('bg-white', 'text-gray-900', 'border-gray-300');
+            
+            // Remover input hidden se existir
+            const hiddenInput = document.getElementById('fonte_pedido_id_hidden');
+            if (hiddenInput) {
+                hiddenInput.remove();
+            }
+            
+            // Remover mensagem informativa se existir
+            const infoMsg = selectFonte.parentElement.querySelector('.text-xs.text-gray-500');
+            if (infoMsg && infoMsg.textContent.includes('Fonte selecionada')) {
+                infoMsg.remove();
+            }
+        }
 
         // Resetar campos de cliente ao estado inicial (desabilitados)
         this.resetarCamposCliente();
@@ -1404,6 +1462,169 @@ const FormManager = {
         const minutosFim = h2 * 60 + m2;
         
         return minutos >= minutosInicio && minutos <= minutosFim;
+    },
+
+    /**
+     * Mostra modal de seleção de fonte do pedido
+     * @returns {Promise<number|null>} ID da fonte selecionada ou null se cancelado
+     */
+    async mostrarModalFonte() {
+        try {
+            // Carregar fontes disponíveis
+            const response = await API.getFontesPedido();
+            if (!response.success || !response.data) {
+                console.warn('[FORM] Erro ao carregar fontes de pedido');
+                return null;
+            }
+
+            const fontes = response.data.fontes || [];
+            
+            // Mapear fontes por nome (case-insensitive) para facilitar busca
+            const fontesMap = {};
+            fontes.forEach(fonte => {
+                const nomeLower = fonte.nome.toLowerCase().trim();
+                fontesMap[nomeLower] = fonte;
+            });
+
+            // Identificar IDs das fontes principais
+            // WhatsApp deve buscar especificamente por "WhatsApp (Caio)" - tentar várias variações
+            let fonteWhatsApp = null;
+            const whatsappVariations = [
+                'whatsapp (caio)',
+                'whatsapp caio',
+                'whatsapp(caio)',
+                'whats app (caio)',
+                'whats app caio',
+                'whatsapp'
+            ];
+            for (const variation of whatsappVariations) {
+                if (fontesMap[variation]) {
+                    fonteWhatsApp = fontesMap[variation];
+                    break;
+                }
+            }
+            
+            // Se não encontrou, buscar por qualquer fonte que contenha "whatsapp" e "caio"
+            if (!fonteWhatsApp) {
+                fonteWhatsApp = fontes.find(f => {
+                    const nomeLower = f.nome.toLowerCase();
+                    return nomeLower.includes('whatsapp') && nomeLower.includes('caio');
+                }) || null;
+            }
+            
+            const fonteCatalogo = fontesMap['catálogo'] || fontesMap['catalogo'] || null;
+            const fonteSite = fontesMap['site'] || fontesMap['website'] || null;
+
+            // Criar HTML do modal com cards visuais
+            const modalHtml = `
+                <div class="space-y-6">
+                    <h3 class="text-2xl font-bold text-gray-800 text-center mb-4">
+                        Selecione a Fonte do Pedido
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <!-- Card WhatsApp -->
+                        <button 
+                            type="button"
+                            class="fonte-card w-full p-6 border-2 border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left"
+                            data-fonte-id="${fonteWhatsApp ? fonteWhatsApp.id : ''}"
+                            data-fonte-nome="WhatsApp"
+                            style="cursor: pointer;"
+                        >
+                            <div class="flex items-center gap-4">
+                                <div class="flex-shrink-0">
+                                    <i class="fab fa-whatsapp text-5xl text-green-500"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <h4 class="text-xl font-bold text-gray-800 mb-1">WhatsApp</h4>
+                                    <p class="text-sm text-gray-600">Pedido recebido via WhatsApp</p>
+                                </div>
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-chevron-right text-gray-400"></i>
+                                </div>
+                            </div>
+                        </button>
+
+                        <!-- Card Catálogo -->
+                        <button 
+                            type="button"
+                            class="fonte-card w-full p-6 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left"
+                            data-fonte-id="${fonteCatalogo ? fonteCatalogo.id : ''}"
+                            data-fonte-nome="Catálogo"
+                            style="cursor: pointer;"
+                        >
+                            <div class="flex items-center gap-4">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-book text-5xl text-blue-500"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <h4 class="text-xl font-bold text-gray-800 mb-1">Catálogo</h4>
+                                    <p class="text-sm text-gray-600">Pedido do catálogo físico ou digital</p>
+                                </div>
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-chevron-right text-gray-400"></i>
+                                </div>
+                            </div>
+                        </button>
+
+                        <!-- Card Site -->
+                        <button 
+                            type="button"
+                            class="fonte-card w-full p-6 border-2 border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all text-left"
+                            data-fonte-id="${fonteSite ? fonteSite.id : ''}"
+                            data-fonte-nome="Site"
+                            style="cursor: pointer;"
+                        >
+                            <div class="flex items-center gap-4">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-globe text-5xl text-purple-500"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <h4 class="text-xl font-bold text-gray-800 mb-1">Site</h4>
+                                    <p class="text-sm text-gray-600">Pedido recebido pelo site</p>
+                                </div>
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-chevron-right text-gray-400"></i>
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div class="flex justify-end pt-4 border-t border-gray-200">
+                        <button 
+                            data-modal-close
+                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            return new Promise((resolve) => {
+                const modal = Modal.custom(modalHtml, () => {
+                    resolve(null); // Cancelado
+                });
+
+                // Adicionar event listeners nos cards
+                modal.querySelectorAll('.fonte-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        const fonteId = card.dataset.fonteId;
+                        const fonteNome = card.dataset.fonteNome;
+                        
+                        if (fonteId) {
+                            Modal.close(modal);
+                            resolve(parseInt(fonteId));
+                        } else {
+                            Notification.warning(`Fonte "${fonteNome}" não encontrada no sistema. Por favor, cadastre-a primeiro.`);
+                        }
+                    });
+                });
+            });
+        } catch (error) {
+            console.error('[FORM] Erro ao mostrar modal de fonte:', error);
+            return null;
+        }
     }
 };
 

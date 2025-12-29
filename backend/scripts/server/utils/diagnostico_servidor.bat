@@ -58,11 +58,12 @@ if exist "instance\ssl\key.pem" (
 
 echo.
 echo [4/6] Verificando banco de dados...
-if exist "instance\database.db" (
-    echo [OK] Banco de dados encontrado: instance\database.db
-) else if exist "database.db" (
-    echo [AVISO] Banco de dados encontrado em localizacao antiga: database.db
-    echo    Considere mover para instance\database.db
+set "DB_PATH=%USERPROFILE%\var\lib\database\database.db"
+if exist "%DB_PATH%" (
+    echo [OK] Banco de dados encontrado: %DB_PATH%
+) else if exist "instance\database.db" (
+    echo [AVISO] Banco encontrado no local antigo: instance\database.db
+    echo    Use migrar_database_path.py para mover para o novo local
 ) else (
     echo [INFO] Banco de dados sera criado na primeira execucao
 )

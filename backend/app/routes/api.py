@@ -1083,6 +1083,13 @@ def agrupar_pedidos_por_horario(pedidos):
         # Ordenar por horário (mais cedo primeiro)
         def parse_horario(horario_str):
             try:
+                if not horario_str:
+                    return 0
+                # Se for intervalo, usar o horário inicial para ordenação
+                if ' - ' in horario_str:
+                    partes = horario_str.split(' - ')
+                    if len(partes) >= 1:
+                        horario_str = partes[0].strip()
                 if ':' in horario_str:
                     h, m = map(int, horario_str.split(':'))
                     return h * 60 + m  # Converter para minutos desde meia-noite
@@ -1355,9 +1362,16 @@ def calcular_rota_otimizada():
             for p in pedidos_com_coords:
                 if p.id == pedido_id:
                     try:
-                        if p.horario and ':' in p.horario:
-                            h, m = map(int, p.horario.split(':'))
-                            return h * 60 + m
+                        if p.horario:
+                            # Se for intervalo, usar horário inicial
+                            horario_str = p.horario
+                            if ' - ' in horario_str:
+                                partes = horario_str.split(' - ')
+                                if len(partes) >= 1:
+                                    horario_str = partes[0].strip()
+                            if ':' in horario_str:
+                                h, m = map(int, horario_str.split(':'))
+                                return h * 60 + m
                     except:
                         pass
             return 9999  # Valor alto para pedidos sem horário válido

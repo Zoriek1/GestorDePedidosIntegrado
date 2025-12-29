@@ -6,7 +6,8 @@
 
 title Plante Uma Flor - Inicializando...
 
-cd /d "%~dp0\.."
+:: Ir para o diretório do backend (subir 3 níveis: start -> server -> scripts -> backend)
+cd /d "%~dp0\..\..\.."
 
 echo.
 echo ============================================
@@ -39,7 +40,7 @@ if not exist "instance\ssl\cert.pem" (
 
 :: Iniciar servidor invisível
 echo [1/2] Iniciando servidor HTTPS em background...
-start /min "" wscript.exe "scripts\server\start\iniciar_servidor_https_invisivel.vbs"
+start /min "" wscript.exe "%~dp0iniciar_servidor_https_invisivel.vbs"
 
 :: Aguardar servidor iniciar
 echo [2/2] Aguardando servidor inicializar...

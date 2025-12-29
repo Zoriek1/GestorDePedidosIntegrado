@@ -66,9 +66,31 @@ class PedidoSchema(Schema):
     
     @validates('horario')
     def validate_horario(self, value, **kwargs):
-        """Valida formato de horário HH:MM"""
-        if value and not re.match(r'^([01]?\d|2[0-3]):[0-5]\d$', value):
-            raise ValidationError('Formato de horário inválido. Use HH:MM (ex: 14:30)')
+        """Valida formato de horário HH:MM ou intervalo HH:MM - HH:MM"""
+        if not value:
+            return
+        
+        # Padrão para horário simples: HH:MM
+        pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
+        # Padrão para intervalo: HH:MM - HH:MM
+        pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
+        
+        if not (re.match(pattern_simples, value) or re.match(pattern_intervalo, value)):
+            raise ValidationError('Formato de horário inválido. Use HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)')
+        
+        # Se for intervalo, validar que horário final é depois do inicial
+        if ' - ' in value:
+            partes = value.split(' - ')
+            if len(partes) == 2:
+                try:
+                    h1, m1 = map(int, partes[0].strip().split(':'))
+                    h2, m2 = map(int, partes[1].strip().split(':'))
+                    minutos_inicial = h1 * 60 + m1
+                    minutos_final = h2 * 60 + m2
+                    if minutos_final <= minutos_inicial:
+                        raise ValidationError('O horário final deve ser depois do horário inicial')
+                except (ValueError, IndexError):
+                    raise ValidationError('Formato de intervalo inválido')
 
 
 class PedidoCreateSchema(PedidoSchema):
@@ -113,7 +135,29 @@ class PedidoUpdateSchema(Schema):
     
     @validates('horario')
     def validate_horario(self, value, **kwargs):
-        """Valida formato de horário HH:MM"""
-        if value and not re.match(r'^([01]?\d|2[0-3]):[0-5]\d$', value):
-            raise ValidationError('Formato de horário inválido. Use HH:MM (ex: 14:30)')
+        """Valida formato de horário HH:MM ou intervalo HH:MM - HH:MM"""
+        if not value:
+            return
+        
+        # Padrão para horário simples: HH:MM
+        pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
+        # Padrão para intervalo: HH:MM - HH:MM
+        pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
+        
+        if not (re.match(pattern_simples, value) or re.match(pattern_intervalo, value)):
+            raise ValidationError('Formato de horário inválido. Use HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)')
+        
+        # Se for intervalo, validar que horário final é depois do inicial
+        if ' - ' in value:
+            partes = value.split(' - ')
+            if len(partes) == 2:
+                try:
+                    h1, m1 = map(int, partes[0].strip().split(':'))
+                    h2, m2 = map(int, partes[1].strip().split(':'))
+                    minutos_inicial = h1 * 60 + m1
+                    minutos_final = h2 * 60 + m2
+                    if minutos_final <= minutos_inicial:
+                        raise ValidationError('O horário final deve ser depois do horário inicial')
+                except (ValueError, IndexError):
+                    raise ValidationError('Formato de intervalo inválido')
 

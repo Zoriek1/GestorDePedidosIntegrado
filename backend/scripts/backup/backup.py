@@ -5,10 +5,37 @@ Faz backup do database.db com timestamp e gerencia retenção
 """
 import os
 import sys
-import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 import zipfile
+
+# Tentar importar o logger de auditoria se disponível
+try:
+    # Adicionar o diretório app ao path
+    backend_dir = Path(__file__).parent.parent.parent
+    app_utils_dir = backend_dir / 'app' / 'utils'
+    sys.path.insert(0, str(app_utils_dir))
+    
+    from backup_helper import get_audit_logger
+    AUDIT_LOGGER_AVAILABLE = True
+except ImportError:
+    AUDIT_LOGGER_AVAILABLE = False
+    # Criar logger básico se não conseguir importar
+    import logging
+    logs_dir = backend_dir / 'instance' / 'logs'
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    basic_logger = logging.getLogger('backup_basic')
+    basic_logger.setLevel(logging.INFO)
+    if not basic_logger.handlers:
+        file_handler = logging.FileHandler(
+            logs_dir / 'backup_audit.log',
+            encoding='utf-8',
+            mode='a'
+        )
+        file_handler.setFormatter(
+            logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        )
+        basic_logger.addHandler(file_handler)
 
 class BackupManager:
     """Gerenciador de backups do banco de dados"""
@@ -23,17 +50,30 @@ class BackupManager:
             retention_days: Número de dias para manter backups
         """
         # Definir diretórios
-        self.backend_dir = Path(__file__).parent.parent
+        self.backend_dir = Path(__file__).parent.parent.parent
+        
+        # Adicionar backend_dir ao path para importar app.config
+        if str(self.backend_dir) not in sys.path:
+            sys.path.insert(0, str(self.backend_dir))
+            
+        try:
+            from app.config import Config
+            default_db_path = Config.DATABASE_PATH
+            default_backup_dir = Config.INSTANCE_DIR / 'backups'
+        except ImportError:
+            # Fallback seguro (ex: durante setup inicial)
+            default_db_path = self.backend_dir / 'instance' / 'database.db'
+            default_backup_dir = self.backend_dir / 'instance' / 'backups'
         
         if db_path:
             self.db_path = Path(db_path)
         else:
-            self.db_path = self.backend_dir / 'database.db'
+            self.db_path = default_db_path
         
         if backup_dir:
             self.backup_dir = Path(backup_dir)
         else:
-            self.backup_dir = self.backend_dir / 'backups'
+            self.backup_dir = default_backup_dir
         
         self.retention_days = retention_days
         
@@ -42,7 +82,8 @@ class BackupManager:
     
     def create_backup(self, compress=True):
         """
-        Cria um backup do banco de dados
+        Cria um backup do banco de dados usando sqlite3.Connection.backup()
+        e valida integridade com PRAGMA integrity_check
         
         Args:
             compress: Se True, comprime o backup em .zip
@@ -50,6 +91,8 @@ class BackupManager:
         Returns:
             Path do arquivo de backup criado ou None em caso de erro
         """
+        import sqlite3
+        
         # Verificar se o banco de dados existe
         if not self.db_path.exists():
             print(f"[ERRO] Banco de dados não encontrado: {self.db_path}")
@@ -61,18 +104,27 @@ class BackupManager:
         backup_path = self.backup_dir / backup_name
         
         try:
-            # Copiar banco de dados
+            # Backup com context manager
             print(f"[BACKUP] Criando backup: {backup_name}")
-            shutil.copy2(self.db_path, backup_path)
+            with sqlite3.connect(str(self.db_path)) as source_conn:
+                with sqlite3.connect(str(backup_path)) as backup_conn:
+                    source_conn.backup(backup_conn)
             
-            # Verificar integridade (tamanho do arquivo)
-            original_size = self.db_path.stat().st_size
-            backup_size = backup_path.stat().st_size
+            # Integrity check obrigatório
+            with sqlite3.connect(str(backup_path)) as check_conn:
+                cursor = check_conn.cursor()
+                cursor.execute("PRAGMA integrity_check;")
+                result = cursor.fetchone()
+                
+                if result[0] != 'ok':
+                    print(f"[ERRO] Integrity check falhou: {result[0]}")
+                    backup_path.unlink()
+                    return None
             
-            if original_size != backup_size:
-                print(f"[ERRO] Tamanho do backup ({backup_size}) diferente do original ({original_size})")
-                backup_path.unlink()
-                return None
+            # Logar informações
+            abs_path = backup_path.resolve()
+            size_mb = abs_path.stat().st_size / (1024 * 1024)
+            print(f"[BACKUP] ✓ Backup criado: {abs_path} ({size_mb:.2f} MB)")
             
             # Comprimir se solicitado
             if compress:
@@ -85,14 +137,42 @@ class BackupManager:
                 # Remover arquivo .db descomprimido
                 backup_path.unlink()
                 backup_path = zip_path
+                abs_path = backup_path.resolve()
+                size_mb = abs_path.stat().st_size / (1024 * 1024)
             
-            backup_size_mb = backup_path.stat().st_size / (1024 * 1024)
-            print(f"[BACKUP] ✓ Backup criado: {backup_path.name} ({backup_size_mb:.2f} MB)")
+            # Registrar no log de auditoria
+            try:
+                if AUDIT_LOGGER_AVAILABLE:
+                    get_audit_logger().log_backup_created(
+                        backup_path,
+                        reason='manual',
+                        size_mb=size_mb
+                    )
+                else:
+                    basic_logger.info(
+                        f"BACKUP CRIADO | Arquivo: {backup_path.name} | "
+                        f"Motivo: manual | Tamanho: {size_mb:.2f} MB"
+                    )
+            except Exception as log_error:
+                print(f"[AVISO] Erro ao registrar no log de auditoria: {log_error}")
             
             return backup_path
             
         except Exception as e:
-            print(f"[ERRO] Erro ao criar backup: {e}")
+            error_msg = str(e)
+            print(f"[ERRO] Erro ao criar backup: {error_msg}")
+            
+            # Registrar falha no log de auditoria
+            try:
+                if AUDIT_LOGGER_AVAILABLE:
+                    get_audit_logger().log_backup_failed('manual', error_msg)
+                else:
+                    basic_logger.error(
+                        f"BACKUP FALHOU | Motivo: manual | Erro: {error_msg}"
+                    )
+            except Exception as log_error:
+                print(f"[AVISO] Erro ao registrar falha no log: {log_error}")
+            
             # Tentar limpar arquivo de backup parcial
             if backup_path.exists():
                 try:

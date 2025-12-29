@@ -27,6 +27,9 @@ def register_static_routes(app):
         Tenta servir o arquivo solicitado. Se não existir, serve o
         index.html para permitir que o roteamento do SPA funcione.
         
+        IMPORTANTE: Esta rota NÃO deve interceptar rotas da API (/api/*)
+        pois essas são tratadas pelos blueprints registrados anteriormente.
+        
         Args:
             path: Caminho do arquivo solicitado
             
@@ -34,6 +37,11 @@ def register_static_routes(app):
             Response: Arquivo solicitado ou index.html como fallback
         """
         try:
+            # NUNCA interceptar rotas da API - deixar Flask retornar 404 se não existir
+            # As rotas da API são registradas antes desta rota catch-all
+            if path.startswith('api/'):
+                abort(404)
+            
             frontend_dir = Path(__file__).parent.parent.parent / 'frontend'
             
             # Normalizar o path para evitar problemas

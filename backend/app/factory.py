@@ -50,9 +50,18 @@ def create_app(config=None):
     with app.app_context():
         from app.routes.api import api_bp
         from app.routes.clientes import clientes_bp
+        from app.routes.pedidos import pedidos_bp
+        from app.routes.rotas import rotas_bp
+        from app.routes.auth import auth_bp
         
+        # Registrar blueprints existentes (mantidos para compatibilidade)
         app.register_blueprint(api_bp)
         app.register_blueprint(clientes_bp)
+        
+        # Registrar novos blueprints organizados por domínio
+        app.register_blueprint(pedidos_bp)
+        app.register_blueprint(rotas_bp)
+        app.register_blueprint(auth_bp)
         
         # Criar tabelas (APÓS todos os models serem importados)
         init_database(app)
@@ -66,7 +75,25 @@ def create_app(config=None):
     # 7. Security/Middleware (pode ser a qualquer momento)
     setup_security(app)
     
+    # 8. Registrar comandos CLI
+    register_cli_commands(app)
+    
     return app
+
+
+def register_cli_commands(app):
+    """
+    Registra comandos CLI na aplicação
+    
+    Args:
+        app: Instância da aplicação Flask
+    """
+    try:
+        from app.cli import register_commands
+        register_commands(app)
+    except ImportError:
+        # CLI não disponível (pode acontecer durante setup inicial)
+        pass
 
 
 def setup_security(app):

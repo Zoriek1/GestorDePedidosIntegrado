@@ -14,17 +14,26 @@ echo    PLANTE UMA FLOR - Sistema HTTPS
 echo ============================================
 echo.
 
-:: Verificar certificados
-if not exist "config\ssl\cert.pem" (
-    if not exist "config\ssl\localhost+2.pem" (
-        echo [ERRO] Certificados nao encontrados!
+:: Verificar certificados (agora em instance/ssl/)
+if not exist "instance\ssl\cert.pem" (
+    :: Fallback: verificar no local antigo (config/ssl/) para compatibilidade
+    if not exist "config\ssl\cert.pem" (
+        if not exist "config\ssl\localhost+2.pem" (
+            echo [ERRO] Certificados nao encontrados!
+            echo.
+            echo Execute primeiro:
+            echo   1. scripts\ssl\INSTALAR_MKCERT_SIMPLES.bat
+            echo   2. scripts\ssl\GERAR_CERTIFICADOS_AUTO.bat
+            echo.
+            echo Os certificados serao salvos em: instance\ssl\
+            echo.
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo [AVISO] Certificados encontrados no local antigo (config\ssl\)
+        echo Por favor, mova para instance\ssl\ ou gere novos certificados
         echo.
-        echo Execute primeiro:
-        echo   1. scripts\ssl\INSTALAR_MKCERT_SIMPLES.bat
-        echo   2. scripts\ssl\GERAR_CERTIFICADOS_AUTO.bat
-        echo.
-        pause
-        exit /b 1
     )
 )
 

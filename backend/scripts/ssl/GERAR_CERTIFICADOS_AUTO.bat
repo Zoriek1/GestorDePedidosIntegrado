@@ -102,12 +102,15 @@ echo   - Via IP em TODAS as interfaces de rede
 echo.
 pause
 
-:: Ir para pasta de certificados (config/ssl)
+:: Ir para pasta de certificados (instance/ssl - novo local)
 cd /d "%~dp0\..\.."
-if not exist "config\ssl" (
-    mkdir "config\ssl"
+if not exist "instance" (
+    mkdir "instance"
 )
-cd /d "config\ssl"
+if not exist "instance\ssl" (
+    mkdir "instance\ssl"
+)
+cd /d "instance\ssl"
 
 echo.
 echo [2/4] Instalando CA raiz local...
@@ -156,13 +159,13 @@ echo [4/4] Verificando arquivos...
 echo.
 
 if exist "cert.pem" (
-    echo [OK] cert.pem criado em config\ssl\
+    echo [OK] cert.pem criado em instance\ssl\
 ) else (
     echo [ERRO] cert.pem NAO encontrado!
 )
 
 if exist "key.pem" (
-    echo [OK] key.pem criado em config\ssl\
+    echo [OK] key.pem criado em instance\ssl\
 ) else (
     echo [ERRO] key.pem NAO encontrado!
 )
@@ -172,7 +175,7 @@ echo ============================================
 echo   CERTIFICADOS PRONTOS!
 echo ============================================
 echo.
-echo Arquivos criados em config\ssl\:
+echo Arquivos criados em instance\ssl\:
 echo   - cert.pem (certificado publico)
 echo   - key.pem (chave privada)
 echo.

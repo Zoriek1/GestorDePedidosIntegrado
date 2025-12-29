@@ -5,6 +5,9 @@
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-CORS==4.0.0
+Flask-Migrate==4.0.5
+marshmallow==3.20.1
+flask-marshmallow==0.15.0
 
 # Banco de dados
 SQLAlchemy>=2.0.36
@@ -20,6 +23,12 @@ reportlab==4.0.7
 # Segurança e Backup
 cryptography==41.0.0
 schedule==1.2.0
+
+# Desenvolvimento e Testes
+pytest==7.4.3
+pytest-cov==4.1.0
+ruff==0.1.6
+black==23.12.1
 
 # Servidor WSGI para produção (opcional)
 # Descomente para usar em produção

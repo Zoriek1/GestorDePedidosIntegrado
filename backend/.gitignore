@@ -23,6 +23,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Instance directory - dados de runtime (gitignored)
+instance/
+
 # Banco de dados
 *.db
 *.sqlite
@@ -53,7 +56,6 @@ htmlcov/
 *.bak
 *.backup
 
-
-# Google Cloud credentials
+# Google Cloud credentials (não mover - fica em config/)
 google_credentials.json
-backend/config/google_credentials.json
+config/google_credentials.json

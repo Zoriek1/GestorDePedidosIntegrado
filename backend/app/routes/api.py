@@ -7,17 +7,25 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models import Pedido, RotaOtimizada, Cliente, FontePedido
 from app.middleware import requires_edit_auth
+from app.utils.backup_helper import create_backup, get_backup_stats, has_recent_backup, get_last_backup_time
 from datetime import datetime
 import re
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
+# ============================================
+# ENDPOINT DE CRIAÇÃO DE PEDIDO - MIGRADO
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/pedidos.py
+# Mantido aqui temporariamente para compatibilidade
+# NOVO LOCAL: app/routes/pedidos.py -> criar_pedido()
+
 @api_bp.route('/pedidos', methods=['POST'])
 @requires_edit_auth
 def criar_pedido():
     """
-    Cria novo pedido via API (usado pelo PWA)
-    Compatível também com PDFgen.py existente
+    MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
+    Mantido aqui apenas para compatibilidade durante transição
     """
     try:
         data = request.get_json()
@@ -233,9 +241,18 @@ def criar_pedido():
         }), 500
 
 
+# ============================================
+# ENDPOINT DE LISTAGEM DE PEDIDOS - MIGRADO
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/pedidos.py
+# NOVO LOCAL: app/routes/pedidos.py -> listar_pedidos()
+
 @api_bp.route('/pedidos', methods=['GET'])
 def listar_pedidos():
-    """Lista todos os pedidos com filtros opcionais"""
+    """
+    MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
+    Mantido aqui apenas para compatibilidade durante transição
+    """
     try:
         # Parâmetros de filtro
         status = request.args.get('status')
@@ -280,9 +297,18 @@ def listar_pedidos():
         }), 500
 
 
+# ============================================
+# ENDPOINT DE PEDIDOS POR DATA - MIGRADO
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/pedidos.py
+# NOVO LOCAL: app/routes/pedidos.py -> get_pedidos_por_data()
+
 @api_bp.route('/pedidos/por-data', methods=['GET'])
 def get_pedidos_por_data():
-    """Retorna contagem de pedidos por horário para uma data específica"""
+    """
+    MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
+    Mantido aqui apenas para compatibilidade durante transição
+    """
     try:
         data_str = request.args.get('data')
         
@@ -414,9 +440,18 @@ def atualizar_status(pedido_id):
         }), 500
 
 
+# ============================================
+# ENDPOINT MARCAR IMPRESSO - MIGRADO
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/pedidos.py
+# NOVO LOCAL: app/routes/pedidos.py -> marcar_impresso()
+
 @api_bp.route('/pedidos/<int:pedido_id>/marcar-impresso', methods=['POST', 'PUT', 'OPTIONS'])
 def marcar_impresso(pedido_id):
-    """Marca pedido como impresso"""
+    """
+    MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
+    Mantido aqui apenas para compatibilidade durante transição
+    """
     print(f"[BACKEND] marcar_impresso: Recebido pedido_id={pedido_id}, method={request.method}")
     
     # Suporte a OPTIONS para CORS
@@ -463,9 +498,18 @@ def marcar_impresso(pedido_id):
         }), 500
 
 
+# ============================================
+# ENDPOINT DE ATUALIZAÇÃO DE PEDIDO - MIGRADO
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/pedidos.py
+# NOVO LOCAL: app/routes/pedidos.py -> atualizar_pedido()
+
 @api_bp.route('/pedidos/<int:pedido_id>', methods=['PUT'])
 def atualizar_pedido(pedido_id):
-    """Atualiza dados completos do pedido"""
+    """
+    MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
+    Mantido aqui apenas para compatibilidade durante transição
+    """
     try:
         print(f"[API] Atualizando pedido {pedido_id}")
         pedido = Pedido.query.get(pedido_id)
@@ -573,10 +617,19 @@ def atualizar_pedido(pedido_id):
         }), 500
 
 
+# ============================================
+# ENDPOINT DE DELEÇÃO DE PEDIDO - MIGRADO
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/pedidos.py
+# NOVO LOCAL: app/routes/pedidos.py -> deletar_pedido()
+
 @api_bp.route('/pedidos/<int:pedido_id>', methods=['DELETE'])
 @requires_edit_auth
 def deletar_pedido(pedido_id):
-    """Deleta pedido"""
+    """
+    MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
+    Mantido aqui apenas para compatibilidade durante transição
+    """
     try:
         pedido = Pedido.query.get(pedido_id)
         
@@ -585,6 +638,15 @@ def deletar_pedido(pedido_id):
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
+        
+        # Criar backup automático antes de deletar
+        try:
+            backup_path = create_backup(reason='critical_operation', silent=True)
+            if backup_path:
+                print(f"[BACKUP] Backup criado antes de deletar pedido #{pedido_id}: {backup_path.name}")
+        except Exception as backup_error:
+            print(f"[AVISO] Falha ao criar backup antes de deletar pedido: {backup_error}")
+            # Continuar com a operação mesmo se o backup falhar
         
         db.session.delete(pedido)
         db.session.commit()
@@ -615,6 +677,38 @@ def obter_estatisticas():
     except Exception as e:
         return jsonify({
             'error': 'Erro ao obter estatísticas',
+            'detalhes': str(e)
+        }), 500
+
+
+@api_bp.route('/backup/status', methods=['GET'])
+def obter_status_backup():
+    """Retorna status dos backups do sistema"""
+    try:
+        stats = get_backup_stats()
+        last_backup = get_last_backup_time()
+        has_recent = has_recent_backup(hours=24)
+        
+        response = {
+            'success': True,
+            'backup_stats': {
+                'total_backups': stats['count'],
+                'total_size_mb': round(stats['total_size_mb'], 2),
+                'oldest_backup': stats['oldest'].isoformat() if stats['oldest'] else None,
+                'newest_backup': stats['newest'].isoformat() if stats['newest'] else None,
+                'has_recent_backup': has_recent,
+                'last_backup': {
+                    'path': str(last_backup[0]) if last_backup else None,
+                    'datetime': last_backup[1].isoformat() if last_backup else None,
+                    'size_mb': round(last_backup[2], 2) if last_backup else None
+                } if last_backup else None
+            }
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({
+            'error': 'Erro ao obter status dos backups',
             'detalhes': str(e)
         }), 500
 
@@ -1103,9 +1197,20 @@ def mapear_waypoints_para_pedidos(waypoints_otimizados, pedidos_com_coords):
     return sequencia_pedidos
 
 
+# ============================================
+# ENDPOINTS DE ROTAS OTIMIZADAS - MIGRADOS
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/rotas.py
+# Mantido aqui temporariamente para compatibilidade durante transição
+# TODO: Remover após validação completa e atualização do frontend
+# NOVO LOCAL: app/routes/rotas.py -> calcular_rota_otimizada()
+
 @api_bp.route('/pedidos/rota-otimizada', methods=['POST'])
 def calcular_rota_otimizada():
-    """Calcula rota otimizada para múltiplos pedidos considerando horário de agendamento"""
+    """
+    MIGRADO: Este endpoint foi movido para app/routes/rotas.py
+    Mantido aqui apenas para compatibilidade durante transição
+    """
     try:
         import os
         import math
@@ -1374,9 +1479,19 @@ def calcular_rota_otimizada():
         }), 500
 
 
+# ============================================
+# ENDPOINT DE ROTA OTIMIZADA POR ID - MIGRADO
+# ============================================
+# ATENÇÃO: Este endpoint foi migrado para app/routes/rotas.py
+# Mantido aqui temporariamente para compatibilidade
+# NOVO LOCAL: app/routes/rotas.py -> obter_rota_otimizada()
+
 @api_bp.route('/pedidos/rota-otimizada/<int:rota_id>', methods=['GET'])
 def obter_rota_otimizada(rota_id):
-    """Obtém detalhes de uma rota otimizada"""
+    """
+    MIGRADO: Este endpoint foi movido para app/routes/rotas.py
+    Mantido aqui apenas para compatibilidade durante transição
+    """
     try:
         import os
         from app.models import RotaOtimizada
@@ -1659,6 +1774,15 @@ def deletar_fonte_pedido(fonte_id):
                 'fonte_id': fonte_id
             }), 404
         
+        # Criar backup automático antes de desativar fonte
+        try:
+            backup_path = create_backup(reason='critical_operation', silent=True)
+            if backup_path:
+                print(f"[BACKUP] Backup criado antes de desativar fonte #{fonte_id}: {backup_path.name}")
+        except Exception as backup_error:
+            print(f"[AVISO] Falha ao criar backup antes de desativar fonte: {backup_error}")
+            # Continuar com a operação mesmo se o backup falhar
+        
         # Soft delete: apenas desativar
         fonte.ativo = False
         fonte.updated_at = datetime.utcnow()
@@ -1767,68 +1891,22 @@ def estatisticas_fonte(fonte_id):
 # ENDPOINTS DE AUTENTICAÇÃO
 # ============================================
 
-@api_bp.route('/auth/login', methods=['POST'])
-def login():
-    """Valida credenciais e retorna confirmação"""
-    try:
-        from app.middleware import check_auth
-        
-        data = request.get_json() or {}
-        username = data.get('username', '').strip()
-        password = data.get('password', '').strip()
-        
-        if not username or not password:
-            return jsonify({
-                'success': False,
-                'error': 'Usuário e senha são obrigatórios'
-            }), 400
-        
-        if check_auth(username, password):
-            return jsonify({
-                'success': True,
-                'message': 'Login realizado com sucesso',
-                'username': username
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Credenciais inválidas'
-            }), 401
-            
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': 'Erro ao processar login',
-            'detalhes': str(e)
-        }), 500
+# ============================================
+# ENDPOINTS DE AUTENTICAÇÃO - MIGRADOS
+# ============================================
+# Estes endpoints foram migrados para app/routes/auth.py
+# Mantidos aqui temporariamente para compatibilidade durante transição
+# TODO: Remover após validação completa
 
+# @api_bp.route('/auth/login', methods=['POST'])
+# def login():
+#     """MIGRADO: Ver app/routes/auth.py"""
+#     pass
 
-@api_bp.route('/auth/check', methods=['GET'])
-def check_auth_status():
-    """Verifica se a requisição está autenticada"""
-    try:
-        from app.middleware import check_auth
-        
-        auth = request.authorization
-        
-        if auth and check_auth(auth.username, auth.password):
-            return jsonify({
-                'success': True,
-                'authenticated': True,
-                'username': auth.username
-            })
-        else:
-            return jsonify({
-                'success': True,
-                'authenticated': False
-            })
-            
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': 'Erro ao verificar autenticação',
-            'detalhes': str(e)
-        }), 500
+# @api_bp.route('/auth/check', methods=['GET'])
+# def check_auth_status():
+#     """MIGRADO: Ver app/routes/auth.py"""
+#     pass
 
 
 @api_bp.route('/debug/geocode', methods=['GET', 'POST'])

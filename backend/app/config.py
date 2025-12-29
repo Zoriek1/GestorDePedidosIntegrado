@@ -11,13 +11,17 @@ class Config:
     # Diretório base do backend
     BASE_DIR = Path(__file__).parent.parent
     
+    # Diretório instance (dados de runtime não versionados)
+    INSTANCE_DIR = BASE_DIR / 'instance'
+    # Garantir que instance/ existe
+    INSTANCE_DIR.mkdir(exist_ok=True)
+    
     # Secret key para sessões
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'plante-uma-flor-pwa-secret-key-2024'
     
     # Banco de dados SQLite
-    DATABASE_PATH = BASE_DIR / 'data' / 'database.db'
-    # Garantir que o diretório existe
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Usar instance/database.db (dados de runtime não versionados)
+    DATABASE_PATH = INSTANCE_DIR / 'database.db'
     # Formatar caminho para SQLite (Windows precisa de barras normais ou r'')
     SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH.as_posix()}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False

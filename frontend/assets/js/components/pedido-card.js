@@ -1789,23 +1789,55 @@ const PedidoCard = {
             }
         }
         
-        // Marcar como impresso assim que a página carregar
+        // Marcar como impresso quando a caixa de impressão abrir
         const pedidoId = ${pedidoId};
         let jaMarcado = false;
         
-        // Marcar imediatamente ao carregar a página
-        document.addEventListener('DOMContentLoaded', () => {
+        // Usar evento beforeprint - dispara quando a caixa de impressão está prestes a abrir
+        // Isso funciona de forma consistente em todos os navegadores
+        window.addEventListener('beforeprint', () => {
             if (!jaMarcado) {
+                console.log('[IMPRESSAO] Caixa de impressão aberta - marcando pedido como impresso');
                 marcarComoImpresso(pedidoId);
                 jaMarcado = true;
             }
         });
         
-        // Fallback: marcar também quando a página estiver totalmente carregada
-        window.addEventListener('load', () => {
-            if (!jaMarcado) {
-                marcarComoImpresso(pedidoId);
-                jaMarcado = true;
+        // Fallback para navegadores que não suportam beforeprint (muito raro)
+        // Usar media query matchMedia como alternativa
+        if (window.matchMedia) {
+            const mediaQueryList = window.matchMedia('print');
+            const handlePrint = (mql) => {
+                if (mql.matches && !jaMarcado) {
+                    console.log('[IMPRESSAO] Media query detectou impressão - marcando pedido como impresso');
+                    marcarComoImpresso(pedidoId);
+                    jaMarcado = true;
+                }
+            };
+            
+            // Suporte para addListener (antigo) e addEventListener (novo)
+            if (mediaQueryList.addEventListener) {
+                mediaQueryList.addEventListener('change', handlePrint);
+            } else if (mediaQueryList.addListener) {
+                mediaQueryList.addListener(handlePrint);
+            }
+        }
+        
+        // Fallback adicional: se o botão de impressão for clicado diretamente
+        // (para casos onde window.print() é chamado antes dos eventos serem registrados)
+        document.addEventListener('DOMContentLoaded', () => {
+            const printButton = document.querySelector('button[onclick*="print()"]');
+            if (printButton) {
+                printButton.addEventListener('click', () => {
+                    // Pequeno delay para garantir que a caixa de impressão abra primeiro
+                    setTimeout(() => {
+                        if (!jaMarcado) {
+                            console.log('[IMPRESSAO] Botão de impressão clicado - marcando pedido como impresso');
+                            marcarComoImpresso(pedidoId);
+                            jaMarcado = true;
+                        }
+                    }, 100);
+                });
             }
         });
     </script>
@@ -1828,6 +1860,8 @@ const PedidoCard = {
             if (printWindow) {
                 // Desktop: aguardar carregar e imprimir
                 printWindow.onload = () => {
+                    // O evento beforeprint já está registrado no HTML injetado
+                    // Apenas aguardar um pouco para garantir que o script foi executado
                     setTimeout(() => {
                         printWindow.print();
                         // Limpar URL após impressão
@@ -1846,6 +1880,8 @@ const PedidoCard = {
                 document.body.appendChild(iframe);
                 
                 iframe.onload = () => {
+                    // O evento beforeprint já está registrado no HTML injetado
+                    // Apenas aguardar um pouco para garantir que o script foi executado
                     setTimeout(() => {
                         try {
                             iframe.contentWindow.focus();

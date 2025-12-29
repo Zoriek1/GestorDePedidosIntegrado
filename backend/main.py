@@ -21,6 +21,7 @@ if sys.platform == 'win32':
 
 from app import create_app
 from app.config import config
+from app.utils.backup_helper import create_backup, has_recent_backup, get_last_backup_time
 
 def get_local_ip():
     """Descobre o IP local da máquina"""
@@ -52,7 +53,14 @@ def get_hostname():
 
 def check_ssl_certificates():
     """Verifica se os certificados SSL existem"""
-    ssl_dir = Path(__file__).parent / 'config' / 'ssl'
+    # SSL agora fica em instance/ssl
+    from app.config import Config
+    ssl_dir = Config.INSTANCE_DIR / 'ssl'
+    
+    # Garantir que diretório existe
+    if not ssl_dir.exists():
+        ssl_dir.mkdir(parents=True, exist_ok=True)
+        
     cert_file = ssl_dir / 'cert.pem'
     key_file = ssl_dir / 'key.pem'
     
@@ -74,6 +82,13 @@ def check_port_in_use(port=5000):
 
 def main():
     """Função principal para iniciar o servidor"""
+    
+    # Se --help ou comandos CLI foram passados, usar Flask CLI
+    if '--help' in sys.argv or any(arg.startswith('cli ') for arg in sys.argv):
+        # create_app já foi importado no topo do arquivo
+        app = create_app()
+        # Flask CLI vai processar os comandos
+        return
     
     # Verificar se a porta já está em uso
     if check_port_in_use(5000):
@@ -114,6 +129,31 @@ def main():
         'JSON_AS_ASCII': app_config.JSON_AS_ASCII,
         'JSON_SORT_KEYS': app_config.JSON_SORT_KEYS
     })
+    
+    # Verificar e criar backup se necessário ao iniciar servidor
+    try:
+        with app.app_context():
+            if not has_recent_backup(hours=24):
+                print("\n[BACKUP] Nenhum backup recente encontrado (últimas 24h)")
+                last_backup = get_last_backup_time()
+                if last_backup:
+                    print(f"[BACKUP] Último backup: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
+                else:
+                    print("[BACKUP] Nenhum backup encontrado no sistema")
+                
+                print("[BACKUP] Criando backup automático ao iniciar servidor...")
+                backup_path = create_backup(reason='startup', silent=False)
+                if backup_path:
+                    print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
+                else:
+                    print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
+            else:
+                last_backup = get_last_backup_time()
+                if last_backup:
+                    print(f"[BACKUP] Backup recente encontrado: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
+    except Exception as e:
+        print(f"[AVISO] Erro ao verificar/criar backup ao iniciar servidor: {e}")
+        # Continuar inicialização mesmo se backup falhar
     
     # Descobrir IP local e hostname
     local_ip = get_local_ip()

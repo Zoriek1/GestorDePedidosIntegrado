@@ -1,121 +1,123 @@
 ' ===================================================
 ' PLANTE UMA FLOR - Iniciar Servidor HTTPS Invisível
-' Inicia o servidor Flask em HTTPS sem janela visível
+' Inicia o servidor Flask em modo invisível (sem janela)
 ' ===================================================
 
 Option Explicit
 
-Dim objShell, scriptDir, backendDir, pythonCmd, strCommand
-
-' Criar objeto Shell
-Set objShell = CreateObject("WScript.Shell")
-
-' Obter diretório do script (backend/scripts/server/start)
-Dim objFSO
-Set objFSO = CreateObject("Scripting.FileSystemObject")
-scriptDir = objFSO.GetParentFolderName(WScript.ScriptFullName)
-
-' Obter diretório do backend (3 níveis acima: start -> server -> scripts -> backend)
-' scriptDir = backend/scripts/server/start
-' Nível 1: backend/scripts/server
-' Nível 2: backend/scripts
-' Nível 3: backend
-Dim tempDir
-tempDir = objFSO.GetParentFolderName(scriptDir)  ' server
-tempDir = objFSO.GetParentFolderName(tempDir)     ' scripts
-backendDir = objFSO.GetParentFolderName(tempDir)  ' backend
-objShell.CurrentDirectory = backendDir
-
-' Verificar se certificados existem
-Dim fso
+' Obter diretório do script e calcular caminho do backend
+Dim fso, scriptPath, backendPath, logPath
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-If Not fso.FileExists(backendDir & "\config\ssl\cert.pem") Or Not fso.FileExists(backendDir & "\config\ssl\key.pem") Then
-    MsgBox "Certificados SSL não encontrados!" & vbCrLf & vbCrLf & _
-           "Execute primeiro:" & vbCrLf & _
-           "1. scripts\ssl\INSTALAR_MKCERT.bat" & vbCrLf & _
-           "2. scripts\ssl\GERAR_CERTIFICADOS.bat", _
-           vbCritical, "Plante Uma Flor - Erro"
-    WScript.Quit 1
+' Obter caminho completo do script (já trata espaços corretamente)
+scriptPath = fso.GetParentFolderName(WScript.ScriptFullName)
+
+' O script está em: backend/scripts/server/start/
+' Precisamos subir 3 níveis para chegar ao backend
+' start -> server -> scripts -> backend
+' Usar GetParentFolderName que funciona melhor com caminhos com espaços
+backendPath = fso.GetParentFolderName(fso.GetParentFolderName(fso.GetParentFolderName(scriptPath)))
+logPath = backendPath & "\servidor_https.log"
+
+' Verificar se o caminho está correto (verificar se main.py existe)
+If Not fso.FileExists(backendPath & "\main.py") Then
+    ' Mostrar erro com caminhos para debug
+    MsgBox "Erro ao localizar diretório do backend!" & vbCrLf & vbCrLf & _
+           "Script: " & WScript.ScriptFullName & vbCrLf & _
+           "Caminho calculado: " & backendPath & vbCrLf & vbCrLf & _
+           "main.py não encontrado neste caminho.", _
+           vbCritical, "Erro - Plante Uma Flor"
+    WScript.Quit
 End If
 
+' Verificar se Python está disponível
+Dim shell, pythonCheck, pythonPath
+Set shell = CreateObject("WScript.Shell")
 ' Tentar encontrar Python
-pythonCmd = "python"
+pythonCheck = shell.Run("cmd.exe /c where python >nul 2>&1", 0, True)
 
-' Verificar se python está disponível
-Dim result
-result = objShell.Run("cmd /c where python > nul 2>&1", 0, True)
-
-If result <> 0 Then
-    ' Tentar py launcher
-    result = objShell.Run("cmd /c where py > nul 2>&1", 0, True)
-    If result = 0 Then
-        pythonCmd = "py"
+If pythonCheck <> 0 Then
+    ' Tentar pythonw (Python sem janela)
+    pythonCheck = shell.Run("cmd.exe /c where pythonw >nul 2>&1", 0, True)
+    If pythonCheck = 0 Then
+        pythonPath = "pythonw"
     Else
-        MsgBox "Python não encontrado!" & vbCrLf & vbCrLf & _
-               "Certifique-se de que o Python está instalado e no PATH.", _
-               vbCritical, "Plante Uma Flor - Erro"
-        WScript.Quit 1
-    End If
-End If
-
-' Criar comando para iniciar o servidor com encoding UTF-8 e log
-' Definir variáveis de ambiente para UTF-8
-Dim logFile
-logFile = backendDir & "\servidor_https.log"
-
-' Comando com encoding UTF-8, sem reloader (mais estável) e redirecionamento de saída
-strCommand = "cmd /c ""chcp 65001 >nul 2>&1 && cd /d """ & backendDir & """ && " & _
-             "set PYTHONIOENCODING=utf-8 && " & _
-             "set NO_RELOAD=true && " & _
-             pythonCmd & " main.py --https --no-reload > """ & logFile & """ 2>&1"""
-
-' Executar em modo oculto (0 = janela oculta, False = não esperar conclusão)
-objShell.Run strCommand, 0, False
-
-' Aguardar 5 segundos para o servidor iniciar completamente
-WScript.Sleep 5000
-
-' Verificar se o servidor realmente iniciou (verificando o log)
-Dim objFSO2, objFile, strLogContent
-Set objFSO2 = CreateObject("Scripting.FileSystemObject")
-
-If objFSO2.FileExists(logFile) Then
-    On Error Resume Next
-    Set objFile = objFSO2.OpenTextFile(logFile, 1)
-    strLogContent = objFile.ReadAll
-    objFile.Close
-    On Error GoTo 0
-    
-    ' Verificar se há indicação de erro no log
-    If InStr(strLogContent, "Erro") > 0 Or InStr(strLogContent, "Error") > 0 Then
-        MsgBox "Servidor iniciado mas pode haver problemas!" & vbCrLf & vbCrLf & _
-               "Verifique o log para detalhes:" & vbCrLf & _
-               "backend\servidor_https.log", _
-               vbExclamation, "Plante Uma Flor - Aviso"
-    Else
-        ' Mostrar notificação de sucesso
-        On Error Resume Next
-        Dim objNotify
-        Set objNotify = CreateObject("WScript.Shell")
-        objNotify.Popup "Servidor HTTPS iniciado com sucesso!" & vbCrLf & vbCrLf & _
-                        "Acesse: https://localhost:5000" & vbCrLf & _
-                        "ou https://Gestor-pedidos.local:5000" & vbCrLf & vbCrLf & _
-                        "Log: backend\servidor_https.log", _
-                        6, "Plante Uma Flor", vbInformation
-        On Error GoTo 0
+        ' Python não encontrado, mostrar erro
+        MsgBox "Python não encontrado no PATH!" & vbCrLf & vbCrLf & _
+               "Certifique-se de que o Python está instalado.", _
+               vbCritical, "Erro - Plante Uma Flor"
+        WScript.Quit
     End If
 Else
-    MsgBox "Servidor iniciado mas log nao encontrado!" & vbCrLf & vbCrLf & _
-           "Verifique se o servidor esta funcionando:" & vbCrLf & _
-           "https://localhost:5000", _
-           vbExclamation, "Plante Uma Flor - Aviso"
+    pythonPath = "python"
+End If
+
+' Verificar se certificados existem
+Dim certPath, keyPath, certFound
+certPath = backendPath & "\instance\ssl\cert.pem"
+keyPath = backendPath & "\instance\ssl\key.pem"
+certFound = False
+
+' Verificar primeiro em instance/ssl (local novo)
+If fso.FileExists(certPath) And fso.FileExists(keyPath) Then
+    certFound = True
+Else
+    ' Tentar local antigo (config/ssl)
+    certPath = backendPath & "\config\ssl\cert.pem"
+    keyPath = backendPath & "\config\ssl\key.pem"
+    If fso.FileExists(certPath) And fso.FileExists(keyPath) Then
+        certFound = True
+    End If
+End If
+
+If Not certFound Then
+    Dim errorMsg
+    errorMsg = "Certificados SSL não encontrados!" & vbCrLf & vbCrLf
+    errorMsg = errorMsg & "Procurados em:" & vbCrLf
+    errorMsg = errorMsg & "  - " & backendPath & "\instance\ssl\cert.pem" & vbCrLf
+    errorMsg = errorMsg & "  - " & backendPath & "\config\ssl\cert.pem" & vbCrLf & vbCrLf
+    errorMsg = errorMsg & "Execute primeiro:" & vbCrLf
+    errorMsg = errorMsg & "1. scripts\ssl\INSTALAR_MKCERT.bat" & vbCrLf
+    errorMsg = errorMsg & "2. scripts\ssl\GERAR_CERTIFICADOS_AUTO.bat"
+    MsgBox errorMsg, vbCritical, "Erro - Plante Uma Flor"
+    WScript.Quit
+End If
+
+' Criar objeto para executar comando
+Dim command, exec, workingDir
+' Garantir que o diretório de trabalho está correto
+workingDir = backendPath
+
+' Construir comando completo
+' Usar pythonw se disponível para não mostrar janela, senão usar python
+command = "cmd.exe /c cd /d """ & workingDir & """ && " & pythonPath & " main.py --https --no-reload >> """ & logPath & """ 2>&1"
+
+' Executar em modo invisível (0 = oculto, bWaitOnReturn = False para não bloquear)
+' Usar CreateObject("WScript.Shell").Run com windowStyle = 0 (oculto)
+exec = shell.Run(command, 0, False)
+
+' Aguardar um pouco para verificar se iniciou
+WScript.Sleep 3000
+
+' Verificar se servidor iniciou (porta 5000)
+Dim portCheck, portCheckCmd
+portCheckCmd = "cmd.exe /c netstat -ano | findstr :5000 | findstr LISTENING >nul 2>&1"
+portCheck = shell.Run(portCheckCmd, 0, True)
+
+If portCheck = 0 Then
+    ' Servidor iniciou com sucesso
+    shell.Popup "Servidor HTTPS iniciado com sucesso!" & vbCrLf & vbCrLf & _
+                "Acesse: https://localhost:5000" & vbCrLf & vbCrLf & _
+                "Log: " & logPath, _
+                3, "Servidor Iniciado - Plante Uma Flor", vbInformation
+Else
+    ' Erro ao iniciar
+    shell.Popup "Erro ao iniciar servidor!" & vbCrLf & vbCrLf & _
+                "Verifique o log: " & logPath, _
+                5, "Erro - Plante Uma Flor", vbCritical
 End If
 
 ' Limpar objetos
-Set objShell = Nothing
 Set fso = Nothing
-
-WScript.Quit 0
-
+Set shell = Nothing
 

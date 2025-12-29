@@ -7,8 +7,36 @@ import os
 import sys
 import shutil
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import zipfile
+
+# Tentar importar o logger de auditoria se disponível
+try:
+    # Adicionar o diretório app ao path
+    backend_dir = Path(__file__).parent.parent.parent
+    app_utils_dir = backend_dir / 'app' / 'utils'
+    sys.path.insert(0, str(app_utils_dir))
+    
+    from backup_helper import get_audit_logger
+    AUDIT_LOGGER_AVAILABLE = True
+except ImportError:
+    AUDIT_LOGGER_AVAILABLE = False
+    # Criar logger básico se não conseguir importar
+    import logging
+    logs_dir = backend_dir / 'instance' / 'logs'
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    basic_logger = logging.getLogger('restore_basic')
+    basic_logger.setLevel(logging.INFO)
+    if not basic_logger.handlers:
+        file_handler = logging.FileHandler(
+            logs_dir / 'backup_audit.log',
+            encoding='utf-8',
+            mode='a'
+        )
+        file_handler.setFormatter(
+            logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        )
+        basic_logger.addHandler(file_handler)
 
 class RestoreManager:
     """Gerenciador de restauração de backups"""
@@ -21,17 +49,29 @@ class RestoreManager:
             db_path: Caminho para o database.db (padrão: backend/database.db)
             backup_dir: Diretório com os backups (padrão: backend/backups)
         """
-        self.backend_dir = Path(__file__).parent.parent
+        self.backend_dir = Path(__file__).parent.parent.parent
+        
+        # Adicionar backend_dir ao path para importar app.config
+        if str(self.backend_dir) not in sys.path:
+            sys.path.insert(0, str(self.backend_dir))
+            
+        try:
+            from app.config import Config
+            default_db_path = Config.DATABASE_PATH
+            default_backup_dir = Config.INSTANCE_DIR / 'backups'
+        except ImportError:
+            default_db_path = self.backend_dir / 'instance' / 'database.db'
+            default_backup_dir = self.backend_dir / 'instance' / 'backups'
         
         if db_path:
             self.db_path = Path(db_path)
         else:
-            self.db_path = self.backend_dir / 'database.db'
+            self.db_path = default_db_path
         
         if backup_dir:
             self.backup_dir = Path(backup_dir)
         else:
-            self.backup_dir = self.backend_dir / 'backups'
+            self.backup_dir = default_backup_dir
     
     def list_backups(self):
         """
@@ -240,22 +280,100 @@ def main():
             print("[ERRO] Entrada inválida! Digite um número.")
             sys.exit(1)
     
+    # Obter informações do backup selecionado
+    backup_stat = backup_to_restore.stat()
+    backup_date = datetime.fromtimestamp(backup_stat.st_mtime)
+    backup_size_mb = backup_stat.st_size / (1024 * 1024)
+    
+    # Calcular diferença de tempo
+    now = datetime.now()
+    time_diff = now - backup_date
+    days_old = time_diff.days
+    hours_old = time_diff.seconds // 3600
+    
+    # Verificar se o backup é muito antigo
+    is_old_backup = days_old > 7
+    
     # Confirmação
     print("\n" + "="*60)
     print("ATENÇÃO: Restauração de Backup")
     print("="*60)
     print(f"\nBackup selecionado: {backup_to_restore.name}")
-    print(f"Banco atual será SUBSTITUÍDO: {restore_mgr.db_path}")
+    print(f"Data do backup: {backup_date.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Tamanho: {backup_size_mb:.2f} MB")
+    
+    if days_old > 0:
+        print(f"Idade: {days_old} dia(s) e {hours_old} hora(s)")
+    else:
+        print(f"Idade: {hours_old} hora(s)")
+    
+    if is_old_backup:
+        print("\n" + "!"*60)
+        print("AVISO CRÍTICO: Este backup é ANTIGO (mais de 7 dias)!")
+        print("Restaurar este backup irá PERDER todos os dados criados após esta data!")
+        print("!"*60)
+    
+    print(f"\nBanco atual será SUBSTITUÍDO: {restore_mgr.db_path}")
     
     if not args.no_backup and restore_mgr.db_path.exists():
         print(f"\nUm backup preventivo será criado antes da restauração.")
     
     print("\n" + "="*60)
-    confirmacao = input("\nTem certeza que deseja continuar? (digite 'SIM' em maiúsculas): ").strip()
     
-    if confirmacao != 'SIM':
+    # Primeira confirmação
+    confirmacao1 = input("\nTem certeza que deseja continuar? (digite 'SIM' em maiúsculas): ").strip()
+    
+    if confirmacao1 != 'SIM':
+        # Registrar tentativa cancelada
+        try:
+            if AUDIT_LOGGER_AVAILABLE:
+                get_audit_logger().log_restore_attempt(backup_to_restore, user_confirmed=False)
+            else:
+                basic_logger.warning(
+                    f"RESTORE TENTATIVA | Arquivo: {backup_to_restore.name} | Status: CANCELADO"
+                )
+        except:
+            pass
+        
         print("\n[INFO] Restauração cancelada.")
         sys.exit(0)
+    
+    # Segunda confirmação se backup é antigo
+    if is_old_backup:
+        print("\n" + "!"*60)
+        print("CONFIRMAÇÃO ADICIONAL NECESSÁRIA")
+        print("!"*60)
+        print(f"\nEste backup é de {days_old} dia(s) atrás.")
+        print("Você está prestes a PERDER todos os dados criados após:")
+        print(f"  {backup_date.strftime('%d/%m/%Y %H:%M:%S')}")
+        print("\nDigite 'CONFIRMO' em maiúsculas para prosseguir:")
+        confirmacao2 = input("> ").strip()
+        
+        if confirmacao2 != 'CONFIRMO':
+            # Registrar tentativa cancelada
+            try:
+                if AUDIT_LOGGER_AVAILABLE:
+                    get_audit_logger().log_restore_attempt(backup_to_restore, user_confirmed=False)
+                else:
+                    basic_logger.warning(
+                        f"RESTORE TENTATIVA | Arquivo: {backup_to_restore.name} | Status: CANCELADO (confirmação adicional)"
+                    )
+            except:
+                pass
+            
+            print("\n[INFO] Restauração cancelada na confirmação adicional.")
+            sys.exit(0)
+    
+    # Registrar tentativa confirmada
+    try:
+        if AUDIT_LOGGER_AVAILABLE:
+            get_audit_logger().log_restore_attempt(backup_to_restore, user_confirmed=True)
+        else:
+            basic_logger.warning(
+                f"RESTORE TENTATIVA | Arquivo: {backup_to_restore.name} | Status: CONFIRMADO"
+            )
+    except:
+        pass
     
     # Executar restauração
     print()
@@ -267,9 +385,33 @@ def main():
     print("="*60)
     
     if sucesso:
+        # Registrar restauração bem-sucedida
+        try:
+            if AUDIT_LOGGER_AVAILABLE:
+                get_audit_logger().log_restore_completed(backup_to_restore, success=True)
+            else:
+                basic_logger.warning(
+                    f"RESTORE SUCESSO | Arquivo: {backup_to_restore.name}"
+                )
+        except:
+            pass
+        
         print("\n[OK] Restauração concluída com sucesso!")
+        print(f"[INFO] Backup restaurado: {backup_to_restore.name}")
+        print(f"[INFO] Data do backup: {backup_date.strftime('%Y-%m-%d %H:%M:%S')}")
         print("\n[PRÓXIMO PASSO] Reinicie o servidor Flask para usar o banco restaurado.")
     else:
+        # Registrar falha na restauração
+        try:
+            if AUDIT_LOGGER_AVAILABLE:
+                get_audit_logger().log_restore_completed(backup_to_restore, success=False)
+            else:
+                basic_logger.error(
+                    f"RESTORE FALHA | Arquivo: {backup_to_restore.name}"
+                )
+        except:
+            pass
+        
         print("\n[ERRO] Falha na restauração!")
         sys.exit(1)
     

@@ -1,3 +1,7 @@
+# Instance directory - dados de runtime (gitignored)
+backend/instance/
+instance/
+
 # Banco de dados
 *.db
 *.db-journal
@@ -5,17 +9,21 @@
 *.sqlite3
 
 # Certificados SSL (importantes mas não versionados)
-backend/ssl/*.pem
-backend/ssl/*.key
-backend/ssl/*.crt
-backend/ssl/*.cer
-backend/*.pem
-backend/*.key
+*.pem
+*.key
+*.crt
+*.cer
+backend/ssl/
+backend/config/ssl/
 
 # Logs
 *.log
 logs/
 backend/logs/
+
+# Backups
+backups/
+backend/backups/
 
 # Python
 __pycache__/

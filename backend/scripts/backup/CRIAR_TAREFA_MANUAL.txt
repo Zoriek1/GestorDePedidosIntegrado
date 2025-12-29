@@ -1,0 +1,75 @@
+============================================================
+INSTRUÇÕES PARA CRIAR TAREFA DE BACKUP MANUALMENTE
+============================================================
+
+Se o script automático não funcionou, siga estes passos:
+
+1. ABRIR O AGENDADOR DE TAREFAS
+   - Pressione Windows + R
+   - Digite: taskschd.msc
+   - Pressione Enter
+
+2. CRIAR NOVA TAREFA
+   - No painel direito, clique em "Criar Tarefa Básica..."
+   - OU clique em "Criar Tarefa..." (mais opções)
+
+3. CONFIGURAR A TAREFA
+   
+   ABA "GERAL":
+   - Nome: GestorPedidos_BackupDiario
+   - Descrição: Backup automático diário do banco de dados
+   - Marque: "Executar se o usuário estiver conectado ou não"
+   - Marque: "Executar com privilégios mais altos"
+   
+   ABA "GATILHOS":
+   - Clique em "Novo..."
+   - Iniciar tarefa: Diariamente
+   - Hora: 03:00
+   - Repetir a cada: 1 dias
+   - Clique em "OK"
+   
+   ABA "AÇÕES":
+   - Clique em "Novo..."
+   - Ação: Iniciar um programa
+   - Programa/script: (caminho completo do Python)
+     Exemplo: C:\Users\SeuUsuario\AppData\Local\Programs\Python\Python312\python.exe
+     OU: C:\Python312\python.exe
+     (Use "where python" no CMD para encontrar)
+   
+   - Adicionar argumentos: "C:\Gestor de Pedidos Plante uma flor\backend\scripts\backup\backup.py"
+   
+   - Iniciar em: C:\Gestor de Pedidos Plante uma flor\backend
+   
+   - Clique em "OK"
+   
+   ABA "CONDIÇÕES":
+   - Desmarque: "Iniciar a tarefa somente se o computador estiver conectado à energia CA"
+   - Marque: "Acordar o computador para executar esta tarefa"
+   
+   ABA "CONFIGURAÇÕES":
+   - Marque: "Permitir que a tarefa seja executada sob demanda"
+   - Marque: "Executar a tarefa o mais rápido possível após uma inicialização agendada perdida"
+   - Se a tarefa em execução não terminar quando solicitado, force a parada: Após 1 hora
+
+4. SALVAR
+   - Clique em "OK"
+   - Se solicitado, digite a senha de administrador
+
+5. TESTAR
+   - Clique com botão direito na tarefa criada
+   - Selecione "Executar"
+   - Verifique se o backup foi criado em: backend\backups\
+
+============================================================
+COMANDO ALTERNATIVO (CMD como Administrador)
+============================================================
+
+Execute no CMD como Administrador (substitua o caminho do Python):
+
+schtasks /Create /SC DAILY /TN "GestorPedidos_BackupDiario" /TR "\"C:\CAMINHO\DO\PYTHON\python.exe\" \"C:\Gestor de Pedidos Plante uma flor\backend\scripts\backup\backup.py\"" /ST 03:00 /F /RU SYSTEM /RL HIGHEST /WD "C:\Gestor de Pedidos Plante uma flor\backend"
+
+Para encontrar o caminho do Python, execute no CMD:
+  where python
+
+============================================================
+

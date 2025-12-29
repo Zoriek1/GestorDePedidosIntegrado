@@ -4480,19 +4480,11 @@ clientsClaim();
 // RUNTIME CACHING
 // ============================================
 
-// 1. Navegação HTML: NetworkFirst com timeout 3s, fallback para index.html
+// 1. Navegação HTML: NetworkOnly (sempre busca da rede quando online)
+// O catch handler (linha 176) faz fallback para index.html quando offline
 registerRoute(
   ({ request }) => request.mode === 'navigate',
-  new NetworkFirst({
-    cacheName: 'html-cache',
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 10,
-        maxAgeSeconds: 24 * 60 * 60 // 24 horas
-      })
-    ],
-    networkTimeoutSeconds: 3
-  })
+  new NetworkOnly()
 );
 
 // 2. JS/CSS (same-origin): StaleWhileRevalidate com expiração

@@ -38,24 +38,32 @@ if %errorlevel% equ 0 (
 
 echo.
 echo [3/6] Verificando certificados SSL...
-if exist "config\ssl\cert.pem" (
-    echo [OK] Certificado encontrado: config\ssl\cert.pem
+if exist "instance\ssl\cert.pem" (
+    echo [OK] Certificado encontrado: instance\ssl\cert.pem
+) else if exist "config\ssl\cert.pem" (
+    echo [OK] Certificado encontrado (legado): config\ssl\cert.pem
 ) else (
     echo [AVISO] Certificado nao encontrado
-    echo    Execute: scripts\ssl\GERAR_CERTIFICADOS.bat
+    echo    Execute: flask ssl generate
 )
 
-if exist "config\ssl\key.pem" (
-    echo [OK] Chave privada encontrada: config\ssl\key.pem
+if exist "instance\ssl\key.pem" (
+    echo [OK] Chave privada encontrada: instance\ssl\key.pem
+) else if exist "config\ssl\key.pem" (
+    echo [OK] Chave privada encontrada (legado): config\ssl\key.pem
 ) else (
     echo [AVISO] Chave privada nao encontrada
-    echo    Execute: scripts\ssl\GERAR_CERTIFICADOS.bat
+    echo    Execute: flask ssl generate
 )
 
 echo.
 echo [4/6] Verificando banco de dados...
-if exist "database.db" (
-    echo [OK] Banco de dados encontrado: database.db
+set "DB_PATH=%USERPROFILE%\var\lib\database\database.db"
+if exist "%DB_PATH%" (
+    echo [OK] Banco de dados encontrado: %DB_PATH%
+) else if exist "instance\database.db" (
+    echo [AVISO] Banco encontrado no local antigo: instance\database.db
+    echo    Use migrar_database_path.py para mover para o novo local
 ) else (
     echo [INFO] Banco de dados sera criado na primeira execucao
 )

@@ -5,6 +5,9 @@
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-CORS==4.0.0
+Flask-Migrate==4.0.5
+marshmallow==3.20.1
+flask-marshmallow==0.15.0
 
 # Banco de dados
 SQLAlchemy>=2.0.36
@@ -21,8 +24,20 @@ reportlab==4.0.7
 cryptography==41.0.0
 schedule==1.2.0
 
+# Google Drive / Sheets
+google-auth==2.23.4
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+google-api-python-client==2.105.0
+
+# Desenvolvimento e Testes
+pytest==7.4.3
+pytest-cov==4.1.0
+ruff==0.1.6
+black==23.12.1
+
 # Servidor WSGI para produção (opcional)
 # Descomente para usar em produção
-# gunicorn==21.2.0
-# waitress==2.1.2
+gunicorn==21.2.0
+waitress==2.1.2
 

@@ -208,17 +208,35 @@ ENABLE_DEBUG_ENDPOINTS=false
 
 #### 4. Iniciar o Servidor
 
-**Opção 1 - Script Automático (Recomendado):**
+**Opção 1 - CLI Unificado (Recomendado):**
+
+```bash
+cd backend
+
+# HTTP
+flask cli start
+
+# HTTPS
+flask cli start --https
+
+# Porta customizada
+flask cli start --port 8080
+
+# Modo estável (sem reloader)
+flask cli start --no-reload
+```
+
+**Opção 2 - Script Automático (Windows):**
 
 ```bash
 # HTTP (modo simples)
-backend\run\abrir_sistema.bat
+backend\scripts\server\start\abrir_sistema_https.bat
 
 # HTTPS (recomendado para produção)
-backend\run\abrir_sistema_https.bat
+backend\scripts\server\start\abrir_sistema_https.bat
 ```
 
-**Opção 2 - Python Diretamente:**
+**Opção 3 - Python Diretamente (Legado):**
 
 ```bash
 cd backend
@@ -230,6 +248,86 @@ python main.py --https      # HTTPS
 
 - **Local**: `http://localhost:5000` ou `https://localhost:5000`
 - **Rede**: `http://SEU_IP:5000` ou `https://SEU_IP:5000`
+
+---
+
+## Comandos CLI
+
+O sistema possui um CLI unificado para todas as operações:
+
+### Iniciar Servidor
+
+```bash
+# HTTP
+flask cli start
+
+# HTTPS
+flask cli start --https
+
+# Porta customizada
+flask cli start --port 8080
+
+# Modo estável (sem reloader)
+flask cli start --no-reload
+```
+
+### Backups
+
+```bash
+# Criar backup
+flask cli backup
+
+# Listar backups
+flask cli backup --list
+
+# Estatísticas
+flask cli backup --stats
+
+# Restaurar backup
+flask cli backup --restore caminho/para/backup.zip
+```
+
+### SSL/Certificados
+
+```bash
+# Gerar certificados
+flask cli ssl generate
+
+# Com hostname customizado
+flask cli ssl generate --hostname meu-servidor.local
+
+# Verificar certificados
+flask cli ssl check
+```
+
+### Migrações de Banco
+
+```bash
+# Inicializar (primeira vez)
+flask cli db init
+
+# Criar migração
+flask cli db migrate -m "Descrição da migração"
+
+# Aplicar migrações
+flask cli db upgrade
+
+# Ver histórico
+flask cli db history
+
+# Downgrade (cuidado!)
+flask cli db downgrade --revision <revision_id>
+```
+
+### Utilitários
+
+```bash
+# Verificar porta
+flask cli check port --port 5000
+
+# Atualizar cache do service worker
+flask cli cache update
+```
 
 ---
 
@@ -1001,6 +1099,7 @@ Gestor de Pedidos Plante uma flor/
 ├── backend/                          # Backend Flask
 │   ├── app/                          # Aplicação principal
 │   │   ├── __init__.py              # Factory do Flask
+│   │   ├── cli.py                   # CLI unificado
 │   │   ├── config.py                # Configurações
 │   │   ├── middleware.py            # Middleware de autenticação
 │   │   ├── models/                  # Modelos de dados
@@ -1008,35 +1107,52 @@ Gestor de Pedidos Plante uma flor/
 │   │   │   ├── cliente.py          # Modelo de Cliente
 │   │   │   ├── endereco_cliente.py  # Modelo de Endereço
 │   │   │   └── rota_otimizada.py    # Modelo de Rota
-│   │   ├── routes/                  # Rotas da API
-│   │   │   ├── api.py              # Endpoints principais
-│   │   │   └── clientes.py        # Endpoints de clientes
+│   │   ├── routes/                  # Rotas da API (blueprints)
+│   │   │   ├── api.py              # Endpoints gerais
+│   │   │   ├── pedidos.py          # Endpoints de pedidos
+│   │   │   ├── clientes.py         # Endpoints de clientes
+│   │   │   ├── rotas.py            # Endpoints de rotas
+│   │   │   └── auth.py             # Endpoints de autenticação
+│   │   ├── repositories/            # Camada de acesso ao banco
+│   │   │   ├── base_repository.py  # Repository base
+│   │   │   ├── pedido_repository.py # Repository de pedidos
+│   │   │   └── cliente_repository.py # Repository de clientes
+│   │   ├── schemas/                 # Validação/serialização
+│   │   │   ├── common.py           # Helpers de resposta
+│   │   │   ├── pedido_schema.py    # Schema de pedidos
+│   │   │   └── cliente_schema.py   # Schema de clientes
 │   │   ├── services/                # Serviços de negócio
 │   │   │   ├── distancia.py        # Cálculo de distâncias
 │   │   │   ├── graphhopper.py      # Integração GraphHopper
 │   │   │   └── taxa_entrega.py     # Cálculo de taxas
 │   │   └── utils/                   # Utilitários
+│   ├── instance/                    # Dados de runtime (não versionados)
+│   │   ├── database.db              # Banco de dados
+│   │   ├── ssl/                     # Certificados SSL
+│   │   ├── logs/                    # Logs do servidor
+│   │   └── backups/                 # Backups do banco
+│   ├── migrations/                  # Migrações Flask-Migrate
+│   │   ├── versions/               # Versões de migração
+│   │   └── alembic.ini              # Configuração Alembic
+│   ├── tests/                       # Testes pytest
+│   │   ├── conftest.py             # Fixtures
+│   │   ├── test_api.py             # Testes de API
+│   │   └── test_models.py          # Testes de models
 │   ├── config/                      # Arquivos de configuração
-│   │   └── taxa_entrega.json       # Configuração de taxas
+│   │   ├── config_servidor.ini     # Configuração do servidor
+│   │   ├── taxa_entrega.json       # Configuração de taxas
+│   │   └── google_credentials.json # Credenciais Google (não versionado)
 │   ├── scripts/                     # Scripts de manutenção
-│   │   ├── migrations/             # Scripts de migração
+│   │   ├── migrations/             # Scripts de migração (legado)
 │   │   ├── tests/                  # Scripts de teste
-│   │   ├── backup.py               # Script de backup
-│   │   └── restore.py              # Script de restauração
-│   ├── ssl/                         # Certificados SSL
-│   │   ├── cert.pem                # Certificado
-│   │   ├── key.pem                 # Chave privada
-│   │   ├── rootCA.pem             # Certificado CA
-│   │   └── PARA_CLIENTES/          # Certificados para distribuição
-│   ├── run/                         # Scripts de uso diário
-│   ├── UtilsScripts/                # Scripts utilitários
-│   ├── backups/                     # Backups do banco
-│   ├── logs/                        # Logs do servidor
+│   │   ├── backup/                 # Scripts de backup
+│   │   ├── export/                 # Scripts de exportação
+│   │   └── ssl/                    # Scripts de SSL
 │   ├── main.py                      # Ponto de entrada
 │   ├── requirements.txt             # Dependências Python
-│   ├── config_servidor.ini         # Configuração do servidor
-│   ├── database.db                  # Banco de dados SQLite
-│   └── CONFIGURAR_SERVIDOR.bat      # Configurador principal
+│   ├── .env.example                 # Template de variáveis de ambiente
+│   ├── pytest.ini                   # Configuração pytest
+│   └── pyproject.toml               # Configuração ruff/black
 │
 ├── frontend/                        # Frontend PWA
 │   ├── assets/                      # Recursos estáticos
@@ -1080,10 +1196,12 @@ Gestor de Pedidos Plante uma flor/
 
 #### Backend
 
-**Padrão MVC:**
+**Arquitetura em Camadas:**
 - **Models**: Definem estrutura de dados (`app/models/`)
-- **Views**: Endpoints da API (`app/routes/`)
-- **Controllers**: Lógica de negócio (`app/services/`)
+- **Repositories**: Isolamento de acesso ao banco (`app/repositories/`)
+- **Schemas**: Validação e serialização (`app/schemas/`)
+- **Routes**: Endpoints da API organizados em blueprints (`app/routes/`)
+- **Services**: Lógica de negócio (`app/services/`)
 
 **Convenções:**
 - Arquivos Python: `snake_case.py`
@@ -1162,13 +1280,46 @@ async novaFuncao() {
 
 ### Testes
 
-Scripts de teste estão em `backend/scripts/tests/`:
+**Testes Automatizados (pytest):**
+
+```bash
+cd backend
+pytest                    # Rodar todos os testes
+pytest tests/test_api.py  # Testes de API
+pytest -v                 # Modo verboso
+pytest --cov=app          # Com cobertura
+```
+
+**Scripts de Teste Manual:**
 
 ```bash
 cd backend/scripts/tests
 python testar_graphhopper.py
 python testar_endereco_problema.py
 ```
+
+### Migrações de Banco de Dados
+
+O sistema usa Flask-Migrate para gerenciar mudanças no schema:
+
+```bash
+# Inicializar (primeira vez)
+flask cli db init
+
+# Criar nova migração após mudanças nos models
+flask cli db migrate -m "Descrição da mudança"
+
+# Aplicar migrações pendentes
+flask cli db upgrade
+
+# Ver histórico
+flask cli db history
+
+# Ver versão atual
+flask cli db current
+```
+
+**Importante**: Sempre crie uma migração antes de fazer mudanças nos models e teste em ambiente de desenvolvimento antes de aplicar em produção.
 
 ### Debug
 
@@ -1190,6 +1341,31 @@ Endpoints de debug disponíveis:
 - `GET /api/debug/geocode` - Testar geocodificação
 - `GET /api/debug/testar-apis` - Testar APIs externas
 - `POST /api/debug/limpar-distancias` - Limpar distâncias calculadas
+
+### Qualidade de Código
+
+**Linting e Formatação:**
+
+```bash
+cd backend
+
+# Verificar linting
+ruff check .
+
+# Formatar código
+black .
+
+# Verificar formatação (sem alterar)
+black --check .
+```
+
+**CI/CD:**
+
+O projeto inclui GitHub Actions workflow (`.github/workflows/ci.yml`) que:
+- Executa linting (ruff)
+- Verifica formatação (black)
+- Roda testes (pytest)
+- Testa em múltiplas versões do Python (3.8, 3.9, 3.10, 3.11)
 
 ---
 

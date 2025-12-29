@@ -24,7 +24,7 @@ class Pedido(db.Model):
     flores_cor = db.Column(db.Text, nullable=True, comment='Flores que vão e cor')
     valor = db.Column(db.String(20), nullable=True, comment='Valor total (R$)')
     dia_entrega = db.Column(db.Date, nullable=False, comment='Data de entrega')
-    horario = db.Column(db.String(10), nullable=False, comment='Horário de entrega (HH:MM)')
+    horario = db.Column(db.String(20), nullable=False, comment='Horário de entrega (HH:MM ou HH:MM - HH:MM)')
     
     # Step 3 - Logística (campos separados de endereço)
     cep = db.Column(db.String(10), nullable=True, comment='CEP')
@@ -123,11 +123,24 @@ class Pedido(db.Model):
             return False
         
         try:
-            # Combinar data e hora de entrega
-            delivery_datetime = datetime.combine(
-                self.dia_entrega,
-                datetime.strptime(self.horario, '%H:%M').time()
-            )
+            # Verificar se é intervalo ou horário simples
+            if ' - ' in self.horario:
+                # Intervalo: usar o horário final para verificar atraso
+                partes = self.horario.split(' - ')
+                if len(partes) == 2:
+                    horario_final = partes[1].strip()
+                    delivery_datetime = datetime.combine(
+                        self.dia_entrega,
+                        datetime.strptime(horario_final, '%H:%M').time()
+                    )
+                else:
+                    return False
+            else:
+                # Horário simples
+                delivery_datetime = datetime.combine(
+                    self.dia_entrega,
+                    datetime.strptime(self.horario, '%H:%M').time()
+                )
             return datetime.now() > delivery_datetime
         except Exception:
             return False

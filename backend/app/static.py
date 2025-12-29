@@ -53,23 +53,35 @@ def register_static_routes(app):
             if file_path.exists() and file_path.is_file():
                 response = send_from_directory(str(frontend_dir), path)
                 
-                # Service Worker deve ser servido com no-cache para garantir updates
-                # Isso evita que o navegador cacheie o SW e impeça atualizações
-                if path == 'sw.js':
+                # Service Worker, index.html e manifest.json devem ser servidos com no-cache
+                # para garantir que sempre busquem a versão mais recente
+                if path == 'sw.js' or path == 'index.html' or path == 'manifest.json':
                     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                     response.headers['Pragma'] = 'no-cache'
                     response.headers['Expires'] = '0'
                 
+                # Para assets com hash (opcional - melhoria de performance):
+                if '/assets/' in path and any(ext in path for ext in ['.js', '.css', '.png', '.ico']):
+                    response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                
                 return response
             
             # Caso contrário, serve o index.html (SPA routing)
-            return send_from_directory(str(frontend_dir), 'index.html')
+            response = send_from_directory(str(frontend_dir), 'index.html')
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
         except Exception as e:
             print(f"[ERRO] Erro ao servir arquivo '{path}': {e}")
             # Tentar servir o index.html como fallback
             try:
                 frontend_dir = Path(__file__).parent.parent.parent / 'frontend'
-                return send_from_directory(str(frontend_dir), 'index.html')
+                response = send_from_directory(str(frontend_dir), 'index.html')
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+                return response
             except:
                 abort(404)
 

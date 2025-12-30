@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 # Edite aqui seus usuários e senhas
 # Para maior segurança, use variáveis de ambiente em produção
 USERS = {
-    'admin': os.environ.get('ADMIN_PASSWORD', 'sua_senha_segura_aqui'),
+    'admin': os.environ.get('ADMIN_PASSWORD', 'plante1998'),
     # Adicione mais usuários se necessário:
     # 'usuario2': 'outra_senha_segura',
 }
@@ -78,6 +78,8 @@ def requires_auth(f):
         
         return f(*args, **kwargs)
     
+    # Marcar função com tipo de autenticação (para dump_routes.py)
+    decorated._auth = "basic"
     return decorated
 
 
@@ -103,6 +105,8 @@ def requires_edit_auth(f):
         
         return f(*args, **kwargs)
     
+    # Marcar função com tipo de autenticação (para dump_routes.py)
+    decorated._auth = "edit"
     return decorated
 
 
@@ -214,6 +218,9 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
     @app.before_request
     def before_request():
         """Executado antes de cada requisição"""
+        from flask import g
+        # Registrar tempo de início para medir duração da requisição
+        g.start_time = datetime.now()
         
         # Lista de paths públicos (não precisam autenticação)
         # Esses arquivos são necessários para o PWA funcionar corretamente
@@ -266,7 +273,36 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
     @app.after_request
     def after_request(response):
         """Executado depois de cada requisição"""
-        # Log de acesso
+        from flask import g
+        import logging
+        
+        # Calcular duração da requisição
+        if hasattr(g, 'start_time'):
+            duration_ms = (datetime.now() - g.start_time).total_seconds() * 1000
+            
+            # Log estruturado de latência
+            # Em dev: console formatado
+            # Em prod: logger padrão (sem PII)
+            is_dev = os.environ.get('FLASK_ENV', 'development') == 'development'
+            
+            if is_dev:
+                # Dev: console formatado com timestamp
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                print(f'[{timestamp}] {request.method:6s} {request.path:30s} {response.status_code:3d} {duration_ms:7.2f} ms')
+            else:
+                # Prod: logger estruturado (sem PII)
+                logger = logging.getLogger('request_timing')
+                logger.info(
+                    'Request completed',
+                    extra={
+                        'method': request.method,
+                        'path': request.path,
+                        'status': response.status_code,
+                        'duration_ms': round(duration_ms, 2)
+                    }
+                )
+        
+        # Log de acesso (arquivo)
         username = getattr(request, 'authenticated_user', None)
         log_access(
             request.remote_addr,

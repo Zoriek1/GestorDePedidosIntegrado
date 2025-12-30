@@ -8,6 +8,7 @@ Flask-CORS==4.0.0
 Flask-Migrate==4.0.5
 marshmallow==3.20.1
 flask-marshmallow==0.15.0
+flask-smorest>=0.40.0
 
 # Banco de dados
 SQLAlchemy>=2.0.36
@@ -40,4 +41,5 @@ black==23.12.1
 # Descomente para usar em produção
 gunicorn==21.2.0
 waitress==2.1.2
+
 

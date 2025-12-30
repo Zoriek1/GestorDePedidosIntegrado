@@ -37,8 +37,8 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     else:
-        from app.config import Config
-        app.config.from_object(Config)
+        from app.config import BaseConfig
+        app.config.from_object(BaseConfig)
     
     # 2. Extensões (ANTES de importar models)
     init_extensions(app)
@@ -75,7 +75,20 @@ def create_app(config=None):
     # 7. Security/Middleware (pode ser a qualquer momento)
     setup_security(app)
     
-    # 8. Registrar comandos CLI
+    # 8. OpenAPI/Swagger (opcional, não invasivo)
+    try:
+        from app.openapi import init_openapi
+        init_openapi(app)
+        print("[OPENAPI] Swagger UI disponível em /docs/swagger")
+    except ImportError:
+        # flask-smorest não instalado, continuar sem documentação
+        print("[AVISO] flask-smorest não instalado. Swagger UI não estará disponível.")
+    except Exception as e:
+        # Erro ao inicializar OpenAPI, continuar sem documentação
+        print(f"[AVISO] Erro ao inicializar OpenAPI: {e}")
+        print("[AVISO] Swagger UI não estará disponível, mas a API continua funcionando")
+    
+    # 9. Registrar comandos CLI
     register_cli_commands(app)
     
     return app

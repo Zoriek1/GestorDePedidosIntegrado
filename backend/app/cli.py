@@ -62,12 +62,17 @@ def start_server(https, port, host, no_reload):
     click.echo()
     
     try:
-        app.run(
-            host=server_host,
+        # Usar run_simple do Werkzeug diretamente para evitar bloqueio do Flask CLI
+        from werkzeug.serving import run_simple
+        
+        run_simple(
+            hostname=server_host,
             port=server_port,
-            debug=debug,
+            application=app,
+            use_debugger=debug,
             use_reloader=use_reloader,
-            ssl_context=ssl_context
+            ssl_context=ssl_context,
+            threaded=True  # Habilitar threads para melhor concorrência
         )
     except KeyboardInterrupt:
         click.echo('\n[INFO] Servidor encerrado pelo usuário')

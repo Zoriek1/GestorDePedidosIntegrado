@@ -4469,7 +4469,7 @@ cleanupOutdatedCaches();
 
 // Precache: injeta manifest automaticamente durante o build
 // Ignorar query params de cache-busting (?v=... e ?cache_bust=...)
-precacheAndRoute([{"revision":"50308c53cd5f14b13d19a28b35b91125","url":"index.html"},{"revision":"ff83cf81cc883e076712f51f9ec41b22","url":"manifest.json"},{"revision":"c7bd50b1620f00b7e8a65dd497c13902","url":"assets/css/style.css"},{"revision":"5f11ddaa953c2d5e7c69cc1662ff85fd","url":"assets/js/app.js"},{"revision":"61c7cf3b16292196ce12cfecc3ec5244","url":"assets/js/router.js"},{"revision":"5b2fa7e2ecb3f21ff65d96279aba7ac7","url":"assets/js/api.js"},{"revision":"bb7dd13851ad09176268417466d1bf62","url":"assets/js/db.js"},{"revision":"4a5a0d38aed0db4fc79027cb7e149993","url":"assets/js/auth.js"},{"revision":"ad9b925e5e0667da151a96a30420734f","url":"assets/js/utils.js"},{"revision":"9d2db7d947a6a54a04a03fb61d917945","url":"assets/js/form.js"},{"revision":"dbe8906f4972e240d0f7e60332f3d2f1","url":"assets/js/painel.js"},{"revision":"48d04796d9667c53d9ea16fcc9c88e35","url":"assets/js/masks.js"},{"revision":"d1adf65f7f8b8a59f7693c201a79f7f1","url":"assets/js/validators.js"},{"revision":"81051bcc2cf1bedf378224b0a93e2877","url":"assets/js/cep-api.js"},{"revision":"d485ae8e210a2f18f35ef32684161a44","url":"assets/js/components/notification.js"},{"revision":"eb482fc199a771d073fc06b6b3138b7d","url":"assets/js/components/modal.js"},{"revision":"cae21eb81073b7419b2b14b04c5cfe74","url":"assets/js/components/pedido-card.js"},{"revision":"80bc3bdac36596fbcbd2e18b5d2d3cc0","url":"assets/js/components/autocomplete-cliente.js"},{"revision":"223f8c3ca7ca763fa5d68a17832addb1","url":"pages/criar-pedido.html"},{"revision":"89ad949df24327f30ad895a6592d7232","url":"pages/painel.html"},{"revision":"acd7e995dc57f18b9cd93fb00329261e","url":"pages/login.html"},{"revision":"d0ca9bfdf9cf9e77c8d99e3d262c1840","url":"pages/clientes.html"},{"revision":"418f77bec4272870f9b06202839e5ea1","url":"pages/fontes-pedido.html"},{"revision":"2454baf8bda68f5d4ef692d0029615a5","url":"pages/rota-entrega.html"},{"revision":"af663aa799ce170dcc098d1d22d244e2","url":"assets/images/Buques.ico"},{"revision":"77285acf090b5c8061af8eab0bcd7d54","url":"assets/js/icons/icon-72x72.png"},{"revision":"3bc8c3731a27746c476086182af43837","url":"assets/js/icons/icon-96x96.png"},{"revision":"0f995a1fd47b19f426fbcbb9cb440ce7","url":"assets/js/icons/icon-128x128.png"},{"revision":"0d05be59c8607daba71d012d9de623ab","url":"assets/js/icons/icon-144x144.png"},{"revision":"1d79fb8db4b0c0aded1e8c4b82a9a47c","url":"assets/js/icons/icon-152x152.png"},{"revision":"424facd7ac735dfad33ae9f5a97d717e","url":"assets/js/icons/icon-192x192.png"},{"revision":"2acbc4219b8540254a5bc8247191df86","url":"assets/js/icons/icon-384x384.png"},{"revision":"07c3a8ce448aa6ede50cdb14c79b2a9d","url":"assets/js/icons/icon-512x512.png"},{"revision":"d15fd0afa593b375b00ce917fa2513ec","url":"assets/images/Logo.png"},{"revision":"1c3d6f7aef8bb5842fda67f542d168e3","url":"assets/images/logo_print.png"}], {
+precacheAndRoute([{"revision":"c13b8a1ffa0ea53170f909589bd3b632","url":"index.html"},{"revision":"ff83cf81cc883e076712f51f9ec41b22","url":"manifest.json"},{"revision":"f29f9b6b010e1e9a80b1271a3c52ccf0","url":"assets/css/style.css"},{"revision":"5f11ddaa953c2d5e7c69cc1662ff85fd","url":"assets/js/app.js"},{"revision":"61c7cf3b16292196ce12cfecc3ec5244","url":"assets/js/router.js"},{"revision":"5b2fa7e2ecb3f21ff65d96279aba7ac7","url":"assets/js/api.js"},{"revision":"bb7dd13851ad09176268417466d1bf62","url":"assets/js/db.js"},{"revision":"4a5a0d38aed0db4fc79027cb7e149993","url":"assets/js/auth.js"},{"revision":"5ab3dcc9e7c937fa8aed41d4cce05577","url":"assets/js/utils.js"},{"revision":"dc534cf3deaf5ef092a5f9e13004741a","url":"assets/js/form.js"},{"revision":"120813810d71804595b9fa696e0bccd1","url":"assets/js/painel.js"},{"revision":"c9c76331f56129ef9377ee001828c0c2","url":"assets/js/masks.js"},{"revision":"d1adf65f7f8b8a59f7693c201a79f7f1","url":"assets/js/validators.js"},{"revision":"81051bcc2cf1bedf378224b0a93e2877","url":"assets/js/cep-api.js"},{"revision":"d485ae8e210a2f18f35ef32684161a44","url":"assets/js/components/notification.js"},{"revision":"823a5191a4b7dcbc27205d19a19df30d","url":"assets/js/components/modal.js"},{"revision":"0f95bd73fe649a2c94fc1a485d6513e6","url":"assets/js/components/pedido-card.js"},{"revision":"878b7a8bc086ab82826ea614b326eaa9","url":"assets/js/components/autocomplete-cliente.js"},{"revision":"0fe92f0d250627a53a3cb1673a27ff53","url":"pages/criar-pedido.html"},{"revision":"d7dd9f63879c589ee634a3414eda58ae","url":"pages/painel.html"},{"revision":"acd7e995dc57f18b9cd93fb00329261e","url":"pages/login.html"},{"revision":"d0ca9bfdf9cf9e77c8d99e3d262c1840","url":"pages/clientes.html"},{"revision":"3edf17bb653596c04368a3329f425e9e","url":"pages/fontes-pedido.html"},{"revision":"2454baf8bda68f5d4ef692d0029615a5","url":"pages/rota-entrega.html"},{"revision":"af663aa799ce170dcc098d1d22d244e2","url":"assets/images/Buques.ico"},{"revision":"77285acf090b5c8061af8eab0bcd7d54","url":"assets/js/icons/icon-72x72.png"},{"revision":"3bc8c3731a27746c476086182af43837","url":"assets/js/icons/icon-96x96.png"},{"revision":"0f995a1fd47b19f426fbcbb9cb440ce7","url":"assets/js/icons/icon-128x128.png"},{"revision":"0d05be59c8607daba71d012d9de623ab","url":"assets/js/icons/icon-144x144.png"},{"revision":"1d79fb8db4b0c0aded1e8c4b82a9a47c","url":"assets/js/icons/icon-152x152.png"},{"revision":"424facd7ac735dfad33ae9f5a97d717e","url":"assets/js/icons/icon-192x192.png"},{"revision":"2acbc4219b8540254a5bc8247191df86","url":"assets/js/icons/icon-384x384.png"},{"revision":"07c3a8ce448aa6ede50cdb14c79b2a9d","url":"assets/js/icons/icon-512x512.png"},{"revision":"d15fd0afa593b375b00ce917fa2513ec","url":"assets/images/Logo.png"},{"revision":"1c3d6f7aef8bb5842fda67f542d168e3","url":"assets/images/logo_print.png"}], {
   ignoreURLParametersMatching: [/^v$/, /^cache_bust$/]
 });
 
@@ -4507,6 +4507,26 @@ registerRoute(
       new ExpirationPlugin({
         maxEntries: 50,
         maxAgeSeconds: 7 * 24 * 60 * 60 // 7 dias
+      })
+    ]
+  })
+);
+
+// 3. Recursos de CDN (Shoelace, Awesomplete, Font Awesome, Google Fonts)
+registerRoute(
+  ({ url }) => (
+    url.origin === 'https://cdn.jsdelivr.net' ||
+    url.origin === 'https://cdnjs.cloudflare.com' ||
+    url.origin === 'https://fonts.googleapis.com' ||
+    url.origin === 'https://fonts.gstatic.com'
+  ),
+  new CacheFirst({
+    cacheName: 'cdn-cache',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 50,
+        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 dias
       })
     ]
   })

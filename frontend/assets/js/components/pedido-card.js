@@ -8,14 +8,30 @@ const PedidoCard = {
      * Cria HTML de um card de pedido
      */
     create(pedido, modoSelecao = false, selecionado = false) {
-        const card = document.createElement('div');
-        card.className = `pedido-card status-${pedido.status} ${selecionado ? 'selected border-2 border-primary' : ''}`;
+        const card = document.createElement('sl-card');
+        card.className = `pedido-card status-${pedido.status} ${selecionado ? 'selected' : ''}`;
+        card.style.borderLeft = '3px solid var(--color-primary)';
+        if (selecionado) {
+            card.style.border = '2px solid var(--color-primary)';
+            card.style.backgroundColor = 'var(--color-primary-soft)';
+        }
         card.dataset.id = pedido.id;
         card.dataset.status = pedido.status;
 
         // Verificar se o pedido está atrasado
         const isOverdue = this.isOverdue(pedido);
         const overdueClass = isOverdue ? 'text-red-600 font-bold' : '';
+
+        // Mapear status para variantes Shoelace
+        const statusVariantMap = {
+            'agendado': 'neutral',
+            'em_producao': 'warning',
+            'pronto_entrega': 'success',
+            'pronto_retirada': 'success',
+            'em_rota': 'info',
+            'concluido': 'success'
+        };
+        const badgeVariant = statusVariantMap[pedido.status] || 'neutral';
 
         // Checkbox para seleção (apenas em modo seleção e se for Entrega)
         const checkboxHtml = modoSelecao && pedido.tipo_pedido === 'Entrega' ? `
@@ -58,9 +74,9 @@ const PedidoCard = {
                     </p>
                 </div>
                 <div class="flex flex-col items-end">
-                    <span class="status-badge status-${pedido.status} self-start sm:self-auto">
+                    <sl-badge class="self-start sm:self-auto" pill variant="${badgeVariant}">
                         ${Utils.translateStatus(pedido.status)}
-                    </span>
+                    </sl-badge>
                     ${pedido.fonte_pedido_nome ? `
                         <div class="text-xs text-gray-500 mt-1 flex items-center gap-1">
                             <i class="fas fa-folder"></i>

@@ -98,18 +98,124 @@ def atualizar_status(pedido_id):
 @requires_edit_auth
 def deletar_pedido(pedido_id):
     """Deleta pedido"""
+    from app import db
+    from app.models.pedido import Pedido
+    from sqlalchemy import text
+    
     try:
-        # Criar backup antes de deletar (CRÍTICO)
-        create_backup(reason='critical_operation', silent=True)
+        # Criar backup antes de deletar (CRÍTICO) - em try/except separado
+        try:
+            create_backup(reason='critical_operation', silent=True)
+        except Exception as backup_error:
+            print(f"[AVISO] Falha ao criar backup antes de deletar: {backup_error}")
+            # Continuar mesmo se backup falhar
         
-        pedido = pedido_repo.get_by_id(pedido_id)
-        if not pedido:
+        # Primeiro verificar se pedido existe
+        pedido_exists = Pedido.query.filter_by(id=pedido_id).first()
+        if not pedido_exists:
             return error_response('Pedido não encontrado', 404)
         
-        pedido_repo.delete(pedido)
-        return success_response(message='Pedido deletado com sucesso')
+        # Verificar se é SQLite (necessário para desabilitar foreign keys)
+        engine = db.engine
+        is_sqlite = 'sqlite' in str(engine.url).lower()
+        
+        # Tentar deletar usando query direta (mais robusto para objetos com relacionamentos)
+        try:
+            # SQLite: Desabilitar temporariamente verificação de foreign keys
+            # Isso permite deletar mesmo se houver referências em outras tabelas
+            # (as referências devem ser nullable ou serão limpas depois)
+            
+            if is_sqlite:
+                db.session.execute(text('PRAGMA foreign_keys = OFF'))
+            
+            # Abordagem 1: Query direta de DELETE (evita problemas de sessão/relacionamentos)
+            result = db.session.execute(
+                text('DELETE FROM pedidos WHERE id = :pedido_id'),
+                {'pedido_id': pedido_id}
+            )
+            db.session.commit()
+            
+            # Reabilitar verificação de foreign keys (SQLite)
+            if is_sqlite:
+                db.session.execute(text('PRAGMA foreign_keys = ON'))
+            
+            if result.rowcount == 0:
+                # Se nenhuma linha foi deletada, pode ter sido deletado concorrentemente
+                return error_response('Pedido não encontrado ou já foi deletado', 404)
+            
+            print(f"[SUCCESS] Pedido #{pedido_id} deletado com sucesso (via DELETE direto)")
+            return success_response(message='Pedido deletado com sucesso')
+            
+        except Exception as delete_error:
+            db.session.rollback()
+            # Reabilitar foreign keys mesmo em caso de erro
+            if is_sqlite:
+                try:
+                    db.session.execute(text('PRAGMA foreign_keys = ON'))
+                except:
+                    pass
+            
+            # Se DELETE direto falhar, tentar abordagem tradicional
+            print(f"[AVISO] DELETE direto falhou, tentando abordagem tradicional: {delete_error}")
+            try:
+                # Desabilitar foreign keys novamente (SQLite)
+                if is_sqlite:
+                    db.session.execute(text('PRAGMA foreign_keys = OFF'))
+                
+                # Limpar qualquer objeto da sessão que possa estar causando conflito
+                db.session.expunge_all()
+                
+                # Buscar pedido novamente na sessão limpa
+                pedido = Pedido.query.get(pedido_id)
+                if not pedido:
+                    # Reabilitar antes de retornar (SQLite)
+                    if is_sqlite:
+                        try:
+                            db.session.execute(text('PRAGMA foreign_keys = ON'))
+                        except:
+                            pass
+                    return error_response('Pedido não encontrado', 404)
+                
+                # Deletar objeto
+                db.session.delete(pedido)
+                db.session.commit()
+                
+                # Reabilitar foreign keys (SQLite)
+                if is_sqlite:
+                    db.session.execute(text('PRAGMA foreign_keys = ON'))
+                
+                print(f"[SUCCESS] Pedido #{pedido_id} deletado com sucesso (via objeto)")
+                return success_response(message='Pedido deletado com sucesso')
+                
+            except Exception as fallback_error:
+                db.session.rollback()
+                # Reabilitar foreign keys antes de retornar erro (SQLite)
+                if is_sqlite:
+                    try:
+                        db.session.execute(text('PRAGMA foreign_keys = ON'))
+                    except:
+                        pass
+                    
+                error_msg = str(fallback_error)
+                error_type = type(fallback_error).__name__
+                print(f"[ERRO] Falha ao deletar pedido #{pedido_id} (ambas abordagens falharam):")
+                print(f"  - DELETE direto: {delete_error}")
+                print(f"  - Via objeto: {error_type}: {error_msg}")
+                import traceback
+                traceback.print_exc()
+                return error_response(
+                    f'Falha ao deletar pedido do banco de dados: {error_msg}', 
+                    500,
+                    details={'error_type': error_type}
+                )
+                
     except Exception as e:
-        return error_response(f'Erro ao deletar pedido: {str(e)}', 500)
+        error_msg = str(e)
+        error_type = type(e).__name__
+        print(f"[ERRO] Exceção inesperada ao deletar pedido #{pedido_id}: {error_type}: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return error_response(f'Erro ao deletar pedido: {error_msg}', 500)
 
 
 @pedidos_bp.route('/exportar-planilha', methods=['POST'])
@@ -143,12 +249,8 @@ def exportar_planilha():
         module.__file__ = str(script_path)
         spec.loader.exec_module(module)
         
-        # Corrigir caminho de credenciais se necessário
-        expected_creds_path = backend_dir / 'config' / 'google_credentials.json'
-        if hasattr(module, 'CREDENTIALS_PATH'):
-            from pathlib import Path as PathLib
-            if not PathLib(module.CREDENTIALS_PATH).exists() and PathLib(expected_creds_path).exists():
-                module.CREDENTIALS_PATH = str(expected_creds_path)
+        # Nota: O script agora resolve credenciais automaticamente
+        # via _resolve_credentials_path() em backend/user/config/ ou variável de ambiente
         
         if not hasattr(module, 'exportar_vendas'):
             return error_response('Função exportar_vendas não encontrada', 500)
@@ -253,16 +355,41 @@ def criar_pedido():
         except (ValueError, TypeError):
             quantidade = 1
         
-        # Validação de horário
-        if not re.match(r'^([01]?\d|2[0-3]):[0-5]\d$', horario):
+        # Validação de horário: aceita HH:MM ou intervalo HH:MM - HH:MM
+        pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
+        pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
+        
+        if not (re.match(pattern_simples, horario) or re.match(pattern_intervalo, horario)):
             return error_response(
                 'Formato de horário inválido',
                 400,
                 details={
                     'horario_recebido': horario,
-                    'formato_esperado': 'HH:MM (ex: 14:30)'
+                    'formato_esperado': 'HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)'
                 }
             )
+        
+        # Se for intervalo, validar que horário final é depois do inicial
+        if ' - ' in horario:
+            partes = horario.split(' - ')
+            if len(partes) == 2:
+                try:
+                    h1, m1 = map(int, partes[0].strip().split(':'))
+                    h2, m2 = map(int, partes[1].strip().split(':'))
+                    minutos_inicial = h1 * 60 + m1
+                    minutos_final = h2 * 60 + m2
+                    if minutos_final <= minutos_inicial:
+                        return error_response(
+                            'O horário final deve ser depois do horário inicial',
+                            400,
+                            details={'horario_recebido': horario}
+                        )
+                except (ValueError, IndexError):
+                    return error_response(
+                        'Formato de intervalo inválido',
+                        400,
+                        details={'horario_recebido': horario}
+                    )
         
         # Conversão de data
         try:

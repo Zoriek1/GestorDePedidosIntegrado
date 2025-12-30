@@ -32,7 +32,9 @@
 ## Passo 4: Salvar Credenciais
 
 1. Renomeie o arquivo baixado para `google_credentials.json`
-2. Mova para: `backend/config/google_credentials.json`
+2. Mova para: `backend/user/config/google_credentials.json`
+
+**Alternativa**: Defina a variável de ambiente `GOOGLE_APPLICATION_CREDENTIALS` com o caminho completo do arquivo.
 
 **IMPORTANTE**: Este arquivo contém credenciais sensíveis. Ele já está no `.gitignore`.
 

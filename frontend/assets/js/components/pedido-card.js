@@ -5,12 +5,12 @@
 
 const PedidoCard = {
     /**
-     * Cria HTML de um card de pedido
+     * Cria HTML de um card de pedido e gerencia o layout
      */
     create(pedido, modoSelecao = false, selecionado = false) {
         const card = document.createElement('sl-card');
-        card.className = `pedido-card status-${pedido.status} ${selecionado ? 'selected' : ''}`;
-        card.style.borderLeft = '3px solid var(--color-primary)';
+        card.className = `pedido-card status-${pedido.status} ${selecionado ? 'selected' : ''} transition-all duration-200`;
+
         if (selecionado) {
             card.style.border = '2px solid var(--color-primary)';
             card.style.backgroundColor = 'var(--color-primary-soft)';
@@ -18,11 +18,10 @@ const PedidoCard = {
         card.dataset.id = pedido.id;
         card.dataset.status = pedido.status;
 
-        // Verificar se o pedido está atrasado
-        const isOverdue = this.isOverdue(pedido);
-        const overdueClass = isOverdue ? 'text-red-600 font-bold' : '';
+        card.tabIndex = 0;
 
-        // Mapear status para variantes Shoelace
+        const isOverdue = this.isOverdue(pedido);
+
         const statusVariantMap = {
             'agendado': 'neutral',
             'em_producao': 'warning',
@@ -33,7 +32,7 @@ const PedidoCard = {
         };
         const badgeVariant = statusVariantMap[pedido.status] || 'neutral';
 
-        // Checkbox para seleção (apenas em modo seleção e se for Entrega)
+        // Checkbox para seleção
         const checkboxHtml = modoSelecao && pedido.tipo_pedido === 'Entrega' ? `
             <div class="absolute top-3 right-3 z-10">
                 <input 
@@ -48,205 +47,220 @@ const PedidoCard = {
         // Indicador de impressão
         const impresso = pedido.impresso === true || pedido.impresso === 1;
         const indicadorImpressao = impresso
-            ? '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 ml-2" title="Pedido já foi impresso"><i class="fas fa-check-circle mr-1"></i> Impresso</span>'
-            : '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 ml-2" title="Pedido ainda não foi impresso"><i class="fas fa-print mr-1"></i> Não impresso</span>';
+            ? '<i class="fas fa-check-circle text-green-600 ml-2" title="Impresso"></i>'
+            : '';
+
+        // Helper para validar conteúdo real (ignora placeholders 'a', 'b', etc)
+        const hasContent = (val) => {
+            if (!val) return false;
+            const str = String(val).trim();
+            return str.length > 0 && str.length > 1; // Ignora 1 char como 'a'
+        };
+
+        // Render helpers
+        const renderLabel = (text) => `<span class="text-[10px] uppercase font-bold text-gray-400 tracking-wider block mb-0.5">${text}</span>`;
+        const renderValue = (val) => `<div class="text-sm text-gray-800 font-medium leading-relaxed">${val}</div>`;
+        const renderRow = (icon, label, value) => {
+            if (!hasContent(value)) return '';
+            return `
+            <div class="grid grid-cols-[20px_1fr] items-start gap-2">
+                <i class="${icon} text-gray-300 text-xs mt-1"></i>
+                <div>
+                    ${renderLabel(label)}
+                    ${renderValue(Utils.escapeHtml(value))}
+                </div>
+            </div>`;
+        };
 
         card.innerHTML = `
             ${checkboxHtml}
             
+            <!-- Fonte do Pedido (Chip integrado no topo) -->
             ${pedido.fonte_pedido ? `
-            <div class="absolute -top-3 left-4 bg-white border border-gray-200 shadow-sm px-2 py-0.5 rounded-t-lg text-xs font-medium text-gray-600 z-0 flex items-center gap-1">
-                <i class="fas fa-folder text-yellow-500"></i>
-                ${Utils.escapeHtml(pedido.fonte_pedido)}
+            <div class="absolute top-0 left-0 bg-yellow-50 text-yellow-700 px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-br-lg border-b border-r border-yellow-100 z-10">
+                <i class="fas fa-folder mr-1"></i>${Utils.escapeHtml(pedido.fonte_pedido)}
             </div>
             ` : ''}
 
-            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3 ${modoSelecao && pedido.tipo_pedido === 'Entrega' ? 'pr-8' : ''} relative z-10">
-                <div class="flex-1 min-w-0">
-                    <h3 class="text-lg font-bold text-gray-800 truncate flex items-center">
-                        Pedido #${pedido.id}
-                        ${indicadorImpressao}
-                    </h3>
-                    <p class="text-sm text-gray-600 break-words">
-                        <i class="fas fa-calendar mr-1"></i>
-                        ${Utils.formatDate(pedido.dia_entrega)} às ${pedido.horario}
-                        ${isOverdue ? '<span class="text-red-600 ml-2 whitespace-nowrap"><i class="fas fa-exclamation-triangle"></i> Atrasado</span>' : ''}
-                    </p>
-                </div>
-                <div class="flex flex-col items-end">
-                    <sl-badge class="self-start sm:self-auto" pill variant="${badgeVariant}">
-                        ${Utils.translateStatus(pedido.status)}
-                    </sl-badge>
-                    ${pedido.fonte_pedido_nome ? `
-                        <div class="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                            <i class="fas fa-folder"></i>
-                            ${Utils.escapeHtml(pedido.fonte_pedido_nome)}
+            <!-- Header -->
+            <div class="pt-6 pb-2 px-0 mb-2 relative">
+                <div class="flex flex-row justify-between items-start gap-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="text-lg font-bold text-gray-900 leading-none">
+                                #${pedido.id}
+                            </h3>
+                            ${indicadorImpressao}
                         </div>
-                    ` : ''}
-                </div>
-            </div>
-
-            <div class="space-y-2 mb-4">
-                ${pedido.cliente ? `
-                    <p class="text-sm break-words">
-                        <i class="fas fa-user text-gray-400 w-5 inline-block"></i>
-                        <strong>De:</strong> <span class="break-words">${Utils.escapeHtml(pedido.cliente)}</span>
-                    </p>
-                ` : ''}
-                
-                <p class="text-sm break-words">
-                    <i class="fas fa-gift text-gray-400 w-5 inline-block"></i>
-                    <strong>Para:</strong> <span class="break-words">${Utils.escapeHtml(pedido.destinatario)}</span>
-                </p>
-
-                ${pedido.telefone_cliente ? `
-                    <p class="text-sm break-words">
-                        <i class="fas fa-phone text-gray-400 w-5 inline-block"></i>
-                        <span class="break-words">${Utils.formatPhone(pedido.telefone_cliente)}</span>
-                    </p>
-                ` : ''}
-
-                <p class="text-sm break-words">
-                    <i class="fas fa-flower text-gray-400 w-5 inline-block"></i>
-                    <strong>Produto:</strong> <span class="break-words">${Utils.escapeHtml(Utils.truncate(pedido.produto, 60))}</span>
-                </p>
-
-                ${pedido.tipo_pedido ? `
-                    <p class="text-sm break-words">
-                        <i class="fas ${pedido.tipo_pedido === 'Entrega' ? 'fa-truck' : 'fa-store'} text-gray-400 w-5 inline-block"></i>
-                        <span class="break-words">${Utils.translateType(pedido.tipo_pedido)}</span>
-                    </p>
-                ` : ''}
-
-                ${pedido.tipo_pedido === 'Entrega' && pedido.endereco ? `
-                    <div class="entrega-section bg-gray-50 rounded-lg p-3 mt-2 border border-gray-200">
-                        <!-- Endereço -->
-                        <div class="entrega-item mb-2">
-                            <div class="flex items-start gap-2">
-                                <i class="fas fa-map-marker-alt text-gray-400 mt-0.5 flex-shrink-0"></i>
-                                <span class="text-sm text-gray-700 break-words flex-1">${Utils.escapeHtml(pedido.endereco)}</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Distância e Frete em grid -->
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <!-- Distância -->
-                            <div class="entrega-info">
-                                <div class="flex items-center justify-between gap-2">
-                                    <div class="flex items-center gap-1.5">
-                                        <i class="fas fa-route text-yellow-500"></i>
-                                        <span class="text-sm font-semibold text-gray-700">
-                                            ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? PedidoCard.formatarDistancia(pedido.distancia_km) : '-'}
-                                        </span>
-                                        ${pedido.aproximado ? `
-                                            <i class="fas fa-exclamation-triangle text-orange-500 text-xs" 
-                                               title="⚠️ Distância aproximada - ${pedido.aviso || 'Endereço fora da área de mapeamento'}"
-                                               style="cursor: help;">
-                                            </i>
-                                        ` : ''}
-                                    </div>
-                                    <button 
-                                        class="entrega-recalcular-btn"
-                                        onclick="PedidoCard.calcularDistancia(${pedido.id}, ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? 'true' : 'false'})"
-                                        title="${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? 'Recalcular distância' : 'Calcular distância'}"
-                                    >
-                                        Recalcular
-                                    </button>
-                                </div>
-                                ${pedido.aproximado ? `
-                                    <p class="text-xs text-orange-600 italic mt-1">
-                                        ⚠️ Distância não exata
-                                    </p>
-                                ` : ''}
-                            </div>
-                            
-                            <!-- Frete -->
-                            ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
-                            <div class="entrega-info">
-                                <div class="flex items-center justify-between gap-2">
-                                    <div class="flex items-center gap-1.5">
-                                        <i class="fas fa-dollar-sign text-green-500"></i>
-                                        <span class="text-sm font-semibold text-gray-700">
-                                            ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? `R$ ${pedido.taxa_entrega.toFixed(2)}` : '-'}
-                                        </span>
-                                    </div>
-                                    <button 
-                                        class="entrega-recalcular-btn"
-                                        onclick="PedidoCard.calcularTaxa(${pedido.id}, ${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? 'true' : 'false'})"
-                                        title="${pedido.taxa_entrega !== null && pedido.taxa_entrega !== undefined ? 'Recalcular frete' : 'Calcular frete'}"
-                                    >
-                                        Recalcular
-                                    </button>
-                                </div>
-                            </div>
-                            ` : ''}
+                        <div class="flex flex-col gap-0.5">
+                            <span class="text-xs font-medium text-gray-500 flex items-center">
+                                ${Utils.formatDate(pedido.dia_entrega)} • ${pedido.horario}
+                            </span>
+                            ${isOverdue ? '<span class="text-red-600 text-[10px] font-bold flex items-center mt-1 uppercase tracking-wide"><i class="fas fa-exclamation-triangle mr-1"></i> Atrasado</span>' : ''}
                         </div>
                     </div>
-                ` : ''}
-
-                ${pedido.valor ? `
-                    <p class="text-sm break-words">
-                        <i class="fas fa-dollar-sign text-gray-400 w-5 inline-block"></i>
-                        <span class="break-words">${Utils.escapeHtml(pedido.valor)}</span>
-                    </p>
-                ` : ''}
+                    
+                    <div class="flex flex-col items-end gap-1">
+                        <sl-badge pill variant="${badgeVariant}" class="text-xs">
+                            ${Utils.translateStatus(pedido.status)}
+                        </sl-badge>
+                    </div>
+                </div>
             </div>
 
-            <div class="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-200">
-                <select 
-                    class="w-full sm:flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-primary"
-                    onchange="PainelManager.changeStatus(${pedido.id}, this.value)"
-                >
-                    <option value="">Alterar Status</option>
-                    <option value="agendado" ${pedido.status === 'agendado' ? 'selected' : ''}>Agendado</option>
-                    <option value="em_producao" ${pedido.status === 'em_producao' ? 'selected' : ''}>Em Produção</option>
-                    <option value="pronto_entrega" ${pedido.status === 'pronto_entrega' ? 'selected' : ''}>Pronto para Entrega</option>
-                    <option value="em_rota" ${pedido.status === 'em_rota' ? 'selected' : ''}>Em Rota</option>
-                    <option value="pronto_retirada" ${pedido.status === 'pronto_retirada' ? 'selected' : ''}>Pronto para Retirada</option>
-                    <option value="concluido" ${pedido.status === 'concluido' ? 'selected' : ''}>Concluído</option>
-                </select>
+            <!-- Body Grid -->
+            <div class="space-y-4 mb-4 pt-2 border-t border-gray-50">
+                <!-- Cliente / Destinatário -->
+                ${renderRow('fas fa-user', 'De', pedido.cliente)}
+                ${renderRow('fas fa-gift', 'Para', pedido.destinatario)}
+                ${renderRow('fas fa-phone', 'Telefone', pedido.telefone_cliente && hasContent(pedido.telefone_cliente) ? Utils.formatPhone(pedido.telefone_cliente) : '')}
+                
+                <!-- Produto -->
+                <div class="grid grid-cols-[20px_1fr] items-start gap-2">
+                    <i class="fas fa-flower text-gray-300 text-xs mt-1"></i>
+                    <div>
+                        ${renderLabel('Produto')}
+                        <div class="text-sm text-gray-900 font-medium leading-relaxed">
+                            ${Utils.truncate(pedido.produto, 80)}
+                        </div>
+                    </div>
+                </div>
 
-                <div class="flex flex-wrap gap-2 w-full sm:w-auto">
-                    <button 
-                        class="flex-1 sm:flex-none px-3 py-2 bg-primary text-white rounded hover:bg-secondary transition text-sm"
-                        onclick="PedidoCard.printPedido(${pedido.id})"
-                        title="Imprimir Pedido"
+                <!-- Valor / Tipo -->
+                <div class="grid grid-cols-[20px_1fr] items-start gap-2">
+                    <div class="col-start-2 grid grid-cols-2 gap-4">
+                        ${hasContent(pedido.valor) ? `
+                            <div>
+                                ${renderLabel('Valor')}
+                                <div class="text-sm font-bold text-green-700">${Utils.escapeHtml(pedido.valor)}</div>
+                            </div>
+                        ` : ''}
+                        ${hasContent(pedido.tipo_pedido) ? `
+                            <div>
+                                ${renderLabel('Tipo')}
+                                <div class="text-sm font-semibold text-gray-700">${Utils.translateType(pedido.tipo_pedido)}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Entrega Section -->
+            ${pedido.tipo_pedido === 'Entrega' && pedido.endereco ? `
+                <div class="bg-gray-50 rounded p-3 border border-gray-100 mt-2 mb-2">
+                    <div class="flex items-start gap-2 mb-3">
+                        <i class="fas fa-map-marker-alt text-gray-400 mt-0.5 text-xs flex-shrink-0"></i>
+                        <div class="text-sm text-gray-600 leading-snug break-words flex-1">
+                            ${Utils.escapeHtml(pedido.endereco)}
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between gap-2 pt-2 border-t border-gray-100">
+                        <div class="flex flex-col">
+                            ${pedido.distancia_km !== null && pedido.distancia_km !== undefined ? `
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Entrega</span>
+                                <div class="flex items-center gap-1 text-sm font-bold text-gray-800">
+                                    <span>${PedidoCard.formatarDistancia(pedido.distancia_km)}</span>
+                                    <span class="text-gray-300 mx-1">•</span>
+                                    <span>${pedido.taxa_entrega !== null ? `R$ ${pedido.taxa_entrega.toFixed(2)}` : 'R$ --'}</span>
+                                </div>
+                                ${pedido.aproximado ? '<span class="text-[10px] text-orange-600 font-medium">⚠️ Aprox.</span>' : ''}
+                            ` : `
+                                <span class="text-xs text-gray-400 italic">Não calculada</span>
+                            `}
+                        </div>
+
+                        <button 
+                            class="btn-calcular-entrega inline-flex items-center px-3 py-1.5 bg-white border border-gray-200 rounded text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-primary hover:border-gray-300 transition-colors shadow-sm focus:outline-none"
+                            onclick="PedidoCard.calcularEntrega(${pedido.id})"
+                            id="btn-calc-${pedido.id}"
+                            title="${pedido.distancia_km ? 'Recalcular taxa e distância' : 'Calcular entrega'}"
+                        >
+                            <i class="fas ${pedido.distancia_km ? 'fa-sync-alt' : 'fa-calculator'} mr-1.5"></i>
+                            ${pedido.distancia_km ? 'Recalcular' : 'Calcular'}
+                        </button>
+                    </div>
+                </div>
+            ` : ''}
+
+            <!-- Footer -->
+            <div class="flex flex-col gap-2 pt-3 mt-auto border-t border-gray-50">
+                <div class="w-full">
+                    <select 
+                        class="w-full h-10 px-3 border border-gray-200 rounded text-sm bg-gray-50 text-gray-700 focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary transition-colors cursor-pointer appearance-none"
+                        onchange="PainelManager.changeStatus(${pedido.id}, this.value)"
+                        aria-label="Alterar status"
+                        style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236b7280%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 0.7rem top 50%; background-size: 0.65rem auto;"
                     >
-                        <i class="fas fa-print"></i>
-                        <span class="hidden sm:inline ml-1">Imprimir</span>
+                        <option value="">Status...</option>
+                        <option value="agendado" ${pedido.status === 'agendado' ? 'selected' : ''}>Agendado</option>
+                        <option value="em_producao" ${pedido.status === 'em_producao' ? 'selected' : ''}>Em Produção</option>
+                        <option value="pronto_entrega" ${pedido.status === 'pronto_entrega' ? 'selected' : ''}>Pronto para Entrega</option>
+                        <option value="em_rota" ${pedido.status === 'em_rota' ? 'selected' : ''}>Em Rota</option>
+                        <option value="pronto_retirada" ${pedido.status === 'pronto_retirada' ? 'selected' : ''}>Pronto para Retirada</option>
+                        <option value="concluido" ${pedido.status === 'concluido' ? 'selected' : ''}>Concluído</option>
+                    </select>
+                </div>
+
+                <div class="card-footer__actions grid grid-cols-2 gap-2 w-full">
+                    <!-- Standardized Action Buttons -->
+                    <button class="btn-action-neutral" onclick="PedidoCard.printPedido(${pedido.id})" title="Imprimir">
+                        <i class="fas fa-print mr-1.5"></i> Imprimir
                     </button>
 
-                    <button 
-                        class="flex-1 sm:flex-none px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm"
-                        onclick="PedidoCard.showDetails(${pedido.id})"
-                        title="Ver detalhes"
-                    >
-                        <i class="fas fa-eye"></i>
-                        <span class="hidden sm:inline ml-1">Ver</span>
+                    <button class="btn-action-neutral" onclick="PedidoCard.showDetails(${pedido.id})" title="Ver">
+                        <i class="fas fa-eye mr-1.5"></i> Ver
                     </button>
 
-                    <button 
-                        class="flex-1 sm:flex-none px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition text-sm"
-                        onclick="PedidoCard.editPedido(${pedido.id})"
-                        title="Editar pedido"
-                    >
-                        <i class="fas fa-edit"></i>
-                        <span class="hidden sm:inline ml-1">Editar</span>
+                    <button class="btn-action-neutral" onclick="PedidoCard.editPedido(${pedido.id})" title="Editar">
+                        <i class="fas fa-edit mr-1.5"></i> Editar
                     </button>
 
-                    <button 
-                        class="flex-1 sm:flex-none px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm"
-                        onclick="PainelManager.deletePedido(${pedido.id})"
-                        title="Deletar pedido"
-                    >
-                        <i class="fas fa-trash"></i>
-                        <span class="hidden sm:inline ml-1">Deletar</span>
+                    <button class="btn-action-danger" onclick="PainelManager.deletePedido(${pedido.id})" title="Deletar">
+                        <i class="fas fa-trash mr-1.5"></i> Deletar
                     </button>
                 </div>
             </div>
         `;
-
         return card;
+    },
+
+    /**
+     * Alias para create, usado internamente
+     */
+    render(pedido) {
+        return this.create(pedido).outerHTML;
+    },
+
+    /**
+     * Calcula distância e taxa de entrega sequencialmente
+     */
+    async calcularEntrega(pedidoId) {
+        const btn = document.getElementById(`btn-calc-${pedidoId}`);
+        const originalContent = btn ? btn.innerHTML : '';
+
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Calculando...';
+            }
+
+            // 1. Calcular Distância
+            await this.calcularDistancia(pedidoId, true, false);
+
+            // 2. Calcular Taxa (após distância estar atualizada no backend/db)
+            await this.calcularTaxa(pedidoId, true);
+
+        } catch (error) {
+            console.error('Erro no fluxo de cálculo:', error);
+            Notification.error('Erro ao calcular entrega');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                // O botão será re-renderizado pelo update do card, mas caso não seja:
+                btn.innerHTML = originalContent;
+            }
+        }
     },
 
     /**
@@ -268,9 +282,9 @@ const PedidoCard = {
 
             const p = pedidoResult.data.pedido;
             const fontes = fontesResult.success && fontesResult.data.success ? fontesResult.data.fontes : [];
-            
+
             // Gerar opções de fontes
-            const fontesOptions = fontes.map(fonte => 
+            const fontesOptions = fontes.map(fonte =>
                 `<option value="${fonte.id}" ${p.fonte_pedido_id === fonte.id ? 'selected' : ''}>${Utils.escapeHtml(fonte.nome)}</option>`
             ).join('');
 
@@ -486,7 +500,7 @@ const PedidoCard = {
 
                     console.log('[EDITAR] Enviando dados:', data);
                     const update = await API.updatePedido(pedidoId, data);
-                    
+
                     if (!update.success) {
                         console.error('[EDITAR] Erro na resposta:', update);
                         throw new Error(update.error || update.data?.error || 'Erro ao atualizar pedido');
@@ -536,16 +550,16 @@ const PedidoCard = {
             const campoHorarioEdit = overlay.querySelector('#edit-horario');
             const btnModalHorarioEdit = overlay.querySelector('#btn-modal-horario-edit');
             const campoDataEdit = overlay.querySelector('#edit-dia');
-            
+
             const abrirModalHorarioEdit = async () => {
                 const valorAtual = campoHorarioEdit?.value || '';
                 const dataEntrega = campoDataEdit?.value || '';
-                
+
                 // Detectar se já é um intervalo
                 const isIntervalo = valorAtual.includes(' - ');
                 let horarioInicial = '';
                 let horarioFinal = '';
-                
+
                 if (isIntervalo) {
                     const partes = valorAtual.split(' - ');
                     horarioInicial = partes[0] || '';
@@ -618,11 +632,11 @@ const PedidoCard = {
                 const calendarioHtml = horarios.map(horario => {
                     const contador = getContadorHorario(horario);
                     const ocupado = contador > 0;
-                    const selecionado = horario === horarioInicial || 
-                                       (isIntervalo && horarioEstaNoIntervalo(horario, horarioInicial, horarioFinal));
-                    
+                    const selecionado = horario === horarioInicial ||
+                        (isIntervalo && horarioEstaNoIntervalo(horario, horarioInicial, horarioFinal));
+
                     let classes = 'horario-btn relative w-12 h-12 rounded-full flex items-center justify-center text-xs font-semibold transition-all border-2';
-                    
+
                     if (selecionado) {
                         classes += ' bg-primary border-primary text-white';
                     } else if (ocupado) {
@@ -630,7 +644,7 @@ const PedidoCard = {
                     } else {
                         classes += ' bg-white border-primary text-gray-800 hover:bg-green-50 hover:border-secondary';
                     }
-                    
+
                     return `
                         <button 
                             type="button"
@@ -722,7 +736,7 @@ const PedidoCard = {
                 const atualizarPreview = () => {
                     const preview = modalHorario.querySelector('#preview-selecao-edit');
                     const previewTexto = modalHorario.querySelector('#preview-texto-edit');
-                    
+
                     if (tipoSelecionado === 'especifico' && horarioSelecionado) {
                         preview.classList.remove('hidden');
                         previewTexto.textContent = `Horário: ${horarioSelecionado}`;
@@ -740,7 +754,7 @@ const PedidoCard = {
                         const horario = btn.dataset.horario;
                         let selecionado = false;
                         let primeiroIntervalo = false;
-                        
+
                         if (tipoSelecionado === 'especifico') {
                             selecionado = horario === horarioSelecionado;
                         } else {
@@ -750,17 +764,17 @@ const PedidoCard = {
                                 selecionado = horarioEstaNoIntervalo(horario, horarioInicialSelecionado, horarioFinalSelecionado);
                             }
                         }
-                        
+
                         btn.classList.remove(
                             'ring-4', 'ring-primary', 'ring-offset-2',
                             'bg-gray-700', 'bg-black', 'bg-primary', 'bg-white', 'bg-gray-50',
                             'bg-yellow-200', 'bg-yellow-50', 'bg-amber-50', 'bg-green-100', 'bg-green-50',
                             'border-gray-800', 'border-yellow-600', 'border-amber-500', 'border-black', 'border-primary', 'border-secondary',
                             'text-white', 'text-gray-800', 'text-gray-700',
-                            'hover:bg-yellow-300', 'hover:bg-yellow-100', 'hover:bg-amber-100', 'hover:bg-green-200', 'hover:bg-green-50', 'hover:bg-gray-100', 
+                            'hover:bg-yellow-300', 'hover:bg-yellow-100', 'hover:bg-amber-100', 'hover:bg-green-200', 'hover:bg-green-50', 'hover:bg-gray-100',
                             'hover:border-gray-900', 'hover:border-secondary'
                         );
-                        
+
                         if (primeiroIntervalo || selecionado) {
                             btn.classList.add('bg-primary', 'border-primary', 'text-white');
                         } else {
@@ -792,7 +806,7 @@ const PedidoCard = {
                 modalHorario.querySelectorAll('.horario-btn').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const horario = btn.dataset.horario;
-                        
+
                         if (tipoSelecionado === 'especifico') {
                             horarioSelecionado = horario;
                             atualizarBotoes();
@@ -806,7 +820,7 @@ const PedidoCard = {
                                 const [h2, m2] = horario.split(':').map(Number);
                                 const minutosInicial = h1 * 60 + m1;
                                 const minutosFinal = h2 * 60 + m2;
-                                
+
                                 if (minutosFinal <= minutosInicial) {
                                     Notification.warning('O horário final deve ser depois do horário inicial');
                                     horarioInicialSelecionado = horario;
@@ -1133,11 +1147,11 @@ const PedidoCard = {
     /**
      * Calcula a distância de um pedido individual
      */
-    async calcularDistancia(pedidoId, forceRecalc = false) {
+    async calcularDistancia(pedidoId, forceRecalc = false, shouldRender = true) {
         try {
             // Encontrar o card e mostrar loading
             const card = document.querySelector(`.pedido-card[data-id="${pedidoId}"]`);
-            if (card) {
+            if (card && shouldRender) {
                 const routeIcon = card.querySelector('.fa-route, .fa-calculator, .fa-sync-alt');
                 if (routeIcon) {
                     routeIcon.classList.add('fa-spin');
@@ -1172,7 +1186,7 @@ const PedidoCard = {
                 }
 
                 // Re-renderizar o card
-                if (window.PainelManager && typeof window.PainelManager.renderPedidos === 'function') {
+                if (shouldRender && window.PainelManager && typeof window.PainelManager.renderPedidos === 'function') {
                     window.PainelManager.renderPedidos();
                 }
 
@@ -1894,7 +1908,7 @@ const PedidoCard = {
                 iframe.style.cssText = 'position: fixed; width: 0; height: 0; border: none; top: -9999px; left: -9999px;';
                 iframe.src = url;
                 document.body.appendChild(iframe);
-                
+
                 iframe.onload = () => {
                     // O evento beforeprint já está registrado no HTML injetado
                     // Apenas aguardar um pouco para garantir que o script foi executado
@@ -1906,7 +1920,7 @@ const PedidoCard = {
                             console.error('[IMPRESSAO] Erro ao imprimir iframe:', e);
                             Notification.error('Erro ao abrir impressão. Tente novamente.');
                         }
-                        
+
                         // Limpar após impressão
                         setTimeout(() => {
                             if (iframe.parentNode) {
@@ -1934,15 +1948,15 @@ const PedidoCard = {
      */
     horarioEstaNoIntervalo(horario, inicio, fim) {
         if (!inicio || !fim) return false;
-        
+
         const [h, m] = horario.split(':').map(Number);
         const [h1, m1] = inicio.split(':').map(Number);
         const [h2, m2] = fim.split(':').map(Number);
-        
+
         const minutos = h * 60 + m;
         const minutosInicio = h1 * 60 + m1;
         const minutosFim = h2 * 60 + m2;
-        
+
         return minutos >= minutosInicio && minutos <= minutosFim;
     }
 };

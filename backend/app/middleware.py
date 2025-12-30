@@ -9,8 +9,16 @@ import os
 import hashlib
 import time
 from datetime import datetime, timedelta
+import json
 
-
+# #region agent log
+def log_debug(msg, data):
+    try:
+        with open(r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "timestamp": int(time.time()*1000), "location": "middleware.py", "message": msg, "data": data}) + "\n")
+    except Exception as e:
+        print(f"Log error: {e}")
+# #endregion
 
 # ============================================
 # CONFIGURAÇÃO DE USUÁRIOS
@@ -37,10 +45,28 @@ def check_auth(username, password):
     """
     Verifica se o usuário e senha são válidos
     """
+    log_debug(
+        "check_auth called",
+        {
+            "username": username,
+            "password_len": len(password) if password else 0,
+            "password_is_lower": bool(password) and password == password.lower(),
+        },
+    )
     if username not in USERS:
+        log_debug("check_auth failed: user not found", {"username": username, "available_users": list(USERS.keys())})
         return False
     
     expected_password = USERS[username]
+    log_debug(
+        "check_auth verify",
+        {
+            "username": username,
+            "expected_password_len": len(expected_password) if expected_password else 0,
+            "expected_password_is_lower": bool(expected_password) and expected_password == expected_password.lower(),
+            "match": password == expected_password,
+        },
+    )
     
     # Comparação simples (em produção, use hash)
     return password == expected_password
@@ -313,4 +339,3 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
         )
         
         return response
-

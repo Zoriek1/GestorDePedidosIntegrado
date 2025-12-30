@@ -6,7 +6,17 @@ Centraliza todas as variáveis de ambiente e configurações da aplicação.
 """
 import os
 from pathlib import Path
+import json
+import time
 
+# #region agent log
+def log_debug(msg, data):
+    try:
+        with open(r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "timestamp": int(time.time()*1000), "location": "config.py", "message": msg, "data": data}) + "\n")
+    except Exception as e:
+        print(f"Log error: {e}")
+# #endregion
 
 class BaseConfig:
     """Configurações base da aplicação"""
@@ -86,7 +96,21 @@ class BaseConfig:
     @staticmethod
     def init_app(app):
         """Inicialização adicional da aplicação"""
-        pass
+        # Do not log secrets (password). Only log non-sensitive diagnostics.
+        log_debug(
+            "BaseConfig.init_app",
+            {
+                "DATABASE_PATH": str(BaseConfig.DATABASE_PATH),
+                "ADMIN_PASSWORD_LEN": len(BaseConfig.ADMIN_PASSWORD) if BaseConfig.ADMIN_PASSWORD else 0,
+                "ADMIN_PASSWORD_IS_LOWER": bool(BaseConfig.ADMIN_PASSWORD) and BaseConfig.ADMIN_PASSWORD == BaseConfig.ADMIN_PASSWORD.lower(),
+            },
+        )
+
+
+# Backwards-compat alias:
+# Some modules import `Config` (e.g. `from app.config import Config`) expecting a class
+# with static paths like `INSTANCE_DIR`. Keep compatibility without refactoring callers.
+Config = BaseConfig
 
 
 class DevelopmentConfig(BaseConfig):

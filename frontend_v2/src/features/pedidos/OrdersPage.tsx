@@ -18,6 +18,7 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import { Refresh } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
@@ -46,7 +47,7 @@ export default function OrdersPage() {
 
   const queryClient = useQueryClient();
   const { data: pedidosData, isLoading: isLoadingPedidos, isFetching: isFetchingPedidos, error: pedidosError, refetch: refetchPedidos } = usePedidos(filters);
-  const { data: statsData, isLoading: isLoadingStats, isFetching: isFetchingStats, error: statsError } = useStats();
+  const { data: statsData, isFetching: isFetchingStats } = useStats();
 
   const isFetching = isFetchingPedidos || isFetchingStats;
 
@@ -71,6 +72,12 @@ export default function OrdersPage() {
 
   return (
     <Box>
+      {(!navigator.onLine &&
+        (((pedidosData as any)?.__offline?.stale === true) || ((statsData as any)?.__offline?.stale === true))) && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Mostrando dados desatualizados (cache expirado) por falta de conexão.
+        </Alert>
+      )}
       {/* Indicador de atualização */}
       {isFetching && (
         <Box
@@ -232,7 +239,7 @@ export default function OrdersPage() {
           message={pedidosError.message || 'Erro ao carregar pedidos'}
           onRetry={() => refetchPedidos()}
         />
-      ) : pedidosData?.pedidos ? (
+      ) : pedidosData && 'pedidos' in pedidosData && pedidosData.pedidos ? (
         <OrderList
           pedidos={pedidosData.pedidos}
           onOrderClick={handleOrderClick}

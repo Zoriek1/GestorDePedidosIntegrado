@@ -2,7 +2,7 @@
  * Router configuration
  */
 
-import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Outlet, Navigate } from 'react-router-dom';
 import { RequireAuth } from '../features/auth/RequireAuth';
 import { AppShell } from '../layout/AppShell';
 import LoginPage from '../features/auth/LoginPage';
@@ -10,6 +10,8 @@ import OrdersPage from '../features/pedidos/OrdersPage';
 import CustomersPage from '../features/customers/CustomersPage';
 import CreateOrderPage from '../features/pedidos/CreateOrderPage';
 import OrderDetailsPage from '../features/pedidos/OrderDetailsPage';
+import TestOfflinePage from '../features/pedidos/TestOfflinePage';
+import OfflineDiagnostics from '../features/offline/OfflineDiagnostics';
 
 // Layout route that wraps protected routes with AppShell
 function Layout() {
@@ -19,6 +21,9 @@ function Layout() {
     </AppShell>
   );
 }
+
+const enableOfflineDiagnostics =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_OFFLINE_DIAGNOSTICS === 'true';
 
 const router = createBrowserRouter([
   {
@@ -57,6 +62,22 @@ const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <OrderDetailsPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: '/test-offline',
+        element: (
+          <RequireAuth>
+            {enableOfflineDiagnostics ? <TestOfflinePage /> : <Navigate to="/" replace />}
+          </RequireAuth>
+        ),
+      },
+      {
+        path: '/offline-diagnostics',
+        element: (
+          <RequireAuth>
+            {enableOfflineDiagnostics ? <OfflineDiagnostics /> : <Navigate to="/" replace />}
           </RequireAuth>
         ),
       },

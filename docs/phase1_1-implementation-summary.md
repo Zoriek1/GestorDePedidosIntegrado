@@ -317,3 +317,4 @@ Ver `docs/phase1_1-smoke.md` para checklist completo de testes.
 **Data de Conclusão:** 30/12/2025  
 **Status:** ✅ Completo e testado
 
+

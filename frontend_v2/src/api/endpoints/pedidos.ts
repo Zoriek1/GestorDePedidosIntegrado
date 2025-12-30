@@ -6,6 +6,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { queryFnWithCache } from '../../lib/offline/queryWithCache';
+import { enqueue } from '../../lib/offline/outbox';
+import { useOffline } from '../../lib/offline/OfflineProvider';
+import { useToast } from '../../components/system/useToast';
 
 // Types
 export interface Pedido {
@@ -65,10 +69,11 @@ export interface PedidosFilters {
 export function usePedidos(filters: PedidosFilters = {}) {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
+  const queryKey: readonly unknown[] = ['pedidos', filters];
 
   return useQuery<PedidosResponse>({
-    queryKey: ['pedidos', filters],
-    queryFn: async () => {
+    queryKey,
+    queryFn: () => queryFnWithCache(queryKey, async () => {
       const params = new URLSearchParams();
       if (filters.status) params.append('status', filters.status);
       if (filters.data_inicio) params.append('data_inicio', filters.data_inicio);
@@ -83,11 +88,11 @@ export function usePedidos(filters: PedidosFilters = {}) {
         throw new Error(response.message);
       }
       return response.data;
-    },
+    }, { tag: 'pedidos' }),
+    placeholderData: (previousData) => previousData, // Maintains previous data when filters change
     staleTime: 5000, // 5 seconds
     refetchInterval: 15000, // 15 seconds
-    refetchOnWindowFocus: true,
-    keepPreviousData: true, // Maintains previous data when filters change
+    refetchOnWindowFocus: true
   });
 }
 
@@ -108,6 +113,92 @@ export function usePedido(id: number) {
       return response.data;
     },
     enabled: !!id,
+  });
+}
+
+export interface CreatePedidoPayload {
+  cliente: string;
+  telefone_cliente: string;
+  destinatario: string;
+  tipo_pedido: 'Entrega' | 'Retirada';
+  produto: string;
+  flores_cor?: string;
+  valor?: string;
+  dia_entrega: string;
+  horario: string;
+  cep?: string;
+  rua?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  endereco?: string;
+  obs_entrega?: string;
+  mensagem?: string;
+  pagamento?: string;
+  observacoes?: string;
+  status_pagamento?: string;
+  fonte_pedido?: string;
+  fonte_pedido_id?: number;
+  quantidade?: number;
+  cliente_id?: number;
+}
+
+export function useCreatePedido() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const { isOnline } = useOffline();
+  const { info } = useToast();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreatePedidoPayload) => {
+      if (isOnline) {
+        const response = await apiRequest<{ pedido_id: number; pedido: Pedido }>('/pedidos', {
+          method: 'POST',
+          body: JSON.stringify({ ...data, clientTimestamp: Date.now() }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) throw new Error(response.message);
+        return response.data;
+      } else {
+        await enqueue('create_order', data);
+        info('Salvo offline; será sincronizado quando online');
+        throw new Error('OFFLINE_ENQUEUED');
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    }
+  });
+}
+
+export function useUpdatePedido() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const { isOnline } = useOffline();
+  const { info } = useToast();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number } & Partial<CreatePedidoPayload>) => {
+      if (isOnline) {
+        const response = await apiRequest<{ pedido: Pedido }>(`/pedidos/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...data, clientTimestamp: Date.now() }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) throw new Error(response.message);
+        return response.data;
+      } else {
+        await enqueue('update_order', { id, ...data });
+        info('Salvo offline; será sincronizado quando online');
+        throw new Error('OFFLINE_ENQUEUED');
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['pedido'] });
+    }
   });
 }
 

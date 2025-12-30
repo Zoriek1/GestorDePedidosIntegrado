@@ -2,7 +2,7 @@
  * Error State component with retry
  */
 
-import { Box, Alert, Button, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import { ErrorOutline, Refresh } from '@mui/icons-material';
 
 interface ErrorStateProps {

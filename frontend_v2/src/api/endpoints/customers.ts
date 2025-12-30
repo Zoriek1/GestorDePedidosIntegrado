@@ -39,7 +39,7 @@ export function useCustomerSearch(query: string, limit = 10) {
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<CustomerSearchResponse>({
-    queryKey: ['customers', 'search', query, limit],
+    queryKey: ['customers.search', { q: query, limit }],
     queryFn: async () => {
       if (!query || query.trim().length === 0) {
         // Return empty result if no query
@@ -58,9 +58,9 @@ export function useCustomerSearch(query: string, limit = 10) {
       }
       return response.data;
     },
-    enabled: !!query && query.trim().length > 0, // Only fetch if query exists
+    enabled: !!query && query.trim().length >= 2, // Only fetch if query has at least 2 characters
     staleTime: 5000, // 5 seconds
-    keepPreviousData: true, // Keep previous results while typing
+    placeholderData: (previousData) => previousData // Keep previous results while typing
   });
 }
 

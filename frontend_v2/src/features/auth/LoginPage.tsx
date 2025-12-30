@@ -10,23 +10,22 @@ import {
   Container,
   Paper,
   TextField,
-  Button,
   Checkbox,
   FormControlLabel,
   Typography,
-  Alert,
-  CircularProgress,
 } from '@mui/material';
 import { useAuth } from './authStore';
+import { AppButton } from '../../components/common/AppButton';
+import { useToast } from '../../components/system/useToast';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const { login } = useAuth();
+  const { error: showError } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -34,11 +33,10 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     setLoading(true);
 
     if (!username.trim() || !password.trim()) {
-      setError('Por favor, preencha usuário e senha');
+      showError('Por favor, preencha usuário e senha');
       setLoading(false);
       return;
     }
@@ -50,10 +48,10 @@ export default function LoginPage() {
         // Navigate to original route or home
         navigate(from, { replace: true });
       } else {
-        setError(result.error || 'Credenciais inválidas');
+        showError(result.error || 'Credenciais inválidas');
       }
     } catch (err) {
-      setError('Erro ao fazer login. Tente novamente.');
+      showError('Erro ao fazer login. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -77,12 +75,6 @@ export default function LoginPage() {
           <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
             Plante Uma Flor - Gestão de Pedidos
           </Typography>
-
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
 
           <form onSubmit={handleSubmit}>
             <TextField
@@ -121,23 +113,16 @@ export default function LoginPage() {
               sx={{ mb: 2 }}
             />
 
-            <Button
+            <AppButton
               type="submit"
               fullWidth
               variant="contained"
               size="large"
-              disabled={loading}
+              loading={loading}
               sx={{ mb: 2 }}
             >
-              {loading ? (
-                <>
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                  Entrando...
-                </>
-              ) : (
-                'Entrar'
-              )}
-            </Button>
+              Entrar
+            </AppButton>
           </form>
         </Paper>
       </Box>

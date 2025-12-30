@@ -4,43 +4,18 @@
 
 import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
 import type { Pedido } from '../../../api/endpoints/pedidos';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale/pt-BR';
+import { formatDateBR } from '../../../lib/format/date';
+import { formatBRL } from '../../../lib/format/currency';
+import { getStatusColor, getStatusLabel } from '../useCases/orderMapping';
 
 interface OrderCardProps {
   pedido: Pedido;
   onClick?: () => void;
 }
 
-const statusColors: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
-  agendado: 'info',
-  producao: 'warning',
-  pronto: 'success',
-  entregue: 'secondary',
-  cancelado: 'error',
-  concluido: 'secondary',
-};
-
-const statusLabels: Record<string, string> = {
-  agendado: 'Agendado',
-  producao: 'Em Produção',
-  pronto: 'Pronto',
-  entregue: 'Entregue',
-  cancelado: 'Cancelado',
-  concluido: 'Concluído',
-};
-
 export function OrderCard({ pedido, onClick }: OrderCardProps) {
-  const statusColor = statusColors[pedido.status] || 'default';
-  const statusLabel = statusLabels[pedido.status] || pedido.status;
-
-  const formatDate = (dateStr: string) => {
-    try {
-      return format(new Date(dateStr), "dd/MM/yyyy", { locale: ptBR });
-    } catch {
-      return dateStr;
-    }
-  };
+  const statusColor = getStatusColor(pedido.status);
+  const statusLabel = getStatusLabel(pedido.status);
 
   return (
     <Card
@@ -70,7 +45,7 @@ export function OrderCard({ pedido, onClick }: OrderCardProps) {
 
         <Box display="flex" flexDirection="column" gap={1}>
           <Typography variant="body2">
-            <strong>Data:</strong> {formatDate(pedido.dia_entrega)} às {pedido.horario}
+            <strong>Data:</strong> {formatDateBR(pedido.dia_entrega)} às {pedido.horario}
           </Typography>
           {pedido.tipo_pedido === 'Entrega' && pedido.endereco && (
             <Typography variant="body2" color="text.secondary">
@@ -79,7 +54,7 @@ export function OrderCard({ pedido, onClick }: OrderCardProps) {
           )}
           {pedido.valor && (
             <Typography variant="body2">
-              <strong>Valor:</strong> R$ {pedido.valor}
+              <strong>Valor:</strong> {formatBRL(pedido.valor)}
             </Typography>
           )}
           {pedido.distancia_km && (

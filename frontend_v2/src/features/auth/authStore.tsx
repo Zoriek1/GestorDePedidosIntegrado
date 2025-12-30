@@ -158,6 +158,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCacheTimestamp(Date.now());
   }, []);
 
+  // Global auth invalidation (401/403): force logout so RequireAuth redirects to /login when online.
+  useEffect(() => {
+    const handleAuthInvalid = () => {
+      logout();
+    };
+
+    window.addEventListener('puf_auth_invalid', handleAuthInvalid as EventListener);
+    return () => {
+      window.removeEventListener('puf_auth_invalid', handleAuthInvalid as EventListener);
+    };
+  }, [logout]);
+
   const login = useCallback(async (username: string, password: string, remember = false): Promise<{ success: boolean; error?: string; message?: string }> => {
     try {
       // Primary approach (robust): Save credentials first, then validate via GET /api/auth/check
@@ -195,9 +207,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         // Validation failed - clear credentials
         logout();
+        const errorMessage = response.ok && response.data ? response.data.message : 'Credenciais inválidas';
         return { 
           success: false, 
-          error: response.data?.message || 'Credenciais inválidas' 
+          error: errorMessage
         };
       }
     } catch (error) {

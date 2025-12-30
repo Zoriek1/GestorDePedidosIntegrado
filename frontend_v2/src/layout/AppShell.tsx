@@ -3,7 +3,7 @@
  */
 
 import React, { ReactNode } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   AppBar,
   Toolbar,
@@ -15,8 +15,10 @@ import {
   Menu,
   MenuItem,
 } from '@mui/material';
-import { LocalFlorist, Logout, Person } from '@mui/icons-material';
+import { LocalFlorist, Logout, Person, CloudOff, CloudDone, Sync } from '@mui/icons-material';
 import { useAuth } from '../features/auth/authStore';
+import { useOffline } from '../lib/offline/OfflineProvider';
+import { Chip, Tooltip, Badge } from '@mui/material';
 
 interface AppShellProps {
   children: ReactNode;
@@ -24,8 +26,8 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
-  const location = useLocation();
   const { isAuthenticated, getCredentials, logout: handleLogout } = useAuth();
+  const { isOnline, outboxCount } = useOffline();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
   const authenticated = isAuthenticated();
@@ -79,6 +81,25 @@ export function AppShell({ children }: AppShellProps) {
               Novo Pedido
             </Button>
           </Box>
+
+          {/* Offline Status Indicators */}
+          {authenticated && (
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mr: 2 }}>
+              <Chip
+                icon={isOnline ? <CloudDone /> : <CloudOff />}
+                label={isOnline ? 'Online' : 'Offline'}
+                color={isOnline ? 'success' : 'default'}
+                size="small"
+              />
+              {outboxCount > 0 && (
+                <Tooltip title={`${outboxCount} item(ns) pendente(s) de sincronização`}>
+                  <Badge badgeContent={outboxCount} color="warning">
+                    <Sync fontSize="small" />
+                  </Badge>
+                </Tooltip>
+              )}
+            </Box>
+          )}
 
           {/* User Menu */}
           {authenticated && (

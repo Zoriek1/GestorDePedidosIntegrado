@@ -7,6 +7,17 @@ import os
 import sys
 import configparser
 from pathlib import Path
+import json
+import time
+
+# #region agent log
+def log_debug(msg, data):
+    try:
+        with open(r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "timestamp": int(time.time()*1000), "location": "main.py", "message": msg, "data": data}) + "\n")
+    except Exception as e:
+        print(f"Log error: {e}")
+# #endregion
 
 # Carregar variáveis de ambiente do arquivo .env
 from dotenv import load_dotenv
@@ -76,12 +87,16 @@ def check_port_in_use(port=5000):
         sock.settimeout(1)
         result = sock.connect_ex(('localhost', port))
         sock.close()
+        log_debug("check_port_in_use", {"port": port, "result": result, "in_use": result == 0})
         return result == 0
-    except:
+    except Exception as e:
+        log_debug("check_port_in_use exception", {"error": str(e)})
         return False
 
 def main():
     """Função principal para iniciar o servidor"""
+    is_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    log_debug("main starting", {"args": sys.argv, "WERKZEUG_RUN_MAIN": str(is_reloader)})
     
     # Se --help ou comandos CLI foram passados, usar Flask CLI
     if '--help' in sys.argv or any(arg.startswith('cli ') for arg in sys.argv):
@@ -90,26 +105,29 @@ def main():
         # Flask CLI vai processar os comandos
         return
     
-    # Verificar se a porta já está em uso
-    if check_port_in_use(5000):
-        print("\n[AVISO] A porta 5000 ja esta em uso!")
-        print("   Servidor pode ja estar rodando.")
-        print("   Para parar: Execute parar_servidor.bat")
-        print("   Ou tente acessar: https://localhost:5000\n")
-        
-        # Verificar se foi passado --force ou --yes para pular input
-        force_start = '--force' in sys.argv or '--yes' in sys.argv or os.environ.get('FORCE_START', '').lower() == 'true'
-        
-        if not force_start:
-            try:
-                resposta = input("Deseja tentar iniciar mesmo assim? (s/n): ")
-                if resposta.lower() != 's':
-                    print("\n[INFO] Inicializacao cancelada.")
+    # Verificar se a porta já está em uso (SKIP if in reloader child process)
+    if not is_reloader:
+        if check_port_in_use(5000):
+            print("\n[AVISO] A porta 5000 ja esta em uso!")
+            print("   Servidor pode ja estar rodando.")
+            print("   Para parar: Execute parar_servidor.bat")
+            print("   Ou tente acessar: https://localhost:5000\n")
+            
+            # Verificar se foi passado --force ou --yes para pular input
+            force_start = '--force' in sys.argv or '--yes' in sys.argv or os.environ.get('FORCE_START', '').lower() == 'true'
+            
+            if not force_start:
+                try:
+                    resposta = input("Deseja tentar iniciar mesmo assim? (s/n): ")
+                    if resposta.lower() != 's':
+                        print("\n[INFO] Inicializacao cancelada.")
+                        return
+                except (EOFError, KeyboardInterrupt):
+                    print("\n[INFO] Input nao disponivel. Use --force para iniciar automaticamente.")
+                    print("[INFO] Inicializacao cancelada.")
                     return
-            except (EOFError, KeyboardInterrupt):
-                print("\n[INFO] Input nao disponivel. Use --force para iniciar automaticamente.")
-                print("[INFO] Inicializacao cancelada.")
-                return
+    else:
+        log_debug("Skipping port check", {"reason": "Running in reloader subprocess"})
     
     # Determinar ambiente (development ou production)
     env = os.environ.get('FLASK_ENV', 'development')
@@ -131,29 +149,31 @@ def main():
     })
     
     # Verificar e criar backup se necessário ao iniciar servidor
-    try:
-        with app.app_context():
-            if not has_recent_backup(hours=24):
-                print("\n[BACKUP] Nenhum backup recente encontrado (últimas 24h)")
-                last_backup = get_last_backup_time()
-                if last_backup:
-                    print(f"[BACKUP] Último backup: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
+    # Apenas no processo pai para evitar backup duplicado
+    if not is_reloader:
+        try:
+            with app.app_context():
+                if not has_recent_backup(hours=24):
+                    print("\n[BACKUP] Nenhum backup recente encontrado (últimas 24h)")
+                    last_backup = get_last_backup_time()
+                    if last_backup:
+                        print(f"[BACKUP] Último backup: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
+                    else:
+                        print("[BACKUP] Nenhum backup encontrado no sistema")
+                    
+                    print("[BACKUP] Criando backup automático ao iniciar servidor...")
+                    backup_path = create_backup(reason='startup', silent=False)
+                    if backup_path:
+                        print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
+                    else:
+                        print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
                 else:
-                    print("[BACKUP] Nenhum backup encontrado no sistema")
-                
-                print("[BACKUP] Criando backup automático ao iniciar servidor...")
-                backup_path = create_backup(reason='startup', silent=False)
-                if backup_path:
-                    print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
-                else:
-                    print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
-            else:
-                last_backup = get_last_backup_time()
-                if last_backup:
-                    print(f"[BACKUP] Backup recente encontrado: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
-    except Exception as e:
-        print(f"[AVISO] Erro ao verificar/criar backup ao iniciar servidor: {e}")
-        # Continuar inicialização mesmo se backup falhar
+                    last_backup = get_last_backup_time()
+                    if last_backup:
+                        print(f"[BACKUP] Backup recente encontrado: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
+        except Exception as e:
+            print(f"[AVISO] Erro ao verificar/criar backup ao iniciar servidor: {e}")
+            # Continuar inicialização mesmo se backup falhar
     
     # Descobrir IP local e hostname
     local_ip = get_local_ip()
@@ -228,14 +248,15 @@ def main():
     
     # Iniciar servidor
     try:
+        log_debug("app.run calling", {"options": str(run_options)})
         app.run(**run_options)
     except KeyboardInterrupt:
         print("\n\n[AVISO] Servidor encerrado pelo usuario")
         print("[OK] Obrigado por usar Plante Uma Flor!\n")
     except Exception as e:
+        log_debug("app.run exception", {"error": str(e)})
         print(f"\n[ERRO] Erro ao iniciar servidor: {e}\n")
         raise
 
 if __name__ == '__main__':
     main()
-

@@ -395,3 +395,4 @@ OPENROUTE_API_KEY=sua_chave_aqui
 
 **Última atualização:** Dezembro 2024
 
+

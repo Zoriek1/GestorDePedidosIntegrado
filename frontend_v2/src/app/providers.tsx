@@ -8,6 +8,9 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from '../features/auth/authStore';
 import { ReactNode } from 'react';
+import { ToastProvider } from '../components/system/ToastProvider';
+import { ConfirmProvider } from '../components/system/ConfirmProvider';
+import { OfflineProvider } from '../lib/offline/OfflineProvider';
 
 // Single QueryClient instance (prevents duplicate initialization)
 const queryClient = new QueryClient({
@@ -42,7 +45,13 @@ export function Providers({ children }: ProvidersProps) {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
-          {children}
+          <ToastProvider>
+            <OfflineProvider>
+              <ConfirmProvider>
+                {children}
+              </ConfirmProvider>
+            </OfflineProvider>
+          </ToastProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

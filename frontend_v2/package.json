@@ -22,7 +22,9 @@
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.69.0",
     "react-router-dom": "^7.11.0",
-    "zod": "^4.2.1"
+    "zod": "^4.2.1",
+    "@tanstack/react-virtual": "^3.11.2",
+    "dexie": "^3.2.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -36,6 +38,7 @@
     "globals": "^16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vite-plugin-pwa": "^1.2.0"
   }
 }

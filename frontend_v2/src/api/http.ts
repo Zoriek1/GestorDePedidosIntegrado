@@ -99,7 +99,6 @@ export async function request<T = any>(
   const url = `${BASE_URL}${endpoint}`;
   const method = options.method || 'GET';
   const requestId = generateRequestId();
-  const startTime = Date.now();
 
   // Headers - IMPORTANT: options.headers primeiro, depois auth injection
   const headers: Record<string, string> = {
@@ -135,7 +134,6 @@ export async function request<T = any>(
     const response = await fetch(url, config);
     clearTimeout(timeoutId);
 
-    const durationMs = Date.now() - startTime;
     const parseResult = await parseResponse(response);
 
     if (parseResult.parseError) {
@@ -157,6 +155,19 @@ export async function request<T = any>(
         ? (parseResult.data.error || parseResult.data.message || `Erro ${response.status}`)
         : `Erro ${response.status}`;
 
+      // Auth failures: notify app-level auth handler (best-effort)
+      if (response.status === 401 || response.status === 403) {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('puf_auth_invalid', {
+              detail: { status: response.status, requestId },
+            })
+          );
+        } catch {
+          // ignore
+        }
+      }
+
       return {
         ok: false,
         success: false,
@@ -177,7 +188,6 @@ export async function request<T = any>(
     };
   } catch (error) {
     clearTimeout(timeoutId);
-    const durationMs = Date.now() - startTime;
 
     // Handle AbortError (timeout)
     if ((error as Error).name === 'AbortError') {

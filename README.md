@@ -46,6 +46,23 @@ A documentação completa está organizada em `docs/`:
 - **[docs/configuration.md](docs/configuration.md)** - Variáveis de ambiente
 - **[docs/routes.md](docs/routes.md)** - Mapa de rotas (auto-gerado)
 
+### 📦 Backup
+
+- **[backend/docs/ESTUDO_BACKUP_COMPLETO.md](backend/docs/ESTUDO_BACKUP_COMPLETO.md)** - Documentação completa do sistema de backup
+- **[backend/docs/BACKUP_P1_GUIA.md](backend/docs/BACKUP_P1_GUIA.md)** - Guia de configuração do pacote P1 (Robustez Operacional)
+
+**Comandos rápidos:**
+```bash
+# Verificar health do backup
+curl -u admin:<password> http://localhost:5000/api/admin/backup/health
+
+# Limpar backups antigos (simulação)
+python backend/scripts/backup/cleanup_backups.py --local --dry-run
+
+# Ver status do backup
+cat backend/instance/backup_status.json | python -m json.tool
+```
+
 ---
 
 ## 🎯 Principais Endpoints

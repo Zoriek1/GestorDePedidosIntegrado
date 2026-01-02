@@ -53,6 +53,7 @@ def create_app(config=None):
         from app.routes.pedidos import pedidos_bp
         from app.routes.rotas import rotas_bp
         from app.routes.auth import auth_bp
+        from app.routes.develop.backup import backup_admin_bp
         
         # Registrar blueprints existentes (mantidos para compatibilidade)
         app.register_blueprint(api_bp)
@@ -62,6 +63,7 @@ def create_app(config=None):
         app.register_blueprint(pedidos_bp)
         app.register_blueprint(rotas_bp)
         app.register_blueprint(auth_bp)
+        app.register_blueprint(backup_admin_bp)
         
         # Criar tabelas (APÓS todos os models serem importados)
         init_database(app)
@@ -69,13 +71,7 @@ def create_app(config=None):
     # 5. Error handlers (antes de static routes)
     register_error_handlers(app)
     
-    # 6. Static routes (POR ÚLTIMO - catch-all)
-    register_static_routes(app)
-    
-    # 7. Security/Middleware (pode ser a qualquer momento)
-    setup_security(app)
-    
-    # 8. OpenAPI/Swagger (opcional, não invasivo)
+    # 6. OpenAPI/Swagger (ANTES das rotas estáticas para não ser interceptado pelo catch-all)
     try:
         from app.openapi import init_openapi
         init_openapi(app)
@@ -87,6 +83,12 @@ def create_app(config=None):
         # Erro ao inicializar OpenAPI, continuar sem documentação
         print(f"[AVISO] Erro ao inicializar OpenAPI: {e}")
         print("[AVISO] Swagger UI não estará disponível, mas a API continua funcionando")
+    
+    # 7. Static routes (POR ÚLTIMO - catch-all)
+    register_static_routes(app)
+    
+    # 8. Security/Middleware (pode ser a qualquer momento)
+    setup_security(app)
     
     # 9. Registrar comandos CLI
     register_cli_commands(app)

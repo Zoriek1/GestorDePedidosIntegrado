@@ -21,6 +21,17 @@ try:
     AUDIT_LOGGER_AVAILABLE = True
 except ImportError:
     AUDIT_LOGGER_AVAILABLE = False
+
+# Adicionar scripts/backup ao path para importar validate_db
+scripts_backup_dir = backend_dir / 'scripts' / 'backup'
+if str(scripts_backup_dir) not in sys.path:
+    sys.path.insert(0, str(scripts_backup_dir))
+
+try:
+    from validate_db import validate_restored_db
+    VALIDATION_AVAILABLE = True
+except ImportError:
+    VALIDATION_AVAILABLE = False
     # Criar logger básico se não conseguir importar
     import logging
     logs_dir = backend_dir / 'instance' / 'logs'
@@ -143,6 +154,7 @@ class RestoreManager:
             return False
         
         # Criar backup preventivo
+        preventive_backup = None
         if create_backup_first and self.db_path.exists():
             preventive_backup = self.create_backup_before_restore()
             if not preventive_backup:
@@ -193,6 +205,42 @@ class RestoreManager:
             if restored_size == 0:
                 print("[ERRO] Banco de dados restaurado está vazio!")
                 return False
+            
+            # Validação padronizada (P1.1)
+            if VALIDATION_AVAILABLE:
+                try:
+                    from app.config import Config
+                    print("[RESTORE] Validando banco restaurado...")
+                    validation_result = validate_restored_db(
+                        db_path=self.db_path,
+                        app_schema_version=Config.APP_SCHEMA_VERSION,
+                        check_invariants=False,
+                        verbose=False
+                    )
+                    
+                    if not validation_result.success:
+                        print("[ERRO] Validação do banco restaurado falhou:")
+                        for error in validation_result.errors:
+                            print(f"  - {error}")
+                        
+                        # Rollback: restaurar backup preventivo se existir
+                        if preventive_backup and preventive_backup.exists():
+                            print(f"\n[ROLLBACK] Restaurando backup preventivo...")
+                            try:
+                                shutil.copy2(preventive_backup, self.db_path)
+                                print(f"[ROLLBACK] ✓ Backup preventivo restaurado")
+                            except Exception as rollback_error:
+                                print(f"[ERRO] Falha ao restaurar backup preventivo: {rollback_error}")
+                        
+                        return False
+                    else:
+                        if validation_result.warnings:
+                            print("[AVISO] Validação concluída com avisos:")
+                            for warning in validation_result.warnings:
+                                print(f"  - {warning}")
+                except Exception as validation_error:
+                    print(f"[AVISO] Erro ao validar banco restaurado: {validation_error}")
+                    # Continuar mesmo se validação falhar (backward compatibility)
             
             print(f"[RESTORE] ✓ Banco de dados restaurado com sucesso!")
             print(f"[RESTORE]   Tamanho: {restored_size / (1024 * 1024):.2f} MB")

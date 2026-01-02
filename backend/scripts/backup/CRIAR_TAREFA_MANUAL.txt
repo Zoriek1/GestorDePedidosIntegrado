@@ -1,6 +1,9 @@
 ============================================================
-INSTRUÇÕES PARA CRIAR TAREFA DE BACKUP MANUALMENTE
+[LEGADO/OPCIONAL] INSTRUÇÕES PARA CRIAR TAREFA DE BACKUP MANUALMENTE
 ============================================================
+
+NOTA: O sistema agora cria backup automaticamente sempre que o servidor é iniciado.
+Estas instruções são opcionais e apenas para criar backups adicionais agendados.
 
 Se o script automático não funcionou, siga estes passos:
 

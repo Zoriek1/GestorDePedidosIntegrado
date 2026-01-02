@@ -158,10 +158,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCacheTimestamp(Date.now());
   }, []);
 
-  // Global auth invalidation (401/403): force logout so RequireAuth redirects to /login when online.
+  // Logout e redireciona em 401/403
   useEffect(() => {
     const handleAuthInvalid = () => {
       logout();
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     };
 
     window.addEventListener('puf_auth_invalid', handleAuthInvalid as EventListener);

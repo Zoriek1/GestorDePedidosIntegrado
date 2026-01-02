@@ -106,3 +106,4 @@ npm run dev
 **Pronto para:** Migração gradual de telas (Phase 1.2+)
 
 
+

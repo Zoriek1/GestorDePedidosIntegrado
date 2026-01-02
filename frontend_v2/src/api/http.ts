@@ -40,37 +40,52 @@ function generateRequestId(): string {
 /**
  * Parse HTTP response
  */
-async function parseResponse(response: Response): Promise<{ data: any; isJson: boolean; parseError: Error | null }> {
+async function parseResponse(response: Response): Promise<{ data: any; isJson: boolean; parseError: Error | null; isHtml?: boolean }> {
   // 204 No Content - no body
   if (response.status === 204) {
-    return { data: null, isJson: false, parseError: null };
+    return { data: null, isJson: false, parseError: null, isHtml: false };
   }
 
-  const contentType = response.headers.get('content-type');
-  const isLikelyJson = contentType && contentType.includes('application/json');
+  const contentType = response.headers.get('content-type') || '';
+  const isLikelyJson = contentType.includes('application/json');
+  const isLikelyHtml = contentType.includes('text/html') || contentType.includes('text/html;');
 
   try {
     const text = await response.text();
 
     if (!text || text.trim() === '') {
-      return { data: null, isJson: false, parseError: null };
+      return { data: null, isJson: false, parseError: null, isHtml: false };
     }
 
-    if (isLikelyJson || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+    // Detectar HTML: content-type text/html ou começa com <!doctype (case insensitive)
+    const trimmedText = text.trim();
+    const isHtmlContent = isLikelyHtml || /^\s*<!doctype\s+html/i.test(trimmedText) || trimmedText.startsWith('<html');
+
+    // Se recebemos HTML quando esperamos JSON (API), tratar como erro
+    if (isHtmlContent) {
+      return {
+        data: text,
+        isJson: false,
+        parseError: new Error('Resposta HTML recebida quando esperava JSON. O endpoint da API pode não estar acessível.'),
+        isHtml: true
+      };
+    }
+
+    if (isLikelyJson || trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
       try {
         const parsed = JSON.parse(text);
-        return { data: parsed, isJson: true, parseError: null };
+        return { data: parsed, isJson: true, parseError: null, isHtml: false };
       } catch (e) {
         if (isLikelyJson) {
-          return { data: null, isJson: false, parseError: e as Error };
+          return { data: null, isJson: false, parseError: e as Error, isHtml: false };
         }
-        return { data: text, isJson: false, parseError: null };
+        return { data: text, isJson: false, parseError: null, isHtml: false };
       }
     }
 
-    return { data: text, isJson: false, parseError: null };
+    return { data: text, isJson: false, parseError: null, isHtml: false };
   } catch (e) {
-    return { data: null, isJson: false, parseError: e as Error };
+    return { data: null, isJson: false, parseError: e as Error, isHtml: false };
   }
 }
 
@@ -123,11 +138,14 @@ export async function request<T = any>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+  // IMPORTANT: não permitir que options.headers sobrescreva o header mergeado
+  // (caso contrário, POST/PUT com headers custom perde Authorization)
+  const { headers: _ignoredHeaders, ...restOptions } = options as any;
   const config: RequestInit = {
     method,
+    ...restOptions,
     headers,
-    ...options,
-    signal: controller.signal
+    signal: controller.signal,
   };
 
   try {
@@ -135,6 +153,20 @@ export async function request<T = any>(
     clearTimeout(timeoutId);
 
     const parseResult = await parseResponse(response);
+
+    // Se recebemos HTML quando esperamos JSON, tratar como erro crítico
+    if (parseResult.isHtml) {
+      const errorMsg = parseResult.parseError?.message || 'Endpoint da API retornou HTML ao invés de JSON. Verifique se o backend está rodando e se o roteamento está correto.';
+      return {
+        ok: false,
+        success: false,
+        status: response.status || 500,
+        code: 'HTML_RESPONSE',
+        message: errorMsg,
+        details: null,
+        requestId
+      };
+    }
 
     if (parseResult.parseError) {
       console.warn(`[API] Parse error:`, parseResult.parseError);
@@ -155,19 +187,16 @@ export async function request<T = any>(
         ? (parseResult.data.error || parseResult.data.message || `Erro ${response.status}`)
         : `Erro ${response.status}`;
 
-      // Auth failures: notify app-level auth handler (best-effort)
+      // Notificar listeners de auth inválida (401/403)
       if (response.status === 401 || response.status === 403) {
         try {
-          window.dispatchEvent(
-            new CustomEvent('puf_auth_invalid', {
-              detail: { status: response.status, requestId },
-            })
-          );
+          window.dispatchEvent(new CustomEvent('puf_auth_invalid'));
         } catch {
-          // ignore
+          // silencioso
         }
       }
 
+      // NÃO disparar logout automático. Apenas retornar erro.
       return {
         ok: false,
         success: false,

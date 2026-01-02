@@ -318,3 +318,4 @@ Ver `docs/phase1_1-smoke.md` para checklist completo de testes.
 **Status:** ✅ Completo e testado
 
 
+

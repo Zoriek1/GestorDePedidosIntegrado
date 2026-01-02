@@ -9,8 +9,12 @@ from app.schemas.common import success_response, error_response
 from app.schemas.pedido_schema import PedidoSchema, PedidoCreateSchema, PedidoUpdateSchema
 from app.middleware import requires_edit_auth
 from app.utils.backup_helper import create_backup
+from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
 import importlib.util
 from pathlib import Path
+
+# Command Pattern Imports
+from app.commands.gerar_comprovante_command import GerarComprovanteCommand
 
 pedidos_bp = Blueprint('pedidos', __name__, url_prefix='/api/pedidos')
 
@@ -103,111 +107,41 @@ def deletar_pedido(pedido_id):
     from sqlalchemy import text
     
     try:
-        # Criar backup antes de deletar (CRÍTICO) - em try/except separado
+        # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
         try:
-            create_backup(reason='critical_operation', silent=True)
-        except Exception as backup_error:
-            print(f"[AVISO] Falha ao criar backup antes de deletar: {backup_error}")
-            # Continuar mesmo se backup falhar
+            ensure_backup_before_destructive_action(reason='delete_pedido', context={'pedido_id': pedido_id})
+        except BackupRequiredException as backup_error:
+            # Backup falhou - bloquear operação
+            error_msg = str(backup_error)
+            print(f"[BLOQUEADO] Operação destrutiva bloqueada: {error_msg}")
+            return error_response(
+                'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
+                503,
+                details={'error': error_msg, 'pedido_id': pedido_id}
+            )
         
-        # Primeiro verificar se pedido existe
-        pedido_exists = Pedido.query.filter_by(id=pedido_id).first()
-        if not pedido_exists:
+        # Soft delete (P0.3) - não remove fisicamente
+        pedido = pedido_repo.get_by_id(pedido_id)
+        if not pedido:
             return error_response('Pedido não encontrado', 404)
         
-        # Verificar se é SQLite (necessário para desabilitar foreign keys)
-        engine = db.engine
-        is_sqlite = 'sqlite' in str(engine.url).lower()
+        if pedido.is_deleted:
+            return error_response('Pedido já foi deletado', 400)
         
-        # Tentar deletar usando query direta (mais robusto para objetos com relacionamentos)
-        try:
-            # SQLite: Desabilitar temporariamente verificação de foreign keys
-            # Isso permite deletar mesmo se houver referências em outras tabelas
-            # (as referências devem ser nullable ou serão limpas depois)
-            
-            if is_sqlite:
-                db.session.execute(text('PRAGMA foreign_keys = OFF'))
-            
-            # Abordagem 1: Query direta de DELETE (evita problemas de sessão/relacionamentos)
-            result = db.session.execute(
-                text('DELETE FROM pedidos WHERE id = :pedido_id'),
-                {'pedido_id': pedido_id}
+        # Obter actor (usuário) se disponível
+        actor = 'system'  # TODO: extrair de autenticação se disponível
+        
+        # Executar soft delete via repository (já registra auditoria)
+        pedido_atualizado = pedido_repo.soft_delete_pedido(pedido_id, actor=actor)
+        
+        if pedido_atualizado:
+            print(f"[SUCCESS] Pedido #{pedido_id} soft-deleted com sucesso")
+            return success_response(
+                {'pedido': pedido_atualizado.to_dict()},
+                message='Pedido arquivado com sucesso (soft delete)'
             )
-            db.session.commit()
-            
-            # Reabilitar verificação de foreign keys (SQLite)
-            if is_sqlite:
-                db.session.execute(text('PRAGMA foreign_keys = ON'))
-            
-            if result.rowcount == 0:
-                # Se nenhuma linha foi deletada, pode ter sido deletado concorrentemente
-                return error_response('Pedido não encontrado ou já foi deletado', 404)
-            
-            print(f"[SUCCESS] Pedido #{pedido_id} deletado com sucesso (via DELETE direto)")
-            return success_response(message='Pedido deletado com sucesso')
-            
-        except Exception as delete_error:
-            db.session.rollback()
-            # Reabilitar foreign keys mesmo em caso de erro
-            if is_sqlite:
-                try:
-                    db.session.execute(text('PRAGMA foreign_keys = ON'))
-                except:
-                    pass
-            
-            # Se DELETE direto falhar, tentar abordagem tradicional
-            print(f"[AVISO] DELETE direto falhou, tentando abordagem tradicional: {delete_error}")
-            try:
-                # Desabilitar foreign keys novamente (SQLite)
-                if is_sqlite:
-                    db.session.execute(text('PRAGMA foreign_keys = OFF'))
-                
-                # Limpar qualquer objeto da sessão que possa estar causando conflito
-                db.session.expunge_all()
-                
-                # Buscar pedido novamente na sessão limpa
-                pedido = Pedido.query.get(pedido_id)
-                if not pedido:
-                    # Reabilitar antes de retornar (SQLite)
-                    if is_sqlite:
-                        try:
-                            db.session.execute(text('PRAGMA foreign_keys = ON'))
-                        except:
-                            pass
-                    return error_response('Pedido não encontrado', 404)
-                
-                # Deletar objeto
-                db.session.delete(pedido)
-                db.session.commit()
-                
-                # Reabilitar foreign keys (SQLite)
-                if is_sqlite:
-                    db.session.execute(text('PRAGMA foreign_keys = ON'))
-                
-                print(f"[SUCCESS] Pedido #{pedido_id} deletado com sucesso (via objeto)")
-                return success_response(message='Pedido deletado com sucesso')
-                
-            except Exception as fallback_error:
-                db.session.rollback()
-                # Reabilitar foreign keys antes de retornar erro (SQLite)
-                if is_sqlite:
-                    try:
-                        db.session.execute(text('PRAGMA foreign_keys = ON'))
-                    except:
-                        pass
-                    
-                error_msg = str(fallback_error)
-                error_type = type(fallback_error).__name__
-                print(f"[ERRO] Falha ao deletar pedido #{pedido_id} (ambas abordagens falharam):")
-                print(f"  - DELETE direto: {delete_error}")
-                print(f"  - Via objeto: {error_type}: {error_msg}")
-                import traceback
-                traceback.print_exc()
-                return error_response(
-                    f'Falha ao deletar pedido do banco de dados: {error_msg}', 
-                    500,
-                    details={'error_type': error_type}
-                )
+        else:
+            return error_response('Falha ao arquivar pedido', 500)
                 
     except Exception as e:
         error_msg = str(e)
@@ -672,3 +606,85 @@ def marcar_impresso(pedido_id):
         db.session.rollback()
         return error_response(f'Erro ao marcar como impresso: {str(e)}', 500)
 
+
+@pedidos_bp.route('/<int:pedido_id>/comprovante', methods=['GET'])
+def obter_comprovante(pedido_id):
+    """Gera comprovante de pedido (HTML)"""
+    try:
+        from flask import Response
+        
+        command = GerarComprovanteCommand(pedido_id)
+        html = command.execute()
+        
+        return Response(html, mimetype='text/html')
+    except ValueError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return error_response(f'Erro ao gerar comprovante: {str(e)}', 500)
+
+
+@pedidos_bp.route('/ocultar-concluidos', methods=['POST'])
+@requires_edit_auth
+def ocultar_concluidos():
+    """Oculta todos os pedidos concluídos do painel"""
+    try:
+        count = pedido_repo.ocultar_concluidos()
+        
+        return success_response(
+            {'count': count},
+            message=f'{count} pedido(s) concluído(s) ocultado(s) do painel'
+        )
+    except Exception as e:
+        from app import db
+        db.session.rollback()
+        return error_response(f'Erro ao ocultar pedidos concluídos: {str(e)}', 500)
+
+
+@pedidos_bp.route('/<int:pedido_id>/restore', methods=['POST'])
+@requires_edit_auth
+def restaurar_pedido(pedido_id):
+    """Restaura pedido soft-deleted (P0.3)"""
+    try:
+        pedido = pedido_repo.get_by_id(pedido_id)
+        if not pedido:
+            return error_response('Pedido não encontrado', 404)
+        
+        if not pedido.is_deleted:
+            return error_response('Pedido não está deletado', 400)
+        
+        # Obter actor (usuário) se disponível
+        actor = 'system'  # TODO: extrair de autenticação se disponível
+        
+        # Executar restore via repository (já registra auditoria)
+        pedido_restaurado = pedido_repo.restore_pedido(pedido_id, actor=actor)
+        
+        if pedido_restaurado:
+            return success_response(
+                {'pedido': pedido_restaurado.to_dict()},
+                message='Pedido restaurado com sucesso'
+            )
+        else:
+            return error_response('Falha ao restaurar pedido', 500)
+            
+    except Exception as e:
+        from app import db
+        db.session.rollback()
+        return error_response(f'Erro ao restaurar pedido: {str(e)}', 500)
+
+
+@pedidos_bp.route('/deleted', methods=['GET'])
+@requires_edit_auth
+def listar_deletados():
+    """Lista pedidos soft-deleted (P0.3)"""
+    try:
+        pedidos_deletados = pedido_repo.buscar_deletados()
+        pedidos_data = [p.to_dict() for p in pedidos_deletados]
+        
+        return success_response({
+            'pedidos': pedidos_data,
+            'total': len(pedidos_data)
+        })
+    except Exception as e:
+        return error_response(f'Erro ao listar pedidos deletados: {str(e)}', 500)

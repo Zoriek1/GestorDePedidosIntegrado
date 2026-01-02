@@ -6,8 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:prod": "npm run build",
+    "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "lint:fix": "eslint . --fix",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "serve:static": "npx serve -s dist -l 3000",
+    "clean": "rm -rf dist node_modules/.vite",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -15,19 +21,25 @@
     "@hookform/resolvers": "^5.2.2",
     "@mui/icons-material": "^7.3.6",
     "@mui/material": "^7.3.6",
+    "@mui/x-date-pickers": "^8.23.0",
     "@tanstack/react-query": "^5.90.15",
+    "@tanstack/react-virtual": "^3.11.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "dayjs": "^1.11.19",
+    "dexie": "^3.2.4",
+    "leaflet": "^1.9.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.69.0",
+    "react-leaflet": "^5.0.0",
+    "react-number-format": "^5.4.4",
     "react-router-dom": "^7.11.0",
-    "zod": "^4.2.1",
-    "@tanstack/react-virtual": "^3.11.2",
-    "dexie": "^3.2.4"
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^24.10.4",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
@@ -36,6 +48,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "serve": "^14.2.3",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",

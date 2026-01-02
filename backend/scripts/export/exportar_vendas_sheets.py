@@ -245,7 +245,7 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
             worksheet = spreadsheet.worksheet(nome_aba)
         
         # Cabeçalhos
-        headers = ['Valor', 'Cliente', 'Telefone', 'Data Entrega', '', 'Dia', 'Total']
+        headers = ['Valor', 'Cliente', 'Telefone', 'Data Venda', '', 'Dia', 'Total']
         worksheet.update('A1:G1', [headers])
         
         # Coluna de dias do mês (F2:G32)
@@ -297,16 +297,28 @@ def exportar_vendas():
         print(f"EXPORTAÇÃO DE VENDAS - {MESES_PT[mes]}/{ano}")
         print("=" * 50)
         
-        # Conecta ao Google Sheets
+        # 1. Conecta ao Google Sheets (verifica autenticação primeiro)
         try:
             client = get_google_client()
+            print("✓ Autenticação Google OK")
         except Exception as e:
             print(f"✗ Erro ao conectar: {e}")
             return False
         
-        # Busca ou cria planilha do mês
-        spreadsheet = get_or_create_spreadsheet(client, mes, ano)
+        # 2. Verifica se a planilha existe ANTES de buscar pedidos
+        nome_planilha = f"VENDAS_{MESES_PT[mes]}_{ano}"
+        try:
+            spreadsheet = client.open(nome_planilha)
+            print(f"✓ Planilha encontrada: {nome_planilha}")
+        except gspread.SpreadsheetNotFound:
+            print(f"\n⚠ Planilha '{nome_planilha}' não encontrada.")
+            print(f"Exportação cancelada. A planilha deve existir no Google Sheets.")
+            return False  # Retorna False sem lançar exceção (graceful failure)
+        except Exception as e:
+            print(f"✗ Erro ao acessar planilha: {e}")
+            return False
         
+        # 3. Só busca pedidos se a planilha existe
         # Busca pedidos do mês atual
         primeiro_dia = date(ano, mes, 1)
         _, ultimo = calendar.monthrange(ano, mes)
@@ -338,7 +350,7 @@ def exportar_vendas():
                 'valor': parse_valor(pedido.valor),
                 'cliente': pedido.cliente or '',
                 'telefone': pedido.telefone_cliente or '',
-                'data_entrega': pedido.dia_entrega.strftime('%d/%m') if pedido.dia_entrega else ''
+                'data_venda': pedido.created_at.strftime('%d/%m/%Y %H:%M') if pedido.created_at else ''
             })
         
         # Atualiza cada aba
@@ -348,7 +360,7 @@ def exportar_vendas():
             except:
                 # Cria aba se não existir
                 worksheet = spreadsheet.add_worksheet(title=nome_aba, rows=100, cols=10)
-                headers = ['Valor', 'Cliente', 'Telefone', 'Data Entrega', '', 'Dia', 'Total']
+                headers = ['Valor', 'Cliente', 'Telefone', 'Data Venda', '', 'Dia', 'Total']
                 worksheet.update('A1:G1', [headers])
             
             # Limpa dados antigos (mantém cabeçalho)
@@ -364,7 +376,7 @@ def exportar_vendas():
                         f"R$ {p['valor']:.2f}".replace('.', ','),
                         p['cliente'],
                         p['telefone'],
-                        p['data_entrega']
+                        p['data_venda']
                     ])
             
             if linhas_pedidos:

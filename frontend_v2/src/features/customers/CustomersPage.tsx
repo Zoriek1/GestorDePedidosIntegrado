@@ -1,68 +1,71 @@
-/**
- * Customers Page
- * Customer search and details view
- */
+import { useMemo, useState } from 'react';
+import { Box, Typography, Stack, TextField } from '@mui/material';
+import { useCustomers, useCustomerOrders, type Customer } from '../../api/endpoints/customers';
+import { Loading } from '../../components/common/Loading';
+import { ErrorState } from '../../components/common/ErrorState';
+import { CustomersKPIGrid } from './components/CustomersKPIGrid';
+import { CustomersTable } from './components/CustomersTable';
+import { CustomerDetailsDrawer } from './components/CustomerDetailsDrawer';
+import { CustomerInsightsService } from './services/CustomerInsightsService';
 
-import { useState } from 'react';
-import { Box, Typography, Paper, Divider } from '@mui/material';
-import { CustomerSearch } from './components/CustomerSearch';
-import type { Customer } from '../../api/endpoints/customers';
+const insights = new CustomerInsightsService();
 
 export default function CustomersPage() {
   const [searchValue, setSearchValue] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  const handleSearchChange = (value: string) => {
-    setSearchValue(value);
-  };
+  const { data, isLoading, error, refetch } = useCustomers({ search: searchValue, includeStats: true, perPage: 100 });
+  const ordersQuery = useCustomerOrders(selectedCustomer?.id, 50);
 
-  const handleCustomerSelect = (customer: Customer) => {
+  const customers = data?.clientes || [];
+  const kpis = useMemo(() => insights.computeKPIs(customers), [customers]);
+  const vipThreshold = useMemo(() => insights.resolveVipThreshold(customers), [customers]);
+
+  const badgesMap = useMemo(() => {
+    const map: Record<number, any[]> = {};
+    customers.forEach((c) => {
+      map[c.id] = insights.getBadges(c, vipThreshold);
+    });
+    return map;
+  }, [customers, vipThreshold]);
+
+  const handleRowClick = (customer: Customer) => {
     setSelectedCustomer(customer);
   };
 
   return (
     <Box>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Clientes
-      </Typography>
-
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Buscar Cliente
+      <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" gap={2} mb={2}>
+        <Typography variant="h4" component="h1">
+          Clientes
         </Typography>
-        <CustomerSearch
+        <TextField
+          size="small"
+          placeholder="Buscar por nome ou telefone"
           value={searchValue}
-          onChange={handleSearchChange}
-          onSelect={handleCustomerSelect}
-          limit={20}
-          placeholder="Digite o nome ou telefone do cliente..."
+          onChange={(e) => setSearchValue(e.target.value)}
         />
-      </Paper>
+      </Stack>
 
-      {selectedCustomer && (
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Cliente Selecionado
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          <Box>
-            <Typography variant="body1" gutterBottom>
-              <strong>ID:</strong> {selectedCustomer.id}
-            </Typography>
-            <Typography variant="body1" gutterBottom>
-              <strong>Nome:</strong> {selectedCustomer.nome}
-            </Typography>
-            <Typography variant="body1" gutterBottom>
-              <strong>Telefone:</strong> {selectedCustomer.telefone}
-            </Typography>
-            {selectedCustomer.email && (
-              <Typography variant="body1" gutterBottom>
-                <strong>Email:</strong> {selectedCustomer.email}
-              </Typography>
-            )}
-          </Box>
-        </Paper>
+      {isLoading ? (
+        <Loading variant="skeleton" count={3} />
+      ) : error ? (
+        <ErrorState message="Erro ao carregar clientes" onRetry={() => refetch()} />
+      ) : (
+        <>
+          <CustomersKPIGrid kpis={kpis} />
+
+          <CustomersTable customers={customers} badgesMap={badgesMap} onRowClick={handleRowClick} />
+        </>
       )}
+
+      <CustomerDetailsDrawer
+        open={!!selectedCustomer}
+        customer={selectedCustomer}
+        orders={ordersQuery.data?.pedidos}
+        badges={selectedCustomer ? badgesMap[selectedCustomer.id] : []}
+        onClose={() => setSelectedCustomer(null)}
+      />
     </Box>
   );
 }

@@ -227,3 +227,4 @@ Execute os smoke tests em `docs/phase1_2-smoke.md`:
 **Ver documentação completa:** `docs/phase1_2-implementation-summary.md`
 
 
+

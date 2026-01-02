@@ -1,6 +1,11 @@
 """
-Executa backup encriptado e upload para Google Drive.
+[LEGADO/OPCIONAL] Executa backup encriptado e upload para Google Drive.
+
+NOTA: O sistema agora cria backup automaticamente sempre que o servidor é iniciado.
+Este script é opcional e apenas adiciona backups adicionais com upload para Google Drive.
+
 Pode rodar uma vez ou em loop (para uso com schedule ou Task Scheduler).
+Se você não precisa de backups adicionais além do startup, pode ignorar este script.
 """
 import argparse
 import logging

@@ -20,6 +20,7 @@ export interface Customer {
   total_pedidos?: number;
   ltv?: number;
   ultimo_pedido?: string;
+  ticket_medio?: number;
 }
 
 export interface CustomerSearchResponse {
@@ -86,6 +87,70 @@ export function useCustomer(id: number | null) {
       return response.data;
     },
     enabled: !!id,
+  });
+}
+
+export interface CustomersListResponse {
+  success: boolean;
+  total: number;
+  page: number;
+  per_page: number;
+  clientes: Customer[];
+}
+
+export function useCustomers(params: { search?: string; page?: number; perPage?: number; includeStats?: boolean } = {}) {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const { search = '', page = 1, perPage = 50, includeStats = true } = params;
+
+  return useQuery<CustomersListResponse>({
+    queryKey: ['customers.list', { search, page, perPage, includeStats }],
+    queryFn: async () => {
+      const query = new URLSearchParams();
+      if (search) query.append('search', search);
+      query.append('page', page.toString());
+      query.append('per_page', perPage.toString());
+      query.append('stats', includeStats ? 'true' : 'false');
+
+      const response = await apiRequest<CustomersListResponse>(`/clientes?${query.toString()}`);
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    staleTime: 10000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export interface CustomerOrdersResponse {
+  success: boolean;
+  total_pedidos: number;
+  pedidos: Array<{
+    id: number;
+    created_at?: string;
+    dia_entrega?: string;
+    horario?: string;
+    status?: string;
+    valor?: string;
+  }>;
+}
+
+export function useCustomerOrders(id?: number, limit = 50) {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useQuery<CustomerOrdersResponse>({
+    queryKey: ['customer.orders', id, limit],
+    enabled: !!id,
+    queryFn: async () => {
+      const response = await apiRequest<CustomerOrdersResponse>(`/clientes/${id}/pedidos?limit=${limit}`);
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    staleTime: 10000,
   });
 }
 

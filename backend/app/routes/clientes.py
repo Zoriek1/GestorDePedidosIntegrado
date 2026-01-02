@@ -269,7 +269,21 @@ def deletar_cliente(cliente_id):
     
     DELETE /api/clientes/123
     """
+    from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
+    from app.schemas.common import error_response, success_response
+    
     try:
+        # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
+        try:
+            ensure_backup_before_destructive_action(reason='delete_cliente', context={'cliente_id': cliente_id})
+        except BackupRequiredException as backup_error:
+            error_msg = str(backup_error)
+            return error_response(
+                'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
+                503,
+                details={'error': error_msg, 'cliente_id': cliente_id}
+            )
+        
         cliente = Cliente.query.get(cliente_id)
         
         if not cliente:
@@ -563,7 +577,21 @@ def deletar_endereco(endereco_id):
     
     DELETE /api/clientes/enderecos/456
     """
+    from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
+    from app.schemas.common import error_response
+    
     try:
+        # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
+        try:
+            ensure_backup_before_destructive_action(reason='delete_endereco', context={'endereco_id': endereco_id})
+        except BackupRequiredException as backup_error:
+            error_msg = str(backup_error)
+            return error_response(
+                'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
+                503,
+                details={'error': error_msg, 'endereco_id': endereco_id}
+            )
+        
         endereco = EnderecoCliente.query.get(endereco_id)
         
         if not endereco:

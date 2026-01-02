@@ -42,6 +42,9 @@ class BaseConfig:
     )
     # Criar diretório automaticamente se não existir
     GDRIVE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Diretório secundário para backups (P1.4) - opcional
+    BACKUP_SECONDARY_DIR = Path(os.environ.get('BACKUP_SECONDARY_DIR')) if os.environ.get('BACKUP_SECONDARY_DIR') else None
 
     # Secret key para sessões
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'plante-uma-flor-pwa-secret-key-2024'
@@ -92,6 +95,9 @@ class BaseConfig:
     GOOGLE_APPLICATION_CREDENTIALS = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or ''
     GOOGLE_CREDENTIALS_PATH = os.environ.get('GOOGLE_CREDENTIALS_PATH') or ''
     GDRIVE_BACKUP_FOLDER_ID = os.environ.get('GDRIVE_BACKUP_FOLDER_ID') or ''
+    
+    # Schema Version (P1.1)
+    APP_SCHEMA_VERSION = '1.0'
     
     @staticmethod
     def init_app(app):

@@ -1,51 +1,55 @@
 # Contexto do Projeto: Servidor de Pedidos (Floricultura)
 
-## 1. Visão Geral
-Sistema backend (com possível interface de administração) responsável por gerenciar o ciclo de vida de pedidos de uma floricultura. O sistema preza pela integridade dos dados e operações atômicas.
+## 1. Arquitetura do Sistema
+O sistema opera como um servidor central que gerencia pedidos, persistência e rotinas de manutenção.
+- **Entrada de Dados:** Interface de Usuário (Botões de Ação) e API.
+- **Persistência:** Arquivo local SQLite (`.db`).
+- **Ciclo de Vida:** O servidor mantém processos contínuos (Backups, Listeners).
 
-## 2. Glossário (Linguagem Ubíqua)
-Use estes termos exatos nas classes e variáveis:
-- **Order (Pedido):** A entidade central. Um agrupamento de itens solicitados por um cliente.
-- **Arrangement (Arranjo):** Produto composto (flores + vaso + fitas).
-- **Customer (Cliente):** A pessoa que compra.
-- **Recipient (Destinatário):** A pessoa que recebe (pode ser diferente do cliente).
-- **Dispatch (Despacho):** O ato de enviar o pedido para entrega.
+## 2. Regras de Negócio Críticas (Source of Truth)
 
-## 3. Regras de Negócio (Business Rules)
+### 2.1. Padrão de Comandos (UI & Ações)
+> *"Botões com regra de classe"*
+Todo botão ou ação disparada pela interface **NÃO** deve conter lógica solta. Deve seguir estritamente o **Command Pattern**:
+- **Regra:** Cada botão instancia uma Classe de Comando específica.
+- **Estrutura:** `Invoker (Botão)` -> `Command Class (Regra)` -> `Receiver (Serviço/Banco)`.
+- **Exemplo:** O botão "Confirmar Pedido" não chama o banco. Ele instancia `new ConfirmarPedidoCommand(id).execute()`.
 
-### 3.1. Gestão de Pedidos (Core)
-- **Persistência Atômica:**
-  - Todo `Order` criado ou modificado deve ser imediatamente persistido no banco de dados (`.db` / SQLite/Postgres).
-  - Use o padrão **Repository** (`IOrderRepository.save(order)`). Nunca faça queries SQL diretas nos Controllers.
-- **Imutabilidade Pós-Despacho:**
-  - Pedidos com status `DISPATCHED` ou `DELIVERED` não podem ser alterados, apenas cancelados (via soft-delete ou status `CANCELED`).
+### 2.2. Persistência de Pedidos
+> *"Pedidos devem ser postados na .db"*
+- **Atomicidade:** A gravação no arquivo `.db` é a fonte única de verdade.
+- **Fluxo de Dados:**
+  1. Pedido chega na memória.
+  2. Validação de campos (Clean Code: Fail Fast).
+  3. Conversão para DTO.
+  4. Inserção imediata na `.db` via Repository.
+- **Restrição:** Nenhuma confirmação de sucesso é enviada ao cliente antes do *commit* no arquivo `.db` ser confirmado.
 
-### 3.2. Infraestrutura e Segurança
-- **Rotina de Backup (Cron Job):**
-  - O sistema deve possuir um `BackupService` que roda automaticamente:
-    1. No startup da aplicação (`onServerStart`).
-    2. A cada 24 horas (ex: 00:00).
-  - O backup deve copiar o arquivo `.db` atual para uma pasta `/backups` com timestamp (`db_YYYYMMDD_HHmm.bak`).
+### 2.3. Rotinas de Manutenção e Backup
+> *"Backup a cada 24h e no início do servidor"*
+- **Gatilho 1 (Boot):** Assim que a classe `Server` inicializar (`onStart`), o primeiro método a rodar deve ser `BackupManager.performBackup()`.
+- **Gatilho 2 (Cron):** Um agendador interno deve disparar a mesma função a cada 24h exatas.
+- **Lógica de Arquivo:**
+  - Origem: `database.db`
+  - Destino: `./backups/backup_[TIMESTAMP].db`
+  - Tratamento de Erro: Se o backup falhar, o servidor deve emitir um alerta crítico (Log/Notify), mas **não** deve parar de aceitar pedidos.
 
-### 3.3. Interface e Comandos ("Botões com Regra de Classe")
-- **Padrão Command (UI/Ações):**
-  - Botões ou gatilhos de ação no sistema não devem conter lógica de negócio.
-  - Cada "Botão" deve instanciar uma classe que implementa a interface `ICommand`.
-  - Exemplo: O botão "Finalizar Pedido" chama a classe `FinalizeOrderCommand`.
-  - Isso permite desfazer ações (undo) e logar quem clicou no quê.
+## 3. Estrutura de Classes Sugerida (Mapeamento Clean Code)
 
-### 3.4. Estoque e Disponibilidade
-- **Validação de Estoque:**
-  - Antes de confirmar um pedido, o `InventoryService` deve verificar se há flores suficientes para todos os arranjos.
+### Core (Domain)
+- `Pedido`: Entidade rica com métodos de validação (`isValid()`, `calcularTotal()`).
+- `IPedidoRepository`: Interface que define o contrato de salvar/ler `.db`.
 
-## 4. Arquitetura Técnica (Clean Code & Java-Mindset)
+### Application (Commands/Use Cases)
+- `PostarPedidoCommand`: Implementa a lógica de receber o input e chamar o repositório.
+- `RealizarBackupCommand`: Encapsula a lógica de cópia de arquivos.
 
-### Camadas (Layers)
-1.  **Domain:** Entidades e Interfaces (ex: `Order`, `IOrderRepository`). Sem dependências externas.
-2.  **Application:** Casos de uso (ex: `CreateOrderUseCase`, `RunBackupUseCase`).
-3.  **Infrastructure:** Implementação concreta (ex: `SQLiteOrderRepository`, `FileSystemBackupService`).
-4.  **Interface/API:** Controllers REST ou Interface Gráfica.
+### Infrastructure
+- `SQLitePedidoRepository`: Implementação real que manipula o arquivo `.db`.
+- `ServerScheduler`: Gerencia o timer de 24h.
 
-### Padrões Obrigatórios
-- **Dependency Injection:** Todas as dependências (Repositories, Services) devem ser injetadas via construtor.
-- **Typed Errors:** Lance exceções específicas (ex: `BackupFailedException`, `OrderEmptyException`), nunca erros genéricos.
+## 4. Diretrizes de Refatoração (Para a IA)
+Ao refatorar o código legado deste repositório:
+1. Identifique onde os botões chamam funções diretas e extraia para Classes `Command`.
+2. Centralize todas as chamadas SQL/File I/O em classes "Repository".
+3. Garanta que o Backup seja uma classe isolada (`BackupService`), desacoplada da lógica de pedidos.

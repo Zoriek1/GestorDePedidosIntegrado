@@ -32,7 +32,7 @@ if sys.platform == 'win32':
 
 from app import create_app
 from app.config import config
-from app.utils.backup_helper import create_backup, has_recent_backup, get_last_backup_time
+from app.utils.backup_helper import create_backup
 
 def get_local_ip():
     """Descobre o IP local da máquina"""
@@ -148,31 +148,19 @@ def main():
         'JSON_SORT_KEYS': app_config.JSON_SORT_KEYS
     })
     
-    # Verificar e criar backup se necessário ao iniciar servidor
+    # Criar backup sempre ao iniciar servidor
     # Apenas no processo pai para evitar backup duplicado
     if not is_reloader:
         try:
             with app.app_context():
-                if not has_recent_backup(hours=24):
-                    print("\n[BACKUP] Nenhum backup recente encontrado (últimas 24h)")
-                    last_backup = get_last_backup_time()
-                    if last_backup:
-                        print(f"[BACKUP] Último backup: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
-                    else:
-                        print("[BACKUP] Nenhum backup encontrado no sistema")
-                    
-                    print("[BACKUP] Criando backup automático ao iniciar servidor...")
-                    backup_path = create_backup(reason='startup', silent=False)
-                    if backup_path:
-                        print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
-                    else:
-                        print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
+                print("\n[BACKUP] Criando backup automático ao iniciar servidor...")
+                backup_path = create_backup(reason='startup', silent=False)
+                if backup_path:
+                    print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
                 else:
-                    last_backup = get_last_backup_time()
-                    if last_backup:
-                        print(f"[BACKUP] Backup recente encontrado: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
+                    print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
         except Exception as e:
-            print(f"[AVISO] Erro ao verificar/criar backup ao iniciar servidor: {e}")
+            print(f"[AVISO] Erro ao criar backup ao iniciar servidor: {e}")
             # Continuar inicialização mesmo se backup falhar
     
     # Descobrir IP local e hostname

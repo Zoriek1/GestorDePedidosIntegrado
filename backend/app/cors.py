@@ -55,14 +55,23 @@ def get_allowed_origins():
         "https://localhost:5000",
         "https://127.0.0.1:5000",
         f"https://{hostname}:5000",
-        f"https://{local_ip}:5000"
+        f"https://{local_ip}:5000",
+        # Frontend V2 (estático) - porta 3000
+        "https://localhost:3000",
+        "https://127.0.0.1:3000",
+        f"https://{hostname}:3000",
+        f"https://{local_ip}:3000",
     ]
     
     # Permitir HTTP apenas para localhost (desenvolvimento)
     if os.environ.get('FLASK_ENV') == 'development':
         allowed_origins.extend([
             "http://localhost:5000",
-            "http://127.0.0.1:5000"
+            "http://127.0.0.1:5000",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            f"http://{hostname}:3000",
+            f"http://{local_ip}:3000"
         ])
     
     return allowed_origins

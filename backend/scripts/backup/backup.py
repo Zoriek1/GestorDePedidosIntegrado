@@ -23,6 +23,29 @@ try:
     AUDIT_LOGGER_AVAILABLE = True
 except ImportError:
     AUDIT_LOGGER_AVAILABLE = False
+
+# Importar módulos P1 (com fallback silencioso)
+STATUS_AVAILABLE = False
+REMOTE_VERIFY_AVAILABLE = False
+DRIVE_UTILS_AVAILABLE = False
+
+try:
+    from scripts.backup.status import update_backup_status
+    STATUS_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    from scripts.backup.remote_verify import copy_and_verify_remote
+    REMOTE_VERIFY_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    from scripts.backup.drive_utils import check_drive_separation
+    DRIVE_UTILS_AVAILABLE = True
+except ImportError:
+    pass
     # Criar logger básico se não conseguir importar
     import logging
     logs_dir = backend_dir / 'instance' / 'logs'
@@ -183,6 +206,58 @@ class BackupManager:
                     )
             except Exception as log_error:
                 print(f"[AVISO] Erro ao registrar no log de auditoria: {log_error}")
+            
+            # Atualizar status (P1.5)
+            if STATUS_AVAILABLE:
+                try:
+                    from datetime import datetime
+                    update_backup_status(last_backup_ok_at=datetime.now().isoformat())
+                    # Contar backups locais
+                    backups_count = len(list(self.backup_dir.glob('database_*.*')))
+                    update_backup_status(backups_local_count=backups_count)
+                except Exception as status_error:
+                    print(f"[AVISO] Erro ao atualizar status de backup: {status_error}")
+            
+            # Cópia para diretório secundário (P1.4)
+            try:
+                from app.config import Config as BackupConfig
+                if BackupConfig.BACKUP_SECONDARY_DIR:
+                    try:
+                        secondary_dir = Path(BackupConfig.BACKUP_SECONDARY_DIR)
+                        secondary_dir.mkdir(parents=True, exist_ok=True)
+                        secondary_backup = secondary_dir / backup_path.name
+                        
+                        # Copiar backup para secundário
+                        import shutil
+                        shutil.copy2(backup_path, secondary_backup)
+                        
+                        # Verificar cópia (tamanho)
+                        if secondary_backup.exists():
+                            source_size = backup_path.stat().st_size
+                            dest_size = secondary_backup.stat().st_size
+                            if source_size == dest_size:
+                                print(f"[BACKUP] Cópia para diretório secundário: OK ({secondary_backup})")
+                            else:
+                                print(f"[AVISO] Tamanho diferente no diretório secundário: {source_size} != {dest_size}")
+                        else:
+                            print(f"[AVISO] Cópia para diretório secundário falhou: arquivo não encontrado")
+                    except Exception as secondary_error:
+                        print(f"[AVISO] Erro ao copiar para diretório secundário: {secondary_error}")
+                
+                # Verificação de separação de drives (P1.4)
+                if DRIVE_UTILS_AVAILABLE and BackupConfig.BACKUP_SECONDARY_DIR:
+                    try:
+                        warnings = check_drive_separation(
+                            db_path=self.db_path,
+                            backup_dir=self.backup_dir,
+                            secondary_dir=Path(BackupConfig.BACKUP_SECONDARY_DIR)
+                        )
+                        for warning in warnings:
+                            print(f"[AVISO] {warning}")
+                    except Exception as drive_check_error:
+                        print(f"[AVISO] Erro ao verificar separação de drives: {drive_check_error}")
+            except ImportError:
+                pass  # Config não disponível
 
             return backup_path
 
@@ -200,6 +275,13 @@ class BackupManager:
                     )
             except Exception as log_error:
                 print(f"[AVISO] Erro ao registrar falha no log: {log_error}")
+            
+            # Atualizar status (P1.5)
+            if STATUS_AVAILABLE:
+                try:
+                    update_backup_status(last_backup_error=error_msg)
+                except Exception as status_error:
+                    print(f"[AVISO] Erro ao atualizar status de backup: {status_error}")
 
             # Tentar limpar arquivo de backup parcial
             if backup_path.exists():
@@ -255,6 +337,52 @@ class BackupManager:
             encrypted_path = encrypt_file(backup_path, dst=encrypted_path)
             print(f"[BACKUP] Arquivo encriptado salvo no Google Drive Desktop: {encrypted_path}")
             
+            # Verificação remota (P1.3) - verificar que arquivo foi recebido
+            remote_ok = False
+            if encrypted_path.exists():
+                # Verificação básica: arquivo existe e tem tamanho > 0
+                encrypted_size = encrypted_path.stat().st_size
+                if encrypted_size > 0:
+                    remote_ok = True
+                    print(f"[BACKUP] Verificação remota: OK (arquivo existe, {encrypted_size / (1024*1024):.2f} MB)")
+                    
+                    # Stability check: re-verificar após alguns segundos
+                    try:
+                        import time
+                        time.sleep(3)  # Esperar 3 segundos
+                        encrypted_size_after = encrypted_path.stat().st_size
+                        if encrypted_size_after != encrypted_size:
+                            print(f"[AVISO] Tamanho do arquivo mudou após stability check - arquivo ainda sendo escrito?")
+                            remote_ok = False
+                    except Exception as stability_error:
+                        print(f"[AVISO] Erro no stability check: {stability_error}")
+                    
+                    if remote_ok:
+                        # Atualizar status (P1.5)
+                        if STATUS_AVAILABLE:
+                            try:
+                                from datetime import datetime
+                                update_backup_status(last_remote_ok_at=datetime.now().isoformat())
+                                # Contar backups remotos
+                                remote_count = len(list(gdrive_backup_dir.glob('*.enc')))
+                                update_backup_status(backups_remote_count=remote_count)
+                            except Exception as status_error:
+                                print(f"[AVISO] Erro ao atualizar status remoto: {status_error}")
+                else:
+                    print(f"[AVISO] Arquivo remoto existe mas está vazio")
+                    if STATUS_AVAILABLE:
+                        try:
+                            update_backup_status(last_remote_error="Arquivo remoto vazio")
+                        except Exception:
+                            pass
+            else:
+                print(f"[AVISO] Arquivo remoto não encontrado após encriptação")
+                if STATUS_AVAILABLE:
+                    try:
+                        update_backup_status(last_remote_error="Arquivo não encontrado no destino")
+                    except Exception:
+                        pass
+            
             # 3. Remover backup encriptado local (já está no Drive, será sincronizado)
             # O arquivo encriptado já foi salvo diretamente no Drive, não precisa remover local
             # pois não foi criado localmente primeiro
@@ -263,6 +391,12 @@ class BackupManager:
             print(f"[ERRO] Falha ao encriptar e salvar no Google Drive Desktop: {exc}")
             import traceback
             traceback.print_exc()
+            # Atualizar status remoto (P1.5)
+            if STATUS_AVAILABLE:
+                try:
+                    update_backup_status(last_remote_error=str(exc))
+                except Exception:
+                    pass
             return backup_path  # Retorna backup local não encriptado
 
         # Upload via API (opcional, mantido para compatibilidade)

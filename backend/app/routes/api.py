@@ -142,7 +142,8 @@ def criar_pedido():
             }), 400
         
         # Gerenciar cliente_id - criar cliente se necessário
-        cliente_id = data.get('cliente_id', '').strip()
+        raw_cliente_id = data.get('cliente_id', '')
+        cliente_id = raw_cliente_id.strip() if isinstance(raw_cliente_id, str) else raw_cliente_id
         
         # Se cliente_id não foi fornecido mas temos nome e telefone, buscar ou criar cliente
         if not cliente_id and cliente and telefone_cliente:
@@ -1762,6 +1763,9 @@ def atualizar_fonte_pedido(fonte_id):
 @requires_edit_auth
 def deletar_fonte_pedido(fonte_id):
     """Desativa fonte de pedido (soft delete)"""
+    from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
+    from app.schemas.common import error_response
+    
     try:
         fonte = FontePedido.query.get(fonte_id)
         
@@ -1771,14 +1775,17 @@ def deletar_fonte_pedido(fonte_id):
                 'fonte_id': fonte_id
             }), 404
         
-        # Criar backup automático antes de desativar fonte
+        # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
+        # Nota: Embora seja soft delete, mantemos guard para consistência
         try:
-            backup_path = create_backup(reason='critical_operation', silent=True)
-            if backup_path:
-                print(f"[BACKUP] Backup criado antes de desativar fonte #{fonte_id}: {backup_path.name}")
-        except Exception as backup_error:
-            print(f"[AVISO] Falha ao criar backup antes de desativar fonte: {backup_error}")
-            # Continuar com a operação mesmo se o backup falhar
+            ensure_backup_before_destructive_action(reason='delete_fonte_pedido', context={'fonte_id': fonte_id})
+        except BackupRequiredException as backup_error:
+            error_msg = str(backup_error)
+            return error_response(
+                'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
+                503,
+                details={'error': error_msg, 'fonte_id': fonte_id}
+            )
         
         # Soft delete: apenas desativar
         fonte.ativo = False

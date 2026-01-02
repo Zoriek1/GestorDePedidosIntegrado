@@ -3,7 +3,7 @@
  * Controlled input with debounce, focus-safe, virtualized results
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useRef } from 'react';
 import {
   TextField,
   Box,
@@ -38,13 +38,7 @@ export function CustomerSearch({
   limit = 10,
   placeholder = 'Buscar cliente...',
 }: CustomerSearchProps) {
-  const [inputValue, setInputValue] = useState(value);
-  const debouncedQuery = useDebouncedValue(inputValue.trim(), 300);
-
-  // Sync internal state with external value prop
-  useEffect(() => {
-    setInputValue(value);
-  }, [value]);
+  const debouncedQuery = useDebouncedValue(value.trim(), 300);
   const parentRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -67,14 +61,13 @@ export function CustomerSearch({
   const shouldVirtualize = customers.length > VIRTUALIZATION_THRESHOLD;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    setInputValue(newValue);
-    onChange(newValue);
+    onChange(e.target.value);
   };
 
   const handleSelectCustomer = (customer: Customer) => {
+    // Propaga seleção e garante que o input reflita o nome escolhido (controlled)
+    onChange(customer.nome);
     onSelect(customer);
-    // Don't clear input - keep it usable
   };
 
   const virtualItems = shouldVirtualize ? virtualizer.getVirtualItems() : [];
@@ -87,7 +80,7 @@ export function CustomerSearch({
     <Box sx={{ position: 'relative', width: '100%' }}>
       <TextField
         fullWidth
-        value={inputValue}
+        value={value}
         onChange={handleInputChange}
         placeholder={placeholder}
         inputMode="search"

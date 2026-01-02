@@ -17,6 +17,16 @@ export interface Stats {
   atrasados: number;
 }
 
+type BackendStats = {
+  total: number;
+  agendado: number;
+  em_producao: number;
+  pronto_entrega: number;
+  pronto_retirada: number;
+  em_rota: number;
+  concluido: number;
+};
+
 export interface StatsResponse {
   success: boolean;
   stats: Stats;
@@ -33,11 +43,22 @@ export function useStats() {
   return useQuery<StatsResponse>({
     queryKey,
     queryFn: () => queryFnWithCache(queryKey, async () => {
-      const response = await apiRequest<StatsResponse>('/stats');
+      const response = await apiRequest<{ success: boolean; stats: BackendStats }>('/stats');
       if (!response.ok) {
         throw new Error(response.message);
       }
-      return response.data;
+      const s = response.data.stats;
+      const mapped: Stats = {
+        total: s.total,
+        agendados: s.agendado,
+        producao: s.em_producao,
+        prontos: (s.pronto_entrega || 0) + (s.pronto_retirada || 0),
+        entregues: s.em_rota,
+        cancelados: 0, // backend não expõe
+        atrasados: 0, // opcional, preenchido via outro endpoint se necessário
+      };
+      const mappedResponse: StatsResponse = { success: true, stats: mapped };
+      return mappedResponse;
     }, { tag: 'stats' }),
     placeholderData: (previousData) => previousData,
     staleTime: 30000, // 30 seconds

@@ -7,19 +7,19 @@ export type StatusColor = 'default' | 'primary' | 'secondary' | 'error' | 'info'
 
 const statusColors: Record<string, StatusColor> = {
   agendado: 'info',
-  producao: 'warning',
-  pronto: 'success',
-  entregue: 'secondary',
-  cancelado: 'error',
+  em_producao: 'warning',
+  pronto_entrega: 'success',
+  pronto_retirada: 'success',
+  em_rota: 'secondary',
   concluido: 'secondary',
 };
 
 const statusLabels: Record<string, string> = {
   agendado: 'Agendado',
-  producao: 'Em Produção',
-  pronto: 'Pronto',
-  entregue: 'Entregue',
-  cancelado: 'Cancelado',
+  em_producao: 'Em Produção',
+  pronto_entrega: 'Pronto para Entrega',
+  pronto_retirada: 'Pronto para Retirada',
+  em_rota: 'Em Rota',
   concluido: 'Concluído',
 };
 

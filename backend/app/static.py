@@ -37,9 +37,9 @@ def register_static_routes(app):
             Response: Arquivo solicitado ou index.html como fallback
         """
         try:
-            # NUNCA interceptar rotas da API - deixar Flask retornar 404 se não existir
-            # As rotas da API são registradas antes desta rota catch-all
-            if path.startswith('api/'):
+            # NUNCA interceptar rotas da API ou OpenAPI - deixar Flask retornar 404 se não existir
+            # As rotas da API e OpenAPI são registradas antes desta rota catch-all
+            if path.startswith('api/') or path.startswith('docs/'):
                 abort(404)
             
             frontend_dir = Path(__file__).parent.parent.parent / 'frontend'

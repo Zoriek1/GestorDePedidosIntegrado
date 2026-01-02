@@ -9,9 +9,12 @@ import { OrderCard } from './OrderCard';
 interface OrderListProps {
   pedidos: Pedido[];
   onOrderClick?: (pedido: Pedido) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (pedido: Pedido) => void;
 }
 
-export function OrderList({ pedidos, onOrderClick }: OrderListProps) {
+export function OrderList({ pedidos, onOrderClick, selectionMode = false, selectedIds, onToggleSelect }: OrderListProps) {
   if (pedidos.length === 0) {
     return (
       <Box
@@ -35,6 +38,9 @@ export function OrderList({ pedidos, onOrderClick }: OrderListProps) {
           <OrderCard
             pedido={pedido}
             onClick={onOrderClick ? () => onOrderClick(pedido) : undefined}
+            selectable={selectionMode}
+            selected={selectedIds ? selectedIds.has(pedido.id) : false}
+            onToggleSelect={onToggleSelect}
           />
         </Grid>
       ))}

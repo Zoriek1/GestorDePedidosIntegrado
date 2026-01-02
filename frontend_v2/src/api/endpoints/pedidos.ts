@@ -56,6 +56,11 @@ export interface PedidosResponse {
   total: number;
 }
 
+export interface OverduePedidosResponse {
+  success: boolean;
+  count: number;
+}
+
 export interface PedidosFilters {
   status?: string;
   data_inicio?: string; // YYYY-MM-DD
@@ -93,6 +98,24 @@ export function usePedidos(filters: PedidosFilters = {}) {
     staleTime: 5000, // 5 seconds
     refetchInterval: 15000, // 15 seconds
     refetchOnWindowFocus: true
+  });
+}
+
+export function useOverdueCount() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryKey: readonly unknown[] = ['pedidos', 'overdue'];
+
+  return useQuery<OverduePedidosResponse>({
+    queryKey,
+    queryFn: async () => {
+      const response = await apiRequest<OverduePedidosResponse>('/pedidos/overdue');
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    staleTime: 30000,
   });
 }
 
@@ -199,6 +222,174 @@ export function useUpdatePedido() {
       queryClient.invalidateQueries({ queryKey: ['pedidos'] });
       queryClient.invalidateQueries({ queryKey: ['pedido'] });
     }
+  });
+}
+
+/**
+ * Update status do pedido
+ */
+export function useUpdatePedidoStatus() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const response = await apiRequest<{ success: boolean }>(`/pedidos/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['pedido', id] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+}
+
+/**
+ * Delete pedido (DELETE /pedidos/:id)
+ */
+export function useDeletePedido() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest<{ success: boolean }>(`/pedidos/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['pedido', id] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+}
+
+/**
+ * Marcar pedido como impresso (POST /pedidos/:id/marcar-impresso)
+ */
+export function useMarcarImpresso() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest<{ success: boolean }>(`/pedidos/${id}/marcar-impresso`, {
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['pedido', id] });
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    },
+  });
+}
+
+/**
+ * Ocultar todos os pedidos concluídos (POST /pedidos/ocultar-concluidos)
+ */
+export function useOcultarPedidosConcluidos() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest<{ success: boolean; count: number; message?: string }>('/pedidos/ocultar-concluidos', {
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+}
+
+/**
+ * Calcula distância de um pedido (GET /pedidos/:id/distancia)
+ */
+export function useCalcularDistanciaPedido() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, forceRecalc = true }: { id: number; forceRecalc?: boolean }) => {
+      const query = forceRecalc ? '?force_recalc=true' : '';
+      const response = await apiRequest<{ success: boolean; distancia_km?: number; taxa_entrega?: number }>(`/pedidos/${id}/distancia${query}`);
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['pedido', variables.id] });
+    },
+  });
+}
+
+/**
+ * Calcula taxa de entrega de um pedido (POST /pedidos/:id/calcular-taxa)
+ */
+export function useCalcularTaxaEntrega() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id }: { id: number }) => {
+      const response = await apiRequest<{ success: boolean; taxa_entrega?: number; distancia_km?: number }>(`/pedidos/${id}/calcular-taxa`, {
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: ['pedido', variables.id] });
+    },
+  });
+}
+
+/**
+ * Calcula distâncias em lote (POST /pedidos/calcular-distancias)
+ */
+export function useCalcularDistanciasLote() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ pedidoIds = [], forceRecalc = false }: { pedidoIds?: number[]; forceRecalc?: boolean }) => {
+      const response = await apiRequest<{ success: boolean; results?: Array<{ id: number; distancia_km: number }> }>('/pedidos/calcular-distancias', {
+        method: 'POST',
+        body: JSON.stringify({
+          pedido_ids: pedidoIds,
+          force_recalc: forceRecalc,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    },
   });
 }
 

@@ -2,52 +2,51 @@
  * Orders Page - Main orders list view
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Paper,
-  Grid,
-  Card,
-  CardContent,
   IconButton,
   Tooltip,
   CircularProgress,
   Alert,
+  Button,
+  Stack,
+  Chip,
 } from '@mui/material';
-import { Refresh } from '@mui/icons-material';
+import { Refresh, Folder, DeleteSweep } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
-import { usePedidos } from '../../api/endpoints/pedidos';
+import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
 import { useStats } from '../../api/endpoints/stats';
 import { OrderList } from './components/OrderList';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
-
-const STATUS_OPTIONS = [
-  { value: '', label: 'Todos' },
-  { value: 'agendado', label: 'Agendado' },
-  { value: 'producao', label: 'Em Produção' },
-  { value: 'pronto', label: 'Pronto' },
-  { value: 'entregue', label: 'Entregue' },
-  { value: 'cancelado', label: 'Cancelado' },
-  { value: 'concluido', label: 'Concluído' },
-];
+import { createApiRequest } from '../../api/http';
+import { useAuth } from '../auth/authStore';
+import { useToast } from '../../components/system/useToast';
+import { useConfirm } from '../../components/system/useConfirm';
+import { OrdersKPIGrid } from './components/OrdersKPIGrid';
+import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
 
 export default function OrdersPage() {
   const [filters, setFilters] = useState<PedidosFilters>({
     status: '',
     search: '',
   });
+  const [sortByDistance, setSortByDistance] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const queryClient = useQueryClient();
   const { data: pedidosData, isLoading: isLoadingPedidos, isFetching: isFetchingPedidos, error: pedidosError, refetch: refetchPedidos } = usePedidos(filters);
   const { data: statsData, isFetching: isFetchingStats } = useStats();
+  const { getAuthHeader } = useAuth();
+  const { success, error: showError, info } = useToast();
+  const confirm = useConfirm();
+  const calcDistanciasLote = useCalcularDistanciasLote();
+  const ocultarConcluidos = useOcultarPedidosConcluidos();
 
   const isFetching = isFetchingPedidos || isFetchingStats;
 
@@ -57,17 +56,129 @@ export default function OrdersPage() {
     queryClient.invalidateQueries({ queryKey: ['stats'], exact: false });
   };
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters((prev) => ({ ...prev, search: e.target.value }));
-  };
-
-  const handleStatusChange = (e: any) => {
-    setFilters((prev) => ({ ...prev, status: e.target.value || undefined }));
-  };
+  // Auto refresh a cada 30s (paridade com legado)
+  useEffect(() => {
+    const interval = setInterval(() => handleRefresh(), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleOrderClick = (pedido: any) => {
-    // TODO: Navigate to order details in Phase 1.1
+    // TODO: Navigate to order details
     console.log('Order clicked:', pedido);
+  };
+
+  const visiblePedidos = useMemo(() => {
+    // Type guard: ensure pedidosData is an object with pedidos property
+    if (!pedidosData || typeof pedidosData !== 'object' || !('pedidos' in pedidosData) || !Array.isArray(pedidosData.pedidos)) {
+      return [];
+    }
+    const status = filters.status;
+    // Ocultar pedidos concluídos por padrão (quando status é undefined, vazio ou 'todos')
+    // Isso corresponde ao comportamento do frontend V1
+    if (!status || status === 'todos') {
+      return pedidosData.pedidos.filter((p) => p.status !== 'concluido');
+    }
+    if (status === 'concluido') {
+      return pedidosData.pedidos.filter((p) => p.status === 'concluido');
+    }
+    if (status === 'pronto_entrega') {
+      return pedidosData.pedidos.filter((p) => p.status === 'pronto_entrega');
+    }
+    if (status === 'pronto_retirada') {
+      return pedidosData.pedidos.filter((p) => p.status === 'pronto_retirada');
+    }
+    // Para outros status, mostrar todos (exceto concluídos, mantendo consistência)
+    return pedidosData.pedidos.filter((p) => p.status !== 'concluido');
+  }, [pedidosData, filters.status]);
+
+  const sortedPedidos = useMemo(() => {
+    if (!visiblePedidos) return [];
+    if (!sortByDistance) return visiblePedidos;
+    return [...visiblePedidos].sort((a, b) => {
+      const da = a.distancia_km ?? Number.MAX_VALUE;
+      const db = b.distancia_km ?? Number.MAX_VALUE;
+      return da - db;
+    });
+  }, [visiblePedidos, sortByDistance]);
+
+  const handleExportSheet = async () => {
+    try {
+      const apiRequest = createApiRequest(getAuthHeader);
+      info('Exportando planilha...');
+      const response = await apiRequest<{ success: boolean; message?: string }>('/exportar-planilha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) throw new Error(response.message);
+      success('Planilha atualizada com sucesso');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao exportar planilha';
+      showError(message);
+    }
+  };
+
+  const handleToggleSelectionMode = () => {
+    setSelectionMode((prev) => {
+      if (prev) {
+        setSelectedIds(new Set());
+      }
+      return !prev;
+    });
+  };
+
+  const handleToggleSelectPedido = (pedido: any) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(pedido.id)) {
+        next.delete(pedido.id);
+      } else {
+        if (pedido.tipo_pedido !== 'Entrega') return next;
+        next.add(pedido.id);
+      }
+      return next;
+    });
+  };
+
+  const handleCalcularDistanciasSelecionados = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
+      info('Selecione ao menos 1 pedido de entrega');
+      return;
+    }
+    try {
+      await calcDistanciasLote.mutateAsync({ pedidoIds: ids, forceRecalc: true });
+      success('Distâncias recalculadas para selecionados');
+    } catch (err: any) {
+      showError(err?.message || 'Erro ao recalcular distâncias');
+    }
+  };
+
+  const handleIrParaMapa = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
+      info('Selecione pedidos para roteirizar');
+      return;
+    }
+    const query = `ids=${ids.join(',')}`;
+    window.open(`/rota-entrega?${query}`, '_blank');
+  };
+
+  const handleOcultarConcluidos = async () => {
+    const confirmed = await confirm({
+      title: 'Ocultar pedidos concluídos',
+      description: 'Todos os pedidos com status "concluído" serão ocultados do painel. Esta ação não deleta os pedidos, apenas os remove da visualização.',
+      confirmColor: 'primary',
+      confirmText: 'Ocultar',
+    });
+    if (!confirmed) return;
+
+    try {
+      const result = await ocultarConcluidos.mutateAsync();
+      success(result.message || `${result.count} pedido(s) concluído(s) ocultado(s) do painel`);
+    } catch (err: any) {
+      showError(err?.message || 'Erro ao ocultar pedidos concluídos');
+    }
   };
 
   return (
@@ -102,133 +213,120 @@ export default function OrdersPage() {
         </Box>
       )}
 
-      {/* Header com botão Atualizar */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h5" component="h1">
-          Pedidos
-        </Typography>
-        <Tooltip title="Atualizar dados">
-          <span>
-            <IconButton
-              onClick={handleRefresh}
-              disabled={isFetching}
-              color="primary"
-            >
-              <Refresh />
-            </IconButton>
-          </span>
-        </Tooltip>
+      {/* Header com ações rápidas */}
+      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2} gap={2} flexWrap="wrap">
+        <Box>
+          <Typography variant="h5" component="h1">
+            Pedidos
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Gerencie todos os pedidos em um só lugar
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
+          <Button variant="outlined" size="small" onClick={() => setSortByDistance((prev) => !prev)}>
+            {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
+          </Button>
+          <Button variant="outlined" size="small" onClick={handleExportSheet}>
+            Exportar planilha
+          </Button>
+          <Button variant="outlined" size="small" startIcon={<Folder />} onClick={() => (window.location.href = '/fontes-pedido')}>
+            Fontes
+          </Button>
+          <Tooltip title="Ocultar todos os pedidos concluídos do painel">
+            <span>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<DeleteSweep />}
+                onClick={handleOcultarConcluidos}
+                disabled={ocultarConcluidos.isPending}
+                color="secondary"
+              >
+                {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="Atualizar dados">
+            <span>
+              <IconButton
+                onClick={handleRefresh}
+                disabled={isFetching}
+                color="primary"
+              >
+                <Refresh />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Stack>
       </Box>
 
       {/* Stats Cards */}
       {statsData?.stats && (
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" component="div">
-                  {statsData.stats.total}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" component="div">
-                  {statsData.stats.agendados}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Agendados
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" component="div">
-                  {statsData.stats.producao}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Em Produção
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" component="div">
-                  {statsData.stats.prontos}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Prontos
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" component="div">
-                  {statsData.stats.entregues}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Entregues
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" component="div">
-                  {statsData.stats.atrasados}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Atrasados
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+        <OrdersKPIGrid
+          stats={{
+            total: statsData.stats.total,
+            agendados: statsData.stats.agendados,
+            producao: statsData.stats.producao,
+            prontos: statsData.stats.prontos,
+            entregues: statsData.stats.entregues,
+            atrasados: statsData.stats.atrasados,
+          }}
+        />
       )}
 
       {/* Filters */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField
-              fullWidth
-              label="Buscar pedidos"
-              placeholder="Cliente, destinatário, produto..."
-              value={filters.search || ''}
-              onChange={handleSearchChange}
-              variant="outlined"
+      <Paper
+        sx={{
+          p: { xs: 2, md: 3 },
+          mb: 3,
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }} justifyContent="space-between" mb={2}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Button
+              variant={selectionMode ? 'contained' : 'outlined'}
               size="small"
+              color={selectionMode ? 'primary' : 'inherit'}
+              onClick={handleToggleSelectionMode}
+            >
+              {selectionMode ? 'Sair do modo de rota' : 'Roteirizar'}
+            </Button>
+            {selectionMode && (
+              <>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleCalcularDistanciasSelecionados}
+                  disabled={calcDistanciasLote.isPending}
+                >
+                  {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={handleIrParaMapa}
+                  disabled={selectedIds.size === 0}
+                >
+                  Ir para o mapa
+                </Button>
+              </>
+            )}
+          </Stack>
+          {selectionMode && (
+            <Chip
+              color={selectedIds.size > 0 ? 'primary' : 'default'}
+              label={`${selectedIds.size} selecionado(s) para rota`}
             />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={filters.status || ''}
-                onChange={handleStatusChange}
-                label="Status"
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
+          )}
+        </Stack>
+        <OrdersFilterToolbar
+          search={filters.search || ''}
+          status={filters.status || ''}
+          onSearchChange={(val) => setFilters((prev) => ({ ...prev, search: val }))}
+          onStatusChange={(status) => setFilters((prev) => ({ ...prev, status: status || undefined }))}
+          onDateRangeChange={(start, end) => setFilters((prev) => ({ ...prev, data_inicio: start, data_fim: end }))}
+        />
       </Paper>
 
       {/* Orders List */}
@@ -239,10 +337,13 @@ export default function OrdersPage() {
           message={pedidosError.message || 'Erro ao carregar pedidos'}
           onRetry={() => refetchPedidos()}
         />
-      ) : pedidosData && 'pedidos' in pedidosData && pedidosData.pedidos ? (
+      ) : pedidosData && typeof pedidosData === 'object' && 'pedidos' in pedidosData && pedidosData.pedidos ? (
         <OrderList
-          pedidos={pedidosData.pedidos}
+          pedidos={sortedPedidos}
           onOrderClick={handleOrderClick}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelectPedido}
         />
       ) : (
         <Box

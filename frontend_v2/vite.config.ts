@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -13,10 +14,30 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       secure: false, // allow self-signed HTTPS backend
       ws: false,
+      configure: (proxy: any) => {
+        proxy.on('proxyReq', (proxyReq: any, req: any) => {
+          // Forward Authorization header explicitly (alguns proxies/ambientes podem omitir)
+          if (req?.headers?.authorization) {
+            proxyReq.setHeader('authorization', req.headers.authorization);
+          }
+        });
+      },
     },
   } as const;
 
+  const isProduction = mode === 'production';
+
   return {
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+        '@/components': path.resolve(__dirname, './src/components'),
+        '@/features': path.resolve(__dirname, './src/features'),
+        '@/api': path.resolve(__dirname, './src/api'),
+        '@/lib': path.resolve(__dirname, './src/lib'),
+        '@/hooks': path.resolve(__dirname, './src/hooks'),
+      }
+    },
     plugins: [
       react(),
       VitePWA({
@@ -123,11 +144,53 @@ export default defineConfig(({ mode }) => {
       })
     ],
     server: {
+      port: 5173,
+      host: true,
       proxy: apiProxy,
     },
-    // `vite preview` does NOT use `server.proxy`; enable it explicitly for preview smoke tests.
     preview: {
+      port: 3000,
+      host: true,
+      allowedHosts: [
+        'gestaopedidos.planteumaflor.online',
+        'localhost',
+        '127.0.0.1'
+      ],
       proxy: apiProxy,
     },
+    build: {
+      // Source maps for production debugging (can be disabled for smaller builds)
+      sourcemap: isProduction ? false : true,
+      // Chunk size warning limit
+      chunkSizeWarningLimit: 1000,
+      // Rollup options for better code splitting
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Vendor chunks
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'mui-vendor': ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+            'query-vendor': ['@tanstack/react-query'],
+            'form-vendor': ['react-hook-form', '@hookform/resolvers', 'zod'],
+            'date-vendor': ['date-fns', 'dayjs'],
+            'map-vendor': ['leaflet', 'react-leaflet'],
+          }
+        }
+      },
+      // Minification
+      minify: 'esbuild',
+      // Target modern browsers
+      target: 'esnext',
+    },
+    // Optimize dependencies
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-router-dom',
+        '@mui/material',
+        '@tanstack/react-query'
+      ]
+    }
   };
 })

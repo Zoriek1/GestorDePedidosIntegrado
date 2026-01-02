@@ -126,6 +126,27 @@ const FormManager = {
             this.toggleEnderecoFields(tipoInicial.value);
         }
 
+        // Listener para checkbox "Mesmo que o cliente"
+        const checkboxMesmoCliente = document.getElementById('mesmo-que-cliente');
+        const campoCliente = document.getElementById('cliente');
+        const campoDestinatario = document.getElementById('destinatario');
+        
+        if (checkboxMesmoCliente && campoCliente && campoDestinatario) {
+            // Quando checkbox é marcado, copia nome do cliente para destinatário
+            checkboxMesmoCliente.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    campoDestinatario.value = campoCliente.value || '';
+                }
+            });
+            
+            // Quando nome do cliente é alterado e checkbox está marcado, atualiza destinatário
+            campoCliente.addEventListener('input', () => {
+                if (checkboxMesmoCliente.checked) {
+                    campoDestinatario.value = campoCliente.value || '';
+                }
+            });
+        }
+
         // Salvar rascunho automaticamente
         document.querySelectorAll('input, textarea, select').forEach(field => {
             field.addEventListener('change', () => this.saveDraft());
@@ -951,7 +972,17 @@ const FormManager = {
             this.saveDraft();
 
             if (this.currentStep < this.totalSteps) {
-                this.showStep(this.currentStep + 1);
+                let nextStep = this.currentStep + 1;
+                
+                // Se está indo para o Step 3 e o tipo de pedido é Retirada, pular para Step 4
+                if (nextStep === 3) {
+                    const tipoSelecionado = document.querySelector('input[name="tipo_pedido"]:checked');
+                    if (tipoSelecionado && tipoSelecionado.value === 'Retirada') {
+                        nextStep = 4; // Pular Step 3 (Logística) se for Retirada
+                    }
+                }
+                
+                this.showStep(nextStep);
                 this.updateProgress();
             }
         }
@@ -964,7 +995,17 @@ const FormManager = {
         this.saveDraft();
 
         if (this.currentStep > 1) {
-            this.showStep(this.currentStep - 1);
+            let previousStep = this.currentStep - 1;
+            
+            // Se está voltando do Step 4 e o tipo de pedido é Retirada, voltar para Step 2 (pular Step 3)
+            if (this.currentStep === 4) {
+                const tipoSelecionado = document.querySelector('input[name="tipo_pedido"]:checked');
+                if (tipoSelecionado && tipoSelecionado.value === 'Retirada') {
+                    previousStep = 2; // Pular Step 3 (Logística) se for Retirada
+                }
+            }
+            
+            this.showStep(previousStep);
             this.updateProgress();
         }
     },

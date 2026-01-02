@@ -150,10 +150,15 @@ def create_backup(reason='automatic', compress=True, silent=False):
         Path do arquivo de backup criado ou None em caso de erro
     """
     try:
-        # Definir caminhos corretos (backend_dir é o diretório backend)
+        # Importar Config para obter o caminho correto do banco de dados
+        from app.config import Config
+        
+        # Usar o caminho correto do banco de dados (pode estar em %USERPROFILE%/var/lib/database/database.db)
+        db_path = Config.DATABASE_PATH
+        
+        # Diretório de backups continua em backend/instance/backups
         backend_dir = Path(__file__).parent.parent.parent
         instance_dir = backend_dir / 'instance'
-        db_path = instance_dir / 'database.db'
         backup_dir = instance_dir / 'backups'
         
         # Criar diretórios se não existirem
@@ -206,9 +211,15 @@ def get_last_backup_time():
         Tupla (path, datetime, size_mb) ou None se não houver backups
     """
     try:
+        # Importar Config para obter o caminho correto do banco de dados
+        from app.config import Config
+        
+        # Usar o caminho correto do banco de dados
+        db_path = Config.DATABASE_PATH
+        
+        # Diretório de backups continua em backend/instance/backups
         backend_dir = Path(__file__).parent.parent.parent
         instance_dir = backend_dir / 'instance'
-        db_path = instance_dir / 'database.db'
         backup_dir = instance_dir / 'backups'
         backup_mgr = BackupManager(db_path=db_path, backup_dir=backup_dir)
         backups = backup_mgr.list_backups()
@@ -251,9 +262,15 @@ def get_backup_stats():
         Dicionário com estatísticas
     """
     try:
+        # Importar Config para obter o caminho correto do banco de dados
+        from app.config import Config
+        
+        # Usar o caminho correto do banco de dados
+        db_path = Config.DATABASE_PATH
+        
+        # Diretório de backups continua em backend/instance/backups
         backend_dir = Path(__file__).parent.parent.parent
         instance_dir = backend_dir / 'instance'
-        db_path = instance_dir / 'database.db'
         backup_dir = instance_dir / 'backups'
         backup_mgr = BackupManager(db_path=db_path, backup_dir=backup_dir)
         return backup_mgr.get_backup_stats()

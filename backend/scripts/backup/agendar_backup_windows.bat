@@ -1,8 +1,14 @@
 @echo off
 chcp 65001 > nul
 REM ============================================================
-REM Agendador de Backup Automático - Windows Task Scheduler
-REM Cria tarefa agendada para backup diário às 03:00
+REM [LEGADO/OPCIONAL] Agendador de Backup Automático - Windows Task Scheduler
+REM 
+REM NOTA: O sistema agora cria backup automaticamente sempre que o
+REM servidor é iniciado. Este script é opcional e apenas adiciona
+REM backups adicionais em horários específicos (ex: 03:00 diariamente).
+REM 
+REM Se você não precisa de backups adicionais além do startup,
+REM pode ignorar este script.
 REM ============================================================
 
 echo.

@@ -90,6 +90,7 @@ export function CreateOrderWizard({
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { activeStep, setActiveStep, reset: resetOrderFormContext } = useOrderFormContext();
   const [stepErrors, setStepErrors] = useState<Record<number, boolean>>({});
+  const [isReadyToSubmit, setIsReadyToSubmit] = useState(false);
 
   // Carrega dados do localStorage
   const loadDraft = useCallback((): PedidoFormData => {
@@ -142,6 +143,18 @@ export function CreateOrderWizard({
       onClearError();
     }
   }, [activeStep, onClearError]);
+
+  // Resetar estado de submissão ao mudar para o último step e adicionar delay
+  useEffect(() => {
+    if (activeStep === STEPS.length - 1) {
+      setIsReadyToSubmit(false);
+      // Adicionar um pequeno delay antes de permitir submissão (500ms)
+      const timer = setTimeout(() => {
+        setIsReadyToSubmit(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeStep]);
 
   // Validação por step
   const validateStep = async (step: number): Promise<boolean> => {
@@ -219,6 +232,11 @@ export function CreateOrderWizard({
 
   // Submissão
   const onFormSubmit = async (data: PedidoFormData) => {
+    // Prevenir submissão automática: só permite se estiver no último step E isReadyToSubmit for true
+    if (activeStep !== STEPS.length - 1 || !isReadyToSubmit) {
+      return;
+    }
+
     try {
       const payload = transformFormToApiPayload(data);
       const ok = await onSubmit(payload);
@@ -226,6 +244,7 @@ export function CreateOrderWizard({
         // Limpa o rascunho após sucesso
         localStorage.removeItem(STORAGE_KEY);
         resetOrderFormContext();
+        setIsReadyToSubmit(false);
       }
     } catch (error) {
       // Erro é tratado pelo componente pai
@@ -237,6 +256,7 @@ export function CreateOrderWizard({
     methods.reset(pedidoFormDefaultValues);
     setActiveStep(0);
     setStepErrors({});
+    setIsReadyToSubmit(false);
     resetOrderFormContext();
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -245,6 +265,20 @@ export function CreateOrderWizard({
     }
     if (onReset) {
       onReset();
+    }
+  };
+
+  // Handler para prevenir submissão por Enter quando não estiver pronto
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    // Se estiver no último step e pressionar Enter, permitir apenas se isReadyToSubmit for true
+    if (e.key === 'Enter') {
+      if (activeStep !== STEPS.length - 1) {
+        // Em steps anteriores, Enter não deve submeter
+        e.preventDefault();
+      } else if (!isReadyToSubmit) {
+        // No último step, Enter só funciona se estiver pronto
+        e.preventDefault();
+      }
     }
   };
 
@@ -257,7 +291,12 @@ export function CreateOrderWizard({
 
   return (
     <FormProvider {...methods}>
-      <Box component="form" onSubmit={handleSubmit(onFormSubmit as any)} sx={{ maxWidth: 960, mx: 'auto' }}>
+      <Box 
+        component="form" 
+        onSubmit={handleSubmit(onFormSubmit as any)} 
+        onKeyDown={handleFormKeyDown}
+        sx={{ maxWidth: 960, mx: 'auto' }}
+      >
         {/* Stepper - Desktop */}
         {!isMobile && (
           <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
@@ -328,7 +367,7 @@ export function CreateOrderWizard({
                 type="submit"
                 variant="contained"
                 color="primary"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isReadyToSubmit}
                 startIcon={
                   isSubmitting ? (
                     <CircularProgress size={20} color="inherit" />
@@ -369,7 +408,7 @@ export function CreateOrderWizard({
                 <Button
                   type="submit"
                   size="small"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isReadyToSubmit}
                   startIcon={
                     isSubmitting ? (
                       <CircularProgress size={16} color="inherit" />

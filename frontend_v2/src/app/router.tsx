@@ -8,6 +8,7 @@ import { AppShell } from '../layout/AppShell';
 import LoginPage from '../features/auth/LoginPage';
 import OrdersPage from '../features/pedidos/OrdersPage';
 import CustomersPage from '../features/customers/CustomersPage';
+import SalesPage from '../features/sales/SalesPage';
 import CreateOrderPage from '../features/pedidos/CreateOrderPage';
 import OrderDetailsPage from '../features/pedidos/OrderDetailsPage';
 import TestOfflinePage from '../features/pedidos/TestOfflinePage';
@@ -49,6 +50,14 @@ const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <CustomersPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: '/vendas',
+        element: (
+          <RequireAuth>
+            <SalesPage />
           </RequireAuth>
         ),
       },

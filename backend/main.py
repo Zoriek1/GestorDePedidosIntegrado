@@ -150,18 +150,60 @@ def main():
     
     # Criar backup sempre ao iniciar servidor
     # Apenas no processo pai para evitar backup duplicado
+    # IMPORTANTE: Executar em thread separada para não bloquear inicialização do servidor
     if not is_reloader:
-        try:
-            with app.app_context():
-                print("\n[BACKUP] Criando backup automático ao iniciar servidor...")
-                backup_path = create_backup(reason='startup', silent=False)
-                if backup_path:
-                    print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
+        import threading
+        
+        def create_startup_backup(app_instance):
+            """Cria backup em thread separada para não bloquear servidor"""
+            import time
+            # Aguardar um pouco para garantir que o servidor está totalmente inicializado
+            time.sleep(2)
+            
+            try:
+                # Verificar se a aplicação ainda está válida antes de criar backup
+                if app_instance is None:
+                    return
+                
+                with app_instance.app_context():
+                    print("\n[BACKUP] Criando backup automático ao iniciar servidor...")
+                    backup_path = create_backup(reason='startup', silent=False)
+                    if backup_path:
+                        print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
+                    else:
+                        print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
+            except RuntimeError as e:
+                # Ignorar erros de contexto quando servidor está sendo finalizado
+                if 'application context' in str(e).lower() or 'working outside' in str(e).lower():
+                    return
+                print(f"[AVISO] Erro ao criar backup ao iniciar servidor: {e}")
+            except Exception as e:
+                # Capturar erro específico de datetime se ocorrer
+                error_msg = str(e)
+                if 'datetime' in error_msg.lower() and 'not associated' in error_msg.lower():
+                    print(f"[AVISO] Erro de importação ao criar backup: {e}")
+                    print("[AVISO] Tentando novamente com import explícito...")
+                    try:
+                        from datetime import datetime
+                        with app_instance.app_context():
+                            backup_path = create_backup(reason='startup', silent=False)
+                            if backup_path:
+                                print(f"[BACKUP] ✓ Backup criado após retry: {backup_path.name}\n")
+                    except Exception as retry_error:
+                        print(f"[AVISO] Falha no retry do backup: {retry_error}")
                 else:
-                    print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
-        except Exception as e:
-            print(f"[AVISO] Erro ao criar backup ao iniciar servidor: {e}")
-            # Continuar inicialização mesmo se backup falhar
+                    print(f"[AVISO] Erro ao criar backup ao iniciar servidor: {e}")
+                # Continuar mesmo se backup falhar
+        
+        # Iniciar backup em thread separada (daemon = morre quando servidor fecha)
+        backup_thread = threading.Thread(
+            target=create_startup_backup,
+            args=(app,),
+            daemon=True,
+            name="StartupBackupThread"
+        )
+        backup_thread.start()
+        print("[INFO] Backup inicial iniciado em thread separada (não bloqueia servidor)")
     
     # Descobrir IP local e hostname
     local_ip = get_local_ip()
@@ -214,30 +256,56 @@ def main():
         print("   2. Inicie com: iniciar_servidor_https.bat")
     
     # Configurar opções de execução
-    run_options = {
-        'host': app_config.HOST,
-        'port': app_config.PORT,
-        'ssl_context': ssl_context
-    }
+    debug_mode = app_config.DEBUG if not no_reload else False
+    use_reloader_mode = not no_reload
     
-    # Desativar reloader se solicitado (evita problemas de "travamento")
     if no_reload:
-        # Desativar completamente debug e reloader para modo estável
-        run_options['debug'] = False
-        run_options['use_reloader'] = False
         print("\n[INFO] Modo estavel: Debug e reloader desativados")
-    else:
-        # Modo debug normal (com reloader)
-        run_options['debug'] = app_config.DEBUG
-        run_options['use_reloader'] = True
     
     print("\n[OK] Pressione Ctrl+C para parar o servidor")
     print("="*60 + "\n")
     
-    # Iniciar servidor
+    # Usar run_simple do Werkzeug para melhor controle e threading
+    # Isso resolve problemas de requisições não sendo processadas
+    from werkzeug.serving import run_simple
+    
+    print(f"[SERVIDOR] Iniciando servidor Flask...")
+    print(f"[SERVIDOR] Host: {app_config.HOST}, Porta: {app_config.PORT}")
+    print(f"[SERVIDOR] Threading: HABILITADO (permite requisições simultâneas)")
+    print(f"[SERVIDOR] Debug: {debug_mode}, Reloader: {use_reloader_mode}")
+    print(f"[SERVIDOR] Servidor pronto para receber requisições!\n")
+    
+    # Adicionar hook para logar primeira requisição (diagnóstico)
+    @app.before_request
+    def log_first_request():
+        """Log primeira requisição para confirmar que servidor está processando"""
+        from flask import request
+        # Apenas logar primeira requisição para não poluir logs
+        if not hasattr(app, '_first_request_logged'):
+            print(f"[SERVIDOR] ✓ Primeira requisição recebida: {request.method} {request.path}")
+            print(f"[SERVIDOR] ✓ Servidor está processando requisições corretamente\n")
+            app._first_request_logged = True
+    
+    # Iniciar servidor com run_simple (mais robusto que app.run())
     try:
-        log_debug("app.run calling", {"options": str(run_options)})
-        app.run(**run_options)
+        log_debug("run_simple calling", {
+            "host": app_config.HOST,
+            "port": app_config.PORT,
+            "threaded": True,
+            "debug": debug_mode,
+            "reloader": use_reloader_mode
+        })
+        
+        run_simple(
+            hostname=app_config.HOST,
+            port=app_config.PORT,
+            application=app,
+            use_debugger=debug_mode,
+            use_reloader=use_reloader_mode,
+            ssl_context=ssl_context,
+            threaded=True,  # CRÍTICO: Permite requisições simultâneas
+            processes=1,  # Não usar processos múltiplos (SQLite não suporta)
+        )
     except KeyboardInterrupt:
         print("\n\n[AVISO] Servidor encerrado pelo usuario")
         print("[OK] Obrigado por usar Plante Uma Flor!\n")

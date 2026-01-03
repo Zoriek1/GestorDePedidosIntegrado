@@ -18,7 +18,6 @@ import {
   FormHelperText,
 } from '@mui/material';
 import PaymentIcon from '@mui/icons-material/Payment';
-import { CurrencyInput } from '../../../../components/form';
 import { parseCurrencyToFloat, formatCurrency, FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from '../../schemas';
 import type { PedidoFormData } from '../../schemas';
 
@@ -55,20 +54,7 @@ export function Step4Pagamento() {
       </Typography>
 
       <Stack spacing={3}>
-        {/* Taxa de Entrega */}
-        <Controller
-          name="taxa_entrega"
-          control={control}
-          render={({ field }) => (
-            <CurrencyInput
-              {...field}
-              label="Taxa de Entrega"
-              fullWidth
-              error={!!errors.taxa_entrega}
-              helperText={errors.taxa_entrega?.message || 'Deixe em branco se não houver taxa'}
-            />
-          )}
-        />
+        {/* Taxa de Entrega removida - é calculada automaticamente pelo backend quando o endereço é preenchido */}
 
         {/* Forma de Pagamento */}
         <Controller

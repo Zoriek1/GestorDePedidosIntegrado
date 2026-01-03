@@ -84,28 +84,65 @@ export function OrderCardActions({ pedido }: OrderCardActionsProps) {
   };
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={2}>
       {/* Primeira linha: Ações de visualização e edição */}
-      <Stack direction="row" spacing={1} flexWrap="wrap">
+      <Stack 
+        direction="row" 
+        spacing={{ xs: 1.5, sm: 1 }} 
+        flexWrap="wrap"
+        justifyContent={{ xs: 'center', sm: 'flex-start' }}
+        sx={{ gap: { xs: 1, sm: 1 } }}
+      >
         <Tooltip title="Ver detalhes">
-          <IconButton size="small" onClick={handleView} color="primary">
+          <IconButton 
+            size="small" 
+            onClick={handleView} 
+            color="primary"
+            sx={{ 
+              minWidth: { xs: 44, sm: 40 },
+              minHeight: { xs: 44, sm: 40 },
+            }}
+          >
             <Visibility fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Editar pedido">
-          <IconButton size="small" onClick={handleEdit} color="primary">
+          <IconButton 
+            size="small" 
+            onClick={handleEdit} 
+            color="primary"
+            sx={{ 
+              minWidth: { xs: 44, sm: 40 },
+              minHeight: { xs: 44, sm: 40 },
+            }}
+          >
             <Edit fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Imprimir pedido">
-          <IconButton size="small" onClick={handlePrint} color="primary">
+          <IconButton 
+            size="small" 
+            onClick={handlePrint} 
+            color="primary"
+            sx={{ 
+              minWidth: { xs: 44, sm: 40 },
+              minHeight: { xs: 44, sm: 40 },
+            }}
+          >
             <Print fontSize="small" />
           </IconButton>
         </Tooltip>
       </Stack>
       
       {/* Segunda linha: Ações críticas */}
-      <Stack direction="row" spacing={1} flexWrap="wrap">
+      <Stack 
+        direction={{ xs: 'column', sm: 'row' }} 
+        spacing={{ xs: 1.5, sm: 1 }} 
+        flexWrap="wrap"
+        justifyContent={{ xs: 'center', sm: 'flex-start' }}
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        sx={{ gap: { xs: 1, sm: 1 } }}
+      >
         <Tooltip title="Recalcular distância e taxa de entrega">
           <span>
             <Button
@@ -114,7 +151,10 @@ export function OrderCardActions({ pedido }: OrderCardActionsProps) {
               startIcon={<Calculate />}
               onClick={handleCalcularEntrega}
               disabled={isLoadingEntrega}
-              sx={{ minWidth: 160 }}
+              sx={{ 
+                width: { xs: '100%', sm: 160 },
+                minHeight: { xs: 44, sm: 36 },
+              }}
             >
               {isLoadingEntrega ? 'Calculando...' : 'Calcular entrega'}
             </Button>
@@ -127,6 +167,10 @@ export function OrderCardActions({ pedido }: OrderCardActionsProps) {
               onClick={handleDelete}
               disabled={isDeleting}
               color="error"
+              sx={{ 
+                minWidth: { xs: 44, sm: 40 },
+                minHeight: { xs: 44, sm: 40 },
+              }}
             >
               <Delete fontSize="small" />
             </IconButton>

@@ -28,10 +28,13 @@ pedido_update_schema = PedidoUpdateSchema()
 def listar_pedidos():
     """Lista pedidos com filtros opcionais"""
     try:
+        from datetime import timedelta
+        
         status = request.args.get('status')
         data_inicio = request.args.get('data_inicio')
         data_fim = request.args.get('data_fim')
         search = request.args.get('search')
+        filtrar_por_criacao = request.args.get('filtrar_por_criacao', '').lower() == 'true'
         
         # Converter datas se fornecidas
         data_inicio_obj = None
@@ -43,15 +46,28 @@ def listar_pedidos():
                 return error_response('Formato de data_inicio inválido. Use YYYY-MM-DD', 400)
         if data_fim:
             try:
-                data_fim_obj = datetime.strptime(data_fim, '%Y-%m-%d').date()
+                data_fim_original = datetime.strptime(data_fim, '%Y-%m-%d').date()
+                # Se filtrar_por_criacao, converter para fim_exclusivo (dia seguinte 00:00:00)
+                if filtrar_por_criacao:
+                    data_fim_obj = data_fim_original + timedelta(days=1)
+                else:
+                    data_fim_obj = data_fim_original
             except ValueError:
                 return error_response('Formato de data_fim inválido. Use YYYY-MM-DD', 400)
+        
+        # REGRA CRÍTICA: Quando filtrar_por_criacao=True (usado pela tela de vendas),
+        # ocultos SEMPRE ENTRAM (excluir_ocultos=False).
+        # O campo 'oculto' é apenas para limpeza visual na tela de pedidos.
+        # Vendas devem mostrar TODOS os pedidos do mês, incluindo ocultos.
+        excluir_ocultos = not filtrar_por_criacao  # False quando filtrar_por_criacao=True
         
         pedidos = pedido_repo.buscar_com_filtros(
             status=status,
             data_inicio=data_inicio_obj,
             data_fim=data_fim_obj,
-            search=search
+            search=search,
+            excluir_ocultos=excluir_ocultos,
+            filtrar_por_criacao=filtrar_por_criacao
         )
         
         # Serializar pedidos
@@ -106,20 +122,25 @@ def deletar_pedido(pedido_id):
     from app.models.pedido import Pedido
     from sqlalchemy import text
     
+    # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
+    # IMPORTANTE: Esta verificação deve estar FORA do try/except genérico
+    # para garantir que BackupRequiredException seja tratada corretamente
+    from app.utils.destructive_action_guard import BackupRequiredException
+    
     try:
-        # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
-        try:
-            ensure_backup_before_destructive_action(reason='delete_pedido', context={'pedido_id': pedido_id})
-        except BackupRequiredException as backup_error:
-            # Backup falhou - bloquear operação
-            error_msg = str(backup_error)
-            print(f"[BLOQUEADO] Operação destrutiva bloqueada: {error_msg}")
-            return error_response(
-                'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
-                503,
-                details={'error': error_msg, 'pedido_id': pedido_id}
-            )
-        
+        ensure_backup_before_destructive_action(reason='delete_pedido', context={'pedido_id': pedido_id})
+    except BackupRequiredException as backup_error:
+        # Backup falhou - bloquear operação
+        error_msg = str(backup_error)
+        print(f"[BLOQUEADO] Operação destrutiva bloqueada: {error_msg}")
+        return error_response(
+            'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
+            503,
+            details={'error': error_msg, 'pedido_id': pedido_id}
+        )
+    
+    # Se chegou aqui, backup foi criado com sucesso
+    try:
         # Soft delete (P0.3) - não remove fisicamente
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:

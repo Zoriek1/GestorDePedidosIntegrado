@@ -1,0 +1,84 @@
+.addButton {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.3);
+  transition: all 0.3s ease;
+  position: fixed;
+  z-index: 1000;
+}
+
+.addButton:hover {
+  background-color: var(--color-primary-hover);
+  box-shadow: 0 6px 16px rgba(4, 120, 87, 0.4);
+  transform: scale(1.1) rotate(90deg);
+}
+
+.addButton:active {
+  transform: scale(0.95) rotate(90deg);
+}
+
+.plusIcon {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+.plusIcon::before,
+.plusIcon::after {
+  content: "";
+  position: absolute;
+  background-color: white;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.plusIcon::before {
+  width: 24px;
+  height: 3px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.plusIcon::after {
+  width: 3px;
+  height: 24px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.addButton:hover .plusIcon::before {
+  width: 20px;
+}
+
+.addButton:hover .plusIcon::after {
+  height: 20px;
+}
+
+/* Mobile: bottom-right */
+@media (max-width: 600px) {
+  .addButton {
+    bottom: 16px;
+    right: 16px;
+    top: auto;
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* Desktop: top-right */
+@media (min-width: 601px) {
+  .addButton {
+    top: 80px;
+    right: 24px;
+    bottom: auto;
+  }
+}

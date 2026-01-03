@@ -31,13 +31,22 @@ def ensure_backup_before_destructive_action(reason: str, context: dict = None, a
         BackupRequiredException: Se backup falhar e override não permitido
     """
     context = context or {}
+    full_reason = f'critical_operation_{reason}'
+    
+    print(f"[BACKUP GUARD] Tentando criar backup antes de operação destrutiva: {reason}")
     
     # Tentar criar backup
-    backup_path = create_backup(
-        reason=f'critical_operation_{reason}',
-        compress=True,
-        silent=True
-    )
+    try:
+        backup_path = create_backup(
+            reason=full_reason,
+            compress=True,
+            silent=True
+        )
+    except Exception as backup_exception:
+        # Se create_backup levantar exceção, tratar como falha
+        error_msg = f"Exceção ao criar backup: {str(backup_exception)}"
+        print(f"[BACKUP GUARD] {error_msg}")
+        backup_path = None
     
     if backup_path is None:
         # Backup falhou
@@ -71,7 +80,9 @@ def ensure_backup_before_destructive_action(reason: str, context: dict = None, a
                 f"Backup necessário antes de operação destrutiva ({reason}). "
                 f"Falha ao criar backup. Operação bloqueada por segurança."
             )
+            print(f"[BACKUP GUARD] BLOQUEANDO operação: {error_msg}")
             raise BackupRequiredException(error_msg)
     
     # Backup criado com sucesso
+    print(f"[BACKUP GUARD] Backup criado com sucesso: {backup_path.name}")
     return True

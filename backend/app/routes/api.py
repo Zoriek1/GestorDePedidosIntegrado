@@ -276,14 +276,28 @@ def listar_pedidos():
     """
     MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
     Mantido aqui apenas para compatibilidade durante transição
+    
+    Se filtrar_por_criacao ou data_inicio/data_fim estiverem presentes,
+    redireciona para a nova rota em pedidos.py que tem suporte completo.
     """
     try:
+        # Se tiver parâmetros da nova API (filtrar_por_criacao ou datas), usar nova rota
+        filtrar_por_criacao = request.args.get('filtrar_por_criacao', '').lower() == 'true'
+        data_inicio = request.args.get('data_inicio')
+        data_fim = request.args.get('data_fim')
+        
+        if filtrar_por_criacao or data_inicio or data_fim:
+            # Redirecionar para a nova rota que tem suporte completo
+            from app.routes.pedidos import listar_pedidos as nova_listar_pedidos
+            return nova_listar_pedidos()
+        
+        # Comportamento antigo (sem filtrar_por_criacao) - manter para compatibilidade
         # Parâmetros de filtro
         status = request.args.get('status')
         limit = request.args.get('limit', type=int)
         search = request.args.get('search', '').strip()
         
-        # Query base - excluir pedidos ocultos/arquivados
+        # Query base - excluir pedidos ocultos/arquivados (comportamento antigo)
         query = Pedido.query.filter(Pedido.oculto == False)
         
         # Aplicar filtros

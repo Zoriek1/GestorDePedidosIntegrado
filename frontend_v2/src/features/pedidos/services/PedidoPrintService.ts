@@ -1,4 +1,3 @@
-import { createApiRequest } from '../../../api/http';
 import { IPedidoPrintService } from './IPedidoPrintService';
 import { useAuth } from '../../auth/authStore';
 import { useMarcarImpresso } from '../../../api/endpoints/pedidos';
@@ -8,6 +7,8 @@ import { useMarcarImpresso } from '../../../api/endpoints/pedidos';
  * O Frontend atua apenas como "View/Render", buscando o HTML pronto do Backend.
  * Lógica de negócio e template estão no servidor.
  */
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
 export class PedidoPrintService implements IPedidoPrintService {
   private getAuthHeader: () => Record<string, string>;
   private marcarImpresso?: (id: number) => Promise<void>;
@@ -18,17 +19,23 @@ export class PedidoPrintService implements IPedidoPrintService {
   }
 
   async print(pedidoId: number): Promise<void> {
-    const apiRequest = createApiRequest(this.getAuthHeader);
-    
     // 1. Busca HTML Gerado pelo Command no Backend
-    // O backend retorna 'text/html', então createApiRequest deve retornar a string crua
-    const response = await apiRequest<string>(`/pedidos/${pedidoId}/comprovante`);
+    // Usar fetch direto porque o endpoint retorna 'text/html' e não JSON
+    const authHeaders = this.getAuthHeader();
+    const headers: Record<string, string> = {
+      'Accept': 'text/html',
+      ...authHeaders,
+    };
+    
+    const url = `${BASE_URL}/pedidos/${pedidoId}/comprovante`;
+    const response = await fetch(url, { headers });
     
     if (!response.ok) {
-        throw new Error(response.message || 'Erro ao gerar comprovante');
+      const errorText = await response.text().catch(() => 'Erro desconhecido');
+      throw new Error(`Erro ${response.status} ao gerar comprovante: ${errorText}`);
     }
 
-    const html = response.data;
+    const html = await response.text();
     
     // 2. Abre janela e injeta HTML
     const printWindow = window.open('', '_blank');

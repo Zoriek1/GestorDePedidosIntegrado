@@ -36,6 +36,36 @@ class PedidoRepository(BaseRepository):
             query = query.filter_by(oculto=False)
         return query.all()
     
+    def buscar_por_data_criacao(self, data_inicio: date, data_fim_exclusivo: date, 
+                               excluir_ocultos: bool = False,  # Ocultos ENTRAM por padrão
+                               excluir_deletados: bool = True) -> List[Pedido]:
+        """
+        Busca pedidos por intervalo de datas de criação (created_at)
+        
+        Args:
+            data_inicio: Data inicial (inclusiva, 00:00:00)
+            data_fim_exclusivo: Data final (exclusiva, 00:00:00 do dia seguinte)
+            excluir_ocultos: Se False, inclui pedidos ocultos (padrão para vendas)
+            excluir_deletados: Se True, exclui soft-deleted
+        
+        Returns:
+            Lista de pedidos (excluindo cancelados automaticamente)
+        """
+        inicio_datetime = datetime.combine(data_inicio, datetime.min.time())
+        fim_datetime = datetime.combine(data_fim_exclusivo, datetime.min.time())
+        
+        query = self.model.query.filter(
+            Pedido.created_at >= inicio_datetime,
+            Pedido.created_at < fim_datetime,  # Exclusivo
+            Pedido.status != 'cancelado'  # Excluir cancelados
+        )
+        if excluir_deletados:
+            query = query.filter(Pedido.deleted_at.is_(None))
+        if excluir_ocultos:
+            query = query.filter_by(oculto=False)
+        
+        return query.order_by(Pedido.created_at.desc()).all()
+    
     def buscar_por_cliente(self, telefone: str, excluir_ocultos: bool = True, excluir_deletados: bool = True) -> List[Pedido]:
         """Busca pedidos por telefone do cliente"""
         query = self.model.query.filter_by(telefone_cliente=telefone)
@@ -51,18 +81,21 @@ class PedidoRepository(BaseRepository):
                           search: Optional[str] = None,
                           excluir_ocultos: bool = True,
                           excluir_deletados: bool = True,
-                          ordenar_por: str = 'dia_entrega') -> List[Pedido]:
+                          ordenar_por: str = 'dia_entrega',
+                          filtrar_por_criacao: bool = False) -> List[Pedido]:
         """
         Busca pedidos com múltiplos filtros
         
         Args:
             status: Filtrar por status
             data_inicio: Data inicial
-            data_fim: Data final
+            data_fim: Data final (ou data_fim_exclusivo se filtrar_por_criacao=True)
             search: Busca textual (cliente, destinatário, produto, endereço)
-            excluir_ocultos: Se True, exclui pedidos ocultos
+            excluir_ocultos: Se True, exclui pedidos ocultos (IGNORADO quando filtrar_por_criacao=True)
             excluir_deletados: Se True, exclui pedidos soft-deleted (P0.3)
             ordenar_por: Campo para ordenação ('dia_entrega' ou 'created_at')
+            filtrar_por_criacao: Se True, filtra por created_at ao invés de dia_entrega.
+                                Quando True, FORÇA excluir_ocultos=False (vendas incluem todos os pedidos)
         
         Returns:
             Lista de pedidos
@@ -72,17 +105,44 @@ class PedidoRepository(BaseRepository):
         if excluir_deletados:
             query = query.filter(Pedido.deleted_at.is_(None))
         
-        if excluir_ocultos:
+        # REGRA CRÍTICA: Quando filtrar_por_criacao=True, ocultos SEMPRE ENTRAM (são vendas válidas)
+        # O campo 'oculto' é usado apenas para limpeza visual na tela de pedidos.
+        # Na funcionalidade de vendas (filtrar_por_criacao=True), TODOS os pedidos do mês devem aparecer,
+        # independentemente do campo oculto, pois são vendas válidas que devem contar nas estatísticas.
+        # 
+        # IMPORTANTE: Forçar excluir_ocultos=False quando filtrar_por_criacao=True, ignorando o parâmetro recebido.
+        if filtrar_por_criacao:
+            # Forçar inclusão de ocultos - vendas devem mostrar todos os pedidos do mês
+            excluir_ocultos = False
+            # Não aplicar filtro de ocultos - incluir todos (ocultos e não ocultos)
+        elif excluir_ocultos:
+            # Só aplicar filtro de ocultos se NÃO estiver filtrando por criação E excluir_ocultos=True
             query = query.filter_by(oculto=False)
         
-        if status:
+        # Sempre excluir cancelados quando filtrar_por_criacao=True
+        # Normalizar comparação para evitar problemas com variações de case/espaços
+        if filtrar_por_criacao:
+            from sqlalchemy import func
+            query = query.filter(func.lower(func.trim(Pedido.status)) != 'cancelado')
+        elif status:
             query = query.filter_by(status=status)
         
-        if data_inicio:
-            query = query.filter(Pedido.dia_entrega >= data_inicio)
-        
-        if data_fim:
-            query = query.filter(Pedido.dia_entrega <= data_fim)
+        if filtrar_por_criacao and data_inicio and data_fim:
+            # Filtrar por created_at com intervalo exclusivo [início, fim_exclusivo)
+            inicio_datetime = datetime.combine(data_inicio, datetime.min.time())
+            # data_fim já vem como fim_exclusivo (dia seguinte 00:00:00)
+            fim_datetime = datetime.combine(data_fim, datetime.min.time())
+            query = query.filter(
+                Pedido.created_at >= inicio_datetime,
+                Pedido.created_at < fim_datetime  # Exclusivo
+            )
+        else:
+            # Filtro padrão por dia_entrega
+            if data_inicio:
+                query = query.filter(Pedido.dia_entrega >= data_inicio)
+            
+            if data_fim:
+                query = query.filter(Pedido.dia_entrega <= data_fim)
         
         if search:
             search_term = f"%{search}%"
@@ -96,7 +156,9 @@ class PedidoRepository(BaseRepository):
             )
         
         # Ordenação
-        if ordenar_por == 'dia_entrega':
+        if filtrar_por_criacao:
+            query = query.order_by(Pedido.created_at.desc())
+        elif ordenar_por == 'dia_entrega':
             query = query.order_by(Pedido.dia_entrega.asc())
         elif ordenar_por == 'created_at':
             query = query.order_by(Pedido.created_at.desc())

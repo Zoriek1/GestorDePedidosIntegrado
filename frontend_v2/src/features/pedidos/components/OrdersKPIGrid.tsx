@@ -5,7 +5,7 @@ import BuildIcon from '@mui/icons-material/Build';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import { KPICard } from './KPICard';
+import { StatsCard } from '../../../components/uiverse/StatsCard/StatsCard';
 
 interface OrdersKPIGridProps {
   stats?: {
@@ -68,14 +68,13 @@ export function OrdersKPIGrid({ stats }: OrdersKPIGridProps) {
 
   return (
     <Grid container spacing={2} sx={{ mb: 3 }}>
-      {cards.map((card) => (
+      {cards.map((card, index) => (
         <Grid size={{ xs: 6, sm: 4, md: 2 }} key={card.title}>
-          <KPICard
+          <StatsCard
             title={card.title}
             value={card.value}
             icon={card.icon}
-            iconBg={card.iconBg}
-            iconColor={card.iconColor}
+            index={index}
           />
         </Grid>
       ))}

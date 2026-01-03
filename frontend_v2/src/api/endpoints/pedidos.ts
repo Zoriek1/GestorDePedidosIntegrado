@@ -66,6 +66,7 @@ export interface PedidosFilters {
   data_inicio?: string; // YYYY-MM-DD
   data_fim?: string; // YYYY-MM-DD
   search?: string;
+  filtrar_por_criacao?: boolean; // Novo parâmetro: filtrar por created_at ao invés de dia_entrega
 }
 
 /**
@@ -84,6 +85,7 @@ export function usePedidos(filters: PedidosFilters = {}) {
       if (filters.data_inicio) params.append('data_inicio', filters.data_inicio);
       if (filters.data_fim) params.append('data_fim', filters.data_fim);
       if (filters.search) params.append('search', filters.search);
+      if (filters.filtrar_por_criacao) params.append('filtrar_por_criacao', 'true');
 
       const queryString = params.toString();
       const endpoint = `/pedidos${queryString ? `?${queryString}` : ''}`;

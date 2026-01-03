@@ -15,6 +15,7 @@ import {
   CircularProgress,
   Paper,
   Grid,
+  Alert,
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -31,9 +32,9 @@ import {
   MenuItem,
   FormHelperText,
   FormControlLabel,
-  Checkbox,
   Button,
 } from '@mui/material';
+import { MinimalCheckbox } from '../../../../components/uiverse/MinimalCheckbox/MinimalCheckbox';
 
 // ============================================================================
 // Componente
@@ -225,52 +226,40 @@ export function StepCliente() {
 
         {/* Indicador de cliente selecionado ou novo */}
         {hasSelectedCustomer ? (
-          <Paper 
+          <Alert 
             variant="outlined" 
-            sx={{ 
-              p: 2, 
-              bgcolor: 'success.light', 
-              borderColor: 'success.main',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-            }}
+            severity="success"
+            icon={<PersonIcon />}
+            action={
+              <Button
+                size="small"
+                variant="text"
+                onClick={handleNovoClienteManual}
+                sx={{ textTransform: 'none' }}
+              >
+                Cadastrar novo
+              </Button>
+            }
+            sx={{ mb: 2 }}
           >
-            <PersonIcon color="success" />
-            <Typography variant="body2" color="success.dark">
-              Cliente existente selecionado (ID: {clienteId})
-            </Typography>
-            <Button
-              size="small"
-              variant="text"
-              onClick={handleNovoClienteManual}
-              sx={{ ml: 'auto', textTransform: 'none' }}
-            >
-              Cadastrar novo
-            </Button>
-          </Paper>
+            Cliente existente selecionado (ID: {clienteId})
+          </Alert>
         ) : inputValue.length >= 2 ? (
-          <Paper 
+          <Alert 
             variant="outlined" 
-            sx={{ 
-              p: 2, 
-              bgcolor: 'info.light', 
-              borderColor: 'info.main',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-            }}
+            severity="info"
+            icon={<PersonAddIcon />}
+            sx={{ mb: 2 }}
           >
-            <PersonAddIcon color="info" />
-            <Typography variant="body2" color="info.dark">
+            <Typography variant="body2" component="div">
               Novo cliente será cadastrado automaticamente
+              {clienteModo === 'novo' && (
+                <Typography variant="caption" display="block" sx={{ mt: 0.5, opacity: 0.8 }}>
+                  Preencha nome e telefone para prosseguir.
+                </Typography>
+              )}
             </Typography>
-            {clienteModo === 'novo' && (
-              <Typography variant="caption" color="text.secondary">
-                Preencha nome e telefone para prosseguir.
-              </Typography>
-            )}
-          </Paper>
+          </Alert>
         ) : null}
 
         <Grid container spacing={2}>
@@ -317,7 +306,7 @@ export function StepCliente() {
               />
               <FormControlLabel
                 control={
-                  <Checkbox
+                  <MinimalCheckbox
                     checked={mesmoQueCliente}
                     onChange={(e) => {
                       const checked = e.target.checked;
@@ -326,6 +315,7 @@ export function StepCliente() {
                         setValue('destinatario', clienteNome || '', { shouldValidate: true });
                       }
                     }}
+                    aria-label="Mesmo que o cliente"
                   />
                 }
                 label="Mesmo que o cliente"

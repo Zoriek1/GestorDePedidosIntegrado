@@ -17,7 +17,7 @@ import {
   Tooltip,
   Badge,
   Divider,
-  Fab,
+  Stack,
 } from '@mui/material';
 import {
   LocalFlorist,
@@ -27,8 +27,8 @@ import {
   CloudDone,
   Menu as MenuIcon,
   NotificationsNone,
-  Add as AddIcon,
 } from '@mui/icons-material';
+import { SettingsButton } from '../components/uiverse/SettingsButton/SettingsButton';
 import { useAuth } from '../features/auth/authStore';
 import { useOffline } from '../lib/offline/OfflineProvider';
 import { Chip } from '@mui/material';
@@ -49,6 +49,9 @@ export function AppShell({ children }: AppShellProps) {
   const isOrderWizardPage =
     location.pathname === '/pedidos/novo' ||
     location.pathname.startsWith('/pedidos/') && location.pathname.endsWith('/editar');
+
+  // Mostrar botão flutuante apenas na página de pedidos
+  const isOrdersPage = location.pathname === '/';
 
   const authenticated = isAuthenticated();
   const credentials = authenticated ? getCredentials() : null;
@@ -96,11 +99,62 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="sticky" sx={{ bgcolor: 'primary.main' }}>
-        <Toolbar sx={{ gap: 2 }}>
-          {/* Seção Esquerda: Marca */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
-            <LocalFlorist />
+      <AppBar 
+        position="sticky" 
+        sx={{ 
+          bgcolor: 'rgba(15, 104, 70, 0.85)',
+          backdropFilter: 'blur(12px)',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 0,
+          boxShadow: 'none',
+        }}
+      >
+        <Toolbar 
+          sx={{ 
+            position: 'relative',
+            display: 'flex',
+            justifyContent: { xs: 'space-between', md: 'flex-start' },
+            gap: { xs: 1, sm: 2 },
+            minHeight: { xs: 56, sm: 64 },
+            px: { xs: 1.5, sm: 2, md: 3 },
+          }}
+        >
+          {/* Mobile: Menu hamburger (esquerda) */}
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, flexShrink: 0 }}>
+            <IconButton 
+              edge="start"
+              color="inherit" 
+              onClick={handleNavMenuOpen}
+              sx={{
+                minWidth: 44,
+                minHeight: 44,
+              }}
+            >
+              <MenuIcon />
+            </IconButton>
+            <Menu anchorEl={navMenuEl} open={Boolean(navMenuEl)} onClose={handleNavMenuClose}>
+              <MenuItem onClick={() => handleNavigate('/')}>Pedidos</MenuItem>
+              <MenuItem onClick={() => handleNavigate('/vendas')}>Vendas</MenuItem>
+              <MenuItem onClick={() => handleNavigate('/clientes')}>Clientes</MenuItem>
+              <MenuItem onClick={() => handleNavigate('/fontes-pedido')}>Fontes</MenuItem>
+              <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
+            </Menu>
+          </Box>
+
+          {/* Logo: Centralizado no mobile, normal no desktop */}
+          <Box 
+            sx={{ 
+              display: { xs: 'flex', md: 'flex' },
+              alignItems: 'center',
+              gap: { xs: 1, sm: 1.5 },
+              position: { xs: 'absolute', md: 'static' },
+              left: { xs: '50%', md: 'auto' },
+              transform: { xs: 'translateX(-50%)', md: 'none' },
+              minWidth: 0,
+              flexShrink: 0,
+            }}
+          >
+            <LocalFlorist sx={{ fontSize: { xs: 20, sm: 24 } }} />
             <Typography
               variant="h6"
               component="div"
@@ -108,7 +162,8 @@ export function AppShell({ children }: AppShellProps) {
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
-                fontWeight: 600,
+                fontWeight: 'bold',
+                fontSize: { xs: '1rem', sm: '1.25rem' },
               }}
             >
               Plante Uma Flor
@@ -122,10 +177,14 @@ export function AppShell({ children }: AppShellProps) {
               display: { xs: 'none', md: 'flex' },
               justifyContent: 'center',
               gap: 1,
+              ml: 3,
             }}
           >
             <Button color="inherit" onClick={() => handleNavigate('/')} sx={{ textTransform: 'none' }}>
               Pedidos
+            </Button>
+            <Button color="inherit" onClick={() => handleNavigate('/vendas')} sx={{ textTransform: 'none' }}>
+              Vendas
             </Button>
             <Button color="inherit" onClick={() => handleNavigate('/clientes')} sx={{ textTransform: 'none' }}>
               Clientes
@@ -138,24 +197,57 @@ export function AppShell({ children }: AppShellProps) {
             </Button>
           </Box>
 
-          {/* Seção Direita: Status + Notificações + Perfil */}
+          {/* Seção Direita: Notificações + Avatar */}
           {authenticated && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Stack 
+              direction="row" 
+              spacing={1} 
+              alignItems="center" 
+              sx={{ flexShrink: 0 }}
+            >
+              {/* Status Online/Offline (apenas desktop) */}
               <Chip
                 icon={isOnline ? <CloudDone /> : <CloudOff />}
                 label={isOnline ? 'Online' : 'Offline'}
                 color={isOnline ? 'success' : 'default'}
                 size="small"
+                sx={{ display: { xs: 'none', sm: 'flex' } }}
               />
+              
+              {/* Notificações */}
               <Tooltip title={outboxCount > 0 ? `${outboxCount} item(ns) pendente(s) de sincronização` : 'Sem pendências'}>
-                <span>
+                <IconButton 
+                  color="inherit"
+                  sx={{ 
+                    minWidth: 44,
+                    minHeight: 44,
+                  }}
+                >
                   <Badge badgeContent={outboxCount || 0} color={outboxCount > 0 ? 'warning' : 'default'}>
-                    <NotificationsNone sx={{ color: 'inherit' }} />
+                    <NotificationsNone />
                   </Badge>
-                </span>
+                </IconButton>
               </Tooltip>
-              <Divider flexItem orientation="vertical" sx={{ borderColor: 'rgba(255,255,255,0.2)' }} />
-              <IconButton color="inherit" onClick={handleMenuOpen} sx={{ ml: 0.5 }}>
+              
+              {/* Divider (apenas desktop) */}
+              <Divider 
+                flexItem 
+                orientation="vertical" 
+                sx={{ 
+                  borderColor: 'rgba(255,255,255,0.2)',
+                  display: { xs: 'none', sm: 'block' },
+                }} 
+              />
+              
+              {/* Avatar do Usuário */}
+              <IconButton 
+                color="inherit" 
+                onClick={handleMenuOpen} 
+                sx={{ 
+                  minWidth: 44,
+                  minHeight: 44,
+                }}
+              >
                 <Person />
               </IconButton>
               <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
@@ -169,46 +261,25 @@ export function AppShell({ children }: AppShellProps) {
                   Sair
                 </MenuItem>
               </Menu>
-            </Box>
+            </Stack>
           )}
-
-          {/* Mobile: Menu hamburger */}
-          <Box sx={{ display: { xs: 'flex', md: 'none' }, ml: authenticated ? 1 : 0 }}>
-            <IconButton color="inherit" onClick={handleNavMenuOpen}>
-              <MenuIcon />
-            </IconButton>
-            <Menu anchorEl={navMenuEl} open={Boolean(navMenuEl)} onClose={handleNavMenuClose}>
-              <MenuItem onClick={() => handleNavigate('/')}>Pedidos</MenuItem>
-              <MenuItem onClick={() => handleNavigate('/clientes')}>Clientes</MenuItem>
-              <MenuItem onClick={() => handleNavigate('/fontes-pedido')}>Fontes</MenuItem>
-              <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
-            </Menu>
-          </Box>
         </Toolbar>
       </AppBar>
-      {authenticated && (
-        <Fab
-          color="primary"
-          aria-label="Criar pedido"
+      {authenticated && isOrdersPage && (
+        <SettingsButton
           onClick={handleCreateOrder}
-          sx={{
-            position: 'fixed',
-            top: { xs: 72, sm: 80 },
-            right: { xs: 16, sm: 20 },
-            zIndex: (theme) => theme.zIndex.drawer + 1,
-            boxShadow: 6,
-          }}
-        >
-          <AddIcon />
-        </Fab>
+          aria-label="Criar pedido"
+        />
       )}
       <Container
         maxWidth={isOrderWizardPage ? false : 'xl'}
         sx={{
           flex: 1,
-          py: 3,
-          px: isOrderWizardPage ? { xs: 2, sm: 3, md: 4 } : 3,
+          py: { xs: 2, sm: 3 },
+          px: isOrderWizardPage ? { xs: 1.5, sm: 2, md: 4 } : { xs: 2, sm: 3 },
           bgcolor: isOrderWizardPage ? 'grey.100' : undefined,
+          // Garantir que conteúdo não fique escondido atrás do FAB
+          pb: { xs: 10, sm: 12 },
         }}
       >
         {children}

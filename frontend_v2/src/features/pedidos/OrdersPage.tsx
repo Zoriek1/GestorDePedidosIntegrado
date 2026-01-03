@@ -14,8 +14,13 @@ import {
   Button,
   Stack,
   Chip,
+  Menu,
+  MenuItem,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
-import { Refresh, Folder, DeleteSweep } from '@mui/icons-material';
+import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
@@ -31,6 +36,9 @@ import { OrdersKPIGrid } from './components/OrdersKPIGrid';
 import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
 
 export default function OrdersPage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
   const [filters, setFilters] = useState<PedidosFilters>({
     status: '',
     search: '',
@@ -38,6 +46,7 @@ export default function OrdersPage() {
   const [sortByDistance, setSortByDistance] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
 
   const queryClient = useQueryClient();
   const { data: pedidosData, isLoading: isLoadingPedidos, isFetching: isFetchingPedidos, error: pedidosError, refetch: refetchPedidos } = usePedidos(filters);
@@ -176,9 +185,18 @@ export default function OrdersPage() {
     try {
       const result = await ocultarConcluidos.mutateAsync();
       success(result.message || `${result.count} pedido(s) concluído(s) ocultado(s) do painel`);
+      setFilterMenuAnchor(null); // Fechar menu após ação
     } catch (err: any) {
       showError(err?.message || 'Erro ao ocultar pedidos concluídos');
     }
+  };
+
+  const handleFilterMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setFilterMenuAnchor(event.currentTarget);
+  };
+
+  const handleFilterMenuClose = () => {
+    setFilterMenuAnchor(null);
   };
 
   return (
@@ -223,41 +241,158 @@ export default function OrdersPage() {
             Gerencie todos os pedidos em um só lugar
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
-          <Button variant="outlined" size="small" onClick={() => setSortByDistance((prev) => !prev)}>
-            {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
+        <Stack 
+          direction="row" 
+          spacing={1} 
+          alignItems="center" 
+          flexWrap="wrap" 
+          justifyContent="flex-end"
+          sx={{ 
+            gap: { xs: 0.5, sm: 1 },
+          }}
+        >
+          {/* Botão Roteirizar - sempre visível no topo */}
+          <Button
+            variant={selectionMode ? 'contained' : 'outlined'}
+            size="small"
+            color="primary"
+            startIcon={<Route />}
+            onClick={handleToggleSelectionMode}
+            sx={{
+              fontWeight: selectionMode ? 600 : 400,
+            }}
+          >
+            {isMobile ? (selectionMode ? 'Sair' : 'Rota') : (selectionMode ? 'Sair do modo de rota' : 'Roteirizar')}
           </Button>
-          <Button variant="outlined" size="small" onClick={handleExportSheet}>
-            Exportar planilha
-          </Button>
-          <Button variant="outlined" size="small" startIcon={<Folder />} onClick={() => (window.location.href = '/fontes-pedido')}>
-            Fontes
-          </Button>
-          <Tooltip title="Ocultar todos os pedidos concluídos do painel">
-            <span>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<DeleteSweep />}
-                onClick={handleOcultarConcluidos}
-                disabled={ocultarConcluidos.isPending}
-                color="secondary"
+          
+          {/* Mobile: Menu de filtros */}
+          {isMobile ? (
+            <>
+              <Tooltip title="Filtros e ações">
+                <IconButton
+                  onClick={handleFilterMenuOpen}
+                  color="primary"
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <FilterList />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                anchorEl={filterMenuAnchor}
+                open={Boolean(filterMenuAnchor)}
+                onClose={handleFilterMenuClose}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'right',
+                }}
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
               >
-                {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                <MenuItem 
+                  onClick={() => {
+                    setSortByDistance((prev) => !prev);
+                    handleFilterMenuClose();
+                  }}
+                >
+                  <Sort sx={{ mr: 1.5 }} />
+                  {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
+                </MenuItem>
+                <MenuItem 
+                  onClick={() => {
+                    handleExportSheet();
+                    handleFilterMenuClose();
+                  }}
+                >
+                  <FileDownload sx={{ mr: 1.5 }} />
+                  Exportar planilha
+                </MenuItem>
+                <MenuItem 
+                  onClick={() => {
+                    window.location.href = '/fontes-pedido';
+                    handleFilterMenuClose();
+                  }}
+                >
+                  <Folder sx={{ mr: 1.5 }} />
+                  Fontes
+                </MenuItem>
+                <Divider />
+                <MenuItem 
+                  onClick={() => {
+                    handleOcultarConcluidos();
+                  }}
+                  disabled={ocultarConcluidos.isPending}
+                >
+                  <DeleteSweep sx={{ mr: 1.5 }} />
+                  {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                </MenuItem>
+              </Menu>
+              <Tooltip title="Atualizar dados">
+                <IconButton
+                  onClick={handleRefresh}
+                  disabled={isFetching}
+                  color="primary"
+                >
+                  <Refresh />
+                </IconButton>
+              </Tooltip>
+            </>
+          ) : (
+            /* Desktop: Botões completos */
+            <>
+              <Button 
+                variant="outlined" 
+                size="small" 
+                startIcon={<Sort />}
+                onClick={() => setSortByDistance((prev) => !prev)}
+              >
+                {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
               </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title="Atualizar dados">
-            <span>
-              <IconButton
-                onClick={handleRefresh}
-                disabled={isFetching}
-                color="primary"
+              <Button 
+                variant="outlined" 
+                size="small" 
+                startIcon={<FileDownload />}
+                onClick={handleExportSheet}
               >
-                <Refresh />
-              </IconButton>
-            </span>
-          </Tooltip>
+                Exportar planilha
+              </Button>
+              <Button 
+                variant="outlined" 
+                size="small" 
+                startIcon={<Folder />} 
+                onClick={() => (window.location.href = '/fontes-pedido')}
+              >
+                Fontes
+              </Button>
+              <Tooltip title="Ocultar todos os pedidos concluídos do painel">
+                <span>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<DeleteSweep />}
+                    onClick={handleOcultarConcluidos}
+                    disabled={ocultarConcluidos.isPending}
+                    color="secondary"
+                  >
+                    {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                  </Button>
+                </span>
+              </Tooltip>
+              <Tooltip title="Atualizar dados">
+                <IconButton
+                  onClick={handleRefresh}
+                  disabled={isFetching}
+                  color="primary"
+                >
+                  <Refresh />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
         </Stack>
       </Box>
 
@@ -282,44 +417,56 @@ export default function OrdersPage() {
           mb: 3,
         }}
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }} justifyContent="space-between" mb={2}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-            <Button
-              variant={selectionMode ? 'contained' : 'outlined'}
-              size="small"
-              color={selectionMode ? 'primary' : 'inherit'}
-              onClick={handleToggleSelectionMode}
+        {/* Ações do modo de roteirização */}
+        {selectionMode && (
+          <Stack 
+            direction={{ xs: 'column', sm: 'row' }} 
+            spacing={2} 
+            alignItems={{ xs: 'stretch', sm: 'center' }} 
+            justifyContent="space-between" 
+            mb={2}
+            sx={{
+              p: 2,
+              bgcolor: 'primary.50',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'primary.200',
+            }}
+          >
+            <Stack 
+              direction={{ xs: 'column', sm: 'row' }} 
+              spacing={1} 
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              flexWrap="wrap"
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
-              {selectionMode ? 'Sair do modo de rota' : 'Roteirizar'}
-            </Button>
-            {selectionMode && (
-              <>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={handleCalcularDistanciasSelecionados}
-                  disabled={calcDistanciasLote.isPending}
-                >
-                  {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
-                </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  onClick={handleIrParaMapa}
-                  disabled={selectedIds.size === 0}
-                >
-                  Ir para o mapa
-                </Button>
-              </>
-            )}
-          </Stack>
-          {selectionMode && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleCalcularDistanciasSelecionados}
+                disabled={calcDistanciasLote.isPending}
+                fullWidth={isMobile}
+              >
+                {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                color="primary"
+                onClick={handleIrParaMapa}
+                disabled={selectedIds.size === 0}
+                fullWidth={isMobile}
+              >
+                Ir para o mapa
+              </Button>
+            </Stack>
             <Chip
               color={selectedIds.size > 0 ? 'primary' : 'default'}
               label={`${selectedIds.size} selecionado(s) para rota`}
+              sx={{ alignSelf: { xs: 'center', sm: 'auto' } }}
             />
-          )}
-        </Stack>
+          </Stack>
+        )}
         <OrdersFilterToolbar
           search={filters.search || ''}
           status={filters.status || ''}

@@ -16,11 +16,14 @@ import {
   Grid,
   Chip,
   Alert,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import BlockIcon from '@mui/icons-material/Block';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import dayjs from 'dayjs';
 import { useAuth } from '../../auth/authStore';
 import {
@@ -50,6 +53,8 @@ interface TimeSlotDialogProps {
 // Componente
 // ============================================================================
 
+type SelectionMode = 'simple' | 'interval';
+
 export function TimeSlotDialog({
   open,
   onClose,
@@ -59,25 +64,130 @@ export function TimeSlotDialog({
 }: TimeSlotDialogProps) {
   const { getAuthHeader } = useAuth();
   const { fetchAvailability, isLoading, availability, error } = useTimeSlotAvailability(getAuthHeader);
+  
+  // Detectar modo inicial baseado no currentSlot
+  const isInterval = currentSlot?.includes(' - ') || false;
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>(isInterval ? 'interval' : 'simple');
+  
+  // Para modo simples: horário único
+  // Para modo intervalo: horário inicial e final
   const [selectedSlot, setSelectedSlot] = useState<string | null>(currentSlot || null);
+  const [intervalStart, setIntervalStart] = useState<string | null>(null);
+  const [intervalEnd, setIntervalEnd] = useState<string | null>(null);
 
   // Buscar disponibilidade quando abrir ou data mudar
   useEffect(() => {
     if (open && date) {
       fetchAvailability(date);
-      setSelectedSlot(currentSlot || null);
+      
+      // Parse currentSlot se for intervalo
+      if (currentSlot) {
+        if (currentSlot.includes(' - ')) {
+          const [start, end] = currentSlot.split(' - ').map(s => s.trim());
+          setSelectionMode('interval');
+          setIntervalStart(start);
+          setIntervalEnd(end);
+          setSelectedSlot(null);
+        } else {
+          setSelectionMode('simple');
+          setSelectedSlot(currentSlot);
+          setIntervalStart(null);
+          setIntervalEnd(null);
+        }
+      } else {
+        // Reset quando não há currentSlot
+        setSelectedSlot(null);
+        setIntervalStart(null);
+        setIntervalEnd(null);
+      }
     }
   }, [open, date, fetchAvailability, currentSlot]);
 
+  const handleModeChange = (_event: React.MouseEvent<HTMLElement>, newMode: SelectionMode | null) => {
+    if (newMode !== null) {
+      setSelectionMode(newMode);
+      // Reset seleções ao mudar modo
+      setSelectedSlot(null);
+      setIntervalStart(null);
+      setIntervalEnd(null);
+    }
+  };
+
   const handleSelectSlot = (slot: SlotAvailability) => {
     if (slot.status === 'full') return;
-    setSelectedSlot(slot.slot);
+    
+    if (selectionMode === 'simple') {
+      setSelectedSlot(slot.slot);
+    } else {
+      // Modo intervalo: primeira seleção = início, segunda = fim
+      if (!intervalStart) {
+        setIntervalStart(slot.slot);
+        setIntervalEnd(null);
+      } else {
+        // Validar que horário final é depois do inicial
+        const startMinutes = parseTimeToMinutes(slot.slot);
+        const endMinutes = parseTimeToMinutes(intervalStart);
+        
+        if (startMinutes <= endMinutes) {
+          // Se selecionou um horário antes ou igual, resetar e começar de novo
+          setIntervalStart(slot.slot);
+          setIntervalEnd(null);
+        } else {
+          setIntervalEnd(slot.slot);
+        }
+      }
+    }
+  };
+
+  const parseTimeToMinutes = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const isSlotSelected = (slot: SlotAvailability): boolean => {
+    if (selectionMode === 'simple') {
+      return selectedSlot === slot.slot;
+    } else {
+      return intervalStart === slot.slot || intervalEnd === slot.slot;
+    }
   };
 
   const handleConfirm = () => {
-    if (selectedSlot) {
-      onSelectSlot(selectedSlot);
+    let finalValue: string | null = null;
+    
+    if (selectionMode === 'simple') {
+      finalValue = selectedSlot;
+    } else {
+      if (intervalStart && intervalEnd) {
+        finalValue = `${intervalStart} - ${intervalEnd}`;
+      }
+    }
+    
+    if (finalValue) {
+      onSelectSlot(finalValue);
       onClose();
+    }
+  };
+
+  const getConfirmButtonText = (): string => {
+    if (selectionMode === 'simple') {
+      return selectedSlot ? `Confirmar ${selectedSlot}` : 'Confirmar';
+    } else {
+      if (intervalStart && intervalEnd) {
+        return `Confirmar ${intervalStart} - ${intervalEnd}`;
+      } else if (intervalStart) {
+        return `Selecione o horário final (após ${intervalStart})`;
+      } else {
+        return 'Selecione o horário inicial';
+      }
+    }
+  };
+
+  const canConfirm = (): boolean => {
+    if (selectionMode === 'simple') {
+      return selectedSlot !== null;
+    } else {
+      return intervalStart !== null && intervalEnd !== null;
     }
   };
 
@@ -102,6 +212,41 @@ export function TimeSlotDialog({
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Data: <strong>{formattedDate}</strong>
         </Typography>
+
+        {/* Seletor de modo */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+            Tipo de horário:
+          </Typography>
+          <ToggleButtonGroup
+            value={selectionMode}
+            exclusive
+            onChange={handleModeChange}
+            aria-label="tipo de horário"
+            fullWidth
+            size="small"
+          >
+            <ToggleButton value="simple" aria-label="horário específico">
+              <ScheduleIcon sx={{ mr: 1, fontSize: 18 }} />
+              Horário Específico
+            </ToggleButton>
+            <ToggleButton value="interval" aria-label="intervalo">
+              <AccessTimeIcon sx={{ mr: 1, fontSize: 18 }} />
+              Intervalo
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+
+        {/* Instrução para modo intervalo */}
+        {selectionMode === 'interval' && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {!intervalStart
+              ? 'Selecione o horário inicial'
+              : !intervalEnd
+              ? `Horário inicial: ${intervalStart}. Selecione o horário final (deve ser depois de ${intervalStart})`
+              : `Intervalo selecionado: ${intervalStart} - ${intervalEnd}`}
+          </Alert>
+        )}
 
         {/* Legenda */}
         <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
@@ -144,12 +289,12 @@ export function TimeSlotDialog({
 
         {/* Grid de horários */}
         {!isLoading && availability && (
-          <Grid container spacing={1}>
+          <Grid container spacing={2}>
             {availability.slots.map((slot) => (
               <Grid size={{ xs: 4, sm: 3 }} key={slot.slot}>
                 <SlotButton
                   slot={slot}
-                  isSelected={selectedSlot === slot.slot}
+                  isSelected={isSlotSelected(slot)}
                   onClick={() => handleSelectSlot(slot)}
                 />
               </Grid>
@@ -158,16 +303,42 @@ export function TimeSlotDialog({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} color="inherit">
+      <DialogActions 
+        sx={{ 
+          px: 3, 
+          pb: 2, 
+          pt: 2,
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Button 
+          onClick={onClose} 
+          variant="outlined"
+          sx={{ 
+            minWidth: 100,
+            color: 'text.primary',
+            borderColor: 'divider',
+            '&:hover': {
+              borderColor: 'primary.main',
+              bgcolor: 'action.hover',
+            },
+          }}
+        >
           Cancelar
         </Button>
         <Button
           onClick={handleConfirm}
           variant="contained"
-          disabled={!selectedSlot}
+          color="primary"
+          disabled={!canConfirm()}
+          sx={{ 
+            minWidth: 140,
+            fontWeight: 600,
+          }}
         >
-          Confirmar {selectedSlot || ''}
+          {getConfirmButtonText()}
         </Button>
       </DialogActions>
     </Dialog>
@@ -192,6 +363,7 @@ function SlotButton({ slot, isSelected, onClick }: SlotButtonProps) {
       borderRadius: 2,
       fontWeight: selected ? 'bold' : 'normal',
       transition: 'all 0.2s ease',
+      minHeight: 56, // Garantir tamanho mínimo para touch targets
     };
 
     if (selected) {
@@ -201,8 +373,10 @@ function SlotButton({ slot, isSelected, onClick }: SlotButtonProps) {
         color: 'primary.contrastText',
         border: '2px solid',
         borderColor: 'primary.dark',
+        boxShadow: 2,
         '&:hover': {
           bgcolor: 'primary.dark',
+          boxShadow: 4,
         },
       };
     }

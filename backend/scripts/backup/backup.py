@@ -210,7 +210,7 @@ class BackupManager:
             # Atualizar status (P1.5)
             if STATUS_AVAILABLE:
                 try:
-                    from datetime import datetime
+                    # datetime já foi importado no topo do arquivo
                     update_backup_status(last_backup_ok_at=datetime.now().isoformat())
                     # Contar backups locais
                     backups_count = len(list(self.backup_dir.glob('database_*.*')))
@@ -361,7 +361,7 @@ class BackupManager:
                         # Atualizar status (P1.5)
                         if STATUS_AVAILABLE:
                             try:
-                                from datetime import datetime
+                                # datetime já foi importado no topo do arquivo
                                 update_backup_status(last_remote_ok_at=datetime.now().isoformat())
                                 # Contar backups remotos
                                 remote_count = len(list(gdrive_backup_dir.glob('*.enc')))

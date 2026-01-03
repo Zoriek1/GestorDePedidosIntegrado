@@ -18,10 +18,34 @@
   --color-neutral-600: #4b5563;
   --color-neutral-900: #111827;
 
-  /* Tipografia */
+  /* Tipografia - Escala de hierarquia visual */
   --font-family: 'Inter', 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --line-height: 1.5;
   --font-size-base: 16px;
+  
+  /* Escala de font-weight para hierarquia */
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* Escala de font-size para hierarquia */
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;   /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.25rem;    /* 20px */
+  --font-size-2xl: 1.5rem;    /* 24px */
+  --font-size-3xl: 1.875rem;  /* 30px */
+  
+  /* Espaçamento consistente */
+  --spacing-xs: 0.25rem;   /* 4px */
+  --spacing-sm: 0.5rem;    /* 8px */
+  --spacing-md: 1rem;      /* 16px */
+  --spacing-lg: 1.5rem;    /* 24px */
+  --spacing-xl: 2rem;      /* 32px */
+  --spacing-2xl: 3rem;     /* 48px */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -67,6 +91,9 @@ a:hover {
 
 button {
   font-family: var(--font-family);
+  /* Melhorar touch targets em mobile (mínimo 44x44px) */
+  min-height: 44px;
+  min-width: 44px;
 }
 
 /* Utilitários gerais */
@@ -76,4 +103,51 @@ button {
 
 .text-muted {
   color: var(--color-text-secondary);
+}
+
+/* Melhorias de hierarquia visual */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  margin-top: 0;
+  margin-bottom: var(--spacing-md);
+}
+
+h1 { font-size: var(--font-size-3xl); }
+h2 { font-size: var(--font-size-2xl); }
+h3 { font-size: var(--font-size-xl); }
+h4 { font-size: var(--font-size-lg); }
+h5 { font-size: var(--font-size-base); }
+h6 { font-size: var(--font-size-sm); }
+
+/* Melhorias para mobile */
+@media (max-width: 600px) {
+  /* Aumentar espaçamento entre elementos interativos */
+  button, a, [role="button"] {
+    min-height: 44px;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  
+  /* Melhorar legibilidade em telas pequenas */
+  body {
+    font-size: var(--font-size-base);
+    line-height: 1.6;
+  }
+  
+  /* Evitar sobreposição de elementos */
+  * {
+    box-sizing: border-box;
+  }
+}
+
+/* Melhorias de acessibilidade e UX */
+*:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Evitar scroll horizontal indesejado */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
 }

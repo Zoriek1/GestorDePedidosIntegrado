@@ -1,36 +1,77 @@
 # Configuração do Cloudflare Tunnel
 
-## Problema Identificado
+## Arquitetura Atual (v3.0 - Simplificada)
 
-Quando acessando via Cloudflare (`gestaopedidos.planteumaflor.online`), requisições para `/api/pedidos` estão retornando HTML (index.html) ao invés de JSON do backend.
+O servidor Flask/Waitress na porta 5000 serve tanto a API (`/api/*`) quanto o frontend estático (`/*`). 
+Não é mais necessário ter dois servidores separados (backend na 5000 + frontend na 3000).
 
-## Causa Raiz
+## Configuração do Cloudflare Tunnel
 
-O servidor estático do frontend (`serve` na porta 3000) não possui proxy configurado. Quando uma requisição `/api/pedidos` chega nele, ele não encontra o arquivo e serve o `index.html` como fallback (comportamento padrão de SPA routing).
+### Configuração Simplificada do Ingress
 
-## Solução: Configuração do Cloudflare Tunnel
-
-O Cloudflare Tunnel deve rotear requisições de forma seletiva:
-
-### Configuração Correta do Ingress
-
-No arquivo de configuração do `cloudflared` (geralmente `config.yml`), você deve ter regras de ingress na seguinte ordem:
+No arquivo de configuração do `cloudflared` (geralmente `~/.cloudflared/config.yml` ou `%USERPROFILE%\.cloudflared\config.yml` no Windows), configure:
 
 ```yaml
+tunnel: <seu-tunnel-id>
+credentials-file: <caminho-para-credenciais>
+
 ingress:
-  # 1. Rotas da API devem ir para o backend (porta 5000)
+  # Única regra: tudo vai para o servidor Flask/Waitress na porta 5000
+  - hostname: gestaopedidos.planteumaflor.online
+    service: http://localhost:5000
+  
+  # Catch-all para requisições não mapeadas (opcional, mas recomendado)
+  - service: http_status:404
+```
+
+**IMPORTANTE:** 
+- **NÃO** é mais necessário rotear `/api/*` separadamente - o Flask já faz isso internamente
+- **NÃO** é mais necessário ter servidor na porta 3000 - o Flask serve o frontend diretamente
+- A documentação Swagger/OpenAPI (`/docs/*`) **NÃO** está exposta via Cloudflare e permanece acessível apenas localmente em `http://localhost:5000/docs/swagger`
+
+## Migração da Configuração Antiga
+
+Se você estava usando a configuração antiga com duas portas:
+
+**ANTES (configuração antiga - REMOVER):**
+```yaml
+ingress:
   - hostname: gestaopedidos.planteumaflor.online
     path: /api/*
     service: http://localhost:5000
-
-  # 2. Todas as outras rotas vão para o frontend (porta 3000)
   - hostname: gestaopedidos.planteumaflor.online
     service: http://localhost:3000
 ```
 
-**IMPORTANTE:** 
-- A ordem das regras importa! A regra mais específica (`/api/*`) deve vir ANTES da regra catch-all.
-- A documentação Swagger/OpenAPI (`/docs/*`) **NÃO** está exposta via Cloudflare e permanece acessível apenas localmente em `http://localhost:5000/docs/swagger`.
+**AGORA (configuração simplificada - USAR):**
+```yaml
+ingress:
+  - hostname: gestaopedidos.planteumaflor.online
+    service: http://localhost:5000
+  - service: http_status:404
+```
+
+## Passos para Atualizar
+
+1. **Editar configuração do Cloudflare Tunnel:**
+   - Localizar arquivo de config (geralmente `~/.cloudflared/config.yml`)
+   - Remover regra separada para `/api/*`
+   - Remover referência à porta 3000
+   - Manter apenas regra apontando para `localhost:5000`
+
+2. **Parar servidor na porta 3000 (se estiver rodando):**
+   - Não é mais necessário iniciar `serve` ou `vite preview` na porta 3000
+   - O Flask/Waitress na porta 5000 serve tudo
+
+3. **Reiniciar Cloudflare Tunnel:**
+   ```bash
+   cloudflared tunnel restart <tunnel-name>
+   # ou simplesmente reiniciar o serviço/processo
+   ```
+
+4. **Verificar que backend está rodando:**
+   - Backend deve estar rodando com Waitress na porta 5000
+   - Use: `iniciar_producao_completo.bat` (já atualizado)
 
 ## Verificação
 
@@ -42,35 +83,29 @@ Para verificar se está funcionando corretamente:
    ```
    Deve retornar JSON, não HTML.
 
-2. **Teste no navegador:**
-   - Acesse: `https://gestaopedidos.planteumaflor.online/api/health`
-   - Deve ver JSON, não a página HTML do frontend.
+2. **Teste do frontend:**
+   - Acesse: `https://gestaopedidos.planteumaflor.online/`
+   - Deve carregar o frontend React (HTML)
+   - Deep links devem funcionar: `https://gestaopedidos.planteumaflor.online/pedidos`
 
 3. **Teste de autenticação:**
    - Acesse: `https://gestaopedidos.planteumaflor.online/api/pedidos` sem autenticação
    - Deve retornar 401/403 JSON, não HTML
    - O frontend deve detectar e redirecionar para `/login`
 
-## Correções Implementadas no Código
+4. **Verificar headers de segurança:**
+   - Abrir DevTools → Network
+   - Verificar que respostas incluem headers:
+     - `X-Content-Type-Options: nosniff`
+     - `X-Frame-Options: SAMEORIGIN`
+     - `Content-Security-Policy: ...`
+     - `Referrer-Policy: strict-origin-when-cross-origin`
 
-Mesmo com a configuração correta do Cloudflare, implementamos proteções no código:
+## Benefícios da Nova Arquitetura
 
-1. **Detecção de HTML em respostas da API** (`frontend_v2/src/api/http.ts`):
-   - Detecta quando recebe HTML ao invés de JSON
-   - Retorna erro claro indicando que o endpoint não está acessível
-
-2. **Verificação de tipo robusta** (`frontend_v2/src/features/pedidos/OrdersPage.tsx`):
-   - Verifica se `pedidosData` é um objeto antes de usar o operador `in`
-   - Previne erros quando recebe HTML como string
-   - Adiciona type guards no `visiblePedidos` useMemo
-
-3. **Proteção em TimeSlotAvailability** (`frontend_v2/src/features/pedidos/useCases/timeSlotAvailability.ts`):
-   - Verifica se `response.data` é um objeto antes de acessar `.pedidos`
-   - Previne erros quando recebe respostas inesperadas
-
-## Próximos Passos
-
-1. Verificar a configuração do Cloudflare Tunnel conforme acima
-2. Reiniciar o tunnel após alterações
-3. Testar novamente a aplicação via Cloudflare
+1. **Simplicidade**: Um único servidor (porta 5000) ao invés de dois
+2. **Segurança**: Headers de segurança aplicados consistentemente
+3. **Manutenção**: Menos pontos de falha, mais fácil de gerenciar
+4. **Performance**: Waitress é servidor WSGI robusto para produção
+5. **CORS**: Configurado para aceitar requisições do Cloudflare Tunnel
 

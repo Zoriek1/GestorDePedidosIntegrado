@@ -13,7 +13,10 @@ from googleapiclient.http import MediaFileUpload
 
 from app.config import Config
 
-SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive",
+]
 
 DEFAULT_CREDENTIAL_PATHS = [
     Config.BASE_DIR / "user" / "config" / "google_credentials.json",
@@ -52,7 +55,9 @@ class GoogleDriveBackup:
             creds = Credentials.from_service_account_file(str(self.credentials_path), scopes=SCOPES)
             return build("drive", "v3", credentials=creds)
         except Exception as exc:
-            raise GoogleDriveBackupError(f"Falha ao inicializar cliente do Google Drive: {exc}") from exc
+            raise GoogleDriveBackupError(
+                f"Falha ao inicializar cliente do Google Drive: {exc}"
+            ) from exc
 
     def upload_backup(self, file_path: Path, mime_type: str = "application/octet-stream") -> str:
         file_path = Path(file_path)
@@ -82,11 +87,15 @@ class GoogleDriveBackup:
             if self.folder_id:
                 try:
                     # Busca o email do proprietário da pasta
-                    pasta_info = self.service.files().get(
-                        fileId=self.folder_id,
-                        fields="owners",
-                        supportsAllDrives=True
-                    ).execute()
+                    pasta_info = (
+                        self.service.files()
+                        .get(
+                            fileId=self.folder_id,
+                            fields="owners",
+                            supportsAllDrives=True,
+                        )
+                        .execute()
+                    )
 
                     owner_email = pasta_info.get("owners", [{}])[0].get("emailAddress")
 
@@ -97,10 +106,10 @@ class GoogleDriveBackup:
                             body={
                                 "type": "user",
                                 "role": "owner",
-                                "emailAddress": owner_email
+                                "emailAddress": owner_email,
                             },
                             transferOwnership=True,
-                            supportsAllDrives=True
+                            supportsAllDrives=True,
                         ).execute()
                         print(f"[GDRIVE] Propriedade transferida para: {owner_email}")
                 except Exception as e:
@@ -169,4 +178,3 @@ class GoogleDriveBackup:
             return dst
         except HttpError as exc:
             raise GoogleDriveBackupError(f"Erro ao baixar backup do Drive: {exc}") from exc
-

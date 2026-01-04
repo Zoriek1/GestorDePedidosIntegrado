@@ -10,7 +10,7 @@ from pathlib import Path
 def add_endereco_columns():
     """Adiciona as colunas de endereço se não existirem"""
     # Caminho do banco de dados
-    db_path = Path(__file__).parent / 'database.db'
+    db_path = Path(__file__).parent / "database.db"
 
     if not db_path.exists():
         print(f"❌ Banco de dados não encontrado em: {db_path}")
@@ -18,11 +18,11 @@ def add_endereco_columns():
 
     # Colunas a serem adicionadas
     new_columns = [
-        ('cep', 'VARCHAR(10)'),
-        ('rua', 'VARCHAR(200)'),
-        ('numero', 'VARCHAR(20)'),
-        ('bairro', 'VARCHAR(100)'),
-        ('cidade', 'VARCHAR(100)')
+        ("cep", "VARCHAR(10)"),
+        ("rua", "VARCHAR(200)"),
+        ("numero", "VARCHAR(20)"),
+        ("bairro", "VARCHAR(100)"),
+        ("cidade", "VARCHAR(100)"),
     ]
 
     try:
@@ -59,10 +59,10 @@ def add_endereco_columns():
         print(f"❌ Erro ao adicionar colunas: {e}")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("=" * 60)
     print("Migração: Adicionar colunas de endereço")
     print("=" * 60)
     add_endereco_columns()
     print("=" * 60)
-

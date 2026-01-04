@@ -17,18 +17,23 @@ if str(backend_dir) not in sys.path:
 # Carregar .env se disponível
 try:
     from dotenv import load_dotenv
-    env_path = backend_dir / '.env'
+
+    env_path = backend_dir / ".env"
     if env_path.exists():
         load_dotenv(env_path)
 except ImportError:
     pass  # dotenv não instalado, continuar sem
 
 from app.config import Config  # noqa: E402
-from scripts.backup.retention import GFSRetentionPolicy, apply_gfs_retention  # noqa: E402
+from scripts.backup.retention import (  # noqa: E402
+    GFSRetentionPolicy,
+    apply_gfs_retention,
+)
 
 # Importar status (P1.5) com fallback
 try:
     from scripts.backup.status import update_backup_status
+
     STATUS_AVAILABLE = True
 except ImportError:
     STATUS_AVAILABLE = False
@@ -47,9 +52,7 @@ def count_backup_files(backup_dir: Path) -> int:
 
 
 def cleanup_directory(
-    backup_dir: Path,
-    policy: GFSRetentionPolicy,
-    dry_run: bool = False
+    backup_dir: Path, policy: GFSRetentionPolicy, dry_run: bool = False
 ) -> Dict[str, int]:
     """
     Aplica limpeza GFS em um diretório
@@ -59,7 +62,7 @@ def cleanup_directory(
     """
     if not backup_dir.exists():
         print(f"[AVISO] Diretório não existe: {backup_dir}")
-        return {'total': 0, 'kept': 0, 'deleted': 0, 'by_slot': {}}
+        return {"total": 0, "kept": 0, "deleted": 0, "by_slot": {}}
 
     # Encontrar todos os backups
     backup_files = []
@@ -69,15 +72,15 @@ def cleanup_directory(
 
     if not backup_files:
         print(f"[INFO] Nenhum backup encontrado em {backup_dir}")
-        return {'total': 0, 'kept': 0, 'deleted': 0, 'by_slot': {}}
+        return {"total": 0, "kept": 0, "deleted": 0, "by_slot": {}}
 
     print(f"[INFO] Encontrados {len(backup_files)} backups em {backup_dir}")
 
     # Aplicar política GFS
     result = apply_gfs_retention(backup_files, policy)
 
-    to_keep = result['keep']
-    to_delete = result['delete']
+    to_keep = result["keep"]
+    to_delete = result["delete"]
 
     print(f"[INFO] Política GFS: manter {len(to_keep)}, deletar {len(to_delete)}")
 
@@ -99,34 +102,34 @@ def cleanup_directory(
         deleted_count = len(to_delete)
 
     return {
-        'total': len(backup_files),
-        'kept': len(to_keep),
-        'deleted': deleted_count,
-        'by_slot': {}
+        "total": len(backup_files),
+        "kept": len(to_keep),
+        "deleted": deleted_count,
+        "by_slot": {},
     }
 
 
 def main():
     """Função principal"""
-    parser = argparse.ArgumentParser(
-        description='Aplicar política de retenção GFS a backups'
+    parser = argparse.ArgumentParser(description="Aplicar política de retenção GFS a backups")
+    parser.add_argument("--local", action="store_true", help="Aplicar em backups locais")
+    parser.add_argument("--remote", action="store_true", help="Aplicar em backups remotos")
+    parser.add_argument("--dry-run", action="store_true", help="Apenas simular, não deletar")
+    parser.add_argument("--policy-hourly", type=int, default=None, help="Limite de backups hourly")
+    parser.add_argument("--policy-daily", type=int, default=None, help="Limite de backups daily")
+    parser.add_argument("--policy-weekly", type=int, default=None, help="Limite de backups weekly")
+    parser.add_argument(
+        "--policy-monthly", type=int, default=None, help="Limite de backups monthly"
     )
-    parser.add_argument('--local', action='store_true', help='Aplicar em backups locais')
-    parser.add_argument('--remote', action='store_true', help='Aplicar em backups remotos')
-    parser.add_argument('--dry-run', action='store_true', help='Apenas simular, não deletar')
-    parser.add_argument('--policy-hourly', type=int, default=None, help='Limite de backups hourly')
-    parser.add_argument('--policy-daily', type=int, default=None, help='Limite de backups daily')
-    parser.add_argument('--policy-weekly', type=int, default=None, help='Limite de backups weekly')
-    parser.add_argument('--policy-monthly', type=int, default=None, help='Limite de backups monthly')
 
     args = parser.parse_args()
 
     # Ler política de .env ou usar padrões
     policy = GFSRetentionPolicy(
-        hourly=int(os.environ.get('BACKUP_RETENTION_HOURLY', '48')),
-        daily=int(os.environ.get('BACKUP_RETENTION_DAILY', '30')),
-        weekly=int(os.environ.get('BACKUP_RETENTION_WEEKLY', '12')),
-        monthly=int(os.environ.get('BACKUP_RETENTION_MONTHLY', '12'))
+        hourly=int(os.environ.get("BACKUP_RETENTION_HOURLY", "48")),
+        daily=int(os.environ.get("BACKUP_RETENTION_DAILY", "30")),
+        weekly=int(os.environ.get("BACKUP_RETENTION_WEEKLY", "12")),
+        monthly=int(os.environ.get("BACKUP_RETENTION_MONTHLY", "12")),
     )
 
     # Override via argumentos
@@ -156,9 +159,11 @@ def main():
     # Limpar local
     if args.local:
         print("[LOCAL] Aplicando limpeza GFS em backups locais...")
-        local_dir = Config.INSTANCE_DIR / 'backups'
+        local_dir = Config.INSTANCE_DIR / "backups"
         result = cleanup_directory(local_dir, policy, dry_run=args.dry_run)
-        print(f"[LOCAL] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}")
+        print(
+            f"[LOCAL] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}"
+        )
         print()
 
     # Limpar remoto
@@ -167,7 +172,9 @@ def main():
         remote_dir = Config.GDRIVE_BACKUP_DIR
         if remote_dir.exists():
             result = cleanup_directory(remote_dir, policy, dry_run=args.dry_run)
-            print(f"[REMOTO] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}")
+            print(
+                f"[REMOTO] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}"
+            )
         else:
             print(f"[AVISO] Diretório remoto não acessível: {remote_dir}")
         print()
@@ -175,16 +182,20 @@ def main():
     # Se não especificou nenhum, limpar ambos
     if not args.local and not args.remote:
         print("[LOCAL] Aplicando limpeza GFS em backups locais...")
-        local_dir = Config.INSTANCE_DIR / 'backups'
+        local_dir = Config.INSTANCE_DIR / "backups"
         result = cleanup_directory(local_dir, policy, dry_run=args.dry_run)
-        print(f"[LOCAL] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}")
+        print(
+            f"[LOCAL] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}"
+        )
         print()
 
         print("[REMOTO] Aplicando limpeza GFS em backups remotos...")
         remote_dir = Config.GDRIVE_BACKUP_DIR
         if remote_dir.exists():
             result = cleanup_directory(remote_dir, policy, dry_run=args.dry_run)
-            print(f"[REMOTO] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}")
+            print(
+                f"[REMOTO] Total: {result['total']}, Mantidos: {result['kept']}, Deletados: {result['deleted']}"
+            )
         else:
             print(f"[AVISO] Diretório remoto não acessível: {remote_dir}")
         print()
@@ -196,6 +207,7 @@ def main():
             # (por enquanto assumimos sucesso se chegou aqui)
             if STATUS_AVAILABLE:
                 from datetime import datetime
+
                 update_backup_status(last_cleanup_ok_at=datetime.now().isoformat())
     except Exception as status_error:
         print(f"[AVISO] Erro ao atualizar status de cleanup: {status_error}")
@@ -213,6 +225,5 @@ def main():
     print("=" * 60)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

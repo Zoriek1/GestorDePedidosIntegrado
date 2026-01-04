@@ -7,15 +7,16 @@ import sys
 from pathlib import Path
 
 # Configurar encoding UTF-8
-if sys.platform == 'win32':
+if sys.platform == "win32":
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # Carregar variáveis de ambiente
 from dotenv import load_dotenv
 
-env_path = Path(__file__).parent / '.env'
+env_path = Path(__file__).parent / ".env"
 load_dotenv(env_path)
 
 from app.services.distancia import distancia_service  # noqa: E402
@@ -65,34 +66,26 @@ def testar_endereco(endereco_original, pedido_id=None):
         print("   - Remova complementos como 'Residencial', 'Condomínio', etc")
         return False
 
+
 def main():
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TESTE: Endereços Problemáticos")
-    print("="*80)
+    print("=" * 80)
 
     # Endereços de teste
     enderecos_teste = [
         {
-            'id': 69,
-            'endereco': 'Rua Doutor João de Abreu, 0 -Capuava Residencial Privê - Goiânia - CEP: 74445-302'
+            "id": 69,
+            "endereco": "Rua Doutor João de Abreu, 0 -Capuava Residencial Privê - Goiânia - CEP: 74445-302",
         },
-        {
-            'id': 'teste1',
-            'endereco': 'Rua Doutor João de Abreu, Capuava, Goiânia, GO'
-        },
-        {
-            'id': 'teste2',
-            'endereco': 'Rua Doutor João de Abreu, 74445-302, Goiânia'
-        }
+        {"id": "teste1", "endereco": "Rua Doutor João de Abreu, Capuava, Goiânia, GO"},
+        {"id": "teste2", "endereco": "Rua Doutor João de Abreu, 74445-302, Goiânia"},
     ]
 
     resultados = []
     for teste in enderecos_teste:
-        sucesso = testar_endereco(teste['endereco'], teste['id'])
-        resultados.append({
-            'id': teste['id'],
-            'sucesso': sucesso
-        })
+        sucesso = testar_endereco(teste["endereco"], teste["id"])
+        resultados.append({"id": teste["id"], "sucesso": sucesso})
 
     # Resumo
     print(f"\n{'='*80}")
@@ -100,10 +93,10 @@ def main():
     print(f"{'='*80}")
 
     for resultado in resultados:
-        status = '✅ PASSOU' if resultado['sucesso'] else '❌ FALHOU'
+        status = "✅ PASSOU" if resultado["sucesso"] else "❌ FALHOU"
         print(f"Pedido {resultado['id']}: {status}")
 
-    sucessos = sum(1 for r in resultados if r['sucesso'])
+    sucessos = sum(1 for r in resultados if r["sucesso"])
     total = len(resultados)
 
     print(f"\n{sucessos}/{total} testes passaram")
@@ -115,7 +108,7 @@ def main():
         print("\n⚠️ Alguns testes falharam!")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sucesso = main()
     sys.exit(0 if sucesso else 1)
-

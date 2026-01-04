@@ -21,6 +21,7 @@ from app.config import Config  # noqa: E402
 @dataclass
 class BackupStatus:
     """Status do sistema de backup"""
+
     last_backup_ok_at: Optional[str] = None  # ISO format
     last_backup_error: Optional[str] = None
     last_remote_ok_at: Optional[str] = None  # ISO format
@@ -39,7 +40,7 @@ class BackupStatus:
 
 def get_status_file_path() -> Path:
     """Retorna caminho do arquivo de status"""
-    return Config.INSTANCE_DIR / 'backup_status.json'
+    return Config.INSTANCE_DIR / "backup_status.json"
 
 
 def read_backup_status() -> BackupStatus:
@@ -55,7 +56,7 @@ def read_backup_status() -> BackupStatus:
         return BackupStatus()
 
     try:
-        with open(status_file, 'r', encoding='utf-8') as f:
+        with open(status_file, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # Converter para BackupStatus
@@ -90,15 +91,15 @@ def update_backup_status(**kwargs) -> None:
             setattr(current_status, key, value)
 
     # Escrita atômica: escrever para temp e depois renomear
-    temp_file = status_file.with_suffix('.json.tmp')
+    temp_file = status_file.with_suffix(".json.tmp")
 
     try:
         # Escrever para arquivo temporário
-        with open(temp_file, 'w', encoding='utf-8') as f:
+        with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(current_status.to_dict(), f, indent=2, ensure_ascii=False)
 
         # Renomear (atômico no mesmo filesystem)
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             # Windows pode ter problemas com rename se arquivo existe
             if status_file.exists():
                 status_file.unlink()
@@ -126,7 +127,7 @@ def get_backup_health(max_age_hours: int = 24) -> Dict[str, Any]:
     """
     status = read_backup_status()
     issues = []
-    health = 'OK'
+    health = "OK"
 
     now = datetime.now()
     max_age_delta = max_age_hours * 3600  # em segundos
@@ -138,44 +139,39 @@ def get_backup_health(max_age_hours: int = 24) -> Dict[str, Any]:
             age_seconds = (now - last_backup_dt).total_seconds()
             if age_seconds > max_age_delta:
                 issues.append(f"Último backup OK há mais de {max_age_hours} horas")
-                health = 'FAIL'
+                health = "FAIL"
         except (ValueError, TypeError):
             issues.append("Data do último backup OK inválida")
-            health = 'FAIL'
+            health = "FAIL"
     else:
         issues.append("Nenhum backup OK registrado")
-        health = 'FAIL'
+        health = "FAIL"
 
     # Verificar último restore test
     if status.last_restore_test_error:
         issues.append(f"Último restore test falhou: {status.last_restore_test_error}")
-        health = 'FAIL'
+        health = "FAIL"
 
     # Verificar remoto (WARN apenas)
     if status.last_remote_error:
         issues.append(f"Último backup remoto falhou: {status.last_remote_error}")
-        if health == 'OK':
-            health = 'WARN'
+        if health == "OK":
+            health = "WARN"
     elif status.last_remote_ok_at:
         try:
             last_remote_dt = datetime.fromisoformat(status.last_remote_ok_at)
             age_seconds = (now - last_remote_dt).total_seconds()
             if age_seconds > max_age_delta:
                 issues.append(f"Último backup remoto OK há mais de {max_age_hours} horas")
-                if health == 'OK':
-                    health = 'WARN'
+                if health == "OK":
+                    health = "WARN"
         except (ValueError, TypeError):
             pass  # Ignorar erro de parsing, não é crítico
 
     # Verificar cleanup (WARN apenas)
     if status.last_cleanup_error:
         issues.append(f"Último cleanup falhou: {status.last_cleanup_error}")
-        if health == 'OK':
-            health = 'WARN'
+        if health == "OK":
+            health = "WARN"
 
-    return {
-        'health': health,
-        'status': status.to_dict(),
-        'issues': issues
-    }
-
+    return {"health": health, "status": status.to_dict(), "issues": issues}

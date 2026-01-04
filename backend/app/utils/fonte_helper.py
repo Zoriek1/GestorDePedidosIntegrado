@@ -34,16 +34,16 @@ def normalizar_nome_fonte(nome_fonte):
     nome = nome_fonte.lower().strip()
 
     # Remover parênteses e conteúdo dentro
-    nome = re.sub(r'\([^)]*\)', '', nome)
+    nome = re.sub(r"\([^)]*\)", "", nome)
 
     # Remover caracteres especiais, manter apenas letras, números e espaços
-    nome = re.sub(r'[^a-z0-9\s]', '', nome)
+    nome = re.sub(r"[^a-z0-9\s]", "", nome)
 
     # Substituir espaços múltiplos por underscore único
-    nome = re.sub(r'\s+', '_', nome)
+    nome = re.sub(r"\s+", "_", nome)
 
     # Remover underscores no início e fim
-    nome = nome.strip('_')
+    nome = nome.strip("_")
 
     # Se ficar vazio, usar "fonte" como padrão
     if not nome:
@@ -89,16 +89,22 @@ def criar_tabela_fonte(nome_tabela):
     """
     # Verificar se tabela já existe
     with db.engine.connect() as conn:
-        result = conn.execute(text(f"""
+        result = conn.execute(
+            text(
+                f"""
             SELECT name FROM sqlite_master
             WHERE type='table' AND name='{nome_tabela}'
-        """))
+        """
+            )
+        )
         if result.fetchone():
             return False  # Tabela já existe
 
     # Criar tabela
     with db.engine.connect() as conn:
-        conn.execute(text(f"""
+        conn.execute(
+            text(
+                f"""
             CREATE TABLE IF NOT EXISTS {nome_tabela} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 pedido_id INTEGER NOT NULL UNIQUE,
@@ -107,18 +113,28 @@ def criar_tabela_fonte(nome_tabela):
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
             )
-        """))
+        """
+            )
+        )
 
         # Criar índices para performance
-        conn.execute(text(f"""
+        conn.execute(
+            text(
+                f"""
             CREATE INDEX IF NOT EXISTS idx_{nome_tabela}_pedido_id
             ON {nome_tabela}(pedido_id)
-        """))
+        """
+            )
+        )
 
-        conn.execute(text(f"""
+        conn.execute(
+            text(
+                f"""
             CREATE INDEX IF NOT EXISTS idx_{nome_tabela}_numero_sequencial
             ON {nome_tabela}(numero_sequencial)
-        """))
+        """
+            )
+        )
 
         conn.commit()
 
@@ -136,9 +152,13 @@ def get_proximo_numero_sequencial(nome_tabela):
         int: Próximo número sequencial (começa em 1 se tabela estiver vazia)
     """
     with db.engine.connect() as conn:
-        result = conn.execute(text(f"""
+        result = conn.execute(
+            text(
+                f"""
             SELECT MAX(numero_sequencial) FROM {nome_tabela}
-        """))
+        """
+            )
+        )
         max_num = result.fetchone()[0]
         return (max_num or 0) + 1
 
@@ -172,21 +192,26 @@ def inserir_pedido_fonte(pedido_id, fonte_id, valor):
     # Inserir registro
     try:
         with db.engine.connect() as conn:
-            conn.execute(text(f"""
+            conn.execute(
+                text(
+                    f"""
                 INSERT INTO {nome_tabela} (pedido_id, numero_sequencial, valor, created_at)
                 VALUES (:pedido_id, :numero_sequencial, :valor, CURRENT_TIMESTAMP)
-            """), {
-                'pedido_id': pedido_id,
-                'numero_sequencial': numero_sequencial,
-                'valor': valor or ''
-            })
+            """
+                ),
+                {
+                    "pedido_id": pedido_id,
+                    "numero_sequencial": numero_sequencial,
+                    "valor": valor or "",
+                },
+            )
             conn.commit()
 
         return {
-            'pedido_id': pedido_id,
-            'numero_sequencial': numero_sequencial,
-            'valor': valor,
-            'tabela': nome_tabela
+            "pedido_id": pedido_id,
+            "numero_sequencial": numero_sequencial,
+            "valor": valor,
+            "tabela": nome_tabela,
         }
     except Exception as e:
         print(f"[ERRO] Erro ao inserir pedido na tabela {nome_tabela}: {e}")
@@ -226,14 +251,14 @@ def buscar_pedidos_fonte(fonte_id, limit=None, offset=0):
 
         return [
             {
-                'pedido_id': row[0],
-                'numero_sequencial': row[1],
-                'valor': row[2],
-                'created_at': row[3],
-                'cliente': row[4],
-                'destinatario': row[5],
-                'produto': row[6],
-                'status': row[7]
+                "pedido_id": row[0],
+                "numero_sequencial": row[1],
+                "valor": row[2],
+                "created_at": row[3],
+                "cliente": row[4],
+                "destinatario": row[5],
+                "produto": row[6],
+                "status": row[7],
             }
             for row in rows
         ]
@@ -251,23 +276,27 @@ def get_estatisticas_fonte(fonte_id):
     """
     nome_tabela = get_tabela_fonte(fonte_id)
     if not nome_tabela:
-        return {
-            'total_pedidos': 0,
-            'total_vendas': 0,
-            'ultimo_numero': 0
-        }
+        return {"total_pedidos": 0, "total_vendas": 0, "ultimo_numero": 0}
 
     with db.engine.connect() as conn:
         # Total de pedidos
-        result = conn.execute(text(f"""
+        result = conn.execute(
+            text(
+                f"""
             SELECT COUNT(*) FROM {nome_tabela}
-        """))
+        """
+            )
+        )
         total_pedidos = result.fetchone()[0] or 0
 
         # Último número sequencial
-        result = conn.execute(text(f"""
+        result = conn.execute(
+            text(
+                f"""
             SELECT MAX(numero_sequencial) FROM {nome_tabela}
-        """))
+        """
+            )
+        )
         ultimo_numero = result.fetchone()[0] or 0
 
         # Total de vendas (soma dos valores - precisa converter string para número)
@@ -275,7 +304,7 @@ def get_estatisticas_fonte(fonte_id):
         total_vendas = 0  # TODO: Implementar conversão de valores se necessário
 
     return {
-        'total_pedidos': total_pedidos,
-        'total_vendas': total_vendas,
-        'ultimo_numero': ultimo_numero
+        "total_pedidos": total_pedidos,
+        "total_vendas": total_vendas,
+        "ultimo_numero": ultimo_numero,
     }

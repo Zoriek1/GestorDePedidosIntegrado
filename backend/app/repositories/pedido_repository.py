@@ -16,7 +16,9 @@ class PedidoRepository(BaseRepository):
     def __init__(self):
         super().__init__(Pedido)
 
-    def buscar_por_status(self, status: str, excluir_ocultos: bool = True, excluir_deletados: bool = True) -> List[Pedido]:
+    def buscar_por_status(
+        self, status: str, excluir_ocultos: bool = True, excluir_deletados: bool = True
+    ) -> List[Pedido]:
         """Busca pedidos por status"""
         query = self.model.query.filter_by(status=status)
         if excluir_deletados:
@@ -25,11 +27,16 @@ class PedidoRepository(BaseRepository):
             query = query.filter_by(oculto=False)
         return query.all()
 
-    def buscar_por_data(self, data_inicio: date, data_fim: date, excluir_ocultos: bool = True, excluir_deletados: bool = True) -> List[Pedido]:
+    def buscar_por_data(
+        self,
+        data_inicio: date,
+        data_fim: date,
+        excluir_ocultos: bool = True,
+        excluir_deletados: bool = True,
+    ) -> List[Pedido]:
         """Busca pedidos por intervalo de datas"""
         query = self.model.query.filter(
-            Pedido.dia_entrega >= data_inicio,
-            Pedido.dia_entrega <= data_fim
+            Pedido.dia_entrega >= data_inicio, Pedido.dia_entrega <= data_fim
         )
         if excluir_deletados:
             query = query.filter(Pedido.deleted_at.is_(None))
@@ -37,9 +44,13 @@ class PedidoRepository(BaseRepository):
             query = query.filter_by(oculto=False)
         return query.all()
 
-    def buscar_por_data_criacao(self, data_inicio: date, data_fim_exclusivo: date,
-                               excluir_ocultos: bool = False,  # Ocultos ENTRAM por padrão
-                               excluir_deletados: bool = True) -> List[Pedido]:
+    def buscar_por_data_criacao(
+        self,
+        data_inicio: date,
+        data_fim_exclusivo: date,
+        excluir_ocultos: bool = False,  # Ocultos ENTRAM por padrão
+        excluir_deletados: bool = True,
+    ) -> List[Pedido]:
         """
         Busca pedidos por intervalo de datas de criação (created_at)
 
@@ -58,7 +69,7 @@ class PedidoRepository(BaseRepository):
         query = self.model.query.filter(
             Pedido.created_at >= inicio_datetime,
             Pedido.created_at < fim_datetime,  # Exclusivo
-            Pedido.status != 'cancelado'  # Excluir cancelados
+            Pedido.status != "cancelado",  # Excluir cancelados
         )
         if excluir_deletados:
             query = query.filter(Pedido.deleted_at.is_(None))
@@ -67,7 +78,12 @@ class PedidoRepository(BaseRepository):
 
         return query.order_by(Pedido.created_at.desc()).all()
 
-    def buscar_por_cliente(self, telefone: str, excluir_ocultos: bool = True, excluir_deletados: bool = True) -> List[Pedido]:
+    def buscar_por_cliente(
+        self,
+        telefone: str,
+        excluir_ocultos: bool = True,
+        excluir_deletados: bool = True,
+    ) -> List[Pedido]:
         """Busca pedidos por telefone do cliente"""
         query = self.model.query.filter_by(telefone_cliente=telefone)
         if excluir_deletados:
@@ -76,14 +92,17 @@ class PedidoRepository(BaseRepository):
             query = query.filter_by(oculto=False)
         return query.all()
 
-    def buscar_com_filtros(self, status: Optional[str] = None,
-                          data_inicio: Optional[date] = None,
-                          data_fim: Optional[date] = None,
-                          search: Optional[str] = None,
-                          excluir_ocultos: bool = True,
-                          excluir_deletados: bool = True,
-                          ordenar_por: str = 'dia_entrega',
-                          filtrar_por_criacao: bool = False) -> List[Pedido]:
+    def buscar_com_filtros(
+        self,
+        status: Optional[str] = None,
+        data_inicio: Optional[date] = None,
+        data_fim: Optional[date] = None,
+        search: Optional[str] = None,
+        excluir_ocultos: bool = True,
+        excluir_deletados: bool = True,
+        ordenar_por: str = "dia_entrega",
+        filtrar_por_criacao: bool = False,
+    ) -> List[Pedido]:
         """
         Busca pedidos com múltiplos filtros
 
@@ -124,7 +143,8 @@ class PedidoRepository(BaseRepository):
         # Normalizar comparação para evitar problemas com variações de case/espaços
         if filtrar_por_criacao:
             from sqlalchemy import func
-            query = query.filter(func.lower(func.trim(Pedido.status)) != 'cancelado')
+
+            query = query.filter(func.lower(func.trim(Pedido.status)) != "cancelado")
         elif status:
             query = query.filter_by(status=status)
 
@@ -135,7 +155,7 @@ class PedidoRepository(BaseRepository):
             fim_datetime = datetime.combine(data_fim, datetime.min.time())
             query = query.filter(
                 Pedido.created_at >= inicio_datetime,
-                Pedido.created_at < fim_datetime  # Exclusivo
+                Pedido.created_at < fim_datetime,  # Exclusivo
             )
         else:
             # Filtro padrão por dia_entrega
@@ -152,16 +172,16 @@ class PedidoRepository(BaseRepository):
                     Pedido.cliente.like(search_term),
                     Pedido.destinatario.like(search_term),
                     Pedido.produto.like(search_term),
-                    Pedido.endereco.like(search_term)
+                    Pedido.endereco.like(search_term),
                 )
             )
 
         # Ordenação
         if filtrar_por_criacao:
             query = query.order_by(Pedido.created_at.desc())
-        elif ordenar_por == 'dia_entrega':
+        elif ordenar_por == "dia_entrega":
             query = query.order_by(Pedido.dia_entrega.asc())
-        elif ordenar_por == 'created_at':
+        elif ordenar_por == "created_at":
             query = query.order_by(Pedido.created_at.desc())
 
         return query.all()
@@ -176,15 +196,20 @@ class PedidoRepository(BaseRepository):
     def buscar_atrasados(self) -> List[Pedido]:
         """Busca pedidos atrasados (excluindo ocultos, concluídos e deletados)"""
         pedidos = self.model.query.filter(
-            Pedido.status != 'concluido',
+            Pedido.status != "concluido",
             Pedido.oculto is False,
-            Pedido.deleted_at.is_(None)
+            Pedido.deleted_at.is_(None),
         ).all()
 
         # Filtrar por lógica de atraso
         return [p for p in pedidos if p.is_overdue()]
 
-    def buscar_por_fonte(self, fonte_id: int, excluir_ocultos: bool = True, excluir_deletados: bool = True) -> List[Pedido]:
+    def buscar_por_fonte(
+        self,
+        fonte_id: int,
+        excluir_ocultos: bool = True,
+        excluir_deletados: bool = True,
+    ) -> List[Pedido]:
         """Busca pedidos por fonte"""
         query = self.model.query.filter_by(fonte_pedido_id=fonte_id)
         if excluir_deletados:
@@ -195,30 +220,28 @@ class PedidoRepository(BaseRepository):
 
     def obter_estatisticas(self) -> Dict:
         """Retorna estatísticas dos pedidos (excluindo deletados)"""
-        base_query = self.model.query.filter(
-            Pedido.oculto is False,
-            Pedido.deleted_at.is_(None)
-        )
+        base_query = self.model.query.filter(Pedido.oculto is False, Pedido.deleted_at.is_(None))
 
         return {
-            'total': base_query.count(),
-            'agendado': base_query.filter_by(status='agendado').count(),
-            'em_producao': base_query.filter_by(status='em_producao').count(),
-            'pronto_entrega': base_query.filter_by(status='pronto_entrega').count(),
-            'em_rota': base_query.filter_by(status='em_rota').count(),
-            'pronto_retirada': base_query.filter_by(status='pronto_retirada').count(),
-            'concluido': base_query.filter_by(status='concluido').count(),
-            'atrasados': len(self.buscar_atrasados())
+            "total": base_query.count(),
+            "agendado": base_query.filter_by(status="agendado").count(),
+            "em_producao": base_query.filter_by(status="em_producao").count(),
+            "pronto_entrega": base_query.filter_by(status="pronto_entrega").count(),
+            "em_rota": base_query.filter_by(status="em_rota").count(),
+            "pronto_retirada": base_query.filter_by(status="pronto_retirada").count(),
+            "concluido": base_query.filter_by(status="concluido").count(),
+            "atrasados": len(self.buscar_atrasados()),
         }
 
     def arquivar_antigos(self, dias: int = 1) -> int:
         """Arquiva (oculta) pedidos concluídos há mais de X dias"""
         from datetime import timedelta
+
         cutoff_date = datetime.utcnow() - timedelta(days=dias)
         old_pedidos = self.model.query.filter(
-            Pedido.status == 'concluido',
+            Pedido.status == "concluido",
             Pedido.updated_at < cutoff_date,
-            Pedido.oculto is False
+            Pedido.oculto is False,
         ).all()
 
         count = len(old_pedidos)
@@ -230,9 +253,9 @@ class PedidoRepository(BaseRepository):
     def ocultar_concluidos(self) -> int:
         """Oculta todos os pedidos concluídos (independente da data)"""
         concluidos = self.model.query.filter(
-            Pedido.status == 'concluido',
+            Pedido.status == "concluido",
             Pedido.oculto is False,
-            Pedido.deleted_at.is_(None)  # Não ocultar pedidos já deletados
+            Pedido.deleted_at.is_(None),  # Não ocultar pedidos já deletados
         ).all()
 
         count = len(concluidos)
@@ -243,9 +266,11 @@ class PedidoRepository(BaseRepository):
 
     def buscar_deletados(self) -> List[Pedido]:
         """Busca pedidos soft-deleted (P0.3)"""
-        return self.model.query.filter(
-            Pedido.deleted_at.isnot(None)
-        ).order_by(Pedido.deleted_at.desc()).all()
+        return (
+            self.model.query.filter(Pedido.deleted_at.isnot(None))
+            .order_by(Pedido.deleted_at.desc())
+            .all()
+        )
 
     def soft_delete_pedido(self, pedido_id: int, actor: str = None) -> Optional[Pedido]:
         """
@@ -273,12 +298,16 @@ class PedidoRepository(BaseRepository):
         # Registrar em auditoria
         try:
             from app.utils.audit_logger import log_action
+
             log_action(
-                action='DELETE',
-                entity_type='pedido',
+                action="DELETE",
+                entity_type="pedido",
                 entity_id=pedido_id,
-                actor=actor or 'system',
-                metadata={'cliente': pedido.cliente, 'destinatario': pedido.destinatario}
+                actor=actor or "system",
+                metadata={
+                    "cliente": pedido.cliente,
+                    "destinatario": pedido.destinatario,
+                },
             )
         except Exception as e:
             print(f"[AVISO] Erro ao registrar auditoria: {e}")
@@ -311,15 +340,18 @@ class PedidoRepository(BaseRepository):
         # Registrar em auditoria
         try:
             from app.utils.audit_logger import log_action
+
             log_action(
-                action='RESTORE',
-                entity_type='pedido',
+                action="RESTORE",
+                entity_type="pedido",
                 entity_id=pedido_id,
-                actor=actor or 'system',
-                metadata={'cliente': pedido.cliente, 'destinatario': pedido.destinatario}
+                actor=actor or "system",
+                metadata={
+                    "cliente": pedido.cliente,
+                    "destinatario": pedido.destinatario,
+                },
             )
         except Exception as e:
             print(f"[AVISO] Erro ao registrar auditoria: {e}")
 
         return pedido
-

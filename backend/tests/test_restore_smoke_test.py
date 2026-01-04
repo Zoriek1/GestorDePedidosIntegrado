@@ -39,6 +39,7 @@ class TestRestoreSmokeTest(unittest.TestCase):
             # Ajustar timestamps (backup2 mais recente)
             import os
             import time
+
             now = time.time()
             os.utime(backup1, (now - 3600, now - 3600))  # 1 hora atrás
             os.utime(backup2, (now, now))  # Agora
@@ -80,7 +81,7 @@ class TestRestoreSmokeTest(unittest.TestCase):
 
             success, msg = run_integrity_check(db_path)
             self.assertTrue(success)
-            self.assertEqual(msg, 'ok')
+            self.assertEqual(msg, "ok")
 
     def test_run_sanity_checks_valid_db(self):
         """Testa sanity checks em banco válido"""
@@ -115,9 +116,8 @@ class TestRestoreSmokeTest(unittest.TestCase):
             success, errors = run_sanity_checks(db_path)
             self.assertFalse(success)
             self.assertGreater(len(errors), 0)
-            self.assertTrue(any('pedidos' in err.lower() for err in errors))
+            self.assertTrue(any("pedidos" in err.lower() for err in errors))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-

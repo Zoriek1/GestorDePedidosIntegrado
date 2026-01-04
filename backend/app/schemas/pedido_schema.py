@@ -16,7 +16,9 @@ class PedidoSchema(Schema):
     cliente = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     telefone_cliente = fields.Str(required=True, validate=validate.Length(min=1, max=20))
     destinatario = fields.Str(required=True, validate=validate.Length(min=1, max=100))
-    tipo_pedido = fields.Str(validate=validate.OneOf(['Entrega', 'Retirada']), load_default='Entrega')
+    tipo_pedido = fields.Str(
+        validate=validate.OneOf(["Entrega", "Retirada"]), load_default="Entrega"
+    )
 
     # Step 2 - Produto e Agendamento
     produto = fields.Str(required=True)
@@ -41,9 +43,18 @@ class PedidoSchema(Schema):
 
     # Controle
     status = fields.Str(
-        validate=validate.OneOf(['agendado', 'em_producao', 'pronto_entrega', 'em_rota',
-                                 'pronto_retirada', 'concluido', 'cancelado']),
-        load_default='agendado'
+        validate=validate.OneOf(
+            [
+                "agendado",
+                "em_producao",
+                "pronto_entrega",
+                "em_rota",
+                "pronto_retirada",
+                "concluido",
+                "cancelado",
+            ]
+        ),
+        load_default="agendado",
     )
     quantidade = fields.Int(load_default=1)
     oculto = fields.Bool(load_default=False)
@@ -64,37 +75,40 @@ class PedidoSchema(Schema):
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
 
-    @validates('horario')
+    @validates("horario")
     def validate_horario(self, value, **kwargs):
         """Valida formato de horário HH:MM ou intervalo HH:MM - HH:MM"""
         if not value:
             return
 
         # Padrão para horário simples: HH:MM
-        pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
+        pattern_simples = r"^([01]?\d|2[0-3]):[0-5]\d$"
         # Padrão para intervalo: HH:MM - HH:MM
-        pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
+        pattern_intervalo = r"^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$"
 
         if not (re.match(pattern_simples, value) or re.match(pattern_intervalo, value)):
-            raise ValidationError('Formato de horário inválido. Use HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)')
+            raise ValidationError(
+                "Formato de horário inválido. Use HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)"
+            )
 
         # Se for intervalo, validar que horário final é depois do inicial
-        if ' - ' in value:
-            partes = value.split(' - ')
+        if " - " in value:
+            partes = value.split(" - ")
             if len(partes) == 2:
                 try:
-                    h1, m1 = map(int, partes[0].strip().split(':'))
-                    h2, m2 = map(int, partes[1].strip().split(':'))
+                    h1, m1 = map(int, partes[0].strip().split(":"))
+                    h2, m2 = map(int, partes[1].strip().split(":"))
                     minutos_inicial = h1 * 60 + m1
                     minutos_final = h2 * 60 + m2
                     if minutos_final <= minutos_inicial:
-                        raise ValidationError('O horário final deve ser depois do horário inicial')
+                        raise ValidationError("O horário final deve ser depois do horário inicial")
                 except (ValueError, IndexError) as err:
-                    raise ValidationError('Formato de intervalo inválido') from err
+                    raise ValidationError("Formato de intervalo inválido") from err
 
 
 class PedidoCreateSchema(PedidoSchema):
     """Schema para criação de pedido - campos obrigatórios validados"""
+
     pass
 
 
@@ -104,7 +118,7 @@ class PedidoUpdateSchema(Schema):
     cliente = fields.Str(validate=validate.Length(max=100))
     telefone_cliente = fields.Str(validate=validate.Length(max=20))
     destinatario = fields.Str(validate=validate.Length(max=100))
-    tipo_pedido = fields.Str(validate=validate.OneOf(['Entrega', 'Retirada']))
+    tipo_pedido = fields.Str(validate=validate.OneOf(["Entrega", "Retirada"]))
     produto = fields.Str()
     flores_cor = fields.Str(allow_none=True)
     valor = fields.Str(allow_none=True)
@@ -120,8 +134,19 @@ class PedidoUpdateSchema(Schema):
     mensagem = fields.Str(allow_none=True)
     pagamento = fields.Str(allow_none=True)
     observacoes = fields.Str(allow_none=True)
-    status = fields.Str(validate=validate.OneOf(['agendado', 'em_producao', 'pronto_entrega',
-                                                 'em_rota', 'pronto_retirada', 'concluido', 'cancelado']))
+    status = fields.Str(
+        validate=validate.OneOf(
+            [
+                "agendado",
+                "em_producao",
+                "pronto_entrega",
+                "em_rota",
+                "pronto_retirada",
+                "concluido",
+                "cancelado",
+            ]
+        )
+    )
     quantidade = fields.Int()
     oculto = fields.Bool()
     impresso = fields.Bool()
@@ -133,31 +158,32 @@ class PedidoUpdateSchema(Schema):
     coords_lat = fields.Float(allow_none=True)
     coords_lon = fields.Float(allow_none=True)
 
-    @validates('horario')
+    @validates("horario")
     def validate_horario(self, value, **kwargs):
         """Valida formato de horário HH:MM ou intervalo HH:MM - HH:MM"""
         if not value:
             return
 
         # Padrão para horário simples: HH:MM
-        pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
+        pattern_simples = r"^([01]?\d|2[0-3]):[0-5]\d$"
         # Padrão para intervalo: HH:MM - HH:MM
-        pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
+        pattern_intervalo = r"^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$"
 
         if not (re.match(pattern_simples, value) or re.match(pattern_intervalo, value)):
-            raise ValidationError('Formato de horário inválido. Use HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)')
+            raise ValidationError(
+                "Formato de horário inválido. Use HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)"
+            )
 
         # Se for intervalo, validar que horário final é depois do inicial
-        if ' - ' in value:
-            partes = value.split(' - ')
+        if " - " in value:
+            partes = value.split(" - ")
             if len(partes) == 2:
                 try:
-                    h1, m1 = map(int, partes[0].strip().split(':'))
-                    h2, m2 = map(int, partes[1].strip().split(':'))
+                    h1, m1 = map(int, partes[0].strip().split(":"))
+                    h2, m2 = map(int, partes[1].strip().split(":"))
                     minutos_inicial = h1 * 60 + m1
                     minutos_final = h2 * 60 + m2
                     if minutos_final <= minutos_inicial:
-                        raise ValidationError('O horário final deve ser depois do horário inicial')
+                        raise ValidationError("O horário final deve ser depois do horário inicial")
                 except (ValueError, IndexError) as err:
-                    raise ValidationError('Formato de intervalo inválido') from err
-
+                    raise ValidationError("Formato de intervalo inválido") from err

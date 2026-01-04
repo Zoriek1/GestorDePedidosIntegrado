@@ -10,7 +10,7 @@ from pathlib import Path
 def add_oculto_column():
     """Adiciona a coluna 'oculto' se não existir"""
     # Caminho do banco de dados
-    db_path = Path(__file__).parent / 'database.db'
+    db_path = Path(__file__).parent / "database.db"
 
     if not db_path.exists():
         print(f"❌ Banco de dados não encontrado em: {db_path}")
@@ -24,7 +24,7 @@ def add_oculto_column():
         cursor.execute("PRAGMA table_info(pedidos)")
         columns = [col[1] for col in cursor.fetchall()]
 
-        if 'oculto' in columns:
+        if "oculto" in columns:
             print("✅ Coluna 'oculto' já existe na tabela 'pedidos'")
             conn.close()
             return True
@@ -44,10 +44,10 @@ def add_oculto_column():
         print(f"❌ Erro ao adicionar coluna: {e}")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("=" * 60)
     print("Migração: Adicionar coluna 'oculto'")
     print("=" * 60)
     add_oculto_column()
     print("=" * 60)
-

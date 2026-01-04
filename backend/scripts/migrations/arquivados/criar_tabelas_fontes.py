@@ -40,7 +40,9 @@ def criar_tabelas_fontes():
 
             if not fontes:
                 print("   ⚠ Nenhuma fonte ativa encontrada!")
-                print("   Execute primeiro: python backend/scripts/migrations/migrate_fonte_pedido.py")
+                print(
+                    "   Execute primeiro: python backend/scripts/migrations/migrate_fonte_pedido.py"
+                )
                 return False
 
             print(f"   ✓ {len(fontes)} fonte(s) ativa(s) encontrada(s)")
@@ -65,7 +67,11 @@ def criar_tabelas_fontes():
 
             # 3. Buscar pedidos existentes com fonte_pedido_id
             print("\n[3/4] Buscando pedidos existentes...")
-            pedidos = Pedido.query.filter(Pedido.fonte_pedido_id.isnot(None)).order_by(Pedido.created_at).all()
+            pedidos = (
+                Pedido.query.filter(Pedido.fonte_pedido_id.isnot(None))
+                .order_by(Pedido.created_at)
+                .all()
+            )
 
             print(f"   ✓ {len(pedidos)} pedido(s) com fonte identificada encontrado(s)")
 
@@ -94,9 +100,13 @@ def criar_tabelas_fontes():
 
                 # Verificar quantos já existem na tabela
                 with db.engine.connect() as conn:
-                    result = conn.execute(text(f"""
+                    result = conn.execute(
+                        text(
+                            f"""
                         SELECT COUNT(*) FROM {nome_tabela}
-                    """))
+                    """
+                        )
+                    )
                     ja_existem = result.fetchone()[0] or 0
 
                 if ja_existem > 0:
@@ -113,11 +123,7 @@ def criar_tabelas_fontes():
                         continue
 
                     # Inserir na tabela da fonte
-                    resultado = PedidoFonte.adicionar_pedido(
-                        pedido.id,
-                        fonte_id,
-                        pedido.valor
-                    )
+                    resultado = PedidoFonte.adicionar_pedido(pedido.id, fonte_id, pedido.valor)
 
                     if resultado:
                         inseridos_fonte += 1
@@ -126,7 +132,9 @@ def criar_tabelas_fontes():
                         total_erros += 1
 
                 if inseridos_fonte > 0:
-                    print(f"      ✓ {inseridos_fonte} pedido(s) inserido(s) na tabela '{nome_tabela}'")
+                    print(
+                        f"      ✓ {inseridos_fonte} pedido(s) inserido(s) na tabela '{nome_tabela}'"
+                    )
                 else:
                     print("      ℹ Nenhum pedido novo para inserir")
 
@@ -146,11 +154,12 @@ def criar_tabelas_fontes():
         except Exception as e:
             print(f"\n[ERRO] Erro durante migração: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success = criar_tabelas_fontes()
     print("\n" + "=" * 60)
     if success:

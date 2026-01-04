@@ -2,4 +2,3 @@
 """
 Utilitários da aplicação
 """
-

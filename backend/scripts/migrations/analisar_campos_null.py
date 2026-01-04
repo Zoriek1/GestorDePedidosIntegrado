@@ -6,7 +6,7 @@ e identificar colunas que podem ser removidas
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from sqlalchemy import text  # noqa: E402
 
@@ -33,10 +33,27 @@ def analisar_campos():
 
         # Campos para analisar
         campos = [
-            'flores_cor', 'valor', 'cep', 'rua', 'numero', 'bairro', 'cidade',
-            'endereco', 'obs_entrega', 'mensagem', 'pagamento', 'observacoes',
-            'fonte_pedido', 'fonte_pedido_id', 'status_pagamento', 'cliente_id',
-            'distancia_km', 'taxa_entrega', 'coords_lat', 'coords_lon', 'updated_at'
+            "flores_cor",
+            "valor",
+            "cep",
+            "rua",
+            "numero",
+            "bairro",
+            "cidade",
+            "endereco",
+            "obs_entrega",
+            "mensagem",
+            "pagamento",
+            "observacoes",
+            "fonte_pedido",
+            "fonte_pedido_id",
+            "status_pagamento",
+            "cliente_id",
+            "distancia_km",
+            "taxa_entrega",
+            "coords_lat",
+            "coords_lon",
+            "updated_at",
         ]
 
         print(f"{'Campo':<20} {'NULLs':<10} {'Preenchidos':<12} {'% NULL':<10}")
@@ -72,12 +89,16 @@ def analisar_campos():
 
         # Verifica campo fonte_pedido deprecated
         result = db.session.execute(
-            text("SELECT COUNT(*) FROM pedidos WHERE fonte_pedido IS NOT NULL AND fonte_pedido != ''")
+            text(
+                "SELECT COUNT(*) FROM pedidos WHERE fonte_pedido IS NOT NULL AND fonte_pedido != ''"
+            )
         )
         fonte_antiga = result.scalar()
 
         if fonte_antiga > 0:
-            print(f"\n⚠ {fonte_antiga} pedidos ainda usam 'fonte_pedido' (string) ao invés de 'fonte_pedido_id'")
+            print(
+                f"\n⚠ {fonte_antiga} pedidos ainda usam 'fonte_pedido' (string) ao invés de 'fonte_pedido_id'"
+            )
 
 
 def limpar_fonte_pedido_string():
@@ -92,8 +113,8 @@ def limpar_fonte_pedido_string():
 
         pedidos = Pedido.query.filter(
             Pedido.fonte_pedido.isnot(None),
-            Pedido.fonte_pedido != '',
-            Pedido.fonte_pedido_id.is_(None)
+            Pedido.fonte_pedido != "",
+            Pedido.fonte_pedido_id.is_(None),
         ).all()
 
         for pedido in pedidos:
@@ -106,11 +127,11 @@ def limpar_fonte_pedido_string():
         print(f"✓ {len(pedidos)} pedidos atualizados")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--migrar', action='store_true', help='Migrar fonte_pedido string para ID')
+    parser.add_argument("--migrar", action="store_true", help="Migrar fonte_pedido string para ID")
     args = parser.parse_args()
 
     analisar_campos()

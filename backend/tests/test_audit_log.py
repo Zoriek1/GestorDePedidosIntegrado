@@ -17,7 +17,7 @@ if str(backend_dir) not in sys.path:
 class TestAuditLog(unittest.TestCase):
     """Testes para audit log"""
 
-    @patch('app.utils.audit_logger.db')
+    @patch("app.utils.audit_logger.db")
     def test_log_action_create(self, mock_db):
         """Testa registro de ação CREATE"""
         from app.models.audit_log import AuditLog
@@ -27,11 +27,11 @@ class TestAuditLog(unittest.TestCase):
         mock_db.session.commit = MagicMock()
 
         log_action(
-            action='CREATE',
-            entity_type='pedido',
+            action="CREATE",
+            entity_type="pedido",
             entity_id=1,
-            actor='user1',
-            metadata={'cliente': 'Teste'}
+            actor="user1",
+            metadata={"cliente": "Teste"},
         )
 
         # Verificar que add foi chamado
@@ -41,12 +41,12 @@ class TestAuditLog(unittest.TestCase):
         # Verificar argumentos
         call_args = mock_db.session.add.call_args[0][0]
         self.assertIsInstance(call_args, AuditLog)
-        self.assertEqual(call_args.action, 'CREATE')
-        self.assertEqual(call_args.entity_type, 'pedido')
+        self.assertEqual(call_args.action, "CREATE")
+        self.assertEqual(call_args.entity_type, "pedido")
         self.assertEqual(call_args.entity_id, 1)
-        self.assertEqual(call_args.actor, 'user1')
+        self.assertEqual(call_args.actor, "user1")
 
-    @patch('app.utils.audit_logger.db')
+    @patch("app.utils.audit_logger.db")
     def test_log_action_delete(self, mock_db):
         """Testa registro de ação DELETE"""
         from app.utils.audit_logger import log_action
@@ -54,18 +54,13 @@ class TestAuditLog(unittest.TestCase):
         mock_db.session.add = MagicMock()
         mock_db.session.commit = MagicMock()
 
-        log_action(
-            action='DELETE',
-            entity_type='pedido',
-            entity_id=1,
-            actor='user1'
-        )
+        log_action(action="DELETE", entity_type="pedido", entity_id=1, actor="user1")
 
         mock_db.session.add.assert_called_once()
         call_args = mock_db.session.add.call_args[0][0]
-        self.assertEqual(call_args.action, 'DELETE')
+        self.assertEqual(call_args.action, "DELETE")
 
-    @patch('app.utils.audit_logger.db')
+    @patch("app.utils.audit_logger.db")
     def test_log_action_restore(self, mock_db):
         """Testa registro de ação RESTORE"""
         from app.utils.audit_logger import log_action
@@ -73,18 +68,13 @@ class TestAuditLog(unittest.TestCase):
         mock_db.session.add = MagicMock()
         mock_db.session.commit = MagicMock()
 
-        log_action(
-            action='RESTORE',
-            entity_type='pedido',
-            entity_id=1,
-            actor='user1'
-        )
+        log_action(action="RESTORE", entity_type="pedido", entity_id=1, actor="user1")
 
         mock_db.session.add.assert_called_once()
         call_args = mock_db.session.add.call_args[0][0]
-        self.assertEqual(call_args.action, 'RESTORE')
+        self.assertEqual(call_args.action, "RESTORE")
 
-    @patch('app.utils.audit_logger.db')
+    @patch("app.utils.audit_logger.db")
     def test_log_action_handles_error_gracefully(self, mock_db):
         """Testa que erros em auditoria não quebram a operação principal"""
         from app.utils.audit_logger import log_action
@@ -94,11 +84,7 @@ class TestAuditLog(unittest.TestCase):
 
         # Não deve levantar exceção
         try:
-            log_action(
-                action='CREATE',
-                entity_type='pedido',
-                entity_id=1
-            )
+            log_action(action="CREATE", entity_type="pedido", entity_id=1)
         except Exception:
             self.fail("log_action não deve levantar exceção em caso de erro")
 
@@ -106,6 +92,5 @@ class TestAuditLog(unittest.TestCase):
         mock_db.session.rollback.assert_called_once()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-

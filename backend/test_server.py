@@ -41,7 +41,7 @@ def test_server():
         response = requests.get(f"{base_url}/", timeout=5)
         print(f"  ✓ Status: {response.status_code}")
         print(f"  ✓ Content-Type: {response.headers.get('Content-Type', 'N/A')}")
-        if 'text/html' in response.headers.get('Content-Type', ''):
+        if "text/html" in response.headers.get("Content-Type", ""):
             print("  ✓ Retornou HTML (correto)")
         else:
             print("  ⚠ Retornou algo diferente de HTML")
@@ -69,7 +69,8 @@ def test_server():
     print("=" * 60)
     return True
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("Aguardando 2 segundos para o servidor inicializar...")
     time.sleep(2)
 

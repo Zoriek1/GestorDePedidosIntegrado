@@ -16,4 +16,4 @@ existentes continuem funcionando:
 from app.extensions import db
 from app.factory import create_app
 
-__all__ = ['db', 'create_app']
+__all__ = ["db", "create_app"]

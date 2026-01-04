@@ -10,7 +10,7 @@ from pathlib import Path
 # Carregar variáveis de ambiente
 from dotenv import load_dotenv
 
-env_path = Path(__file__).parent / '.env'
+env_path = Path(__file__).parent / ".env"
 load_dotenv(env_path)
 
 from app.services.graphhopper import graphhopper_service  # noqa: E402
@@ -18,9 +18,9 @@ from app.services.graphhopper import graphhopper_service  # noqa: E402
 
 def testar_rota_simples():
     """Testa cálculo de rota simples"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TESTE 1: Rota Simples")
-    print("="*60)
+    print("=" * 60)
 
     # Coordenadas de teste em Goiânia
     origem = (-16.6869, -49.2648)  # Centro de Goiânia
@@ -41,25 +41,24 @@ def testar_rota_simples():
 
     return resultado is not None
 
+
 def testar_rota_otimizada():
     """Testa cálculo de rota otimizada com múltiplos pontos"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TESTE 2: Rota Otimizada (3 waypoints)")
-    print("="*60)
+    print("=" * 60)
 
     origem = (-16.6869, -49.2648)
     waypoints = [
         (-16.6941, -49.2587),  # Setor Sul
         (-16.7000, -49.2700),  # Ponto 2
-        (-16.6800, -49.2600)   # Ponto 3
+        (-16.6800, -49.2600),  # Ponto 3
     ]
 
     print(f"Origem:    {origem}")
     print(f"Waypoints: {len(waypoints)} pontos")
 
-    resultado = graphhopper_service.calcular_rota_otimizada(
-        origem, waypoints, retornar_origem=True
-    )
+    resultado = graphhopper_service.calcular_rota_otimizada(origem, waypoints, retornar_origem=True)
 
     if resultado:
         print("\n✅ SUCESSO!")
@@ -73,13 +72,14 @@ def testar_rota_otimizada():
 
     return resultado is not None
 
+
 def main():
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TESTE: GraphHopper API")
-    print("="*60)
+    print("=" * 60)
 
     # Verificar se a API key está configurada
-    api_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
+    api_key = os.environ.get("GRAPHHOPPER_API_KEY", "")
 
     if not api_key:
         print("\n❌ ERRO: GRAPHHOPPER_API_KEY não configurada!")
@@ -93,9 +93,9 @@ def main():
     teste2 = testar_rota_otimizada()
 
     # Resumo
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("RESUMO DOS TESTES")
-    print("="*60)
+    print("=" * 60)
     print(f"Rota Simples:    {'✅ PASSOU' if teste1 else '❌ FALHOU'}")
     print(f"Rota Otimizada:  {'✅ PASSOU' if teste2 else '❌ FALHOU'}")
 
@@ -108,7 +108,7 @@ def main():
         print("   Verifique os erros acima.")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sucesso = main()
     sys.exit(0 if sucesso else 1)
-

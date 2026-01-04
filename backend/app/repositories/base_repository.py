@@ -7,7 +7,7 @@ from typing import Generic, List, Optional, Type, TypeVar
 
 from app import db
 
-ModelType = TypeVar('ModelType')
+ModelType = TypeVar("ModelType")
 
 
 class BaseRepository(Generic[ModelType]):
@@ -59,10 +59,10 @@ class BaseRepository(Generic[ModelType]):
             # Log do erro para diagnóstico
             print(f"[REPOSITORY] Erro ao deletar {type(entity).__name__}: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
     def count(self) -> int:
         """Conta total de entidades"""
         return self.model.query.count()
-

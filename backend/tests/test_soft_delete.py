@@ -51,7 +51,7 @@ class TestSoftDelete(unittest.TestCase):
         self.assertIsNone(pedido.deleted_at)
         self.assertFalse(pedido.is_deleted)
 
-    @patch('app.repositories.pedido_repository.db')
+    @patch("app.repositories.pedido_repository.db")
     def test_repository_soft_delete_pedido(self, mock_db):
         """Testa soft_delete_pedido no repository"""
         from app import create_app
@@ -78,15 +78,15 @@ class TestSoftDelete(unittest.TestCase):
             mock_db.session.commit = MagicMock()
 
             # Mock log_action (importado dentro do método)
-            with patch('app.utils.audit_logger.log_action') as mock_log:
-                result = repo.soft_delete_pedido(1, actor='test')
+            with patch("app.utils.audit_logger.log_action") as mock_log:
+                result = repo.soft_delete_pedido(1, actor="test")
 
                 self.assertIsNotNone(result)
                 pedido.soft_delete.assert_called_once()
                 mock_log.assert_called_once()
-                self.assertEqual(mock_log.call_args[1]['action'], 'DELETE')
+                self.assertEqual(mock_log.call_args[1]["action"], "DELETE")
 
-    @patch('app.repositories.pedido_repository.db')
+    @patch("app.repositories.pedido_repository.db")
     def test_repository_restore_pedido(self, mock_db):
         """Testa restore_pedido no repository"""
         from app import create_app
@@ -113,15 +113,14 @@ class TestSoftDelete(unittest.TestCase):
             mock_db.session.commit = MagicMock()
 
             # Mock log_action (importado dentro do método)
-            with patch('app.utils.audit_logger.log_action') as mock_log:
-                result = repo.restore_pedido(1, actor='test')
+            with patch("app.utils.audit_logger.log_action") as mock_log:
+                result = repo.restore_pedido(1, actor="test")
 
                 self.assertIsNotNone(result)
                 pedido.restore.assert_called_once()
                 mock_log.assert_called_once()
-                self.assertEqual(mock_log.call_args[1]['action'], 'RESTORE')
+                self.assertEqual(mock_log.call_args[1]["action"], "RESTORE")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-

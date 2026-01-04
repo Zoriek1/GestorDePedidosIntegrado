@@ -26,13 +26,13 @@ def migrate():
             from sqlalchemy import inspect, text
 
             inspector = inspect(db.engine)
-            columns = [col['name'] for col in inspector.get_columns('pedidos')]
+            columns = [col["name"] for col in inspector.get_columns("pedidos")]
 
             # Adicionar campos ao modelo Pedido se não existirem
             campos_novos = {
-                'taxa_entrega': 'FLOAT',
-                'coords_lat': 'FLOAT',
-                'coords_lon': 'FLOAT'
+                "taxa_entrega": "FLOAT",
+                "coords_lat": "FLOAT",
+                "coords_lon": "FLOAT",
             }
 
             for campo, tipo in campos_novos.items():
@@ -46,7 +46,7 @@ def migrate():
                     print(f"✓ Campo '{campo}' já existe")
 
             # Criar tabela de rotas otimizadas se não existir
-            if 'rotas_otimizadas' not in inspector.get_table_names():
+            if "rotas_otimizadas" not in inspector.get_table_names():
                 print("\nCriando tabela 'rotas_otimizadas'...")
                 db.create_all()  # Isso criará a tabela baseada no modelo
                 print("✓ Tabela 'rotas_otimizadas' criada")
@@ -60,12 +60,13 @@ def migrate():
         except Exception as e:
             print(f"\n✗ Erro na migração: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
     return True
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     success = migrate()
     sys.exit(0 if success else 1)
-

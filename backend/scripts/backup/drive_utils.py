@@ -19,7 +19,7 @@ def get_drive_letter(path: Path) -> Optional[str]:
     Returns:
         Letra do drive (ex: 'C:') ou None se não conseguir determinar
     """
-    if sys.platform != 'win32':
+    if sys.platform != "win32":
         # Apenas Windows tem drives (C:, D:, etc)
         return None
 
@@ -31,9 +31,7 @@ def get_drive_letter(path: Path) -> Optional[str]:
 
 
 def check_drive_separation(
-    db_path: Path,
-    backup_dir: Path,
-    secondary_dir: Optional[Path] = None
+    db_path: Path, backup_dir: Path, secondary_dir: Optional[Path] = None
 ) -> List[str]:
     """
     Verifica separação de drives e retorna warnings se necessário
@@ -48,7 +46,7 @@ def check_drive_separation(
     """
     warnings = []
 
-    if sys.platform != 'win32':
+    if sys.platform != "win32":
         # Apenas Windows - em outros sistemas não há conceito de drive
         return warnings
 
@@ -83,4 +81,3 @@ def check_drive_separation(
                 )
 
     return warnings
-

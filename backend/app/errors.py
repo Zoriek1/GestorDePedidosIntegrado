@@ -15,6 +15,7 @@ def register_error_handlers(app):
     Args:
         app: Instância da aplicação Flask
     """
+
     @app.errorhandler(404)
     def not_found(e):
         """
@@ -24,8 +25,8 @@ def register_error_handlers(app):
         não encontradas devem servir o index.html para que o roteamento
         do frontend funcione corretamente.
         """
-        frontend_dir = Path(__file__).parent.parent.parent / 'frontend'
-        return send_from_directory(str(frontend_dir), 'index.html')
+        frontend_dir = Path(__file__).parent.parent.parent / "frontend"
+        return send_from_directory(str(frontend_dir), "index.html")
 
     @app.errorhandler(500)
     def internal_error(e):
@@ -40,5 +41,3 @@ def register_error_handlers(app):
         """
         print(f"[ERRO 500] {e}")
         return {"error": "Erro interno do servidor"}, 500
-
-

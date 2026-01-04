@@ -25,7 +25,7 @@ class TestPedidoRepository:
             valor="100.00",
             dia_entrega=date(2024, 12, 31),
             horario="10:00",
-            status="agendado"
+            status="agendado",
         )
         session.add(pedido)
         session.commit()
@@ -49,7 +49,7 @@ class TestPedidoRepository:
             valor="100.00",
             dia_entrega=date(2024, 12, 31),
             horario="10:00",
-            status="agendado"
+            status="agendado",
         )
         pedido2 = Pedido(
             cliente="Client 2",
@@ -59,7 +59,7 @@ class TestPedidoRepository:
             valor="200.00",
             dia_entrega=date(2024, 12, 31),
             horario="11:00",
-            status="em_producao"
+            status="em_producao",
         )
         session.add_all([pedido1, pedido2])
         session.commit()
@@ -86,7 +86,7 @@ class TestPedidoRepository:
             valor="100.00",
             dia_entrega=date(2024, 12, 31),
             horario="10:00",
-            status="agendado"
+            status="agendado",
         )
         pedido2 = Pedido(
             cliente="Jane Smith",
@@ -96,7 +96,7 @@ class TestPedidoRepository:
             valor="200.00",
             dia_entrega=date(2025, 1, 1),
             horario="11:00",
-            status="agendado"
+            status="agendado",
         )
         session.add_all([pedido1, pedido2])
         session.commit()
@@ -107,8 +107,7 @@ class TestPedidoRepository:
 
         # Buscar por data
         resultados = repo.buscar_com_filtros(
-            data_inicio=date(2024, 12, 31),
-            data_fim=date(2024, 12, 31)
+            data_inicio=date(2024, 12, 31), data_fim=date(2024, 12, 31)
         )
         assert len(resultados) == 1
         assert resultados[0].cliente == "John Doe"
@@ -129,7 +128,7 @@ class TestPedidoRepository:
             valor="100.00",
             dia_entrega=date(2024, 12, 31),
             horario="10:00",
-            status="agendado"
+            status="agendado",
         )
         session.add(pedido)
         session.commit()
@@ -151,11 +150,7 @@ class TestClienteRepository:
         """Testa busca de cliente por ID"""
         repo = ClienteRepository()
 
-        cliente = Cliente(
-            nome="Test Client",
-            telefone="11987654321",
-            email="test@example.com"
-        )
+        cliente = Cliente(nome="Test Client", telefone="11987654321", email="test@example.com")
         session.add(cliente)
         session.commit()
 
@@ -167,11 +162,7 @@ class TestClienteRepository:
         """Testa busca de cliente por telefone"""
         repo = ClienteRepository()
 
-        cliente = Cliente(
-            nome="Test Client",
-            telefone="11987654321",
-            email="test@example.com"
-        )
+        cliente = Cliente(nome="Test Client", telefone="11987654321", email="test@example.com")
         session.add(cliente)
         session.commit()
 
@@ -190,18 +181,14 @@ class TestClienteRepository:
 
         # Criar primeiro cliente
         cliente1 = repo.criar_ou_buscar(
-            nome="Test Client",
-            telefone="11987654321",
-            email="test@example.com"
+            nome="Test Client", telefone="11987654321", email="test@example.com"
         )
         assert cliente1 is not None
         assert cliente1.nome == "Test Client"
 
         # Tentar criar novamente (deve retornar o existente)
         cliente2 = repo.criar_ou_buscar(
-            nome="Another Name",
-            telefone="11987654321",
-            email="another@example.com"
+            nome="Another Name", telefone="11987654321", email="another@example.com"
         )
         assert cliente2.id == cliente1.id
         assert cliente2.nome == "Test Client"  # Nome original mantido
@@ -221,4 +208,3 @@ class TestClienteRepository:
 
         resultados = repo.buscar_por_nome("Doe")
         assert len(resultados) == 2
-

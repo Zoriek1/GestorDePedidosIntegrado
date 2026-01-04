@@ -5,7 +5,7 @@ Migration: Remover fontes de pedido inúteis (WhatsApp Paula, Ifood)
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from app import create_app, db  # noqa: E402
 from app.models.fonte_pedido import FontePedido  # noqa: E402
@@ -17,7 +17,7 @@ def remover_fontes():
     app = create_app()
 
     with app.app_context():
-        fontes_remover = ['WhatsApp (Paula)', 'Ifood', 'ifood', 'IFood']
+        fontes_remover = ["WhatsApp (Paula)", "Ifood", "ifood", "IFood"]
 
         print("=" * 50)
         print("REMOVER FONTES INÚTEIS")
@@ -33,7 +33,9 @@ def remover_fontes():
                 if pedidos_count > 0:
                     print(f"⚠ '{nome_fonte}' tem {pedidos_count} pedidos vinculados.")
                     print("  Removendo vínculo dos pedidos...")
-                    Pedido.query.filter_by(fonte_pedido_id=fonte.id).update({'fonte_pedido_id': None})
+                    Pedido.query.filter_by(fonte_pedido_id=fonte.id).update(
+                        {"fonte_pedido_id": None}
+                    )
 
                 db.session.delete(fonte)
                 print(f"✓ Fonte '{nome_fonte}' removida")
@@ -50,5 +52,5 @@ def remover_fontes():
         print("\n✓ Concluído!")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     remover_fontes()

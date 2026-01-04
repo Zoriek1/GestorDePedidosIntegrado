@@ -20,6 +20,7 @@ from scripts.backup.validate_db import validate_restored_db  # noqa: E402
 # Importar status (P1.5) com fallback
 try:
     from scripts.backup.status import update_backup_status
+
     STATUS_AVAILABLE = True
 except ImportError:
     STATUS_AVAILABLE = False
@@ -37,7 +38,7 @@ def find_most_recent_backup(backup_dir: Path):
 
     # Buscar arquivos de backup (database_*.db ou database_*.zip)
     backups = []
-    for pattern in ['database_*.db', 'database_*.zip']:
+    for pattern in ["database_*.db", "database_*.zip"]:
         backups.extend(backup_dir.glob(pattern))
 
     if not backups:
@@ -56,12 +57,13 @@ def extract_backup_if_needed(backup_path: Path, temp_dir: Path) -> Path:
     Returns:
         Path do arquivo .db (extraído ou original)
     """
-    if backup_path.suffix == '.zip':
+    if backup_path.suffix == ".zip":
         # Extrair ZIP
         import zipfile
-        with zipfile.ZipFile(backup_path, 'r') as zip_ref:
+
+        with zipfile.ZipFile(backup_path, "r") as zip_ref:
             # Procurar arquivo .db dentro do ZIP
-            db_files = [f for f in zip_ref.namelist() if f.endswith('.db')]
+            db_files = [f for f in zip_ref.namelist() if f.endswith(".db")]
             if not db_files:
                 raise ValueError(f"Nenhum arquivo .db encontrado no ZIP: {backup_path}")
 
@@ -76,102 +78,101 @@ def extract_backup_if_needed(backup_path: Path, temp_dir: Path) -> Path:
         return db_path
 
 
-
-
 def main():
     """Função principal do teste de restauração"""
     now = datetime.now()
-    timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
 
     # Configurar logging
-    logs_dir = backend_dir / 'instance' / 'logs'
+    logs_dir = backend_dir / "instance" / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
-    log_file = logs_dir / 'restore_test.log'
+    log_file = logs_dir / "restore_test.log"
 
     def log_message(level: str, message: str):
         """Loga mensagem no arquivo e no console"""
         log_entry = f"{timestamp} | {level} | {message}\n"
         try:
-            with open(log_file, 'a', encoding='utf-8') as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
         except Exception:
             pass
         print(f"[{level}] {message}")
 
-    log_message('INFO', '=' * 60)
-    log_message('INFO', 'TESTE DE RESTAURAÇÃO (P0.4)')
-    log_message('INFO', '=' * 60)
+    log_message("INFO", "=" * 60)
+    log_message("INFO", "TESTE DE RESTAURAÇÃO (P0.4)")
+    log_message("INFO", "=" * 60)
 
     # Encontrar backup mais recente
-    backup_dir = backend_dir / 'instance' / 'backups'
+    backup_dir = backend_dir / "instance" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     backup_path = find_most_recent_backup(backup_dir)
     if not backup_path:
-        log_message('ERROR', 'Nenhum backup encontrado para teste')
+        log_message("ERROR", "Nenhum backup encontrado para teste")
         sys.exit(1)
 
-    log_message('INFO', f"Backup selecionado: {backup_path.name}")
-    log_message('INFO', f"Tamanho: {backup_path.stat().st_size / (1024 * 1024):.2f} MB")
+    log_message("INFO", f"Backup selecionado: {backup_path.name}")
+    log_message("INFO", f"Tamanho: {backup_path.stat().st_size / (1024 * 1024):.2f} MB")
 
     # Criar diretório temporário para restauração
     temp_dir = None
     try:
-        temp_dir = Path(tempfile.mkdtemp(prefix='restore_test_'))
-        log_message('INFO', f"Diretório temporário: {temp_dir}")
+        temp_dir = Path(tempfile.mkdtemp(prefix="restore_test_"))
+        log_message("INFO", f"Diretório temporário: {temp_dir}")
 
         # Extrair/copiar backup
-        log_message('INFO', 'Extraindo backup...')
+        log_message("INFO", "Extraindo backup...")
         db_path = extract_backup_if_needed(backup_path, temp_dir)
-        log_message('INFO', f"Banco extraído: {db_path.name}")
+        log_message("INFO", f"Banco extraído: {db_path.name}")
 
         # Executar validação padronizada (P1.1)
-        log_message('INFO', 'Executando validação do banco restaurado...')
+        log_message("INFO", "Executando validação do banco restaurado...")
         validation_result = validate_restored_db(
             db_path=db_path,
             app_schema_version=Config.APP_SCHEMA_VERSION,
             check_invariants=False,
-            verbose=False
+            verbose=False,
         )
 
         if validation_result.success:
-            log_message('SUCCESS', 'Validação completa: OK')
+            log_message("SUCCESS", "Validação completa: OK")
             if validation_result.warnings:
                 for warning in validation_result.warnings:
-                    log_message('WARNING', f'Aviso: {warning}')
+                    log_message("WARNING", f"Aviso: {warning}")
 
             # Atualizar status (P1.5)
             if STATUS_AVAILABLE:
                 try:
                     update_backup_status(last_restore_test_ok_at=datetime.now().isoformat())
                 except Exception as status_error:
-                    log_message('WARNING', f'Erro ao atualizar status: {status_error}')
+                    log_message("WARNING", f"Erro ao atualizar status: {status_error}")
         else:
-            log_message('ERROR', 'Validação falhou:')
+            log_message("ERROR", "Validação falhou:")
             for error in validation_result.errors:
-                log_message('ERROR', f'  - {error}')
+                log_message("ERROR", f"  - {error}")
             if validation_result.warnings:
                 for warning in validation_result.warnings:
-                    log_message('WARNING', f'Aviso: {warning}')
+                    log_message("WARNING", f"Aviso: {warning}")
 
             # Atualizar status (P1.5)
             if STATUS_AVAILABLE:
                 try:
-                    error_msg = '; '.join(validation_result.errors)
+                    error_msg = "; ".join(validation_result.errors)
                     update_backup_status(last_restore_test_error=error_msg)
                 except Exception as status_error:
-                    log_message('WARNING', f'Erro ao atualizar status: {status_error}')
+                    log_message("WARNING", f"Erro ao atualizar status: {status_error}")
 
             sys.exit(1)
 
-        log_message('INFO', '=' * 60)
-        log_message('SUCCESS', 'TESTE DE RESTAURAÇÃO CONCLUÍDO COM SUCESSO')
-        log_message('INFO', '=' * 60)
+        log_message("INFO", "=" * 60)
+        log_message("SUCCESS", "TESTE DE RESTAURAÇÃO CONCLUÍDO COM SUCESSO")
+        log_message("INFO", "=" * 60)
         sys.exit(0)
 
     except Exception as e:
-        log_message('ERROR', f'Erro durante teste de restauração: {e}')
+        log_message("ERROR", f"Erro durante teste de restauração: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
     finally:
@@ -179,11 +180,10 @@ def main():
         if temp_dir and temp_dir.exists():
             try:
                 shutil.rmtree(temp_dir)
-                log_message('INFO', 'Arquivos temporários removidos')
+                log_message("INFO", "Arquivos temporários removidos")
             except Exception as e:
-                log_message('WARNING', f'Erro ao remover arquivos temporários: {e}')
+                log_message("WARNING", f"Erro ao remover arquivos temporários: {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

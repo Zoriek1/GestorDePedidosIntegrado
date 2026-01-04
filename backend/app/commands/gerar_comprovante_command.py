@@ -33,45 +33,42 @@ class GerarComprovanteCommand:
         is_mesma_pessoa = cliente_norm == destinatario_norm
 
         # Regra de Contexto: Retirada vs Entrega
-        is_retirada = (pedido.tipo_pedido or "").lower() == 'retirada'
+        is_retirada = (pedido.tipo_pedido or "").lower() == "retirada"
 
         # Preparação do Contexto (Data Bag)
         ctx = {
             "id": pedido.id,
             "status": pedido.status,
             "tipo": pedido.tipo_pedido,
-            "fonte": pedido.fonte_pedido_rel.nome if pedido.fonte_pedido_rel else (pedido.fonte_pedido or ""),
-
+            "fonte": pedido.fonte_pedido_rel.nome
+            if pedido.fonte_pedido_rel
+            else (pedido.fonte_pedido or ""),
             # Atores
             "cliente_nome": pedido.cliente,
             "cliente_tel": pedido.telefone_cliente,
             "destinatario_nome": pedido.destinatario,
-            "show_destinatario": not is_mesma_pessoa, # Flag para o template
-
+            "show_destinatario": not is_mesma_pessoa,  # Flag para o template
             # Produto
             "produto": pedido.produto,
             "flores_cor": pedido.flores_cor,
             "mensagem": pedido.mensagem,
             "quantidade": pedido.quantidade,
             "valor": pedido.valor,
-
             # Logística
             "data_entrega": pedido.dia_entrega.strftime("%d/%m/%Y") if pedido.dia_entrega else "",
             "horario": pedido.horario,
-            "endereco": None if is_retirada else pedido.endereco, # Null Check Rule
+            "endereco": None if is_retirada else pedido.endereco,  # Null Check Rule
             "cidade": None if is_retirada else pedido.cidade,
             "cep": None if is_retirada else pedido.cep,
             "distancia": None if is_retirada else pedido.distancia_km,
             "taxa": None if is_retirada else pedido.taxa_entrega,
             "obs_entrega": None if is_retirada else pedido.obs_entrega,
-
             # Pagamento
             "pagamento": pedido.pagamento,
             "status_pagto": pedido.status_pagamento,
             "obs": pedido.observacoes,
-
             # Meta
-            "impresso_em": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            "impresso_em": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         }
 
         # 3. Renderiza Template
@@ -95,20 +92,28 @@ class GerarComprovanteCommand:
                 if isinstance(val, (int, float)):
                     num = val
                 else:
-                    clean = str(val).replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".")
+                    clean = (
+                        str(val)
+                        .replace("R$", "")
+                        .replace(" ", "")
+                        .replace(".", "")
+                        .replace(",", ".")
+                    )
                     num = float(clean)
                 return f"R$ {num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             except (ValueError, TypeError):
                 return str(val)
 
         # Badges e Estilos Condicionais
-        status_pagto_class = "badge-black" if str(ctx.get('status_pagto')).lower() == 'pendente' else "badge"
+        status_pagto_class = (
+            "badge-black" if str(ctx.get("status_pagto")).lower() == "pendente" else "badge"
+        )
 
         # Lógica de renderização de seções (simulando 'if' do template engine)
 
         # Seção Destinatário (só renderiza se show_destinatario for True)
         html_destinatario = ""
-        if ctx['show_destinatario']:
+        if ctx["show_destinatario"]:
             html_destinatario = f"""
             <div class="row">
                 <div class="label">Para (Destinatário)</div>
@@ -118,8 +123,8 @@ class GerarComprovanteCommand:
 
         # Seção Endereço (só renderiza se não for Retirada e tiver endereço)
         html_endereco = ""
-        if ctx['endereco']:
-             html_endereco = f"""
+        if ctx["endereco"]:
+            html_endereco = f"""
              <div class="card full">
                 <div class="h"><span class="dot"></span><span class="h-title">Endereço de Entrega</span></div>
                 <div class="box">{fmt(ctx['endereco'])}</div>
@@ -131,8 +136,8 @@ class GerarComprovanteCommand:
                 </div>
              </div>
              """
-        elif str(ctx['tipo']).lower() == 'retirada':
-             html_endereco = """
+        elif str(ctx["tipo"]).lower() == "retirada":
+            html_endereco = """
              <div class="card full">
                 <div class="h"><span class="dot"></span><span class="h-title">Logística</span></div>
                 <div class="box" style="text-align:center; padding:15px">RETIRADA NA LOJA (Sem entrega)</div>
@@ -285,4 +290,3 @@ class GerarComprovanteCommand:
 </body>
 </html>
 """
-

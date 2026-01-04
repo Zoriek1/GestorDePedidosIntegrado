@@ -76,8 +76,8 @@ class TestRetention(unittest.TestCase):
         result = apply_gfs_retention(files, policy)
 
         # Deve manter no máximo os limites da política
-        self.assertLessEqual(len(result['keep']), 8)  # Total de slots (2+2+2+2)
-        self.assertGreater(len(result['delete']), 0)
+        self.assertLessEqual(len(result["keep"]), 8)  # Total de slots (2+2+2+2)
+        self.assertGreater(len(result["delete"]), 0)
 
     def test_apply_gfs_retention_preserves_latest(self):
         """Testa que retenção GFS preserva backups mais recentes"""
@@ -94,10 +94,10 @@ class TestRetention(unittest.TestCase):
         result = apply_gfs_retention(files, policy)
 
         # Deve manter os mais recentes
-        self.assertGreater(len(result['keep']), 0)
+        self.assertGreater(len(result["keep"]), 0)
         # O arquivo mais recente deve estar em 'keep'
         latest_file = files[0]  # Mais recente
-        self.assertIn(latest_file, result['keep'])
+        self.assertIn(latest_file, result["keep"])
 
     def test_apply_gfs_retention_deterministic(self):
         """Testa que retenção GFS é determinística (mesmo resultado para mesma entrada)"""
@@ -115,10 +115,10 @@ class TestRetention(unittest.TestCase):
         result2 = apply_gfs_retention(files, policy)
 
         # Deve ser determinístico
-        self.assertEqual(len(result1['keep']), len(result2['keep']))
-        self.assertEqual(len(result1['delete']), len(result2['delete']))
-        self.assertEqual(set(result1['keep']), set(result2['keep']))
-        self.assertEqual(set(result1['delete']), set(result2['delete']))
+        self.assertEqual(len(result1["keep"]), len(result2["keep"]))
+        self.assertEqual(len(result1["delete"]), len(result2["delete"]))
+        self.assertEqual(set(result1["keep"]), set(result2["keep"]))
+        self.assertEqual(set(result1["delete"]), set(result2["delete"]))
 
     def test_apply_gfs_retention_with_invalid_filenames(self):
         """Testa que arquivos com nomes inválidos não são deletados"""
@@ -134,9 +134,8 @@ class TestRetention(unittest.TestCase):
 
         # Arquivo com nome inválido deve ser mantido
         invalid_file = Path("invalid_name.db")
-        self.assertIn(invalid_file, result['keep'])
+        self.assertIn(invalid_file, result["keep"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-

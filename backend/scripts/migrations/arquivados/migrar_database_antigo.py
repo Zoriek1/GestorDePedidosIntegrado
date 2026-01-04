@@ -25,6 +25,7 @@ try:
         Pedido,
         RotaOtimizada,
     )
+
     SQLALCHEMY_AVAILABLE = True
 except ImportError:
     SQLALCHEMY_AVAILABLE = False
@@ -37,14 +38,14 @@ class DatabaseMigrator:
     def __init__(self, old_db_path: Path, new_db_path: Path, overwrite: bool = False):
         self.old_db_path = Path(old_db_path)
         self.new_db_path = Path(new_db_path)
-        self.backup_dir = backend_dir / 'instance' / 'backups'
+        self.backup_dir = backend_dir / "instance" / "backups"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.migration_report = []
         self.overwrite = overwrite
 
-    def create_backup(self, db_path: Path, suffix: str = '') -> Path:
+    def create_backup(self, db_path: Path, suffix: str = "") -> Path:
         """Cria backup do banco de dados"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_name = f"{db_path.stem}_{suffix}_{timestamp}.db"
         backup_path = self.backup_dir / backup_name
 
@@ -57,7 +58,9 @@ class DatabaseMigrator:
     def get_tables(self, conn: sqlite3.Connection) -> List[str]:
         """Lista todas as tabelas no banco"""
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
         tables = [row[0] for row in cursor.fetchall()]
         return tables
 
@@ -76,8 +79,12 @@ class DatabaseMigrator:
         except sqlite3.Error:
             return 0
 
-    def copy_table_data(self, old_conn: sqlite3.Connection, new_conn: sqlite3.Connection,
-                       table_name: str) -> int:
+    def copy_table_data(
+        self,
+        old_conn: sqlite3.Connection,
+        new_conn: sqlite3.Connection,
+        table_name: str,
+    ) -> int:
         """Copia dados de uma tabela do banco antigo para o novo"""
         old_cursor = old_conn.cursor()
         new_cursor = new_conn.cursor()
@@ -111,11 +118,13 @@ class DatabaseMigrator:
                 # Tentar input interativo, mas se falhar (modo não-interativo), pular
                 try:
                     response = input("  Deseja sobrescrever? (s/n): ").lower()
-                    if response != 's':
+                    if response != "s":
                         print(f"[INFO] Pulando tabela {table_name}")
                         return 0
                 except (EOFError, KeyboardInterrupt):
-                    print(f"[INFO] Modo não-interativo: pulando tabela {table_name} (use --overwrite para sobrescrever)")
+                    print(
+                        f"[INFO] Modo não-interativo: pulando tabela {table_name} (use --overwrite para sobrescrever)"
+                    )
                     return 0
             # Limpar tabela se deve sobrescrever
             print(f"[INFO] Limpando tabela {table_name} antes de migrar...")
@@ -123,7 +132,7 @@ class DatabaseMigrator:
             new_conn.commit()
 
         # Buscar todos os dados do banco antigo
-        cols_str = ', '.join(common_cols)
+        cols_str = ", ".join(common_cols)
         old_cursor.execute(f"SELECT {cols_str} FROM {table_name}")
         rows = old_cursor.fetchall()
 
@@ -132,7 +141,7 @@ class DatabaseMigrator:
             return 0
 
         # Preparar INSERT
-        placeholders = ', '.join(['?' for _ in common_cols])
+        placeholders = ", ".join(["?" for _ in common_cols])
         insert_sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})"
 
         # Inserir dados
@@ -143,15 +152,15 @@ class DatabaseMigrator:
                 count += 1
             except sqlite3.IntegrityError as e:
                 # Se houver erro de integridade (ex: ID duplicado), tentar sem ID
-                if 'PRIMARY KEY' in str(e) or 'UNIQUE' in str(e):
+                if "PRIMARY KEY" in str(e) or "UNIQUE" in str(e):
                     # Remover coluna ID da inserção se for chave primária
-                    if 'id' in common_cols:
-                        idx = common_cols.index('id')
-                        cols_without_id = [c for c in common_cols if c != 'id']
+                    if "id" in common_cols:
+                        idx = common_cols.index("id")
+                        cols_without_id = [c for c in common_cols if c != "id"]
                         vals_without_id = [v for i, v in enumerate(row) if i != idx]
                         if cols_without_id:
-                            cols_str_no_id = ', '.join(cols_without_id)
-                            placeholders_no_id = ', '.join(['?' for _ in cols_without_id])
+                            cols_str_no_id = ", ".join(cols_without_id)
+                            placeholders_no_id = ", ".join(["?" for _ in cols_without_id])
                             insert_sql_no_id = f"INSERT INTO {table_name} ({cols_str_no_id}) VALUES ({placeholders_no_id})"
                             try:
                                 new_cursor.execute(insert_sql_no_id, vals_without_id)
@@ -188,8 +197,8 @@ class DatabaseMigrator:
 
         # Criar backups
         print("[1/5] Criando backups...")
-        old_backup = self.create_backup(self.old_db_path, 'antigo')
-        new_backup = self.create_backup(self.new_db_path, 'novo')
+        old_backup = self.create_backup(self.old_db_path, "antigo")
+        new_backup = self.create_backup(self.new_db_path, "novo")
         print()
 
         # Conectar aos bancos
@@ -222,7 +231,13 @@ class DatabaseMigrator:
             tables_to_migrate = [t for t in old_tables if t in new_tables]
 
         # Ordem de migração (importante para foreign keys)
-        migration_order = ['fontes_pedido', 'clientes', 'enderecos_clientes', 'pedidos', 'rotas_otimizadas']
+        migration_order = [
+            "fontes_pedido",
+            "clientes",
+            "enderecos_clientes",
+            "pedidos",
+            "rotas_otimizadas",
+        ]
         # Adicionar outras tabelas que não estão na ordem
         for table in tables_to_migrate:
             if table not in migration_order:
@@ -250,12 +265,14 @@ class DatabaseMigrator:
             new_count = self.get_table_count(new_conn, table)
             status = "[OK]" if new_count >= old_count else "[ERRO]"
             print(f"{status} {table}: {old_count} -> {new_count} registros")
-            self.migration_report.append({
-                'table': table,
-                'old_count': old_count,
-                'new_count': new_count,
-                'migrated': migration_results.get(table, 0)
-            })
+            self.migration_report.append(
+                {
+                    "table": table,
+                    "old_count": old_count,
+                    "new_count": new_count,
+                    "migrated": migration_results.get(table, 0),
+                }
+            )
 
         # Fechar conexões
         old_conn.close()
@@ -277,13 +294,16 @@ def main():
     """Função principal"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Migra dados do banco antigo para o novo')
-    parser.add_argument('--overwrite', action='store_true',
-                       help='Sobrescrever dados existentes no banco novo')
+    parser = argparse.ArgumentParser(description="Migra dados do banco antigo para o novo")
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Sobrescrever dados existentes no banco novo",
+    )
     args = parser.parse_args()
 
-    old_db = backend_dir / 'database.db'
-    new_db = backend_dir / 'instance' / 'database.db'
+    old_db = backend_dir / "database.db"
+    new_db = backend_dir / "instance" / "database.db"
 
     migrator = DatabaseMigrator(old_db, new_db, overwrite=args.overwrite)
 
@@ -303,12 +323,12 @@ def main():
     except Exception as e:
         print(f"\n[ERRO] Falha na migração: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
-

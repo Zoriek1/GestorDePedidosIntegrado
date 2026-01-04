@@ -11,7 +11,9 @@ from app.utils.fonte_helper import (
     get_proximo_numero_sequencial,
     get_tabela_fonte,
 )
-from app.utils.fonte_helper import get_estatisticas_fonte as helper_get_estatisticas_fonte
+from app.utils.fonte_helper import (
+    get_estatisticas_fonte as helper_get_estatisticas_fonte,
+)
 from app.utils.fonte_helper import inserir_pedido_fonte as helper_inserir_pedido_fonte
 
 
@@ -122,9 +124,9 @@ class PedidoFonte:
             sucesso, nome_tabela = PedidoFonte.criar_tabela_para_fonte(fonte.id)
             if sucesso:
                 resultado[fonte.id] = {
-                    'nome_fonte': fonte.nome,
-                    'tabela': nome_tabela,
-                    'criada': nome_tabela is not None
+                    "nome_fonte": fonte.nome,
+                    "tabela": nome_tabela,
+                    "criada": nome_tabela is not None,
                 }
 
         return resultado
@@ -148,19 +150,24 @@ class PedidoFonte:
         from sqlalchemy import text
 
         with db.engine.connect() as conn:
-            result = conn.execute(text(f"""
+            result = conn.execute(
+                text(
+                    f"""
                 SELECT pedido_id, numero_sequencial, valor, created_at
                 FROM {nome_tabela}
                 WHERE pedido_id = :pedido_id
-            """), {'pedido_id': pedido_id})
+            """
+                ),
+                {"pedido_id": pedido_id},
+            )
 
             row = result.fetchone()
             if row:
                 return {
-                    'pedido_id': row[0],
-                    'numero_sequencial': row[1],
-                    'valor': row[2],
-                    'created_at': row[3]
+                    "pedido_id": row[0],
+                    "numero_sequencial": row[1],
+                    "valor": row[2],
+                    "created_at": row[3],
                 }
 
         return None

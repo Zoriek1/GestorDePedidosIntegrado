@@ -14,6 +14,7 @@ sys.path.insert(0, str(backend_dir))
 
 try:
     from scripts.backup.backup import BackupManager  # noqa: F401
+
     BACKUP_MANAGER_AVAILABLE = True
 except ImportError:
     BACKUP_MANAGER_AVAILABLE = False
@@ -22,8 +23,8 @@ except ImportError:
 
 def migrate_backups():
     """Migra backups do diretório antigo para o novo"""
-    old_backup_dir = backend_dir / 'backups'
-    new_backup_dir = backend_dir / 'instance' / 'backups'
+    old_backup_dir = backend_dir / "backups"
+    new_backup_dir = backend_dir / "instance" / "backups"
 
     # Garantir que o diretório novo existe
     new_backup_dir.mkdir(parents=True, exist_ok=True)
@@ -49,12 +50,13 @@ def migrate_backups():
                     backup_files.append(item)
         except Exception:
             # Método 2: glob
-            backup_files = list(old_backup_dir.glob('*'))
+            backup_files = list(old_backup_dir.glob("*"))
             backup_files = [f for f in backup_files if f.is_file()]
 
         if not backup_files:
             # Método 3: os.listdir
             import os
+
             try:
                 for filename in os.listdir(str(old_backup_dir)):
                     filepath = old_backup_dir / filename
@@ -88,7 +90,7 @@ def migrate_backups():
                 continue
             else:
                 # Renomear arquivo existente com timestamp
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 new_name = f"{dest_path.stem}_conflict_{timestamp}{dest_path.suffix}"
                 dest_path.rename(new_backup_dir / new_name)
                 print(f"[INFO] Arquivo existente renomeado: {new_name}")
@@ -118,14 +120,15 @@ def create_current_backup():
     # Usar método manual para evitar problemas de encoding
     try:
         from app.config import Config
+
         db_path = Config.DATABASE_PATH
-        backup_dir = Config.INSTANCE_DIR / 'backups'
+        backup_dir = Config.INSTANCE_DIR / "backups"
 
         if not db_path.exists():
             print(f"[ERRO] Banco de dados nao encontrado: {db_path}")
             return None
 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_name = f"database_{timestamp}.db"
         backup_path = backup_dir / backup_name
 
@@ -136,6 +139,7 @@ def create_current_backup():
     except Exception as e:
         print(f"[ERRO] Falha ao criar backup: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -164,10 +168,10 @@ def main():
     except Exception as e:
         print(f"\n[ERRO] Falha na migração de backups: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
-

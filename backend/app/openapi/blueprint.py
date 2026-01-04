@@ -19,9 +19,9 @@ from app.openapi.schemas import (
 
 # Criar blueprint do Flask-Smorest (não do Flask normal)
 blp = Blueprint(
-    'openapi_docs',
+    "openapi_docs",
     __name__,
-    description='Documentação dos endpoints prioritários da API'
+    description="Documentação dos endpoints prioritários da API",
 )
 
 
@@ -29,14 +29,15 @@ blp = Blueprint(
 # Nota: Estes endpoints são apenas para documentação no Swagger UI
 # Os endpoints reais continuam funcionando normalmente em app/routes/
 
-@blp.route('/api/health', methods=['GET'])
+
+@blp.route("/api/health", methods=["GET"])
 @blp.doc(
-    summary='Health Check',
-    description='Verifica se a API está funcionando normalmente',
-    tags=['Health']
+    summary="Health Check",
+    description="Verifica se a API está funcionando normalmente",
+    tags=["Health"],
 )
-@blp.response(200, HealthResponseSchema, description='API funcionando')
-@blp.response(500, HealthResponseSchema, description='API com problemas')
+@blp.response(200, HealthResponseSchema, description="API funcionando")
+@blp.response(500, HealthResponseSchema, description="API com problemas")
 def health_check_doc():
     """
     Health Check
@@ -46,17 +47,18 @@ def health_check_doc():
     """
     # Importar e chamar endpoint real
     from app.routes.api import health_check
+
     return health_check()
 
 
-@blp.route('/api/auth/check', methods=['GET'])
+@blp.route("/api/auth/check", methods=["GET"])
 @blp.doc(
-    summary='Verificar Autenticação',
-    description='Verifica se a requisição está autenticada',
-    tags=['Autenticação'],
-    security=[{'BasicAuth': []}]
+    summary="Verificar Autenticação",
+    description="Verifica se a requisição está autenticada",
+    tags=["Autenticação"],
+    security=[{"BasicAuth": []}],
 )
-@blp.response(200, AuthCheckResponseSchema, description='Resposta de autenticação')
+@blp.response(200, AuthCheckResponseSchema, description="Resposta de autenticação")
 def auth_check_doc():
     """
     Verificar Autenticação
@@ -66,17 +68,18 @@ def auth_check_doc():
     """
     # Importar e chamar endpoint real
     from app.routes.auth import check_auth_status
+
     return check_auth_status()
 
 
-@blp.route('/api/pedidos', methods=['GET'])
+@blp.route("/api/pedidos", methods=["GET"])
 @blp.doc(
-    summary='Listar Pedidos',
-    description='Lista pedidos com filtros opcionais',
-    tags=['Pedidos']
+    summary="Listar Pedidos",
+    description="Lista pedidos com filtros opcionais",
+    tags=["Pedidos"],
 )
-@blp.arguments(PedidosQuerySchema, location='query')
-@blp.response(200, PedidosResponseSchema, description='Lista de pedidos')
+@blp.arguments(PedidosQuerySchema, location="query")
+@blp.response(200, PedidosResponseSchema, description="Lista de pedidos")
 def pedidos_list_doc(**kwargs):
     """
     Listar Pedidos
@@ -89,16 +92,17 @@ def pedidos_list_doc(**kwargs):
     """
     # Importar e chamar endpoint real
     from app.routes.pedidos import listar_pedidos
+
     return listar_pedidos()
 
 
-@blp.route('/api/stats', methods=['GET'])
+@blp.route("/api/stats", methods=["GET"])
 @blp.doc(
-    summary='Obter Estatísticas',
-    description='Retorna estatísticas dos pedidos',
-    tags=['Estatísticas']
+    summary="Obter Estatísticas",
+    description="Retorna estatísticas dos pedidos",
+    tags=["Estatísticas"],
 )
-@blp.response(200, StatsResponseSchema, description='Estatísticas')
+@blp.response(200, StatsResponseSchema, description="Estatísticas")
 def stats_doc():
     """
     Obter Estatísticas
@@ -107,17 +111,18 @@ def stats_doc():
     """
     # Importar e chamar endpoint real
     from app.routes.api import obter_estatisticas
+
     return obter_estatisticas()
 
 
-@blp.route('/api/clientes/search', methods=['GET'])
+@blp.route("/api/clientes/search", methods=["GET"])
 @blp.doc(
-    summary='Buscar Clientes',
-    description='Busca clientes por termo (autocomplete)',
-    tags=['Clientes']
+    summary="Buscar Clientes",
+    description="Busca clientes por termo (autocomplete)",
+    tags=["Clientes"],
 )
-@blp.arguments(ClientesBuscarQuerySchema, location='query')
-@blp.response(200, ClientesBuscarResponseSchema, description='Lista de clientes')
+@blp.arguments(ClientesBuscarQuerySchema, location="query")
+@blp.response(200, ClientesBuscarResponseSchema, description="Lista de clientes")
 def clientes_buscar_doc(**kwargs):
     """
     Buscar Clientes
@@ -131,4 +136,5 @@ def clientes_buscar_doc(**kwargs):
     """
     # Importar e chamar endpoint real
     from app.routes.clientes import buscar_clientes_autocomplete
+
     return buscar_clientes_autocomplete()

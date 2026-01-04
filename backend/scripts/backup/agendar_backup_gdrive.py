@@ -39,7 +39,11 @@ def setup_logging():
 
 def run_backup(args) -> bool:
     mgr = BackupManager(retention_days=args.retention)
-    logging.info("Iniciando backup encriptado (compress=%s, gdrive_dir=%s)", not args.no_compress, args.gdrive_dir or "padrão")
+    logging.info(
+        "Iniciando backup encriptado (compress=%s, gdrive_dir=%s)",
+        not args.no_compress,
+        args.gdrive_dir or "padrão",
+    )
     result = mgr.create_encrypted_backup(
         compress=not args.no_compress,
         upload_drive=args.upload_drive,
@@ -74,15 +78,39 @@ def loop_forever(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Agendar backup encriptado para Google Drive")
-    parser.add_argument("--keep-remote", type=int, default=90, help="Qtd de backups para manter no Drive")
+    parser.add_argument(
+        "--keep-remote",
+        type=int,
+        default=90,
+        help="Qtd de backups para manter no Drive",
+    )
     parser.add_argument("--keep-local", action="store_true", help="Manter backup encriptado local")
-    parser.add_argument("--no-compress", action="store_true", help="Não comprimir antes de encriptar")
-    parser.add_argument("--folder-id", type=str, help="ID da pasta no Google Drive (opcional, para upload via API)")
-    parser.add_argument("--gdrive-dir", type=str, help="Caminho do diretório do Google Drive Desktop (opcional)")
+    parser.add_argument(
+        "--no-compress", action="store_true", help="Não comprimir antes de encriptar"
+    )
+    parser.add_argument(
+        "--folder-id",
+        type=str,
+        help="ID da pasta no Google Drive (opcional, para upload via API)",
+    )
+    parser.add_argument(
+        "--gdrive-dir",
+        type=str,
+        help="Caminho do diretório do Google Drive Desktop (opcional)",
+    )
     parser.add_argument("--retention", type=int, default=30, help="Dias de retenção local")
-    parser.add_argument("--interval-hours", type=int, default=24, help="Intervalo em horas para modo loop")
+    parser.add_argument(
+        "--interval-hours",
+        type=int,
+        default=24,
+        help="Intervalo em horas para modo loop",
+    )
     parser.add_argument("--loop", action="store_true", help="Mantém o processo em loop (schedule)")
-    parser.add_argument("--upload-drive", action="store_true", help="Fazer upload via API (opcional, padrão usa Google Drive Desktop)")
+    parser.add_argument(
+        "--upload-drive",
+        action="store_true",
+        help="Fazer upload via API (opcional, padrão usa Google Drive Desktop)",
+    )
 
     args = parser.parse_args()
     setup_logging()
@@ -96,4 +124,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

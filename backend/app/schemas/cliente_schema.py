@@ -19,6 +19,7 @@ class ClienteSchema(Schema):
 
 class ClienteCreateSchema(ClienteSchema):
     """Schema para criação de cliente"""
+
     pass
 
 
@@ -38,4 +39,3 @@ class ClienteAutocompleteSchema(Schema):
     nome = fields.Str()
     telefone = fields.Str()
     total_pedidos = fields.Int()
-

@@ -25,7 +25,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_segunda_07_00(self):
         """Segunda-feira 07:00 deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 1, 7, 0, 0)  # Segunda 07:00
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -33,7 +33,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_segunda_18_00(self):
         """Segunda-feira 18:00 deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 1, 18, 0, 0)  # Segunda 18:00
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -41,7 +41,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_segunda_06_59(self):
         """Segunda-feira 06:59 não deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 1, 6, 59, 0)  # Segunda 06:59
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -49,7 +49,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_segunda_18_01(self):
         """Segunda-feira 18:01 não deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 1, 18, 1, 0)  # Segunda 18:01
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -57,7 +57,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_sabado_07_00(self):
         """Sábado 07:00 deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 6, 7, 0, 0)  # Sábado 07:00
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -65,7 +65,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_sabado_14_00(self):
         """Sábado 14:00 deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 6, 14, 0, 0)  # Sábado 14:00
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -73,7 +73,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_sabado_06_59(self):
         """Sábado 06:59 não deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 6, 6, 59, 0)  # Sábado 06:59
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -81,7 +81,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_sabado_14_01(self):
         """Sábado 14:01 não deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 6, 14, 1, 0)  # Sábado 14:01
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -89,7 +89,7 @@ class TestScheduledBackup(unittest.TestCase):
 
     def test_should_run_backup_now_domingo(self):
         """Domingo não deve executar"""
-        with patch('scripts.backup.run_scheduled_backup.datetime') as mock_dt:
+        with patch("scripts.backup.run_scheduled_backup.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 7, 10, 0, 0)  # Domingo 10:00
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
             result = should_run_backup_now()
@@ -110,6 +110,7 @@ class TestScheduledBackup(unittest.TestCase):
 
             # Ajustar timestamp para 30 minutos atrás
             import os
+
             thirty_min_ago = now.timestamp() - 30 * 60
             os.utime(backup_file, (thirty_min_ago, thirty_min_ago))
 
@@ -133,6 +134,7 @@ class TestScheduledBackup(unittest.TestCase):
 
             # Ajustar timestamp do arquivo para 2 horas atrás também
             import os
+
             file_timestamp = two_hours_ago.timestamp()
             os.utime(backup_file, (file_timestamp, file_timestamp))
 
@@ -140,6 +142,5 @@ class TestScheduledBackup(unittest.TestCase):
             self.assertIsNone(result)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-

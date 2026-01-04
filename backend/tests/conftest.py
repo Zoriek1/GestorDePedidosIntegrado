@@ -24,12 +24,14 @@ def app():
     db_fd, db_path = tempfile.mkstemp()
 
     # Configurar app para testes
-    app = create_app(config={
-        'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_path}',
-        'SECRET_KEY': 'test-secret-key',
-        'WTF_CSRF_ENABLED': False
-    })
+    app = create_app(
+        config={
+            "TESTING": True,
+            "SQLALCHEMY_DATABASE_URI": f"sqlite:///{db_path}",
+            "SECRET_KEY": "test-secret-key",
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
     with app.app_context():
         db.create_all()
@@ -70,4 +72,3 @@ def session(app):
         # Limpar após cada teste
         db.session.rollback()
         db.session.remove()
-

@@ -13,15 +13,17 @@ from typing import Dict, List, Optional
 
 class BackupSlot(Enum):
     """Slot de retenção GFS"""
-    HOURLY = 'hourly'
-    DAILY = 'daily'
-    WEEKLY = 'weekly'
-    MONTHLY = 'monthly'
+
+    HOURLY = "hourly"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
 
 
 @dataclass
 class GFSRetentionPolicy:
     """Política de retenção GFS"""
+
     hourly: int = 48
     daily: int = 30
     weekly: int = 12
@@ -37,7 +39,7 @@ def extract_timestamp_from_filename(filename: str) -> Optional[datetime]:
     Returns:
         datetime ou None se não conseguir extrair
     """
-    pattern = r'database_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})'
+    pattern = r"database_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})"
     match = re.search(pattern, filename)
 
     if not match:
@@ -94,10 +96,7 @@ def categorize_backup_slot(dt: datetime) -> BackupSlot:
     return BackupSlot.MONTHLY
 
 
-def apply_gfs_retention(
-    files: List[Path],
-    policy: GFSRetentionPolicy
-) -> Dict[str, List[Path]]:
+def apply_gfs_retention(files: List[Path], policy: GFSRetentionPolicy) -> Dict[str, List[Path]]:
     """
     Aplica política de retenção GFS
 
@@ -129,7 +128,7 @@ def apply_gfs_retention(
         BackupSlot.HOURLY: [],
         BackupSlot.DAILY: [],
         BackupSlot.WEEKLY: [],
-        BackupSlot.MONTHLY: []
+        BackupSlot.MONTHLY: [],
     }
 
     for file_path, timestamp, slot in backups_with_slots:
@@ -143,7 +142,7 @@ def apply_gfs_retention(
         BackupSlot.HOURLY: policy.hourly,
         BackupSlot.DAILY: policy.daily,
         BackupSlot.WEEKLY: policy.weekly,
-        BackupSlot.MONTHLY: policy.monthly
+        BackupSlot.MONTHLY: policy.monthly,
     }
 
     for slot, limit in slot_limits.items():
@@ -158,8 +157,4 @@ def apply_gfs_retention(
         for i in range(keep_count, len(backups_in_slot)):
             to_delete.append(backups_in_slot[i][0])
 
-    return {
-        'keep': to_keep,
-        'delete': to_delete
-    }
-
+    return {"keep": to_keep, "delete": to_delete}

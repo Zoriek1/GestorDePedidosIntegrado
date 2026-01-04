@@ -15,10 +15,10 @@ if str(backend_dir) not in sys.path:
 from app.middleware import requires_edit_auth  # noqa: E402
 from scripts.backup.status import get_backup_health  # noqa: E402
 
-backup_admin_bp = Blueprint('backup_admin', __name__, url_prefix='/api/admin/backup')
+backup_admin_bp = Blueprint("backup_admin", __name__, url_prefix="/api/admin/backup")
 
 
-@backup_admin_bp.route('/health', methods=['GET'])
+@backup_admin_bp.route("/health", methods=["GET"])
 @requires_edit_auth
 def backup_health():
     """
@@ -31,20 +31,22 @@ def backup_health():
     """
     try:
         import os
-        max_age_hours = int(os.environ.get('BACKUP_HEALTH_MAX_AGE_HOURS', '24'))
+
+        max_age_hours = int(os.environ.get("BACKUP_HEALTH_MAX_AGE_HOURS", "24"))
 
         health_data = get_backup_health(max_age_hours=max_age_hours)
 
-        return jsonify({
-            'success': True,
-            'health': health_data['health'],
-            'status': health_data['status'],
-            'issues': health_data['issues'],
-            'last_update': health_data['status'].get('last_backup_ok_at')
-        })
+        return jsonify(
+            {
+                "success": True,
+                "health": health_data["health"],
+                "status": health_data["status"],
+                "issues": health_data["issues"],
+                "last_update": health_data["status"].get("last_backup_ok_at"),
+            }
+        )
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': f'Erro ao obter health de backup: {str(e)}'
-        }), 500
-
+        return (
+            jsonify({"success": False, "error": f"Erro ao obter health de backup: {str(e)}"}),
+            500,
+        )

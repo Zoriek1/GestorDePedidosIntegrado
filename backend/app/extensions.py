@@ -79,7 +79,13 @@ def configure_sqlite_pragmas():
         sync_mode = os.environ.get('SQLITE_SYNCHRONOUS', 'FULL')
         cursor.execute(f"PRAGMA synchronous = {sync_mode}")
         
-        cursor.execute("PRAGMA foreign_keys = ON")
+        # Foreign keys podem ser desabilitadas via variável de ambiente
+        foreign_keys_enabled = os.environ.get('SQLITE_FOREIGN_KEYS', 'ON').upper() in ('ON', '1', 'TRUE', 'YES')
+        if foreign_keys_enabled:
+            cursor.execute("PRAGMA foreign_keys = ON")
+        else:
+            cursor.execute("PRAGMA foreign_keys = OFF")
+        
         cursor.execute("PRAGMA busy_timeout = 5000")
         
         cursor.close()
@@ -120,7 +126,8 @@ def init_extensions(app):
     # Configurar PRAGMAs via event hook
     configure_sqlite_pragmas()
     
-    print("[DB] PRAGMAs configurados via event hook: WAL, synchronous, foreign_keys, busy_timeout")
+    foreign_keys_status = "ON" if os.environ.get('SQLITE_FOREIGN_KEYS', 'ON').upper() in ('ON', '1', 'TRUE', 'YES') else "OFF"
+    print(f"[DB] PRAGMAs configurados via event hook: WAL, synchronous, foreign_keys={foreign_keys_status}, busy_timeout")
 
 
 def init_database(app):

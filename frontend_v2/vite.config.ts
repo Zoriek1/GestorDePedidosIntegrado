@@ -163,6 +163,8 @@ export default defineConfig(({ mode }) => {
       sourcemap: isProduction ? false : true,
       // Chunk size warning limit
       chunkSizeWarningLimit: 1000,
+      // Performance optimizations
+      reportCompressedSize: false, // Desabilita cálculo de tamanho comprimido (mais rápido)
       // Rollup options for better code splitting
       rollupOptions: {
         output: {
@@ -175,7 +177,11 @@ export default defineConfig(({ mode }) => {
             'date-vendor': ['date-fns', 'dayjs'],
             'map-vendor': ['leaflet', 'react-leaflet'],
           }
-        }
+        },
+        // Limitar paralelismo para evitar sobrecarga (apenas em desenvolvimento local)
+        ...(process.env.CI ? {} : { 
+          maxParallelFileOps: 2, // Limitar operações paralelas de arquivo
+        }),
       },
       // Minification
       minify: 'esbuild',

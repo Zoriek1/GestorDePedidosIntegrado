@@ -5,6 +5,53 @@ Gerencia rotas para servir arquivos do frontend PWA
 """
 from flask import send_from_directory, abort, request
 from pathlib import Path
+import os
+
+
+def add_security_headers(response):
+    """
+    Adiciona headers de segurança HTTP à resposta
+    
+    Args:
+        response: Objeto Response do Flask
+        
+    Returns:
+        Response: Resposta com headers de segurança adicionados
+    """
+    # Prevenir MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    # Prevenir clickjacking (DENY para máxima segurança, ou SAMEORIGIN se necessário)
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    
+    # Proteção XSS (legado, mas ainda útil para navegadores antigos)
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    # Política de referrer
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Permissions Policy (limitar acesso a APIs sensíveis)
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    
+    # Content Security Policy (CSP) - ajustar conforme necessário
+    # Permitir recursos do mesmo origin e CDNs comuns
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # unsafe-inline/eval necessário para alguns bundlers
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' https://gestaopedidos.planteumaflor.online; "
+        "worker-src 'self' blob:; "
+        "manifest-src 'self';"
+    )
+    response.headers['Content-Security-Policy'] = csp
+    
+    # HSTS (HTTP Strict Transport Security) - apenas em produção com HTTPS
+    if os.environ.get('FLASK_ENV') == 'production' and os.environ.get('USE_HTTPS', '').lower() == 'true':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    return response
 
 
 def register_static_routes(app):
@@ -58,7 +105,6 @@ def register_static_routes(app):
             abort(404)
         
         try:
-            
             # Apontar para o frontend novo (frontend_v2/dist)
             frontend_dir = Path(__file__).parent.parent.parent / 'frontend_v2' / 'dist'
             
@@ -70,6 +116,9 @@ def register_static_routes(app):
             file_path = frontend_dir / path
             if file_path.exists() and file_path.is_file():
                 response = send_from_directory(str(frontend_dir), path)
+                
+                # Adicionar headers de segurança
+                response = add_security_headers(response)
                 
                 # Service Worker, index.html e manifest devem ser servidos com no-cache
                 # para garantir que sempre busquem a versão mais recente
@@ -86,6 +135,7 @@ def register_static_routes(app):
             
             # Caso contrário, serve o index.html (SPA routing)
             response = send_from_directory(str(frontend_dir), 'index.html')
+            response = add_security_headers(response)
             response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
             response.headers['Pragma'] = 'no-cache'
             response.headers['Expires'] = '0'
@@ -96,6 +146,7 @@ def register_static_routes(app):
             try:
                 frontend_dir = Path(__file__).parent.parent.parent / 'frontend_v2' / 'dist'
                 response = send_from_directory(str(frontend_dir), 'index.html')
+                response = add_security_headers(response)
                 response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                 response.headers['Pragma'] = 'no-cache'
                 response.headers['Expires'] = '0'

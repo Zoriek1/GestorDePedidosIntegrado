@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:fast": "vite build",
     "build:prod": "npm run build",
     "build:dev": "vite build --mode development",
+    "build:check": "tsc --noEmit && vite build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "serve:static": "npx serve -s dist -l 3000",
-    "clean": "rm -rf dist node_modules/.vite",
+    "clean": "powershell -Command \"if (Test-Path dist) { Remove-Item -Recurse -Force dist }; if (Test-Path node_modules/.vite) { Remove-Item -Recurse -Force node_modules/.vite }\"",
+    "clean:full": "powershell -Command \"if (Test-Path dist) { Remove-Item -Recurse -Force dist }; if (Test-Path node_modules/.vite) { Remove-Item -Recurse -Force node_modules/.vite }; if (Test-Path node_modules/.cache) { Remove-Item -Recurse -Force node_modules/.cache }\"",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

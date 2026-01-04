@@ -4512,6 +4512,26 @@ registerRoute(
   })
 );
 
+// 3. Recursos de CDN (Shoelace, Awesomplete, Font Awesome, Google Fonts)
+registerRoute(
+  ({ url }) => (
+    url.origin === 'https://cdn.jsdelivr.net' ||
+    url.origin === 'https://cdnjs.cloudflare.com' ||
+    url.origin === 'https://fonts.googleapis.com' ||
+    url.origin === 'https://fonts.gstatic.com'
+  ),
+  new CacheFirst({
+    cacheName: 'cdn-cache',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 50,
+        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 dias
+      })
+    ]
+  })
+);
+
 // 3. Imagens (same-origin): CacheFirst com expiração
 // Usar url.pathname para ignorar query params de cache-busting
 registerRoute(

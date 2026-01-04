@@ -7,6 +7,17 @@ import os
 import sys
 import configparser
 from pathlib import Path
+import json
+import time
+
+# #region agent log
+def log_debug(msg, data):
+    try:
+        with open(r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "timestamp": int(time.time()*1000), "location": "main.py", "message": msg, "data": data}) + "\n")
+    except Exception as e:
+        print(f"Log error: {e}")
+# #endregion
 
 # Carregar variáveis de ambiente do arquivo .env
 from dotenv import load_dotenv
@@ -21,7 +32,7 @@ if sys.platform == 'win32':
 
 from app import create_app
 from app.config import config
-from app.utils.backup_helper import create_backup, has_recent_backup, get_last_backup_time
+from app.utils.backup_helper import create_backup
 
 def get_local_ip():
     """Descobre o IP local da máquina"""
@@ -76,12 +87,16 @@ def check_port_in_use(port=5000):
         sock.settimeout(1)
         result = sock.connect_ex(('localhost', port))
         sock.close()
+        log_debug("check_port_in_use", {"port": port, "result": result, "in_use": result == 0})
         return result == 0
-    except:
+    except Exception as e:
+        log_debug("check_port_in_use exception", {"error": str(e)})
         return False
 
 def main():
     """Função principal para iniciar o servidor"""
+    is_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    log_debug("main starting", {"args": sys.argv, "WERKZEUG_RUN_MAIN": str(is_reloader)})
     
     # Se --help ou comandos CLI foram passados, usar Flask CLI
     if '--help' in sys.argv or any(arg.startswith('cli ') for arg in sys.argv):
@@ -90,26 +105,29 @@ def main():
         # Flask CLI vai processar os comandos
         return
     
-    # Verificar se a porta já está em uso
-    if check_port_in_use(5000):
-        print("\n[AVISO] A porta 5000 ja esta em uso!")
-        print("   Servidor pode ja estar rodando.")
-        print("   Para parar: Execute parar_servidor.bat")
-        print("   Ou tente acessar: https://localhost:5000\n")
-        
-        # Verificar se foi passado --force ou --yes para pular input
-        force_start = '--force' in sys.argv or '--yes' in sys.argv or os.environ.get('FORCE_START', '').lower() == 'true'
-        
-        if not force_start:
-            try:
-                resposta = input("Deseja tentar iniciar mesmo assim? (s/n): ")
-                if resposta.lower() != 's':
-                    print("\n[INFO] Inicializacao cancelada.")
+    # Verificar se a porta já está em uso (SKIP if in reloader child process)
+    if not is_reloader:
+        if check_port_in_use(5000):
+            print("\n[AVISO] A porta 5000 ja esta em uso!")
+            print("   Servidor pode ja estar rodando.")
+            print("   Para parar: Execute parar_servidor.bat")
+            print("   Ou tente acessar: https://localhost:5000\n")
+            
+            # Verificar se foi passado --force ou --yes para pular input
+            force_start = '--force' in sys.argv or '--yes' in sys.argv or os.environ.get('FORCE_START', '').lower() == 'true'
+            
+            if not force_start:
+                try:
+                    resposta = input("Deseja tentar iniciar mesmo assim? (s/n): ")
+                    if resposta.lower() != 's':
+                        print("\n[INFO] Inicializacao cancelada.")
+                        return
+                except (EOFError, KeyboardInterrupt):
+                    print("\n[INFO] Input nao disponivel. Use --force para iniciar automaticamente.")
+                    print("[INFO] Inicializacao cancelada.")
                     return
-            except (EOFError, KeyboardInterrupt):
-                print("\n[INFO] Input nao disponivel. Use --force para iniciar automaticamente.")
-                print("[INFO] Inicializacao cancelada.")
-                return
+    else:
+        log_debug("Skipping port check", {"reason": "Running in reloader subprocess"})
     
     # Determinar ambiente (development ou production)
     env = os.environ.get('FLASK_ENV', 'development')
@@ -130,30 +148,62 @@ def main():
         'JSON_SORT_KEYS': app_config.JSON_SORT_KEYS
     })
     
-    # Verificar e criar backup se necessário ao iniciar servidor
-    try:
-        with app.app_context():
-            if not has_recent_backup(hours=24):
-                print("\n[BACKUP] Nenhum backup recente encontrado (últimas 24h)")
-                last_backup = get_last_backup_time()
-                if last_backup:
-                    print(f"[BACKUP] Último backup: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
-                else:
-                    print("[BACKUP] Nenhum backup encontrado no sistema")
+    # Criar backup sempre ao iniciar servidor
+    # Apenas no processo pai para evitar backup duplicado
+    # IMPORTANTE: Executar em thread separada para não bloquear inicialização do servidor
+    if not is_reloader:
+        import threading
+        
+        def create_startup_backup(app_instance):
+            """Cria backup em thread separada para não bloquear servidor"""
+            import time
+            # Aguardar um pouco para garantir que o servidor está totalmente inicializado
+            time.sleep(2)
+            
+            try:
+                # Verificar se a aplicação ainda está válida antes de criar backup
+                if app_instance is None:
+                    return
                 
-                print("[BACKUP] Criando backup automático ao iniciar servidor...")
-                backup_path = create_backup(reason='startup', silent=False)
-                if backup_path:
-                    print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
+                with app_instance.app_context():
+                    print("\n[BACKUP] Criando backup automático ao iniciar servidor...")
+                    backup_path = create_backup(reason='startup', silent=False)
+                    if backup_path:
+                        print(f"[BACKUP] ✓ Backup criado: {backup_path.name}\n")
+                    else:
+                        print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
+            except RuntimeError as e:
+                # Ignorar erros de contexto quando servidor está sendo finalizado
+                if 'application context' in str(e).lower() or 'working outside' in str(e).lower():
+                    return
+                print(f"[AVISO] Erro ao criar backup ao iniciar servidor: {e}")
+            except Exception as e:
+                # Capturar erro específico de datetime se ocorrer
+                error_msg = str(e)
+                if 'datetime' in error_msg.lower() and 'not associated' in error_msg.lower():
+                    print(f"[AVISO] Erro de importação ao criar backup: {e}")
+                    print("[AVISO] Tentando novamente com import explícito...")
+                    try:
+                        from datetime import datetime
+                        with app_instance.app_context():
+                            backup_path = create_backup(reason='startup', silent=False)
+                            if backup_path:
+                                print(f"[BACKUP] ✓ Backup criado após retry: {backup_path.name}\n")
+                    except Exception as retry_error:
+                        print(f"[AVISO] Falha no retry do backup: {retry_error}")
                 else:
-                    print("[AVISO] Falha ao criar backup automático ao iniciar servidor\n")
-            else:
-                last_backup = get_last_backup_time()
-                if last_backup:
-                    print(f"[BACKUP] Backup recente encontrado: {last_backup[1].strftime('%Y-%m-%d %H:%M:%S')}")
-    except Exception as e:
-        print(f"[AVISO] Erro ao verificar/criar backup ao iniciar servidor: {e}")
-        # Continuar inicialização mesmo se backup falhar
+                    print(f"[AVISO] Erro ao criar backup ao iniciar servidor: {e}")
+                # Continuar mesmo se backup falhar
+        
+        # Iniciar backup em thread separada (daemon = morre quando servidor fecha)
+        backup_thread = threading.Thread(
+            target=create_startup_backup,
+            args=(app,),
+            daemon=True,
+            name="StartupBackupThread"
+        )
+        backup_thread.start()
+        print("[INFO] Backup inicial iniciado em thread separada (não bloqueia servidor)")
     
     # Descobrir IP local e hostname
     local_ip = get_local_ip()
@@ -206,36 +256,63 @@ def main():
         print("   2. Inicie com: iniciar_servidor_https.bat")
     
     # Configurar opções de execução
-    run_options = {
-        'host': app_config.HOST,
-        'port': app_config.PORT,
-        'ssl_context': ssl_context
-    }
+    debug_mode = app_config.DEBUG if not no_reload else False
+    use_reloader_mode = not no_reload
     
-    # Desativar reloader se solicitado (evita problemas de "travamento")
     if no_reload:
-        # Desativar completamente debug e reloader para modo estável
-        run_options['debug'] = False
-        run_options['use_reloader'] = False
         print("\n[INFO] Modo estavel: Debug e reloader desativados")
-    else:
-        # Modo debug normal (com reloader)
-        run_options['debug'] = app_config.DEBUG
-        run_options['use_reloader'] = True
     
     print("\n[OK] Pressione Ctrl+C para parar o servidor")
     print("="*60 + "\n")
     
-    # Iniciar servidor
+    # Usar run_simple do Werkzeug para melhor controle e threading
+    # Isso resolve problemas de requisições não sendo processadas
+    from werkzeug.serving import run_simple
+    
+    print(f"[SERVIDOR] Iniciando servidor Flask...")
+    print(f"[SERVIDOR] Host: {app_config.HOST}, Porta: {app_config.PORT}")
+    print(f"[SERVIDOR] Threading: HABILITADO (permite requisições simultâneas)")
+    print(f"[SERVIDOR] Debug: {debug_mode}, Reloader: {use_reloader_mode}")
+    print(f"[SERVIDOR] Servidor pronto para receber requisições!\n")
+    
+    # Adicionar hook para logar primeira requisição (diagnóstico)
+    @app.before_request
+    def log_first_request():
+        """Log primeira requisição para confirmar que servidor está processando"""
+        from flask import request
+        # Apenas logar primeira requisição para não poluir logs
+        if not hasattr(app, '_first_request_logged'):
+            print(f"[SERVIDOR] ✓ Primeira requisição recebida: {request.method} {request.path}")
+            print(f"[SERVIDOR] ✓ Servidor está processando requisições corretamente\n")
+            app._first_request_logged = True
+    
+    # Iniciar servidor com run_simple (mais robusto que app.run())
     try:
-        app.run(**run_options)
+        log_debug("run_simple calling", {
+            "host": app_config.HOST,
+            "port": app_config.PORT,
+            "threaded": True,
+            "debug": debug_mode,
+            "reloader": use_reloader_mode
+        })
+        
+        run_simple(
+            hostname=app_config.HOST,
+            port=app_config.PORT,
+            application=app,
+            use_debugger=debug_mode,
+            use_reloader=use_reloader_mode,
+            ssl_context=ssl_context,
+            threaded=True,  # CRÍTICO: Permite requisições simultâneas
+            processes=1,  # Não usar processos múltiplos (SQLite não suporta)
+        )
     except KeyboardInterrupt:
         print("\n\n[AVISO] Servidor encerrado pelo usuario")
         print("[OK] Obrigado por usar Plante Uma Flor!\n")
     except Exception as e:
+        log_debug("app.run exception", {"error": str(e)})
         print(f"\n[ERRO] Erro ao iniciar servidor: {e}\n")
         raise
 
 if __name__ == '__main__':
     main()
-

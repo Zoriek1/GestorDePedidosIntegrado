@@ -79,11 +79,31 @@ const API = {
     },
     
     /**
+     * Gera ID único para requisição (Phase 0)
+     */
+    generateRequestId() {
+        return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    },
+
+    /**
      * Faz requisição HTTP
      */
     async request(endpoint, options = {}) {
         const url = `${this.baseURL}${endpoint}`;
         const method = options.method || 'GET';
+        
+        // Gerar requestId para rastreamento (Phase 0)
+        const requestId = this.generateRequestId();
+        const startTime = Date.now();
+        
+        // Log request (Phase 0)
+        if (typeof Telemetry !== 'undefined') {
+            Telemetry.logInfo('api', 'request', `API request: ${method} ${endpoint}`, {
+                method,
+                url: endpoint,
+                requestId
+            }, requestId);
+        }
         
         // Verificar se esta rota requer autenticação
         const needsAuth = this.requiresAuth(endpoint, method);
@@ -120,8 +140,8 @@ const API = {
             Object.assign(headers, authHeader);
         }
         
-        // Timeout com AbortController
-        const timeoutMs = options.timeoutMs ?? 10000;
+        // Timeout com AbortController (ajustar para 15s se não especificado - Phase 0)
+        const timeoutMs = options.timeoutMs ?? 15000;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         
@@ -135,6 +155,17 @@ const API = {
         try {
             const response = await fetch(url, config);
             clearTimeout(timeoutId);
+            
+            const durationMs = Date.now() - startTime;
+            
+            // Log response (Phase 0)
+            if (typeof Telemetry !== 'undefined') {
+                Telemetry.logInfo('api', 'response', `API response: ${method} ${endpoint}`, {
+                    requestId,
+                    status: response.status,
+                    durationMs
+                }, requestId);
+            }
             
             // Usar parseResponse() unificada
             const parseResult = await this.parseResponse(response);
@@ -231,17 +262,41 @@ const API = {
                     error: errorMsg, 
                     data: parseResult.data 
                 });
-                throw new Error(errorMsg);
+                
+                // Log error (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logError('api', 'error', new Error(errorMsg), {
+                        requestId,
+                        url: endpoint,
+                        status: response.status,
+                        errorType: 'http_error'
+                    }, requestId);
+                }
+                
+                // Normalize error response (Phase 0)
+                return {
+                    ok: false,
+                    success: false,
+                    status: response.status,
+                    code: `HTTP_${response.status}`,
+                    message: errorMsg,
+                    details: parseResult.isJson ? parseResult.data : null,
+                    requestId
+                };
             }
 
             // Sucesso: response.ok e sem erro de parse
             return { 
+                ok: true,
                 success: true, 
                 data: parseResult.data, 
-                status: response.status 
+                status: response.status,
+                requestId
             };
         } catch (error) {
             clearTimeout(timeoutId);
+            
+            const durationMs = Date.now() - startTime;
             
             console.error('[API] Erro na requisição:', { 
                 endpoint, 
@@ -251,30 +306,65 @@ const API = {
                 stack: error.stack 
             });
             
+            // Log error (Phase 0)
+            if (typeof Telemetry !== 'undefined') {
+                Telemetry.logError('api', 'error', error, {
+                    requestId,
+                    url: endpoint,
+                    method,
+                    durationMs,
+                    errorType: error.name || 'unknown'
+                }, requestId);
+            }
+            
+            // Normalize error responses (Phase 0)
             // Tratar AbortError (timeout)
             if (error.name === 'AbortError') {
                 return { 
+                    ok: false,
                     success: false, 
-                    error: 'Timeout na requisição', 
-                    timeout: true 
+                    error: 'Timeout na requisição',
+                    code: 'TIMEOUT',
+                    message: 'Timeout na requisição',
+                    timeout: true,
+                    requestId
                 };
             }
             
             // Se está offline, tentar usar cache do IndexedDB
             if (typeof Utils !== 'undefined' && !Utils.isOnline()) {
-                return { success: false, offline: true, error: error.message };
+                return { 
+                    ok: false,
+                    success: false, 
+                    offline: true, 
+                    error: error.message,
+                    code: 'OFFLINE',
+                    message: error.message,
+                    requestId
+                };
             }
             
             // NetworkError específico
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 return { 
+                    ok: false,
                     success: false, 
                     error: 'Erro de conexão. Verifique sua internet e se o servidor está rodando.',
-                    networkError: true
+                    code: 'NETWORK_ERROR',
+                    message: 'Erro de conexão. Verifique sua internet e se o servidor está rodando.',
+                    networkError: true,
+                    requestId
                 };
             }
             
-            return { success: false, error: error.message || 'Erro desconhecido na requisição' };
+            return { 
+                ok: false,
+                success: false, 
+                error: error.message || 'Erro desconhecido na requisição',
+                code: 'UNKNOWN_ERROR',
+                message: error.message || 'Erro desconhecido na requisição',
+                requestId
+            };
         }
     },
 
@@ -529,9 +619,17 @@ const API = {
     }
 };
 
-// Interceptor global de erros
+// Interceptor global de erros (Phase 0: também logar em telemetry)
 window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
+    
+    // Log to telemetry (Phase 0)
+    if (typeof Telemetry !== 'undefined') {
+        const reason = event.reason;
+        Telemetry.logError('api', 'unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)), {
+            reason: String(reason).substring(0, 200)
+        });
+    }
     
     if (typeof Utils !== 'undefined' && !Utils.isOnline()) {
         if (typeof Notification !== 'undefined') {

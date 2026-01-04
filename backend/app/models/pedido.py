@@ -69,6 +69,9 @@ class Pedido(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='Data de criação')
     updated_at = db.Column(db.DateTime, nullable=True, onupdate=datetime.utcnow, comment='Última atualização')
     
+    # Soft Delete (P0.3)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True, comment='Data de exclusão (soft delete)')
+    
     def __repr__(self):
         return f'<Pedido #{self.id} - {self.cliente} → {self.destinatario} ({self.status})>'
     
@@ -169,6 +172,23 @@ class Pedido(db.Model):
         ).all()
         return [p for p in all_pedidos if p.is_overdue()]
     
+    @property
+    def is_deleted(self):
+        """Verifica se pedido está soft-deleted"""
+        return self.deleted_at is not None
+    
+    def soft_delete(self):
+        """Marca pedido como deletado (soft delete)"""
+        if not self.is_deleted:
+            self.deleted_at = datetime.utcnow()
+            self.updated_at = datetime.utcnow()
+    
+    def restore(self):
+        """Restaura pedido deletado (reverte soft delete)"""
+        if self.is_deleted:
+            self.deleted_at = None
+            self.updated_at = datetime.utcnow()
+    
     @staticmethod
     def cleanup_old_pedidos(days=1):
         """Arquiva (oculta) pedidos concluídos há mais de X dias - NÃO deleta do banco"""
@@ -176,7 +196,8 @@ class Pedido(db.Model):
         old_pedidos = Pedido.query.filter(
             Pedido.status == 'concluido',
             Pedido.updated_at < cutoff_date,
-            Pedido.oculto == False
+            Pedido.oculto == False,
+            Pedido.deleted_at.is_(None)  # Não arquivar pedidos já deletados
         ).all()
         
         count = len(old_pedidos)

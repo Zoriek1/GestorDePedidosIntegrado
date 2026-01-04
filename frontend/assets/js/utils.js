@@ -222,6 +222,46 @@ const Utils = {
         today.setHours(0, 0, 0, 0);
         const diff = date - today;
         return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    },
+
+    /**
+     * Cria um botão Shoelace configurado
+     * @param {Object} options - { variant, size, text, icon, onclick, disabled, loading, className }
+     * @returns {HTMLElement} sl-button
+     */
+    createSlButton(options = {}) {
+        const {
+            variant = 'default', // 'default', 'primary', 'success', 'warning', 'danger', 'text'
+            size = 'medium', // 'small', 'medium', 'large'
+            text = '',
+            icon = null, // { name: 'plus-circle', slot: 'prefix' | 'suffix', library: 'fa' }
+            onclick = null,
+            disabled = false,
+            loading = false,
+            className = ''
+        } = options;
+
+        const button = document.createElement('sl-button');
+        button.variant = variant;
+        button.size = size;
+        button.disabled = disabled;
+        button.loading = loading;
+        if (className) button.className = className;
+        if (text) button.appendChild(document.createTextNode(text));
+
+        if (icon) {
+            const iconEl = document.createElement('sl-icon');
+            iconEl.name = icon.name;
+            iconEl.slot = icon.slot || 'prefix';
+            iconEl.library = icon.library || 'fa';
+            button.appendChild(iconEl);
+        }
+
+        if (onclick) {
+            button.addEventListener('click', onclick);
+        }
+
+        return button;
     }
 };
 

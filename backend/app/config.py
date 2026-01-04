@@ -1,11 +1,24 @@
 # -*- coding: utf-8 -*-
 """
 Configurações da Aplicação Flask
+
+Centraliza todas as variáveis de ambiente e configurações da aplicação.
 """
 import os
 from pathlib import Path
+import json
+import time
 
-class Config:
+# #region agent log
+def log_debug(msg, data):
+    try:
+        with open(r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "debug-session", "timestamp": int(time.time()*1000), "location": "config.py", "message": msg, "data": data}) + "\n")
+    except Exception as e:
+        print(f"Log error: {e}")
+# #endregion
+
+class BaseConfig:
     """Configurações base da aplicação"""
     
     # Diretório base do backend
@@ -29,6 +42,9 @@ class Config:
     )
     # Criar diretório automaticamente se não existir
     GDRIVE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Diretório secundário para backups (P1.4) - opcional
+    BACKUP_SECONDARY_DIR = Path(os.environ.get('BACKUP_SECONDARY_DIR')) if os.environ.get('BACKUP_SECONDARY_DIR') else None
 
     # Secret key para sessões
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'plante-uma-flor-pwa-secret-key-2024'
@@ -47,22 +63,76 @@ class Config:
     # Servidor
     HOST = os.environ.get('HOST') or '0.0.0.0'
     PORT = int(os.environ.get('PORT') or 5000)
-    DEBUG = os.environ.get('DEBUG') or False
+    DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+    
+    # Autenticação
+    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD') or 'plante1998'
+    
+    # APIs Externas
+    GRAPHHOPPER_API_KEY = os.environ.get('GRAPHHOPPER_API_KEY') or ''
+    OPENROUTE_API_KEY = os.environ.get('OPENROUTE_API_KEY') or ''
+    ENDERECO_FLORICULTURA = os.environ.get('ENDERECO_FLORICULTURA') or ''
+    
+    # Segurança e Middleware
+    ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'true').lower() == 'true'
+    ENABLE_RATE_LIMIT = os.environ.get('ENABLE_RATE_LIMIT', 'true').lower() == 'true'
+    ENABLE_DEBUG_ENDPOINTS = os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true'
+    
+    # Ambiente
+    FLASK_ENV = os.environ.get('FLASK_ENV') or os.environ.get('ENVIRONMENT') or 'development'
+    APP_ENV = os.environ.get('APP_ENV') or os.environ.get('ENVIRONMENT') or 'development'
+    
+    # Servidor (opções)
+    USE_HTTPS = os.environ.get('USE_HTTPS', 'false').lower() == 'true'
+    NO_RELOAD = os.environ.get('NO_RELOAD', 'false').lower() == 'true'
+    FORCE_START = os.environ.get('FORCE_START', 'false').lower() == 'true'
+    
+    # Database (SQLite)
+    SQLITE_SYNCHRONOUS = os.environ.get('SQLITE_SYNCHRONOUS', 'FULL')
+    ALLOW_DB_BOOTSTRAP = os.environ.get('ALLOW_DB_BOOTSTRAP', 'false').lower() == 'true'
+    
+    # Google Services
+    GOOGLE_APPLICATION_CREDENTIALS = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or ''
+    GOOGLE_CREDENTIALS_PATH = os.environ.get('GOOGLE_CREDENTIALS_PATH') or ''
+    GDRIVE_BACKUP_FOLDER_ID = os.environ.get('GDRIVE_BACKUP_FOLDER_ID') or ''
+    
+    # Schema Version (P1.1)
+    APP_SCHEMA_VERSION = '1.0'
     
     @staticmethod
     def init_app(app):
         """Inicialização adicional da aplicação"""
-        pass
+        # Do not log secrets (password). Only log non-sensitive diagnostics.
+        log_debug(
+            "BaseConfig.init_app",
+            {
+                "DATABASE_PATH": str(BaseConfig.DATABASE_PATH),
+                "ADMIN_PASSWORD_LEN": len(BaseConfig.ADMIN_PASSWORD) if BaseConfig.ADMIN_PASSWORD else 0,
+                "ADMIN_PASSWORD_IS_LOWER": bool(BaseConfig.ADMIN_PASSWORD) and BaseConfig.ADMIN_PASSWORD == BaseConfig.ADMIN_PASSWORD.lower(),
+            },
+        )
 
-class DevelopmentConfig(Config):
+
+# Backwards-compat alias:
+# Some modules import `Config` (e.g. `from app.config import Config`) expecting a class
+# with static paths like `INSTANCE_DIR`. Keep compatibility without refactoring callers.
+Config = BaseConfig
+
+
+class DevelopmentConfig(BaseConfig):
     """Configurações de desenvolvimento"""
     # DEBUG desativado por padrão para estabilidade com múltiplos clientes
     # Use --no-reload para garantir modo estável
     DEBUG = False
+    FLASK_ENV = 'development'
+    APP_ENV = 'development'
 
-class ProductionConfig(Config):
+
+class ProductionConfig(BaseConfig):
     """Configurações de produção"""
     DEBUG = False
+    FLASK_ENV = 'production'
+    APP_ENV = 'production'
     
     # Em produção, usar secret key da variável de ambiente
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'change-this-in-production-please'
@@ -74,10 +144,20 @@ class ProductionConfig(Config):
             import warnings
             warnings.warn('SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção.')
 
+
+class TestingConfig(BaseConfig):
+    """Configurações para testes"""
+    TESTING = True
+    DEBUG = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SECRET_KEY = 'test-secret-key'
+    WTF_CSRF_ENABLED = False
+
+
 # Dicionário de configurações disponíveis
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
+    'testing': TestingConfig,
     'default': DevelopmentConfig
 }
-

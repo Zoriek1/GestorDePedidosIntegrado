@@ -20,6 +20,8 @@ module.exports = {
     'assets/js/masks.js',
     'assets/js/validators.js',
     'assets/js/cep-api.js',
+    'assets/js/telemetry.js',      // ← ADICIONAR
+    'assets/js/diagnostics.js', 
     
     // JavaScript - Components
     'assets/js/components/notification.js',

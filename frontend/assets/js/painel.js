@@ -675,6 +675,12 @@ const PainelManager = {
 
             const result = await API.deletePedido(pedidoId);
 
+            // Verificar se request foi cancelado (autenticação cancelada)
+            if (result.cancelled) {
+                Notification.warning('Operação cancelada');
+                return;
+            }
+
             if (result.success) {
                 // Remover pedido local
                 this.pedidos = this.pedidos.filter(p => p.id !== pedidoId);
@@ -687,12 +693,15 @@ const PainelManager = {
                 // Recarregar estatísticas
                 this.loadStats();
             } else {
-                throw new Error(result.error);
+                // Mostrar erro específico do backend se disponível
+                const errorMsg = result.error || (result.data && result.data.error) || 'Erro desconhecido';
+                throw new Error(errorMsg);
             }
 
         } catch (error) {
             console.error('Erro ao deletar pedido:', error);
-            Notification.error('Erro ao deletar pedido');
+            // Mostrar mensagem de erro específica ao usuário
+            Notification.error(`Erro ao deletar pedido: ${error.message || 'Erro desconhecido'}`);
         } finally {
             Utils.hideLoading();
         }

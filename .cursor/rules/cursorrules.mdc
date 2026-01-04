@@ -1,0 +1,40 @@
+---
+alwaysApply: true
+---
+# Project Context & Architecture
+
+## Architectural Pattern
+- Adopt a **Service-Oriented Architecture** (or Hexagonal/Clean Architecture if applicable).
+- **Business Logic:** Must be encapsulated within Service Classes, never exposed directly in Controllers or UI components.
+- **Data Access:** Must be abstracted behind Repository Interfaces.
+
+## Coding Standards (Java-like Rigor)
+1. **Interfaces First:**
+   - Every service or complex component must have a defined Interface.
+   - Example (TS): `interface IAuthService { login(dto: LoginDto): Promise<Session>; }`
+   - Example (Python): Use `from abc import ABC` or `typing.Protocol`.
+
+2. **Encapsulation:**
+   - Group related functions into Classes. Avoid floating global functions.
+   - Use `private` / `protected` modifiers rigorously to hide internal complexity.
+   - Use Data Transfer Objects (DTOs) for passing data between layers, not raw generic objects/maps.
+
+3. **Readability & Clean Code:**
+   - **SOLID:** Strictly enforce SOLID principles. If a class is doing too much, suggest splitting it.
+   - **Comments:** Code should be self-documenting through good naming. Only comment "Why", never "What".
+   - **Error Handling:** Use custom typed Exceptions (e.g., `UserNotFoundException`) rather than generic errors.
+
+## Testing
+- Tests must mock the Interfaces, not the concrete classes.
+
+## Custom Commands for Refactoring
+
+- If I ask for **/refactor**:
+  1. Extract magic numbers/strings into constants/enums.
+  2. Create an Interface for the logic if one doesn't exist.
+  3. Wrap the logic in a Class with dependency injection.
+  4. Rename variables to be fully descriptive (no abbreviations).
+  5. Apply Guard Clauses.
+
+- If I ask for **/solid**:
+  Analyze the current file and point out violations of SOLID principles, suggesting a refactor using Interfaces to fix it.

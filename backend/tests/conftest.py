@@ -5,7 +5,14 @@ Configuração de testes - Fixtures compartilhadas
 import pytest
 import tempfile
 import os
+import sys
 from pathlib import Path
+
+# Adicionar backend ao path para que os imports funcionem
+backend_dir = Path(__file__).parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 from app import create_app, db
 from app.config import Config
 

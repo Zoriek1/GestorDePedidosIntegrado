@@ -53,8 +53,12 @@ class BaseRepository(Generic[ModelType]):
             db.session.delete(entity)
             db.session.commit()
             return True
-        except Exception:
+        except Exception as e:
             db.session.rollback()
+            # Log do erro para diagnóstico
+            print(f"[REPOSITORY] Erro ao deletar {type(entity).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def count(self) -> int:

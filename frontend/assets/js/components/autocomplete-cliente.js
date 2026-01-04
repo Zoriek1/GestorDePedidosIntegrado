@@ -1,6 +1,7 @@
 /**
  * Componente Autocomplete de Clientes
  * Busca clientes em tempo real e permite seleção para preenchimento automático
+ * @deprecated Use Awesomplete no lugar deste componente. Será removido após migração.
  */
 
 class AutocompleteCliente {
@@ -21,6 +22,9 @@ class AutocompleteCliente {
             return;
         }
         
+        // Detectar mobile
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+        
         // Event listeners
         this.inputElement.addEventListener('input', (e) => this.handleInput(e));
         this.inputElement.addEventListener('keydown', (e) => this.handleKeydown(e));
@@ -30,12 +34,32 @@ class AutocompleteCliente {
             }
         });
         
-        // Fechar ao clicar fora
-        document.addEventListener('click', (e) => {
+        // Fechar ao clicar/tocar fora (suporte mobile)
+        const handleOutsideClick = (e) => {
             if (!this.inputElement.contains(e.target) && !this.resultsElement.contains(e.target)) {
                 this.hideResults();
             }
-        });
+        };
+        document.addEventListener('click', handleOutsideClick);
+        // Adicionar touchstart para mobile
+        if (this.isMobile) {
+            document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+        }
+        
+        // Prevenir scroll do body quando autocomplete está aberto (mobile)
+        this.resultsElement.addEventListener('touchmove', (e) => {
+            e.stopPropagation();
+        }, { passive: false });
+        
+        // Fechar dropdown ao scrollar (mobile)
+        if (this.isMobile) {
+            this.scrollHandler = () => {
+                if (this.resultsElement.classList.contains('active')) {
+                    this.hideResults();
+                }
+            };
+            window.addEventListener('scroll', this.scrollHandler, { passive: true });
+        }
     }
     
     handleInput(e) {
@@ -46,11 +70,12 @@ class AutocompleteCliente {
             clearTimeout(this.debounceTimeout);
         }
         
-        // Buscar após 300ms sem digitação
+        // Buscar após debounce - maior delay no mobile para melhor performance
+        const debounceDelay = this.isMobile ? 400 : 300;
         if (query.length >= 2) {
             this.debounceTimeout = setTimeout(() => {
                 this.search(query);
-            }, 300);
+            }, debounceDelay);
         } else {
             this.hideResults();
         }
@@ -113,7 +138,7 @@ class AutocompleteCliente {
             `;
         } else {
             this.resultsElement.innerHTML = this.results.map((cliente, index) => `
-                <div class="autocomplete-item" data-index="${index}">
+                <div class="autocomplete-item" data-index="${index}" role="option" tabindex="0">
                     <div class="autocomplete-item-content">
                         <strong>${this.escapeHtml(cliente.nome)}</strong>
                         <span class="text-gray-600">${this.formatTelefone(cliente.telefone)}</span>
@@ -124,27 +149,109 @@ class AutocompleteCliente {
                 </div>
             `).join('');
             
-            // Adicionar event listeners nos itens
+            // Adicionar event listeners nos itens (suporte mobile e desktop)
             this.resultsElement.querySelectorAll('.autocomplete-item').forEach((item, index) => {
-                item.addEventListener('click', () => {
+                const selectHandler = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     this.selectCliente(this.results[index]);
+                };
+                
+                // Click para desktop
+                item.addEventListener('click', selectHandler);
+                
+                // Touchstart para mobile (mais confiável que click)
+                item.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    selectHandler(e);
+                }, { passive: false });
+                
+                // Suporte a keyboard
+                item.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        selectHandler(e);
+                    }
                 });
                 
-                item.addEventListener('mouseenter', () => {
-                    this.selectedIndex = index;
-                    this.highlightResult();
-                });
+                // Hover apenas no desktop
+                if (!this.isMobile) {
+                    item.addEventListener('mouseenter', () => {
+                        this.selectedIndex = index;
+                        this.highlightResult();
+                    });
+                }
             });
+        }
+        
+        // Configurar atributos de acessibilidade
+        this.resultsElement.setAttribute('role', 'listbox');
+        this.inputElement.setAttribute('aria-expanded', 'true');
+        this.inputElement.setAttribute('aria-controls', this.resultsElement.id || 'autocomplete-results');
+        
+        // No mobile, recalcular posição se necessário
+        if (this.isMobile) {
+            this.adjustMobilePosition();
         }
         
         this.resultsElement.classList.add('active');
         this.selectedIndex = -1;
     }
     
+    adjustMobilePosition() {
+        // Calcular posição do input para ajustar dropdown no mobile
+        const inputRect = this.inputElement.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        
+        // Calcular posição top usando position fixed (coordenadas relativas à viewport)
+        // No mobile, usar position fixed com coordenadas da viewport
+        const topPosition = inputRect.bottom + 4; // 4px = margin-top, coordenadas da viewport
+        
+        // Aplicar posição
+        this.resultsElement.style.top = topPosition + 'px';
+        this.resultsElement.style.position = 'fixed';
+        
+        // Calcular espaço disponível abaixo do input
+        const spaceBelow = viewportHeight - inputRect.bottom;
+        const maxHeight = Math.min(250, spaceBelow - 20); // 20px de margem
+        
+        // Ajustar max-height se necessário
+        if (maxHeight < 100) {
+            this.resultsElement.style.maxHeight = '100px';
+        } else {
+            this.resultsElement.style.maxHeight = maxHeight + 'px';
+        }
+        
+        // Garantir z-index alto e outros estilos
+        this.resultsElement.style.zIndex = '9999';
+        this.resultsElement.style.visibility = 'visible';
+        this.resultsElement.style.left = inputRect.left + 8 + 'px'; // 8px = 0.5rem margin
+        this.resultsElement.style.width = (inputRect.width - 16) + 'px'; // 16px = 0.5rem * 2 (margens)
+    }
+    
     hideResults() {
         this.resultsElement.classList.remove('active');
         this.resultsElement.innerHTML = '';
         this.selectedIndex = -1;
+        
+        // Resetar estilos inline do mobile
+        if (this.isMobile) {
+            this.resultsElement.style.top = '';
+            this.resultsElement.style.left = '';
+            this.resultsElement.style.width = '';
+        }
+        
+        // Atualizar atributos de acessibilidade
+        if (this.inputElement) {
+            this.inputElement.setAttribute('aria-expanded', 'false');
+        }
+    }
+    
+    // Cleanup ao destruir instância
+    destroy() {
+        if (this.scrollHandler) {
+            window.removeEventListener('scroll', this.scrollHandler);
+        }
     }
     
     highlightResult() {

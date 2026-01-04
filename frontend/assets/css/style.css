@@ -1,0 +1,1423 @@
+/**
+ * Plante Uma Flor - PWA v3.0
+ * Estilos customizados
+ */
+
+/* Variáveis CSS - Design System Completo */
+:root {
+    /* Primary Colors */
+    --color-primary: #047857;
+    --color-primary-hover: #059669;
+    --color-primary-light: #10b981;
+    --color-primary-soft: rgba(4, 120, 87, 0.1);
+    --color-secondary: #059669;
+    --color-accent: #10b981;
+
+    /* Semantic Colors */
+    --color-success: #059669;
+    --color-warning: #d97706;
+    --color-error: #dc2626;
+    --color-info: #2563eb;
+
+    /* Neutral Colors */
+    --color-neutral-900: #1f2937;
+    --color-neutral-800: #111827;
+    --color-neutral-700: #374151;
+    --color-neutral-600: #4b5563;
+    --color-neutral-500: #6b7280;
+    --color-neutral-400: #9ca3af;
+    --color-neutral-300: #d1d5db;
+    --color-neutral-200: #e5e7eb;
+    --color-neutral-100: #f3f4f6;
+    --color-neutral-50: #f9fafb;
+
+    /* Surface Colors */
+    --color-surface: #ffffff;
+    --color-surface-secondary: #f9fafb;
+    --color-border: var(--color-neutral-200);
+
+    /* Text Colors */
+    --color-text-primary: var(--color-neutral-900);
+    --color-text-secondary: var(--color-neutral-600);
+    --color-text-helper: var(--color-neutral-500);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 10px 10px -5px rgb(0 0 0 / 0.04);
+
+    /* Border Radius */
+    --border-radius-sm: 0.125rem;
+    --border-radius-md: 0.25rem;
+    --border-radius-lg: 0.375rem;
+    --border-radius-xl: 0.5rem;
+
+    /* Spacing Scale */
+    --spacing-1: 0.25rem;
+    /* 4px */
+    --spacing-2: 0.5rem;
+    /* 8px */
+    --spacing-3: 0.75rem;
+    /* 12px */
+    --spacing-4: 1rem;
+    /* 16px */
+    --spacing-6: 1.5rem;
+    /* 24px */
+    --spacing-8: 2rem;
+    /* 32px */
+
+    /* Typography Scale */
+    --font-size-xs: 0.75rem;
+    /* 12px */
+    --font-size-sm: 0.875rem;
+    /* 14px */
+    --font-size-base: 1rem;
+    /* 16px */
+    --font-size-lg: 1.125rem;
+    /* 18px */
+    --font-size-xl: 1.25rem;
+    /* 20px */
+    --font-size-2xl: 1.5rem;
+    /* 24px */
+    --font-size-3xl: 2rem;
+    /* 32px */
+
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+
+    --line-height-tight: 1.2;
+    --line-height-snug: 1.3;
+    --line-height-normal: 1.5;
+    --line-height-relaxed: 1.6;
+
+    /* Shoelace Theme Mapping */
+    --sl-color-primary-500: var(--color-primary);
+    --sl-color-primary-600: var(--color-primary-hover);
+    --sl-color-primary-50: var(--color-primary-soft);
+    --sl-color-primary-700: #065f46;
+    --sl-color-neutral-50: var(--color-neutral-50);
+    --sl-color-neutral-100: var(--color-neutral-100);
+    --sl-color-neutral-200: var(--color-border);
+    --sl-color-neutral-500: var(--color-neutral-500);
+    --sl-color-neutral-600: var(--color-neutral-600);
+    --sl-color-neutral-700: var(--color-neutral-700);
+    --sl-color-neutral-900: var(--color-text-primary);
+    --sl-color-success-500: var(--color-success);
+    --sl-color-warning-500: var(--color-warning);
+    --sl-color-danger-500: var(--color-error);
+    --sl-color-info-500: var(--color-info);
+    --sl-border-radius-small: var(--border-radius-sm);
+    --sl-border-radius-medium: var(--border-radius-md);
+    --sl-border-radius-large: var(--border-radius-lg);
+    --sl-border-radius-x-large: var(--border-radius-xl);
+    --sl-input-height-medium: 44px;
+    --sl-input-height-small: 36px;
+    --sl-button-height-medium: 44px;
+    --sl-button-height-small: 36px;
+    --sl-font-size-small: var(--font-size-sm);
+    --sl-font-size-medium: var(--font-size-base);
+    --sl-font-size-large: var(--font-size-lg);
+    --sl-shadow-small: var(--shadow-sm);
+    --sl-shadow-medium: var(--shadow-md);
+    --sl-shadow-large: var(--shadow-lg);
+    --sl-shadow-x-large: var(--shadow-xl);
+}
+
+/* Reset e configurações gerais */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ==================== SHOELACE DIALOG CUSTOMIZATION ==================== */
+sl-dialog {
+    --width: 720px;
+    --header-spacing: var(--spacing-6);
+    --body-spacing: var(--spacing-6);
+    --footer-spacing: var(--spacing-6);
+}
+
+sl-dialog::part(overlay) {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+sl-dialog::part(panel) {
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--shadow-xl);
+}
+
+@media (max-width: 768px) {
+    sl-dialog {
+        --width: 95%;
+        --header-spacing: var(--spacing-4);
+        --body-spacing: var(--spacing-4);
+        --footer-spacing: var(--spacing-4);
+    }
+}
+
+/* ==================== SHOELACE INPUT CUSTOMIZATION ==================== */
+sl-input,
+sl-textarea,
+sl-select {
+    --input-height-medium: 44px;
+}
+
+sl-input::part(base),
+sl-textarea::part(base),
+sl-select::part(control) {
+    border-radius: var(--border-radius-md);
+    border-color: var(--color-border);
+}
+
+sl-input:focus-within::part(base),
+sl-textarea:focus-within::part(base),
+sl-select:focus-within::part(control) {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+/* ==================== SHOELACE CARD CUSTOMIZATION ==================== */
+sl-card {
+    --border-radius: var(--border-radius-lg);
+    --padding: var(--spacing-4);
+}
+
+@media (min-width: 768px) {
+    sl-card {
+        --padding: var(--spacing-6);
+    }
+}
+
+sl-card.pedido-card.status-agendado {
+    border-left: 3px solid var(--color-neutral-600);
+}
+
+sl-card.pedido-card.status-em_producao {
+    border-left: 3px solid var(--color-warning);
+}
+
+sl-card.pedido-card.status-pronto_entrega,
+sl-card.pedido-card.status-pronto_retirada {
+    border-left: 3px solid var(--color-success);
+}
+
+sl-card.pedido-card.status-concluido {
+    border-left: 3px solid var(--color-success);
+    opacity: 0.85;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+}
+
+/* Animações globais */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.4s ease-out;
+}
+
+.animate-fade-in-scale {
+    animation: fadeInScale 0.3s ease-out;
+}
+
+/* Scrollbar customizada */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-primary);
+    border-radius: var(--border-radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-secondary);
+}
+
+/* Navbar fixa com suporte ao notch do iPhone */
+nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background-color: var(--color-primary) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    /* Suporte ao safe-area do iPhone */
+    padding-top: env(safe-area-inset-top);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Botões de navegação */
+.nav-button {
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius-md);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background-color: rgba(255, 255, 255, 0.15);
+    position: relative;
+    overflow: hidden;
+}
+
+.nav-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.nav-button:hover::before {
+    left: 100%;
+}
+
+.nav-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.nav-button:active {
+    transform: translateY(0);
+}
+
+.nav-button.active {
+    background-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.loading-overlay.hidden {
+    display: none;
+}
+
+.loading-spinner {
+    text-align: center;
+}
+
+/* Notificações Toast */
+.notification {
+    min-width: 280px;
+    max-width: 420px;
+    padding: 1rem 1.25rem;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-xl);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+}
+
+.notification:hover {
+    transform: translateX(-4px) scale(1.02);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.25);
+}
+
+.notification.success {
+    background-color: var(--color-success);
+    color: white;
+}
+
+.notification.error {
+    background-color: var(--color-error);
+    color: white;
+}
+
+.notification.warning {
+    background-color: var(--color-warning);
+    color: white;
+}
+
+.notification.info {
+    background-color: var(--color-info);
+    color: white;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Ajustes seção de entrega (mantidos) */
+
+/* Chip/Filter (legacy) - pode ser removido após migração completa */
+
+/* Formulário multi-step */
+.form-step {
+    display: none;
+}
+
+.form-step.active {
+    display: block;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Progress bar do formulário */
+.progress-step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+}
+
+.progress-step::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #e5e7eb;
+    z-index: 0;
+}
+
+.progress-step.active::before,
+.progress-step.completed::before {
+    background-color: var(--color-primary);
+}
+
+.progress-circle {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background-color: var(--color-neutral-200);
+    color: var(--color-neutral-600);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    position: relative;
+    z-index: 1;
+    margin: 0 auto;
+}
+
+.progress-step.active .progress-circle {
+    background-color: var(--color-primary);
+    color: white;
+}
+
+.progress-step.completed .progress-circle {
+    background-color: var(--color-success);
+    color: white;
+}
+
+/* Input focus */
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.1);
+}
+
+/* Acessibilidade: focus-visible para navegação por teclado */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-color: var(--color-primary);
+}
+
+
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Skeleton loading - migrado para sl-skeleton */
+
+/* Melhorias de Tipografia - padronizado com tokens CSS */
+body {
+    font-size: var(--font-size-base);
+    /* 16px */
+    line-height: var(--line-height-relaxed);
+    /* 1.6 */
+    color: var(--color-text-primary);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: var(--font-weight-bold);
+    /* 700 */
+    line-height: var(--line-height-snug);
+    /* 1.3 */
+    color: var(--color-text-primary);
+}
+
+h1 {
+    font-size: var(--font-size-3xl);
+    /* 2rem / 32px desktop */
+}
+
+h2 {
+    font-size: var(--font-size-2xl);
+    /* 1.5rem / 24px */
+}
+
+h3 {
+    font-size: var(--font-size-xl);
+    /* 1.25rem / 20px */
+}
+
+p {
+    line-height: var(--line-height-relaxed);
+    /* 1.6 */
+}
+
+/* Tipografia responsiva - mobile */
+@media (max-width: 768px) {
+    body {
+        font-size: 15px;
+        /* Ligeiramente menor no mobile */
+    }
+
+    h1 {
+        font-size: var(--font-size-2xl);
+        /* 1.5rem / 24px mobile */
+    }
+
+    h2 {
+        font-size: var(--font-size-xl);
+        /* 1.25rem / 20px mobile */
+    }
+
+    h3 {
+        font-size: var(--font-size-lg);
+        /* 1.125rem / 18px mobile */
+    }
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    body {
+        font-size: 15px;
+    }
+
+    .pedido-card {
+        padding: var(--spacing-4);
+        /* 1rem - padronizado */
+        border-radius: var(--border-radius-md);
+    }
+
+    .notification {
+        min-width: 280px;
+        max-width: calc(100vw - 1rem);
+        padding: 0.875rem 1rem;
+        font-size: 0.875rem;
+    }
+
+    .modal-content {
+        width: calc(100% - var(--spacing-4));
+        padding: var(--spacing-6);
+        /* 1.5rem - padronizado */
+        margin: var(--spacing-2);
+        /* 0.5rem */
+        border-radius: var(--border-radius-lg);
+        max-height: calc(100vh - var(--spacing-8));
+    }
+
+    /* Navbar responsivo - layout horizontal compacto */
+    nav {
+        height: 56px;
+        min-height: 56px;
+    }
+
+    nav .container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        height: 100%;
+    }
+
+    /* Container principal da navbar - horizontal compacto */
+    nav>.container>.flex.items-center.justify-between {
+        height: 100%;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    /* Logo e título - compacto */
+    nav .flex.items-center.space-x-3 {
+        flex-shrink: 1;
+        min-width: 0;
+        gap: 0.5rem;
+    }
+
+    nav .brand-title {
+        font-size: 0.75rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 120px;
+        font-weight: 600;
+        line-height: 1.2;
+        display: none;
+        /* Esconder título no mobile para economizar espaço */
+    }
+
+    nav .brand-logo {
+        height: 28px;
+        flex-shrink: 0;
+    }
+
+    /* Container dos botões - horizontal compacto */
+    nav .flex.items-center.space-x-4 {
+        display: flex !important;
+        flex-wrap: nowrap;
+        gap: 0.25rem;
+        flex-shrink: 0;
+        justify-content: flex-end;
+        align-items: center;
+    }
+
+    /* Botões de navegação - apenas ícones no mobile - 44px mínimo para acessibilidade */
+    .nav-button {
+        padding: 0.5rem 0.625rem !important;
+        font-size: 0.75rem !important;
+        min-height: 44px;
+        /* WCAG recomendado para alvos de toque */
+        min-width: 44px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .nav-button i {
+        font-size: 0.875rem;
+    }
+
+    .nav-button span {
+        display: none !important;
+    }
+
+    /* Indicador de autenticação - apenas ícone no mobile - 44px mínimo */
+    #auth-indicator {
+        padding: 0.5rem 0.5rem !important;
+        font-size: 0.6875rem !important;
+        min-height: 44px;
+        /* WCAG recomendado */
+        min-width: 44px;
+        flex-shrink: 0;
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #auth-indicator span {
+        display: none !important;
+    }
+
+    /* Ajustar padding do main para compensar navbar fixa */
+    main#app {
+        padding-top: calc(56px + env(safe-area-inset-top) + 1.5rem) !important;
+    }
+
+    /* Botões em cards de pedido */
+    .pedido-card .flex.gap-2 {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .pedido-card select {
+        flex: 1 1 100%;
+        min-width: 100%;
+        margin-bottom: 0.5rem;
+        min-height: 44px;
+        /* WCAG recomendado */
+        font-size: 0.8125rem;
+        border-radius: var(--border-radius-md);
+        padding: 0.625rem 0.75rem;
+    }
+
+    .pedido-card button {
+        flex: 1 1 calc(50% - 0.25rem);
+        min-width: calc(50% - 0.25rem);
+        min-height: 44px;
+        /* WCAG recomendado */
+        padding: 0.75rem 0.625rem;
+        /* Aumentado padding vertical */
+        font-size: 0.75rem;
+        border-radius: var(--border-radius-md);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+    }
+
+    .pedido-card button i {
+        font-size: 0.875rem;
+    }
+
+    /* Cards de estatísticas - padronizado com tokens CSS */
+    .grid.grid-cols-2 {
+        gap: var(--spacing-2);
+        /* 0.5rem / 8px */
+    }
+
+    .grid.grid-cols-2>div {
+        padding: var(--spacing-4);
+        /* 1rem / 16px - padronizado */
+        border-radius: var(--border-radius-lg);
+        /* Mesmo radius dos cards de pedido */
+    }
+
+    /* Cards de estatísticas no desktop */
+    @media (min-width: 768px) {
+        .grid.grid-cols-2>div {
+            padding: var(--spacing-6);
+            /* 1.5rem / 24px */
+        }
+    }
+
+    .grid.grid-cols-2 p.text-3xl {
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    .grid.grid-cols-2 .w-12 {
+        width: 2.5rem;
+        height: 2.5rem;
+    }
+
+    .grid.grid-cols-2 .text-2xl {
+        font-size: 1.25rem;
+    }
+
+    /* Estatísticas - textos menores */
+    .grid.grid-cols-2 p.text-xs {
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    /* Botões do painel */
+    .flex.gap-2 button {
+        padding: 0.75rem 0.75rem;
+        /* Aumentado padding vertical */
+        font-size: 0.8125rem;
+        min-height: 44px;
+        /* WCAG recomendado */
+        border-radius: var(--border-radius-md);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+    }
+
+    .flex.gap-2 button i {
+        font-size: 0.875rem;
+    }
+
+    .flex.gap-2 button span {
+        display: inline !important;
+        white-space: nowrap;
+    }
+
+    /* Filtros de status e data */
+    .flex.flex-wrap.gap-2 button,
+    button[data-filter-date],
+    button[data-filter-status],
+    #btn-ordenar-distancia,
+    #btn-rota-otimizada {
+        padding: 0.75rem 0.75rem !important;
+        /* Aumentado padding vertical */
+        font-size: 0.75rem;
+        flex: 0 1 auto;
+        min-width: auto;
+        min-height: 44px !important;
+        /* WCAG recomendado */
+        border-radius: var(--border-radius-md);
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    /* Prevenir corte de botões de filtro - adicionar scroll horizontal se necessário */
+    .flex.flex-wrap.gap-2 {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        /* Firefox */
+        -ms-overflow-style: none;
+        /* IE/Edge */
+    }
+
+    .flex.flex-wrap.gap-2::-webkit-scrollbar {
+        display: none;
+        /* Chrome/Safari */
+    }
+
+    /* Formulário */
+    .form-step {
+        padding: 0.5rem 0;
+    }
+
+    .form-step h2 {
+        font-size: 1.25rem;
+    }
+
+    /* Progress bar */
+    .progress-step p {
+        font-size: 0.625rem;
+    }
+
+    .progress-circle {
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.875rem;
+    }
+
+    /* Radio buttons de tipo de pedido */
+    .flex.flex-col.sm\\:flex-row label {
+        min-width: 0;
+    }
+
+    /* Inputs e textareas - 44px mínimo para acessibilidade */
+    input[type="text"],
+    input[type="tel"],
+    input[type="date"],
+    input[type="time"],
+    textarea,
+    select {
+        font-size: 0.875rem;
+        padding: 0.75rem;
+        min-height: 44px;
+        /* WCAG recomendado - já estava correto */
+        border-radius: var(--border-radius-md);
+        border: 1px solid var(--color-neutral-300);
+    }
+
+    input[type="text"]:focus,
+    input[type="tel"]:focus,
+    input[type="date"]:focus,
+    input[type="time"]:focus,
+    textarea:focus,
+    select:focus {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px var(--color-primary-soft);
+    }
+
+    input[type="text"]:focus-visible,
+    input[type="tel"]:focus-visible,
+    input[type="date"]:focus-visible,
+    input[type="time"]:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+    }
+
+    /* Labels */
+    label {
+        font-size: 0.875rem;
+    }
+
+    /* Botões de navegação do formulário */
+    .flex.justify-between.mt-8 {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .flex.justify-between.mt-8 .ml-auto {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .flex.justify-between.mt-8 .ml-auto.flex {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .flex.justify-between.mt-8 button {
+        flex: 1;
+        min-height: 44px;
+        /* WCAG recomendado */
+    }
+
+    /* Cabeçalho do painel - padronizado com tokens CSS */
+    .bg-white.rounded-lg.shadow-md.p-6,
+    .bg-white.rounded-lg.shadow-md.p-4 {
+        padding: var(--spacing-4);
+        /* 1rem */
+        border-radius: var(--border-radius-lg);
+        border: 1px solid var(--color-border);
+    }
+
+    @media (min-width: 768px) {
+        .bg-white.rounded-lg.shadow-md.p-6 {
+            padding: var(--spacing-6);
+            /* 1.5rem */
+        }
+    }
+
+    .bg-white.rounded-lg.shadow-md.p-6 h1,
+    .bg-white.rounded-lg.shadow-md.p-4 h1 {
+        font-size: 1.375rem;
+        font-weight: 700;
+        line-height: 1.3;
+    }
+
+    /* Input de busca */
+    input[type="text"].w-full {
+        font-size: 0.875rem;
+        padding: 0.75rem;
+        min-height: 44px;
+        /* WCAG recomendado - já estava correto */
+        border-radius: var(--border-radius-md);
+    }
+
+    /* Textos em cards */
+    .pedido-card .text-lg {
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.4;
+    }
+
+    .pedido-card .text-sm {
+        font-size: 0.8125rem;
+        line-height: 1.5;
+    }
+
+    .pedido-card h3 {
+        font-size: 1.125rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Container principal */
+    .container.mx-auto {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        max-width: 100%;
+    }
+
+    /* Padding já ajustado acima para main#app.container */
+
+    /* Espaçamento reduzido mas consistente */
+    .mb-6 {
+        margin-bottom: 1rem;
+    }
+
+    .mb-4 {
+        margin-bottom: 0.875rem;
+    }
+
+    .p-6 {
+        padding: 1rem;
+    }
+
+    .p-4 {
+        padding: 0.875rem;
+    }
+
+    .gap-4 {
+        gap: 0.875rem;
+    }
+
+    .gap-2 {
+        gap: 0.5rem;
+    }
+
+    /* Prevenir sobreposição de texto */
+    .space-y-2 p,
+    .space-y-2 span {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+
+    /* Garantir que textos longos não quebrem o layout */
+    .text-sm {
+        line-height: 1.5;
+        font-size: 0.8125rem;
+    }
+
+    /* Ajustes para evitar overflow horizontal */
+    body {
+        overflow-x: hidden;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    /* Garantir que containers não ultrapassem a largura */
+    .container {
+        max-width: 100%;
+        width: 100%;
+    }
+
+    /* Grid de pedidos em mobile */
+    #pedidos-container {
+        grid-template-columns: 1fr;
+        gap: 0.875rem;
+    }
+
+    /* Ajustes para cards em telas muito pequenas */
+    @media (max-width: 375px) {
+        .pedido-card {
+            padding: 0.875rem;
+        }
+
+        .pedido-card button {
+            font-size: 0.75rem;
+            padding: 0.625rem 0.5rem;
+            /* Aumentado padding vertical */
+            min-height: 44px;
+            /* WCAG recomendado */
+        }
+
+        .grid.grid-cols-2 p.text-3xl {
+            font-size: 1.25rem;
+        }
+
+        nav .brand-title {
+            max-width: 180px;
+            font-size: 0.75rem;
+        }
+
+        .flex.gap-2 button {
+            padding: 0.625rem 0.625rem;
+            /* Aumentado padding vertical */
+            font-size: 0.75rem;
+            min-height: 44px;
+            /* WCAG recomendado */
+        }
+    }
+
+    /* Mobile: ajustes para seção de entrega */
+    .entrega-section {
+        padding: 0.75rem;
+    }
+
+    .entrega-info {
+        padding: 0.5rem 0.625rem;
+    }
+
+    .entrega-recalcular-btn {
+        font-size: 0.6875rem;
+        padding: 0.2rem 0.4rem;
+    }
+
+    /* Grid em coluna única no mobile */
+    .entrega-section .grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Animações adicionais para elementos específicos */
+.bg-white.rounded-lg.shadow-md {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+/* Efeito hover suave para cards de estatísticas - reduzido para hierarquia secundária */
+.grid>div {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.grid>div:hover {
+    transform: translateY(-1px);
+    /* Movimento mais sutil */
+    box-shadow: var(--shadow-sm);
+    /* Sombra mais sutil - hierarquia secundária */
+}
+
+/* Input focus mais bonito - removido scale para melhor UX */
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-soft);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Scrollbar mais moderna */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-neutral-100);
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+    border-radius: 10px;
+    border: 2px solid var(--color-neutral-100);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+}
+
+@media (min-width: 1024px) {
+    .modal-content {
+        width: 800px;
+    }
+}
+
+/* Utilitários */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Garantir que botão de login seja escondido quando autenticado */
+#nav-login.auth-hidden {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Logo da marca no navbar */
+.brand-logo {
+    height: clamp(24px, 4vw, 44px);
+    width: auto;
+    object-fit: contain;
+    display: block;
+    flex-shrink: 0;
+}
+
+.brand-title {
+    white-space: nowrap;
+}
+
+/* ==================== DATALIST STYLES ==================== */
+/* Datalist nativo não pode ser estilizado de forma confiável */
+/* O navegador controla a aparência do dropdown nativo */
+/* Apenas manter estilos básicos do input */
+
+.autocomplete-wrapper {
+    position: relative;
+}
+
+.badge-sm {
+    padding: 2px 8px;
+    font-size: 0.7rem;
+}
+
+/* Campos desabilitados - estilo acinzentado */
+input[readonly][disabled],
+input:disabled {
+    background-color: var(--color-neutral-100) !important;
+    color: var(--color-neutral-500) !important;
+    cursor: not-allowed !important;
+    opacity: 0.7;
+}
+
+input[readonly][disabled]::placeholder {
+    color: var(--color-neutral-400);
+}
+
+/* Transição suave ao habilitar campos */
+input:not([disabled]):not([readonly]) {
+    transition: all 0.3s ease;
+}
+
+/* ==================== ESTILOS DE IMPRESSÃO ==================== */
+
+@media print {
+
+    /* Esconder elementos não relevantes para impressão */
+    nav,
+    #notification-container,
+    #loading-overlay,
+    .no-print,
+    button:not(.print-button) {
+        display: none !important;
+    }
+
+    /* Container de impressão */
+    #print-container-temp {
+        position: static !important;
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Garantir que o conteúdo de impressão seja visível */
+    #print-container-temp * {
+        visibility: visible !important;
+    }
+
+    /* Ajustes de página */
+    @page {
+        size: A4;
+        margin: 1cm;
+    }
+
+    /* Corrigir cores para impressão */
+    * {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+        color-adjust: exact;
+    }
+
+    /* Garantir que backgrounds sejam impressos */
+    .pedido-numero,
+    .section-title {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Evitar quebra de página em seções importantes */
+    .section {
+        page-break-inside: avoid;
+    }
+
+    /* Garantir que o body não tenha margens extras */
+    body {
+        margin: 0;
+        padding: 0;
+        background: white;
+    }
+
+    /* Ajustar fontes para impressão */
+    body,
+    p,
+    span,
+    div {
+        font-size: 10pt;
+        line-height: 1.4;
+    }
+
+    /* Garantir que imagens sejam impressas */
+    img {
+        max-width: 100%;
+        height: auto;
+    }
+}
+
+/* ==================== CARD FOOTER & INTERACTIONS ==================== */
+
+/* Layout Mobile-First: Grid 2 colunas para ações */
+.card-footer__actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+
+/* Desktop: Botões em linha (4 colunas ou flex) */
+
+/* Shared button styles */
+.btn-action-neutral,
+.btn-action-danger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.75rem;
+    height: 2.75rem;
+    /* 44px min height */
+    border-radius: 0.375rem;
+    /* rounded-md */
+    font-size: 0.875rem;
+    /* text-sm */
+    font-weight: 500;
+    transition: all 0.2s;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    /* gray-200 */
+    color: #374151;
+    /* gray-700 */
+}
+
+/* Neutral Variant */
+.btn-action-neutral:hover {
+    background-color: #f9fafb;
+    /* gray-50 */
+    border-color: #d1d5db;
+    /* gray-300 */
+    color: var(--color-primary);
+    /* primary text on hover */
+}
+
+/* Danger Variant */
+.btn-action-danger {
+    color: #dc2626;
+    /* red-600 */
+}
+
+.btn-action-danger:hover {
+    background-color: #fef2f2;
+    /* red-50 */
+    border-color: #fca5a5;
+    /* red-300 */
+    color: #b91c1c;
+    /* red-700 */
+}
+
+/* Update Desktop Selector to include new classes */
+@media (min-width: 768px) {
+    .card-footer__actions {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+    }
+
+    .card-footer__actions button {
+        flex: 1;
+        width: auto;
+    }
+
+    /* Center cards in column if needed */
+    .pedido-card {
+        max-width: 32rem;
+        /* max-w-lg */
+        margin-left: auto;
+        margin-right: auto;
+        width: 100%;
+    }
+}
+
+
+/* Hover Effects - Only for devices with mouse */
+@media (hover: hover) and (pointer: fine) {
+    .pedido-card {
+        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+            box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        will-change: transform, box-shadow;
+    }
+
+    .pedido-card:hover,
+    .pedido-card:focus-within {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+        border-color: var(--color-primary-light);
+        z-index: 10;
+    }
+
+    /* Calcular entrega button hover boost */
+    .btn-calcular-entrega:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-sm);
+    }
+}
+
+/* Ensure focus visibility for keyboard users matches hover effect */
+.pedido-card:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    outline: 2px solid var(--color-primary);
+    outline-offset: 4px;
+}

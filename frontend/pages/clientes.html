@@ -1,0 +1,303 @@
+<!-- Página: Gestão de Clientes -->
+<div class="max-w-6xl mx-auto">
+    
+    <!-- Cabeçalho -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">
+                    <i class="fas fa-users text-primary"></i>
+                    Gestão de Clientes
+                </h1>
+                <p class="text-gray-600">Gerencie seus clientes e visualize histórico de pedidos</p>
+            </div>
+            <button id="btn-novo-cliente-page" class="btn-primary">
+                <i class="fas fa-plus-circle"></i>
+                Novo Cliente
+            </button>
+        </div>
+    </div>
+
+    <!-- Estatísticas -->
+    <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-600 text-sm">Total de Clientes</p>
+                    <p id="stat-total" class="text-3xl font-bold text-gray-800">-</p>
+                </div>
+                <i class="fas fa-users text-primary text-4xl opacity-50"></i>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-600 text-sm">Novos Este Mês</p>
+                    <p id="stat-novos" class="text-3xl font-bold text-green-600">-</p>
+                </div>
+                <i class="fas fa-user-plus text-green-600 text-4xl opacity-50"></i>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-600 text-sm">Cliente Top</p>
+                    <p id="stat-top" class="text-lg font-bold text-blue-600 truncate">-</p>
+                </div>
+                <i class="fas fa-crown text-yellow-500 text-4xl opacity-50"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Busca -->
+    <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div class="flex gap-4">
+            <input 
+                type="text" 
+                id="search-clientes"
+                placeholder="Buscar por nome ou telefone..."
+                class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none"
+            >
+            <button id="btn-buscar" class="btn-primary">
+                <i class="fas fa-search"></i>
+                Buscar
+            </button>
+        </div>
+    </div>
+
+    <!-- Lista de Clientes -->
+    <div id="clientes-container" class="space-y-4">
+        <!-- Clientes serão inseridos aqui -->
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-8 hidden">
+        <i class="fas fa-spinner fa-spin text-4xl text-primary"></i>
+        <p class="mt-4 text-gray-600">Carregando clientes...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="bg-white rounded-lg shadow-md p-12 text-center hidden">
+        <i class="fas fa-users text-gray-300 text-6xl mb-4"></i>
+        <h3 class="text-xl font-bold text-gray-700 mb-2">Nenhum cliente encontrado</h3>
+        <p class="text-gray-500 mb-6">Comece cadastrando seu primeiro cliente</p>
+        <button class="btn-primary" onclick="document.getElementById('btn-novo-cliente-page').click()">
+            <i class="fas fa-plus-circle"></i>
+            Cadastrar Cliente
+        </button>
+    </div>
+
+</div>
+
+<script>
+// Gestão de Clientes - JavaScript
+const ClientesPage = {
+    clientes: [],
+    
+    async init() {
+        console.log('👥 Inicializando página de clientes');
+        
+        await this.carregarEstatisticas();
+        await this.carregarClientes();
+        
+        this.setupListeners();
+    },
+    
+    setupListeners() {
+        // Busca
+        const searchInput = document.getElementById('search-clientes');
+        const btnBuscar = document.getElementById('btn-buscar');
+        
+        btnBuscar?.addEventListener('click', () => this.buscarClientes());
+        searchInput?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.buscarClientes();
+        });
+        
+        // Novo cliente
+        document.getElementById('btn-novo-cliente-page')?.addEventListener('click', () => {
+            Router.navigate('/criar-pedido');
+        });
+    },
+    
+    async carregarEstatisticas() {
+        try {
+            const response = await API.get('/api/clientes/stats');
+            
+            if (response.success && response.data.success) {
+                const stats = response.data.stats;
+                
+                document.getElementById('stat-total').textContent = stats.total_clientes;
+                document.getElementById('stat-novos').textContent = stats.novos_este_mes;
+                
+                if (stats.cliente_mais_pedidos) {
+                    document.getElementById('stat-top').textContent = stats.cliente_mais_pedidos.nome;
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar estatísticas:', error);
+        }
+    },
+    
+    async carregarClientes(search = '') {
+        try {
+            this.showLoading();
+            
+            const query = search ? `?search=${encodeURIComponent(search)}&stats=true` : '?stats=true';
+            const response = await API.get(`/api/clientes${query}`);
+            
+            if (response.success && response.data.success) {
+                this.clientes = response.data.clientes;
+                this.renderClientes();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar clientes:', error);
+            Notification.show('Erro ao carregar clientes', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    },
+    
+    async buscarClientes() {
+        const search = document.getElementById('search-clientes').value.trim();
+        await this.carregarClientes(search);
+    },
+    
+    renderClientes() {
+        const container = document.getElementById('clientes-container');
+        const emptyState = document.getElementById('empty-state');
+        
+        if (this.clientes.length === 0) {
+            container.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        container.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        
+        container.innerHTML = this.clientes.map(cliente => `
+            <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-gray-800">${cliente.nome}</h3>
+                        <p class="text-gray-600 mt-1">
+                            <i class="fas fa-phone text-primary"></i>
+                            ${this.formatTelefone(cliente.telefone)}
+                        </p>
+                        ${cliente.email ? `
+                            <p class="text-gray-600 mt-1">
+                                <i class="fas fa-envelope text-primary"></i>
+                                ${cliente.email}
+                            </p>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="text-right">
+                        <div class="bg-primary text-white px-4 py-2 rounded-lg mb-2">
+                            <p class="text-2xl font-bold">R$ ${(cliente.ltv || 0).toFixed(2)}</p>
+                            <p class="text-xs">LTV</p>
+                        </div>
+                        <p class="text-sm text-gray-600">${cliente.total_pedidos || 0} pedidos</p>
+                    </div>
+                </div>
+                
+                <div class="mt-4 flex gap-2">
+                    <button 
+                        onclick="ClientesPage.verHistorico(${cliente.id})"
+                        class="flex-1 btn-secondary py-2"
+                    >
+                        <i class="fas fa-history"></i>
+                        Histórico
+                    </button>
+                    <button 
+                        onclick="ClientesPage.editarCliente(${cliente.id})"
+                        class="flex-1 btn-primary py-2"
+                    >
+                        <i class="fas fa-edit"></i>
+                        Editar
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    },
+    
+    async verHistorico(clienteId) {
+        try {
+            const response = await API.get(`/api/clientes/${clienteId}/pedidos?limit=20`);
+            
+            if (response.success && response.data.success) {
+                const cliente = response.data;
+                
+                const historicoHTML = `
+                    <div class="space-y-4">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h3 class="font-bold text-lg">${cliente.nome}</h3>
+                            <p class="text-sm text-gray-600">Total: ${cliente.total_pedidos} pedidos</p>
+                        </div>
+                        
+                        <div class="max-h-96 overflow-y-auto space-y-2">
+                            ${cliente.pedidos.length > 0 ? cliente.pedidos.map(pedido => `
+                                <div class="border rounded-lg p-3 hover:bg-gray-50">
+                                    <div class="flex justify-between">
+                                        <div>
+                                            <p class="font-medium">${pedido.produto}</p>
+                                            <p class="text-sm text-gray-600">Para: ${pedido.destinatario}</p>
+                                            <p class="text-xs text-gray-500">
+                                                ${new Date(pedido.dia_entrega).toLocaleDateString('pt-BR')} - ${pedido.horario}
+                                            </p>
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="badge badge-sm">${pedido.status}</span>
+                                            ${pedido.valor ? `<p class="text-sm font-medium mt-1">${pedido.valor}</p>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('') : '<p class="text-center text-gray-500 py-4">Nenhum pedido encontrado</p>'}
+                        </div>
+                    </div>
+                `;
+                
+                Modal.show(`Histórico - ${cliente.nome}`, historicoHTML);
+            }
+        } catch (error) {
+            console.error('Erro ao carregar histórico:', error);
+            Notification.show('Erro ao carregar histórico', 'error');
+        }
+    },
+    
+    editarCliente(clienteId) {
+        Notification.show('Funcionalidade em desenvolvimento', 'info');
+    },
+    
+    formatTelefone(telefone) {
+        if (!telefone) return '';
+        const cleaned = telefone.replace(/\D/g, '');
+        if (cleaned.length === 11) {
+            return `(${cleaned.substr(0, 2)}) ${cleaned.substr(2, 5)}-${cleaned.substr(7)}`;
+        } else if (cleaned.length === 10) {
+            return `(${cleaned.substr(0, 2)}) ${cleaned.substr(2, 4)}-${cleaned.substr(6)}`;
+        }
+        return telefone;
+    },
+    
+    showLoading() {
+        document.getElementById('loading')?.classList.remove('hidden');
+        document.getElementById('clientes-container')?.classList.add('hidden');
+        document.getElementById('empty-state')?.classList.add('hidden');
+    },
+    
+    hideLoading() {
+        document.getElementById('loading')?.classList.add('hidden');
+    }
+};
+
+// Inicializar quando a página carregar
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => ClientesPage.init());
+} else {
+    ClientesPage.init();
+}
+</script>
+

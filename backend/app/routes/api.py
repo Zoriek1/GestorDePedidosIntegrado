@@ -345,7 +345,7 @@ def listar_pedidos():
         search = request.args.get("search", "").strip()
 
         # Query base - excluir pedidos ocultos/arquivados (comportamento antigo)
-        query = Pedido.query.filter(Pedido.oculto is False)
+        query = Pedido.query.filter(Pedido.oculto.is_(False))
 
         # Aplicar filtros
         if status:

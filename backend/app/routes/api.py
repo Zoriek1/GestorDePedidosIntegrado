@@ -95,13 +95,36 @@ def criar_pedido():
         except (ValueError, TypeError):
             quantidade = 1
         
-        # Validação de formato de horário (HH:MM)
-        if not re.match(r'^([01]?\d|2[0-3]):[0-5]\d$', horario):
+        # Validação de formato de horário: aceita HH:MM ou intervalo HH:MM - HH:MM
+        pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
+        pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
+        
+        if not (re.match(pattern_simples, horario) or re.match(pattern_intervalo, horario)):
             return jsonify({
                 'error': 'Formato de horário inválido',
                 'horario_recebido': horario,
-                'formato_esperado': 'HH:MM (ex: 14:30)'
+                'formato_esperado': 'HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)'
             }), 400
+        
+        # Se for intervalo, validar que horário final é depois do inicial
+        if ' - ' in horario:
+            partes = horario.split(' - ')
+            if len(partes) == 2:
+                try:
+                    h1, m1 = map(int, partes[0].strip().split(':'))
+                    h2, m2 = map(int, partes[1].strip().split(':'))
+                    minutos_inicial = h1 * 60 + m1
+                    minutos_final = h2 * 60 + m2
+                    if minutos_final <= minutos_inicial:
+                        return jsonify({
+                            'error': 'O horário final deve ser depois do horário inicial',
+                            'horario_recebido': horario
+                        }), 400
+                except (ValueError, IndexError):
+                    return jsonify({
+                        'error': 'Formato de intervalo inválido',
+                        'horario_recebido': horario
+                    }), 400
         
         # Conversão de data de entrega
         try:
@@ -119,7 +142,8 @@ def criar_pedido():
             }), 400
         
         # Gerenciar cliente_id - criar cliente se necessário
-        cliente_id = data.get('cliente_id', '').strip()
+        raw_cliente_id = data.get('cliente_id', '')
+        cliente_id = raw_cliente_id.strip() if isinstance(raw_cliente_id, str) else raw_cliente_id
         
         # Se cliente_id não foi fornecido mas temos nome e telefone, buscar ou criar cliente
         if not cliente_id and cliente and telefone_cliente:
@@ -252,14 +276,28 @@ def listar_pedidos():
     """
     MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
     Mantido aqui apenas para compatibilidade durante transição
+    
+    Se filtrar_por_criacao ou data_inicio/data_fim estiverem presentes,
+    redireciona para a nova rota em pedidos.py que tem suporte completo.
     """
     try:
+        # Se tiver parâmetros da nova API (filtrar_por_criacao ou datas), usar nova rota
+        filtrar_por_criacao = request.args.get('filtrar_por_criacao', '').lower() == 'true'
+        data_inicio = request.args.get('data_inicio')
+        data_fim = request.args.get('data_fim')
+        
+        if filtrar_por_criacao or data_inicio or data_fim:
+            # Redirecionar para a nova rota que tem suporte completo
+            from app.routes.pedidos import listar_pedidos as nova_listar_pedidos
+            return nova_listar_pedidos()
+        
+        # Comportamento antigo (sem filtrar_por_criacao) - manter para compatibilidade
         # Parâmetros de filtro
         status = request.args.get('status')
         limit = request.args.get('limit', type=int)
         search = request.args.get('search', '').strip()
         
-        # Query base - excluir pedidos ocultos/arquivados
+        # Query base - excluir pedidos ocultos/arquivados (comportamento antigo)
         query = Pedido.query.filter(Pedido.oculto == False)
         
         # Aplicar filtros
@@ -618,51 +656,11 @@ def atualizar_pedido(pedido_id):
 
 
 # ============================================
-# ENDPOINT DE DELEÇÃO DE PEDIDO - MIGRADO
+# ENDPOINT DE DELEÇÃO DE PEDIDO - REMOVIDO
 # ============================================
-# ATENÇÃO: Este endpoint foi migrado para app/routes/pedidos.py
-# NOVO LOCAL: app/routes/pedidos.py -> deletar_pedido()
-
-@api_bp.route('/pedidos/<int:pedido_id>', methods=['DELETE'])
-@requires_edit_auth
-def deletar_pedido(pedido_id):
-    """
-    MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
-    Mantido aqui apenas para compatibilidade durante transição
-    """
-    try:
-        pedido = Pedido.query.get(pedido_id)
-        
-        if not pedido:
-            return jsonify({
-                'error': 'Pedido não encontrado',
-                'pedido_id': pedido_id
-            }), 404
-        
-        # Criar backup automático antes de deletar
-        try:
-            backup_path = create_backup(reason='critical_operation', silent=True)
-            if backup_path:
-                print(f"[BACKUP] Backup criado antes de deletar pedido #{pedido_id}: {backup_path.name}")
-        except Exception as backup_error:
-            print(f"[AVISO] Falha ao criar backup antes de deletar pedido: {backup_error}")
-            # Continuar com a operação mesmo se o backup falhar
-        
-        db.session.delete(pedido)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Pedido deletado com sucesso',
-            'pedido_id': pedido_id
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'error': 'Erro ao deletar pedido',
-            'detalhes': str(e)
-        }), 500
+# Este endpoint foi removido pois foi migrado para app/routes/pedidos.py
+# O endpoint correto está em: pedidos_bp.route('/<int:pedido_id>', methods=['DELETE'])
+# Localização: app/routes/pedidos.py -> deletar_pedido()
 
 
 @api_bp.route('/stats', methods=['GET'])
@@ -1779,6 +1777,9 @@ def atualizar_fonte_pedido(fonte_id):
 @requires_edit_auth
 def deletar_fonte_pedido(fonte_id):
     """Desativa fonte de pedido (soft delete)"""
+    from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
+    from app.schemas.common import error_response
+    
     try:
         fonte = FontePedido.query.get(fonte_id)
         
@@ -1788,14 +1789,17 @@ def deletar_fonte_pedido(fonte_id):
                 'fonte_id': fonte_id
             }), 404
         
-        # Criar backup automático antes de desativar fonte
+        # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
+        # Nota: Embora seja soft delete, mantemos guard para consistência
         try:
-            backup_path = create_backup(reason='critical_operation', silent=True)
-            if backup_path:
-                print(f"[BACKUP] Backup criado antes de desativar fonte #{fonte_id}: {backup_path.name}")
-        except Exception as backup_error:
-            print(f"[AVISO] Falha ao criar backup antes de desativar fonte: {backup_error}")
-            # Continuar com a operação mesmo se o backup falhar
+            ensure_backup_before_destructive_action(reason='delete_fonte_pedido', context={'fonte_id': fonte_id})
+        except BackupRequiredException as backup_error:
+            error_msg = str(backup_error)
+            return error_response(
+                'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
+                503,
+                details={'error': error_msg, 'fonte_id': fonte_id}
+            )
         
         # Soft delete: apenas desativar
         fonte.ativo = False
@@ -2410,13 +2414,8 @@ def exportar_planilha():
         # Executar o módulo
         spec.loader.exec_module(module)
         
-        # Se o CREDENTIALS_PATH foi calculado incorretamente, corrigir
-        expected_creds_path = backend_dir / 'config' / 'google_credentials.json'
-        if hasattr(module, 'CREDENTIALS_PATH'):
-            # Verificar se o caminho calculado existe, se não, usar o caminho esperado
-            from pathlib import Path as PathLib
-            if not PathLib(module.CREDENTIALS_PATH).exists() and PathLib(expected_creds_path).exists():
-                module.CREDENTIALS_PATH = str(expected_creds_path)
+        # Nota: O script agora resolve credenciais automaticamente
+        # via _resolve_credentials_path() em backend/user/config/ ou variável de ambiente
         
         # Chamar função exportar_vendas
         if not hasattr(module, 'exportar_vendas'):

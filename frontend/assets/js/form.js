@@ -126,6 +126,27 @@ const FormManager = {
             this.toggleEnderecoFields(tipoInicial.value);
         }
 
+        // Listener para checkbox "Mesmo que o cliente"
+        const checkboxMesmoCliente = document.getElementById('mesmo-que-cliente');
+        const campoCliente = document.getElementById('cliente');
+        const campoDestinatario = document.getElementById('destinatario');
+        
+        if (checkboxMesmoCliente && campoCliente && campoDestinatario) {
+            // Quando checkbox é marcado, copia nome do cliente para destinatário
+            checkboxMesmoCliente.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    campoDestinatario.value = campoCliente.value || '';
+                }
+            });
+            
+            // Quando nome do cliente é alterado e checkbox está marcado, atualiza destinatário
+            campoCliente.addEventListener('input', () => {
+                if (checkboxMesmoCliente.checked) {
+                    campoDestinatario.value = campoCliente.value || '';
+                }
+            });
+        }
+
         // Salvar rascunho automaticamente
         document.querySelectorAll('input, textarea, select').forEach(field => {
             field.addEventListener('change', () => this.saveDraft());
@@ -205,68 +226,119 @@ const FormManager = {
      * Configura autocomplete de clientes
      */
     setupClienteAutocomplete() {
-        console.log('👥 Configurando autocomplete de clientes...');
+        console.log('👥 Configurando autocomplete de clientes (datalist nativo)...');
 
         const inputAutocomplete = document.getElementById('cliente-autocomplete');
-        const resultsElement = document.getElementById('autocomplete-results');
         const btnNovoCliente = document.getElementById('btn-novo-cliente');
         const btnHistorico = document.getElementById('btn-historico-cliente');
+        const datalist = document.getElementById('clientesDatalist');
 
-        if (!inputAutocomplete || !resultsElement) {
+        if (!inputAutocomplete || !datalist) return;
+
+        // GUARD: Evitar múltiplas inicializações (SPA navigation)
+        if (inputAutocomplete.dataset.datalistInitialized === 'true') {
             return;
         }
+        inputAutocomplete.dataset.datalistInitialized = 'true';
 
-        // Inicializar autocomplete
-        this.autocomplete = new AutocompleteCliente({
-            inputElement: inputAutocomplete,
-            resultsElement: resultsElement,
-            onSelect: (cliente) => {
-                console.log('✅ Cliente selecionado:', cliente);
+        // Map para mapear value string -> objeto cliente completo
+        const clientesMap = new Map();
 
-                // Preencher campos
-                document.getElementById('cliente_id').value = cliente.id;
+        // Função para criar value único: "NOME — TELEFONE (#ID)"
+        const criarValueUnico = (cliente) => {
+            const nome = String(cliente.nome || '');
+            const telefone = String(cliente.telefone || '');
+            const id = cliente.id ? String(cliente.id) : '';
+            
+            let telefoneFormatado = telefone;
+            try {
+                telefoneFormatado = Utils.formatPhone ? Utils.formatPhone(telefone) : telefone;
+            } catch (e) {
+                // Se formatPhone falhar, usar telefone original
+            }
+            
+            // Formato: "NOME — TELEFONE (#ID)" ou "NOME (#ID)" se não tiver telefone
+            if (telefoneFormatado && telefoneFormatado.trim()) {
+                return `${nome} — ${telefoneFormatado}${id ? ' (#' + id + ')' : ''}`;
+            }
+            return `${nome}${id ? ' (#' + id + ')' : ''}`;
+        };
 
-                const campoCliente = document.getElementById('cliente');
-                const campoTelefone = document.getElementById('telefone_cliente');
-
-                campoCliente.value = cliente.nome;
-                campoTelefone.value = cliente.telefone;
-
-                // Habilitar campos (remover disabled/readonly e mudar estilo)
-                campoCliente.removeAttribute('readonly');
-                campoCliente.removeAttribute('disabled');
-                campoCliente.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
-                campoCliente.classList.add('bg-white', 'text-gray-900');
-
-                campoTelefone.removeAttribute('readonly');
-                campoTelefone.removeAttribute('disabled');
-                campoTelefone.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
-                campoTelefone.classList.add('bg-white', 'text-gray-900');
-
-                // Mostrar botão de histórico
-                if (btnHistorico) {
-                    btnHistorico.classList.remove('hidden');
-                    btnHistorico.dataset.clienteId = cliente.id;
-                }
-
-                // Carregar endereços do cliente
-                this.carregarEnderecosCliente(cliente.id);
-
-                Notification.show(`Cliente "${cliente.nome}" selecionado - Campos podem ser editados`, 'success');
+        // Buscar clientes quando usuário digita
+        let debounceTimeout;
+        inputAutocomplete.addEventListener('input', (e) => {
+            const query = String(e.target.value || '').trim();
+            
+            clearTimeout(debounceTimeout);
+            
+            if (query.length >= 2) {
+                debounceTimeout = setTimeout(async () => {
+                    try {
+                        const response = await API.get(`/api/clientes/search?q=${encodeURIComponent(query)}&limit=10`);
+                        
+                        if (response.success && response.data.success) {
+                            const clientes = response.data.clientes || [];
+                            
+                            // Limpar map e datalist anteriores
+                            clientesMap.clear();
+                            datalist.innerHTML = '';
+                            
+                            // Adicionar opções ao datalist e popular o map
+                            clientes.forEach(cliente => {
+                                const valueUnico = criarValueUnico(cliente);
+                                
+                                // Adicionar ao map
+                                clientesMap.set(valueUnico, cliente);
+                                
+                                // Criar option no datalist
+                                const option = document.createElement('option');
+                                option.value = valueUnico;
+                                datalist.appendChild(option);
+                            });
+                        } else {
+                            // Limpar se não houver resultados
+                            clientesMap.clear();
+                            datalist.innerHTML = '';
+                        }
+                    } catch (error) {
+                        console.error('Erro ao buscar clientes:', error);
+                        clientesMap.clear();
+                        datalist.innerHTML = '';
+                    }
+                }, 250); // Debounce 250ms
+            } else {
+                // Limpar se query muito curta
+                clientesMap.clear();
+                datalist.innerHTML = '';
             }
         });
 
-        // Botão "Novo Cliente" - habilita campos para entrada manual
+        // Seleção de cliente - evento "change" quando usuário seleciona do datalist
+        inputAutocomplete.addEventListener('change', (e) => {
+            const selectedValue = String(e.target.value || '').trim();
+            
+            if (!selectedValue) return;
+            
+            // Buscar cliente no map
+            const cliente = clientesMap.get(selectedValue);
+            
+            if (cliente) {
+                // Cliente encontrado, preencher formulário
+                this.onClienteSelect(cliente);
+            } else {
+                // Se não encontrou no map, pode ser que o usuário digitou manualmente
+                // Nesse caso, não fazer nada (deixar usuário continuar digitando)
+                console.log('Cliente não encontrado no map, usuário pode estar digitando manualmente');
+            }
+        });
+
         if (btnNovoCliente) {
-            // Adicionar suporte a touch para mobile
             const handleNovoCliente = () => {
-                // Limpar valores
                 document.getElementById('cliente_id').value = '';
                 document.getElementById('cliente').value = '';
                 document.getElementById('telefone_cliente').value = '';
                 inputAutocomplete.value = '';
 
-                // Habilitar campos para edição
                 const campoCliente = document.getElementById('cliente');
                 const campoTelefone = document.getElementById('telefone_cliente');
 
@@ -282,23 +354,14 @@ const FormManager = {
                 campoTelefone.classList.add('bg-white', 'text-gray-900');
                 campoTelefone.placeholder = '(62) 99999-9999';
 
-                // Focar no campo nome
-                campoCliente.focus();
-
-                // Esconder botão de histórico
                 if (btnHistorico) {
                     btnHistorico.classList.add('hidden');
-                }
-
-                // Esconder resultados do autocomplete
-                if (this.autocomplete) {
-                    this.autocomplete.hideResults();
+                    btnHistorico.dataset.clienteId = '';
                 }
 
                 Notification.show('Campos habilitados - Digite os dados do novo cliente', 'info');
             };
 
-            // Suporte a click e touchstart para mobile
             btnNovoCliente.addEventListener('click', handleNovoCliente);
             btnNovoCliente.addEventListener('touchstart', (e) => {
                 e.preventDefault();
@@ -306,7 +369,6 @@ const FormManager = {
             });
         }
 
-        // Botão "Ver Histórico"
         if (btnHistorico) {
             btnHistorico.addEventListener('click', async () => {
                 const clienteId = btnHistorico.dataset.clienteId;
@@ -316,6 +378,35 @@ const FormManager = {
             });
         }
 
+    },
+
+    onClienteSelect(cliente) {
+        document.getElementById('cliente_id').value = cliente.id;
+
+        const campoCliente = document.getElementById('cliente');
+        const campoTelefone = document.getElementById('telefone_cliente');
+
+        campoCliente.value = cliente.nome;
+        campoTelefone.value = cliente.telefone;
+
+        campoCliente.removeAttribute('readonly');
+        campoCliente.removeAttribute('disabled');
+        campoCliente.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+        campoCliente.classList.add('bg-white', 'text-gray-900');
+
+        campoTelefone.removeAttribute('readonly');
+        campoTelefone.removeAttribute('disabled');
+        campoTelefone.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+        campoTelefone.classList.add('bg-white', 'text-gray-900');
+
+        const btnHistorico = document.getElementById('btn-historico-cliente');
+        if (btnHistorico) {
+            btnHistorico.classList.remove('hidden');
+            btnHistorico.dataset.clienteId = cliente.id;
+        }
+
+        this.carregarEnderecosCliente(cliente.id);
+        Notification.show(`Cliente "${cliente.nome}" selecionado - Campos podem ser editados`, 'success');
     },
 
     /**
@@ -881,7 +972,17 @@ const FormManager = {
             this.saveDraft();
 
             if (this.currentStep < this.totalSteps) {
-                this.showStep(this.currentStep + 1);
+                let nextStep = this.currentStep + 1;
+                
+                // Se está indo para o Step 3 e o tipo de pedido é Retirada, pular para Step 4
+                if (nextStep === 3) {
+                    const tipoSelecionado = document.querySelector('input[name="tipo_pedido"]:checked');
+                    if (tipoSelecionado && tipoSelecionado.value === 'Retirada') {
+                        nextStep = 4; // Pular Step 3 (Logística) se for Retirada
+                    }
+                }
+                
+                this.showStep(nextStep);
                 this.updateProgress();
             }
         }
@@ -894,7 +995,17 @@ const FormManager = {
         this.saveDraft();
 
         if (this.currentStep > 1) {
-            this.showStep(this.currentStep - 1);
+            let previousStep = this.currentStep - 1;
+            
+            // Se está voltando do Step 4 e o tipo de pedido é Retirada, voltar para Step 2 (pular Step 3)
+            if (this.currentStep === 4) {
+                const tipoSelecionado = document.querySelector('input[name="tipo_pedido"]:checked');
+                if (tipoSelecionado && tipoSelecionado.value === 'Retirada') {
+                    previousStep = 2; // Pular Step 3 (Logística) se for Retirada
+                }
+            }
+            
+            this.showStep(previousStep);
             this.updateProgress();
         }
     },

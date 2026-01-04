@@ -12,26 +12,26 @@
             </div>
 
             <div class="flex flex-wrap gap-2 w-full sm:w-auto">
-                <button id="btn-refresh" class="btn btn-secondary flex-1 sm:flex-none text-sm" title="Atualizar">
+                <sl-button id="btn-refresh" variant="default" size="small" class="flex-1 sm:flex-none" title="Atualizar">
                     <i class="fas fa-sync-alt"></i>
                     <span class="hidden sm:inline ml-1">Atualizar</span>
-                </button>
-                <button id="btn-cleanup" class="btn btn-secondary flex-1 sm:flex-none text-sm" title="Limpar Antigos">
+                </sl-button>
+                <sl-button id="btn-cleanup" variant="default" size="small" class="flex-1 sm:flex-none" title="Limpar Antigos">
                     <i class="fas fa-broom"></i>
                     <span class="hidden sm:inline ml-1">Limpar</span>
-                </button>
-                <button onclick="Router.navigate('/fontes-pedido')" class="btn btn-secondary flex-1 sm:flex-none text-sm" title="Gerenciar Fontes de Pedido">
+                </sl-button>
+                <sl-button onclick="Router.navigate('/fontes-pedido')" variant="default" size="small" class="flex-1 sm:flex-none" title="Gerenciar Fontes de Pedido">
                     <i class="fas fa-folder"></i>
                     <span class="hidden sm:inline ml-1">Fontes</span>
-                </button>
-                <button id="btn-exportar-planilha" class="btn btn-secondary flex-1 sm:flex-none text-sm" title="Exportar para Google Sheets">
+                </sl-button>
+                <sl-button id="btn-exportar-planilha" variant="default" size="small" class="flex-1 sm:flex-none" title="Exportar para Google Sheets">
                     <i class="fas fa-file-excel"></i>
                     <span class="hidden sm:inline ml-1">Planilha</span>
-                </button>
-                <button id="btn-novo-pedido-painel" onclick="Router.navigate('/criar-pedido')" class="btn btn-primary flex-1 sm:flex-none text-sm">
+                </sl-button>
+                <sl-button id="btn-novo-pedido-painel" variant="primary" size="small" class="flex-1 sm:flex-none" onclick="Router.navigate('/criar-pedido')">
                     <i class="fas fa-plus-circle"></i>
                     <span class="hidden sm:inline ml-1">Novo Pedido</span>
-                </button>
+                </sl-button>
             </div>
         </div>
     </div>
@@ -39,7 +39,7 @@
     <!-- Estatísticas -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-4 sm:mb-6">
         <!-- Total -->
-        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+        <sl-card class="stat-card">
             <div class="flex items-center justify-between gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Total</p>
@@ -49,10 +49,10 @@
                     <i class="fas fa-list text-lg sm:text-2xl text-blue-600"></i>
                 </div>
             </div>
-        </div>
+        </sl-card>
 
         <!-- Agendados -->
-        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+        <sl-card class="stat-card">
             <div class="flex items-center justify-between gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Agendados</p>
@@ -62,10 +62,10 @@
                     <i class="fas fa-clock text-lg sm:text-2xl text-gray-600"></i>
                 </div>
             </div>
-        </div>
+        </sl-card>
 
         <!-- Em Produção -->
-        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+        <sl-card class="stat-card">
             <div class="flex items-center justify-between gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Produção</p>
@@ -75,10 +75,10 @@
                     <i class="fas fa-cogs text-lg sm:text-2xl text-yellow-600"></i>
                 </div>
             </div>
-        </div>
+        </sl-card>
 
         <!-- Prontos -->
-        <div class="bg-white rounded-lg shadow-md p-3 sm:p-4">
+        <sl-card class="stat-card">
             <div class="flex items-center justify-between gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-xs sm:text-sm text-gray-600 mb-1 truncate">Prontos</p>
@@ -88,24 +88,22 @@
                     <i class="fas fa-check-circle text-lg sm:text-2xl text-green-600"></i>
                 </div>
             </div>
-        </div>
+        </sl-card>
     </div>
 
     <!-- Filtros e Busca -->
     <div class="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
-        <div class="flex flex-col gap-3 sm:gap-4">
-            <!-- Busca -->
-            <div class="flex-1 w-full">
-                <div class="relative">
-                    <i class="fas fa-search absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm sm:text-base"></i>
-                    <input 
-                        type="text" 
+            <div class="flex flex-col gap-3 sm:gap-4">
+                <!-- Busca -->
+                <div class="flex-1 w-full">
+                    <sl-input 
                         id="search-input"
-                        class="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:border-primary focus:outline-none transition"
                         placeholder="Buscar por cliente, destinatário ou produto..."
-                    >
+                        clearable
+                        class="w-full">
+                        <i class="fas fa-search" slot="prefix"></i>
+                    </sl-input>
                 </div>
-            </div>
 
             <!-- Filtros de Data -->
             <div class="flex flex-wrap gap-2">
@@ -204,9 +202,15 @@
         <!-- Pedidos serão carregados aqui via JavaScript -->
         
         <!-- Loading Skeleton -->
-        <div class="skeleton bg-white rounded-lg p-6 h-64"></div>
-        <div class="skeleton bg-white rounded-lg p-6 h-64"></div>
-        <div class="skeleton bg-white rounded-lg p-6 h-64"></div>
+        <sl-card>
+            <sl-skeleton effect="pulse" style="height: 256px;"></sl-skeleton>
+        </sl-card>
+        <sl-card>
+            <sl-skeleton effect="pulse" style="height: 256px;"></sl-skeleton>
+        </sl-card>
+        <sl-card>
+            <sl-skeleton effect="pulse" style="height: 256px;"></sl-skeleton>
+        </sl-card>
     </div>
 </div>
 

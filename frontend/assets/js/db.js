@@ -17,16 +17,41 @@ const DB = {
 
             request.onerror = () => {
                 console.error('Erro ao abrir IndexedDB:', request.error);
+                // Log error (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logError('db', 'init', request.error, {
+                        dbName: this.name,
+                        version: this.version
+                    });
+                }
                 reject(request.error);
             };
 
             request.onsuccess = () => {
                 this.db = request.result;
+                // Log success (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logInfo('db', 'init', 'IndexedDB initialized', {
+                        dbName: this.name,
+                        version: this.version
+                    });
+                }
                 resolve(this.db);
             };
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
+                const oldVersion = event.oldVersion;
+                const newVersion = event.newVersion;
+
+                // Log upgrade (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logInfo('db', 'upgrade', 'IndexedDB schema upgrade', {
+                        dbName: this.name,
+                        oldVersion,
+                        newVersion
+                    });
+                }
 
                 // Store para pedidos pendentes (offline)
                 if (!db.objectStoreNames.contains('pendingPedidos')) {
@@ -69,11 +94,25 @@ const DB = {
             const request = store.add(pedido);
 
             request.onsuccess = () => {
+                // Log write (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logInfo('db', 'write', 'Pedido pendente salvo', {
+                        store: 'pendingPedidos',
+                        id: request.result
+                    });
+                }
                 resolve(request.result);
             };
 
             request.onerror = () => {
                 console.error('Erro ao salvar pedido offline:', request.error);
+                // Log error (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logError('db', 'write', request.error, {
+                        store: 'pendingPedidos',
+                        operation: 'savePendingPedido'
+                    });
+                }
                 reject(request.error);
             };
         });
@@ -91,10 +130,24 @@ const DB = {
             const request = store.getAll();
 
             request.onsuccess = () => {
+                // Log read (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logInfo('db', 'read', 'Pedidos pendentes lidos', {
+                        store: 'pendingPedidos',
+                        count: request.result.length
+                    });
+                }
                 resolve(request.result);
             };
 
             request.onerror = () => {
+                // Log error (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logError('db', 'read', request.error, {
+                        store: 'pendingPedidos',
+                        operation: 'getPendingPedidos'
+                    });
+                }
                 reject(request.error);
             };
         });
@@ -132,6 +185,13 @@ const DB = {
             return { success: true, synced: 0 };
         }
 
+        // Log sync start (Phase 0)
+        if (typeof Telemetry !== 'undefined') {
+            Telemetry.logInfo('db', 'sync', 'Iniciando sincronização de pedidos pendentes', {
+                pendingCount: pending.length
+            });
+        }
+
         let syncedCount = 0;
         const errors = [];
 
@@ -152,6 +212,15 @@ const DB = {
                 console.error('Erro ao sincronizar pedido:', error);
                 errors.push({ pedido: pedido.id, error: error.message });
             }
+        }
+
+        // Log sync result (Phase 0)
+        if (typeof Telemetry !== 'undefined') {
+            Telemetry.logInfo('db', 'sync', 'Sincronização concluída', {
+                synced: syncedCount,
+                errors: errors.length,
+                total: pending.length
+            });
         }
 
         if (syncedCount > 0) {
@@ -194,11 +263,25 @@ const DB = {
 
             transaction.oncomplete = () => {
                 console.log(`✅ ${pedidos.length} pedidos cacheados`);
+                // Log cache (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logInfo('db', 'cache', 'Pedidos cacheados', {
+                        store: 'pedidosCache',
+                        count: pedidos.length
+                    });
+                }
                 resolve();
             };
 
             transaction.onerror = () => {
                 console.error('[DB] Erro ao cachear pedidos:', transaction.error);
+                // Log error (Phase 0)
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logError('db', 'cache', transaction.error, {
+                        store: 'pedidosCache',
+                        operation: 'cachePedidos'
+                    });
+                }
                 reject(transaction.error);
             };
         });
@@ -264,6 +347,47 @@ const DB = {
         } catch (error) {
             console.error('Erro ao limpar dados:', error);
             Notification.show('Erro ao limpar dados locais', 'error');
+        }
+    },
+
+    /**
+     * Health check do banco de dados (Phase 0)
+     */
+    async dbHealthCheck() {
+        try {
+            if (!this.db) {
+                await this.init();
+            }
+
+            const health = {
+                ok: true,
+                dbName: this.name,
+                version: this.version,
+                lastError: null
+            };
+
+            // Test read operation
+            try {
+                const testTransaction = this.db.transaction(['pedidosCache'], 'readonly');
+                const testStore = testTransaction.objectStore('pedidosCache');
+                await new Promise((resolve, reject) => {
+                    const testRequest = testStore.count();
+                    testRequest.onsuccess = () => resolve();
+                    testRequest.onerror = () => reject(testRequest.error);
+                });
+            } catch (testError) {
+                health.ok = false;
+                health.lastError = testError.message || String(testError);
+            }
+
+            return health;
+        } catch (error) {
+            return {
+                ok: false,
+                dbName: this.name,
+                version: this.version,
+                lastError: error.message || String(error)
+            };
         }
     }
 };

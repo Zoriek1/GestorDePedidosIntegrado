@@ -1,5 +1,13 @@
 @echo off
-:: Agenda tarefa no Windows Task Scheduler para rodar backup diário
+:: [LEGADO/OPCIONAL] Agenda tarefa no Windows Task Scheduler para rodar backup diário
+:: 
+:: NOTA: O sistema agora cria backup automaticamente sempre que o
+:: servidor é iniciado. Este script é opcional e apenas adiciona
+:: backups adicionais com upload para Google Drive em horários específicos.
+:: 
+:: Se você não precisa de backups adicionais além do startup,
+:: pode ignorar este script.
+:: 
 :: Ajuste o horário conforme necessário (HH:MM no formato 24h)
 
 set HORA=02:00

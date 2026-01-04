@@ -9,8 +9,12 @@ from app.schemas.common import success_response, error_response
 from app.schemas.pedido_schema import PedidoSchema, PedidoCreateSchema, PedidoUpdateSchema
 from app.middleware import requires_edit_auth
 from app.utils.backup_helper import create_backup
+from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
 import importlib.util
 from pathlib import Path
+
+# Command Pattern Imports
+from app.commands.gerar_comprovante_command import GerarComprovanteCommand
 
 pedidos_bp = Blueprint('pedidos', __name__, url_prefix='/api/pedidos')
 
@@ -24,10 +28,13 @@ pedido_update_schema = PedidoUpdateSchema()
 def listar_pedidos():
     """Lista pedidos com filtros opcionais"""
     try:
+        from datetime import timedelta
+        
         status = request.args.get('status')
         data_inicio = request.args.get('data_inicio')
         data_fim = request.args.get('data_fim')
         search = request.args.get('search')
+        filtrar_por_criacao = request.args.get('filtrar_por_criacao', '').lower() == 'true'
         
         # Converter datas se fornecidas
         data_inicio_obj = None
@@ -39,15 +46,28 @@ def listar_pedidos():
                 return error_response('Formato de data_inicio inválido. Use YYYY-MM-DD', 400)
         if data_fim:
             try:
-                data_fim_obj = datetime.strptime(data_fim, '%Y-%m-%d').date()
+                data_fim_original = datetime.strptime(data_fim, '%Y-%m-%d').date()
+                # Se filtrar_por_criacao, converter para fim_exclusivo (dia seguinte 00:00:00)
+                if filtrar_por_criacao:
+                    data_fim_obj = data_fim_original + timedelta(days=1)
+                else:
+                    data_fim_obj = data_fim_original
             except ValueError:
                 return error_response('Formato de data_fim inválido. Use YYYY-MM-DD', 400)
+        
+        # REGRA CRÍTICA: Quando filtrar_por_criacao=True (usado pela tela de vendas),
+        # ocultos SEMPRE ENTRAM (excluir_ocultos=False).
+        # O campo 'oculto' é apenas para limpeza visual na tela de pedidos.
+        # Vendas devem mostrar TODOS os pedidos do mês, incluindo ocultos.
+        excluir_ocultos = not filtrar_por_criacao  # False quando filtrar_por_criacao=True
         
         pedidos = pedido_repo.buscar_com_filtros(
             status=status,
             data_inicio=data_inicio_obj,
             data_fim=data_fim_obj,
-            search=search
+            search=search,
+            excluir_ocultos=excluir_ocultos,
+            filtrar_por_criacao=filtrar_por_criacao
         )
         
         # Serializar pedidos
@@ -98,18 +118,59 @@ def atualizar_status(pedido_id):
 @requires_edit_auth
 def deletar_pedido(pedido_id):
     """Deleta pedido"""
+    from app import db
+    from app.models.pedido import Pedido
+    from sqlalchemy import text
+    
+    # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
+    # IMPORTANTE: Esta verificação deve estar FORA do try/except genérico
+    # para garantir que BackupRequiredException seja tratada corretamente
+    from app.utils.destructive_action_guard import BackupRequiredException
+    
     try:
-        # Criar backup antes de deletar (CRÍTICO)
-        create_backup(reason='critical_operation', silent=True)
-        
+        ensure_backup_before_destructive_action(reason='delete_pedido', context={'pedido_id': pedido_id})
+    except BackupRequiredException as backup_error:
+        # Backup falhou - bloquear operação
+        error_msg = str(backup_error)
+        print(f"[BLOQUEADO] Operação destrutiva bloqueada: {error_msg}")
+        return error_response(
+            'Backup necessário antes de operação destrutiva. Falha ao criar backup. Operação bloqueada por segurança.',
+            503,
+            details={'error': error_msg, 'pedido_id': pedido_id}
+        )
+    
+    # Se chegou aqui, backup foi criado com sucesso
+    try:
+        # Soft delete (P0.3) - não remove fisicamente
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response('Pedido não encontrado', 404)
         
-        pedido_repo.delete(pedido)
-        return success_response(message='Pedido deletado com sucesso')
+        if pedido.is_deleted:
+            return error_response('Pedido já foi deletado', 400)
+        
+        # Obter actor (usuário) se disponível
+        actor = 'system'  # TODO: extrair de autenticação se disponível
+        
+        # Executar soft delete via repository (já registra auditoria)
+        pedido_atualizado = pedido_repo.soft_delete_pedido(pedido_id, actor=actor)
+        
+        if pedido_atualizado:
+            print(f"[SUCCESS] Pedido #{pedido_id} soft-deleted com sucesso")
+            return success_response(
+                {'pedido': pedido_atualizado.to_dict()},
+                message='Pedido arquivado com sucesso (soft delete)'
+            )
+        else:
+            return error_response('Falha ao arquivar pedido', 500)
+                
     except Exception as e:
-        return error_response(f'Erro ao deletar pedido: {str(e)}', 500)
+        error_msg = str(e)
+        error_type = type(e).__name__
+        print(f"[ERRO] Exceção inesperada ao deletar pedido #{pedido_id}: {error_type}: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return error_response(f'Erro ao deletar pedido: {error_msg}', 500)
 
 
 @pedidos_bp.route('/exportar-planilha', methods=['POST'])
@@ -143,12 +204,8 @@ def exportar_planilha():
         module.__file__ = str(script_path)
         spec.loader.exec_module(module)
         
-        # Corrigir caminho de credenciais se necessário
-        expected_creds_path = backend_dir / 'config' / 'google_credentials.json'
-        if hasattr(module, 'CREDENTIALS_PATH'):
-            from pathlib import Path as PathLib
-            if not PathLib(module.CREDENTIALS_PATH).exists() and PathLib(expected_creds_path).exists():
-                module.CREDENTIALS_PATH = str(expected_creds_path)
+        # Nota: O script agora resolve credenciais automaticamente
+        # via _resolve_credentials_path() em backend/user/config/ ou variável de ambiente
         
         if not hasattr(module, 'exportar_vendas'):
             return error_response('Função exportar_vendas não encontrada', 500)
@@ -253,16 +310,41 @@ def criar_pedido():
         except (ValueError, TypeError):
             quantidade = 1
         
-        # Validação de horário
-        if not re.match(r'^([01]?\d|2[0-3]):[0-5]\d$', horario):
+        # Validação de horário: aceita HH:MM ou intervalo HH:MM - HH:MM
+        pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
+        pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
+        
+        if not (re.match(pattern_simples, horario) or re.match(pattern_intervalo, horario)):
             return error_response(
                 'Formato de horário inválido',
                 400,
                 details={
                     'horario_recebido': horario,
-                    'formato_esperado': 'HH:MM (ex: 14:30)'
+                    'formato_esperado': 'HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)'
                 }
             )
+        
+        # Se for intervalo, validar que horário final é depois do inicial
+        if ' - ' in horario:
+            partes = horario.split(' - ')
+            if len(partes) == 2:
+                try:
+                    h1, m1 = map(int, partes[0].strip().split(':'))
+                    h2, m2 = map(int, partes[1].strip().split(':'))
+                    minutos_inicial = h1 * 60 + m1
+                    minutos_final = h2 * 60 + m2
+                    if minutos_final <= minutos_inicial:
+                        return error_response(
+                            'O horário final deve ser depois do horário inicial',
+                            400,
+                            details={'horario_recebido': horario}
+                        )
+                except (ValueError, IndexError):
+                    return error_response(
+                        'Formato de intervalo inválido',
+                        400,
+                        details={'horario_recebido': horario}
+                    )
         
         # Conversão de data
         try:
@@ -545,3 +627,85 @@ def marcar_impresso(pedido_id):
         db.session.rollback()
         return error_response(f'Erro ao marcar como impresso: {str(e)}', 500)
 
+
+@pedidos_bp.route('/<int:pedido_id>/comprovante', methods=['GET'])
+def obter_comprovante(pedido_id):
+    """Gera comprovante de pedido (HTML)"""
+    try:
+        from flask import Response
+        
+        command = GerarComprovanteCommand(pedido_id)
+        html = command.execute()
+        
+        return Response(html, mimetype='text/html')
+    except ValueError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return error_response(f'Erro ao gerar comprovante: {str(e)}', 500)
+
+
+@pedidos_bp.route('/ocultar-concluidos', methods=['POST'])
+@requires_edit_auth
+def ocultar_concluidos():
+    """Oculta todos os pedidos concluídos do painel"""
+    try:
+        count = pedido_repo.ocultar_concluidos()
+        
+        return success_response(
+            {'count': count},
+            message=f'{count} pedido(s) concluído(s) ocultado(s) do painel'
+        )
+    except Exception as e:
+        from app import db
+        db.session.rollback()
+        return error_response(f'Erro ao ocultar pedidos concluídos: {str(e)}', 500)
+
+
+@pedidos_bp.route('/<int:pedido_id>/restore', methods=['POST'])
+@requires_edit_auth
+def restaurar_pedido(pedido_id):
+    """Restaura pedido soft-deleted (P0.3)"""
+    try:
+        pedido = pedido_repo.get_by_id(pedido_id)
+        if not pedido:
+            return error_response('Pedido não encontrado', 404)
+        
+        if not pedido.is_deleted:
+            return error_response('Pedido não está deletado', 400)
+        
+        # Obter actor (usuário) se disponível
+        actor = 'system'  # TODO: extrair de autenticação se disponível
+        
+        # Executar restore via repository (já registra auditoria)
+        pedido_restaurado = pedido_repo.restore_pedido(pedido_id, actor=actor)
+        
+        if pedido_restaurado:
+            return success_response(
+                {'pedido': pedido_restaurado.to_dict()},
+                message='Pedido restaurado com sucesso'
+            )
+        else:
+            return error_response('Falha ao restaurar pedido', 500)
+            
+    except Exception as e:
+        from app import db
+        db.session.rollback()
+        return error_response(f'Erro ao restaurar pedido: {str(e)}', 500)
+
+
+@pedidos_bp.route('/deleted', methods=['GET'])
+@requires_edit_auth
+def listar_deletados():
+    """Lista pedidos soft-deleted (P0.3)"""
+    try:
+        pedidos_deletados = pedido_repo.buscar_deletados()
+        pedidos_data = [p.to_dict() for p in pedidos_deletados]
+        
+        return success_response({
+            'pedidos': pedidos_data,
+            'total': len(pedidos_data)
+        })
+    except Exception as e:
+        return error_response(f'Erro ao listar pedidos deletados: {str(e)}', 500)

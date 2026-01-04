@@ -176,9 +176,16 @@ const Masks = {
 
     /**
      * Remove máscara de horário
+     * Preserva formato de intervalo "HH:MM - HH:MM"
      */
     unmaskTime(value) {
-        return value ? value.replace(/[^\d:]/g, '') : '';
+        if (!value) return '';
+        // Se for intervalo (contém ' - '), preservar formato completo
+        if (value.includes(' - ')) {
+            return value.trim();
+        }
+        // Horário simples: remover caracteres inválidos
+        return value.replace(/[^\d:]/g, '');
     },
 
     /**

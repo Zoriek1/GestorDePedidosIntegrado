@@ -83,7 +83,7 @@ const Modal = {
     },
 
     /**
-     * Cria estrutura do modal
+     * Cria estrutura do modal usando Shoelace Dialog
      */
     create(options) {
         const {
@@ -93,110 +93,159 @@ const Modal = {
             buttons = []
         } = options;
 
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
+        const dialog = document.createElement('sl-dialog');
+        dialog.label = title || 'Dialog';
+        dialog.noHeader = !title;
 
-        const content = document.createElement('div');
-        content.className = 'modal-content';
-
-        // Ícone
-        let iconHtml = '';
         if (icon) {
-            iconHtml = `
-                <div class="text-center mb-4">
-                    <i class="fas ${icon} text-5xl text-primary"></i>
-                </div>
-            `;
+            const iconEl = document.createElement('sl-icon');
+            iconEl.name = icon.replace('fa-', '');
+            iconEl.library = 'fa';
+            iconEl.style.fontSize = '3rem';
+            iconEl.style.color = 'var(--color-primary)';
+            iconEl.style.marginBottom = 'var(--spacing-4)';
+            dialog.appendChild(iconEl);
         }
 
-        // Título
-        const titleHtml = title ? `<h3 class="text-xl font-bold text-gray-800 mb-2">${Utils.escapeHtml(title)}</h3>` : '';
+        if (message) {
+            const messageEl = document.createElement('p');
+            messageEl.textContent = message;
+            messageEl.className = 'text-gray-600 mb-6';
+            dialog.appendChild(messageEl);
+        }
 
-        // Mensagem
-        const messageHtml = message ? `<p class="text-gray-600 mb-6">${Utils.escapeHtml(message)}</p>` : '';
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.className = 'flex gap-3 justify-end';
+        buttonsContainer.slot = 'footer';
 
-        // Botões
-        const buttonsHtml = buttons.map(btn => {
-            return `<button class="btn ${btn.class}" data-action="${btn.text}">${Utils.escapeHtml(btn.text)}</button>`;
-        }).join('');
-
-        content.innerHTML = `
-            ${iconHtml}
-            <div class="text-center">
-                ${titleHtml}
-                ${messageHtml}
-            </div>
-            <div class="flex gap-3 justify-end">
-                ${buttonsHtml}
-            </div>
-        `;
-
-        // Adicionar event listeners nos botões
         buttons.forEach(btn => {
-            const button = content.querySelector(`[data-action="${btn.text}"]`);
-            if (button) {
-                button.addEventListener('click', btn.onClick);
-            }
+            const variant = btn.class.includes('primary')
+                ? 'primary'
+                : btn.class.includes('danger')
+                    ? 'danger'
+                    : btn.class.includes('success')
+                        ? 'success'
+                        : 'default';
+
+            const slButton = Utils.createSlButton({
+                variant,
+                text: btn.text,
+                onclick: () => {
+                    btn.onClick();
+                    dialog.hide();
+                }
+            });
+
+            buttonsContainer.appendChild(slButton);
         });
 
-        overlay.appendChild(content);
+        dialog.appendChild(buttonsContainer);
+        document.body.appendChild(dialog);
 
-        // Fechar ao clicar no overlay
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                const cancelButton = buttons.find(b => b.text === 'Cancelar' || b.class.includes('secondary'));
-                if (cancelButton) {
-                    cancelButton.onClick();
-                }
-            }
-        });
-
-        // Fechar com ESC
-        const escapeHandler = (e) => {
-            if (e.key === 'Escape') {
-                const cancelButton = buttons.find(b => b.text === 'Cancelar' || b.class.includes('secondary'));
-                if (cancelButton) {
-                    cancelButton.onClick();
-                }
-                document.removeEventListener('keydown', escapeHandler);
-            }
-        };
-        document.addEventListener('keydown', escapeHandler);
-
-        return overlay;
+        return dialog;
     },
 
     /**
      * Mostra modal
+     * Aceita: Node, string HTML, array de Nodes, ou (title, content) para compatibilidade
      */
-    show(modal) {
-        document.body.appendChild(modal);
-        this.currentModal = modal;
+    show(modal, content) {
+        // Sobrecarga: se content for fornecido, tratar como (title, content)
+        if (content !== undefined) {
+            const title = modal;
+            const modalElement = this.custom(content, null);
+            // Se o modal tiver header, podemos atualizar o label
+            if (modalElement.tagName === 'SL-DIALOG' && title) {
+                modalElement.label = title;
+            }
+            return;
+        }
 
-        // Animação de entrada
-        setTimeout(() => {
-            modal.classList.add('active');
-        }, 10);
+        if (!modal) return;
+
+        // Função helper para converter qualquer coisa para Node
+        const toNode = (input) => {
+            // Se já é Node, retornar
+            if (input instanceof Node) {
+                return input;
+            }
+
+            // Se é array, agregar em DocumentFragment
+            if (Array.isArray(input)) {
+                const fragment = document.createDocumentFragment();
+                input.forEach(item => {
+                    const node = toNode(item);
+                    if (node) fragment.appendChild(node);
+                });
+                return fragment;
+            }
+
+            // Se é string, usar template para converter HTML
+            if (typeof input === 'string') {
+                const template = document.createElement('template');
+                template.innerHTML = input.trim();
+                // Se template tem um único elemento filho, retornar ele; senão retornar fragment
+                return template.content.childNodes.length === 1 
+                    ? template.content.firstChild 
+                    : template.content;
+            }
+
+            // Fallback: converter para TextNode
+            return document.createTextNode(String(input || ''));
+        };
+
+        const modalNode = toNode(modal);
+
+        if (modalNode.tagName === 'SL-DIALOG') {
+            const doShow = () => {
+                if (typeof modalNode.show === 'function') {
+                    modalNode.show();
+                } else {
+                    modalNode.setAttribute('open', '');
+                }
+            };
+            requestAnimationFrame(doShow);
+            this.currentModal = modalNode;
+        } else {
+            // Se modalNode é DocumentFragment, criar container
+            let container = modalNode;
+            if (modalNode instanceof DocumentFragment) {
+                container = document.createElement('div');
+                container.className = 'modal-content';
+                container.appendChild(modalNode);
+            }
+            
+            document.body.appendChild(container);
+            this.currentModal = container;
+            setTimeout(() => {
+                container.classList.add('active');
+            }, 10);
+        }
     },
 
     /**
      * Fecha modal
      */
     close(modal) {
-        if (!modal) {
-            modal = this.currentModal;
+        if (!modal) modal = this.currentModal;
+        if (!modal) return;
+
+        if (modal.tagName === 'SL-DIALOG') {
+            modal.hide();
+            setTimeout(() => {
+                if (modal.parentNode) modal.parentNode.removeChild(modal);
+            }, 300);
+            this.currentModal = null;
+            return;
         }
 
-        if (modal) {
-            modal.classList.remove('active');
-            
-            setTimeout(() => {
-                modal.remove();
-                if (this.currentModal === modal) {
-                    this.currentModal = null;
-                }
-            }, 200);
-        }
+        modal.classList.remove('active');
+        setTimeout(() => {
+            modal.remove();
+            if (this.currentModal === modal) {
+                this.currentModal = null;
+            }
+        }, 200);
     },
 
     /**
@@ -214,84 +263,76 @@ const Modal = {
     },
 
     /**
-     * Modal customizado com HTML
+     * Modal customizado com HTML usando Shoelace Dialog
      */
     custom(htmlContent, onClose) {
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-
-        const content = document.createElement('div');
-        content.className = 'modal-content';
-        content.innerHTML = htmlContent;
-
-        overlay.appendChild(content);
-
-        // Prevenir drag do modal
-        let isDragging = false;
-        let startX, startY, startLeft, startTop;
+        const dialog = document.createElement('sl-dialog');
+        dialog.noHeader = true;
+        dialog.innerHTML = htmlContent;
         
-        content.addEventListener('mousedown', (e) => {
-            // Só permitir drag no header
-            const header = content.querySelector('h2, .modal-header');
-            if (header && header.contains(e.target)) {
-                isDragging = true;
-                startX = e.clientX;
-                startY = e.clientY;
-                const rect = content.getBoundingClientRect();
-                startLeft = rect.left;
-                startTop = rect.top;
-                e.preventDefault();
-            }
+        // OCULTAR ANTES DE ANEXAR - prevenir glitch visual
+        dialog.style.opacity = '0';
+        dialog.style.visibility = 'hidden';
+        dialog.style.position = 'fixed'; // Forçar fixed desde o início
+
+        // Fechar ao esconder
+        dialog.addEventListener('sl-after-hide', () => {
+            if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
+            if (onClose) onClose();
+            if (this.currentModal === dialog) this.currentModal = null;
         });
 
-        document.addEventListener('mousemove', (e) => {
-            if (isDragging) {
-                e.preventDefault();
-                // Não permitir drag - manter modal centralizado
-                isDragging = false;
-            }
-        });
-
-        document.addEventListener('mouseup', () => {
-            isDragging = false;
-        });
-
-        // Prevenir fechamento acidental - só fechar se clicar diretamente no overlay (não no content)
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay && !isDragging) {
-                // Não fechar automaticamente - requer clique no botão de fechar
-                // this.close(overlay);
-                // if (onClose) onClose();
-            }
-        });
-
-        // Botões de fechar
-        content.querySelectorAll('[data-modal-close]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.close(overlay);
-                if (onClose) onClose();
+        // Botões com data-modal-close
+        const bindCloseButtons = () => {
+            dialog.querySelectorAll('[data-modal-close]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dialog.hide();
+                });
             });
-        });
-
-        // Prevenir fechamento com ESC apenas se não houver formulário ativo
-        const escapeHandler = (e) => {
-            if (e.key === 'Escape') {
-                const activeElement = document.activeElement;
-                // Não fechar se estiver digitando em um input
-                if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'SELECT')) {
-                    return;
-                }
-                this.close(overlay);
-                if (onClose) onClose();
-                document.removeEventListener('keydown', escapeHandler);
-            }
         };
-        document.addEventListener('keydown', escapeHandler);
 
-        this.show(overlay);
+        // Anexar ao body (ainda oculto)
+        document.body.appendChild(dialog);
+        setTimeout(bindCloseButtons, 0);
 
-        return overlay;
+        const openDialog = () => {
+            // Aguardar próximo frame para garantir renderização
+            requestAnimationFrame(() => {
+                // Garantir que está posicionado corretamente
+                if (dialog.shadowRoot) {
+                    const panel = dialog.shadowRoot.querySelector('[part="panel"]');
+                    if (panel) {
+                        // Forçar centralização
+                        panel.style.margin = 'auto';
+                    }
+                }
+                
+                // Remover ocultação e mostrar
+                dialog.style.opacity = '';
+                dialog.style.visibility = '';
+                
+                // Chamar show do Shoelace
+                if (typeof dialog.show === 'function') {
+                    dialog.show();
+                } else {
+                    dialog.setAttribute('open', '');
+                }
+            });
+        };
+
+        if (customElements && typeof customElements.whenDefined === 'function') {
+            customElements.whenDefined('sl-dialog').then(() => {
+                // Aguardar mais um frame após definição
+                requestAnimationFrame(openDialog);
+            });
+        } else {
+            // Fallback: aguardar um pouco mais
+            setTimeout(openDialog, 50);
+        }
+        
+        this.currentModal = dialog;
+        return dialog;
     }
 };
 

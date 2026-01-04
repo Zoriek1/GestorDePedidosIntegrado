@@ -18,8 +18,21 @@ const App = {
         }
 
         try {
+            // Inicializar Telemetry primeiro (Phase 0)
+            if (typeof Telemetry !== 'undefined') {
+                await Telemetry.init();
+            }
+
             // Inicializar IndexedDB
             await DB.init();
+
+            // Log DB health check (Phase 0)
+            if (typeof DB !== 'undefined' && DB.dbHealthCheck) {
+                const dbHealth = await DB.dbHealthCheck();
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logInfo('db', 'health_check', 'DB health check on startup', dbHealth);
+                }
+            }
 
             // Configurar listeners globais (crítico - fazer primeiro)
             this.setupGlobalListeners();
@@ -149,6 +162,15 @@ const App = {
 
         // Atalhos de teclado
         document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + Shift + D: Diagnóstico (Phase 0)
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
+                e.preventDefault();
+                if (typeof Diagnostics !== 'undefined') {
+                    Diagnostics.show();
+                }
+                return;
+            }
+
             // Ctrl/Cmd + K: Buscar
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
@@ -180,6 +202,44 @@ const App = {
                 }
             }
         });
+
+        // Global error handlers (Phase 0)
+        window.onerror = (message, source, lineno, colno, error) => {
+            if (typeof Telemetry !== 'undefined') {
+                Telemetry.logError('global', 'unhandled', error || new Error(message), {
+                    message: String(message).substring(0, 200),
+                    source: source ? source.substring(0, 200) : null,
+                    lineno: lineno || null,
+                    colno: colno || null,
+                    stack: error && error.stack ? error.stack.substring(0, 500) : null
+                });
+            }
+            // Don't prevent default error handling
+            return false;
+        };
+
+        window.addEventListener('unhandledrejection', (event) => {
+            if (typeof Telemetry !== 'undefined') {
+                const reason = event.reason;
+                Telemetry.logError('global', 'unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)), {
+                    reason: String(reason).substring(0, 200),
+                    promise: '[Promise]'
+                });
+            }
+        });
+
+        // Service Worker message listener (Phase 0)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'sw_event' && typeof Telemetry !== 'undefined') {
+                    Telemetry.logInfo('sw', event.data.event || 'message', 'Service Worker event', {
+                        type: event.data.type,
+                        event: event.data.event,
+                        ...(event.data.details || {})
+                    });
+                }
+            });
+        }
         
     },
 
@@ -224,7 +284,12 @@ const App = {
                     });
                 });
             })
-            .catch(error => console.warn('Erro ao registrar Service Worker:', error));
+            .catch(error => {
+                console.warn('Erro ao registrar Service Worker:', error);
+                if (typeof Telemetry !== 'undefined') {
+                    Telemetry.logError('sw', 'registration', error, {});
+                }
+            });
     },
 
 

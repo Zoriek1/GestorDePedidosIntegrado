@@ -96,25 +96,85 @@ command = "cmd.exe /c cd /d """ & workingDir & """ && " & pythonPath & " main.py
 ' Usar CreateObject("WScript.Shell").Run com windowStyle = 0 (oculto)
 exec = shell.Run(command, 0, False)
 
-' Aguardar um pouco para verificar se iniciou
-WScript.Sleep 3000
+' Verificar se servidor iniciou (porta 5000) - fazer múltiplas tentativas
+Dim portCheck, portCheckCmd, maxAttempts, attempt, serverStarted
+maxAttempts = 5
+attempt = 0
+serverStarted = False
 
-' Verificar se servidor iniciou (porta 5000)
-Dim portCheck, portCheckCmd
-portCheckCmd = "cmd.exe /c netstat -ano | findstr :5000 | findstr LISTENING >nul 2>&1"
-portCheck = shell.Run(portCheckCmd, 0, True)
+' Verificação mais simples (sem LISTENING para evitar problemas)
+portCheckCmd = "cmd.exe /c netstat -ano | findstr :5000 >nul 2>&1"
 
-If portCheck = 0 Then
+Do While attempt < maxAttempts And Not serverStarted
+    ' Aguardar antes de verificar (aumentar tempo a cada tentativa)
+    WScript.Sleep 2000 + (attempt * 500)
+    
+    portCheck = shell.Run(portCheckCmd, 0, True)
+    
+    If portCheck = 0 Then
+        ' Porta encontrada, fazer verificação adicional mais específica
+        Dim listenCheck
+        listenCheck = shell.Run("cmd.exe /c netstat -ano | findstr :5000 | findstr /C:LISTENING >nul 2>&1", 0, True)
+        If listenCheck = 0 Then
+            serverStarted = True
+        End If
+    End If
+    
+    attempt = attempt + 1
+Loop
+
+If serverStarted Then
     ' Servidor iniciou com sucesso
     shell.Popup "Servidor HTTPS iniciado com sucesso!" & vbCrLf & vbCrLf & _
                 "Acesse: https://localhost:5000" & vbCrLf & vbCrLf & _
                 "Log: " & logPath, _
                 3, "Servidor Iniciado - Plante Uma Flor", vbInformation
 Else
-    ' Erro ao iniciar
-    shell.Popup "Erro ao iniciar servidor!" & vbCrLf & vbCrLf & _
-                "Verifique o log: " & logPath, _
-                5, "Erro - Plante Uma Flor", vbCritical
+    ' Verificar se há erro no log antes de mostrar mensagem
+    Dim logError, logContent, logFile, logLines, i, lastLines, startLine
+    logError = False
+    If fso.FileExists(logPath) Then
+        ' Tentar ler últimas linhas do log para ver se há erro
+        On Error Resume Next
+        Set logFile = fso.OpenTextFile(logPath, 1)
+        If Err.Number = 0 Then
+            ' Ler últimas linhas (últimas 10)
+            logLines = Split(logFile.ReadAll, vbCrLf)
+            logFile.Close
+            
+            ' Pegar últimas 10 linhas
+            lastLines = ""
+            If UBound(logLines) >= 0 Then
+                startLine = UBound(logLines) - 9
+                If startLine < 0 Then startLine = 0
+                For i = startLine To UBound(logLines)
+                    If Len(logLines(i)) > 0 Then
+                        lastLines = lastLines & logLines(i) & vbCrLf
+                        ' Verificar se há palavras-chave de erro
+                        If InStr(LCase(logLines(i)), "error") > 0 Or _
+                           InStr(LCase(logLines(i)), "erro") > 0 Or _
+                           InStr(LCase(logLines(i)), "exception") > 0 Or _
+                           InStr(LCase(logLines(i)), "traceback") > 0 Then
+                            logError = True
+                        End If
+                    End If
+                Next
+            End If
+            Set logFile = Nothing
+        End If
+        On Error GoTo 0
+    End If
+    
+    errorMsg = "Não foi possível confirmar se o servidor iniciou." & vbCrLf & vbCrLf
+    errorMsg = errorMsg & "O servidor pode estar iniciando ainda ou houve um erro." & vbCrLf & vbCrLf
+    errorMsg = errorMsg & "Verifique o log: " & logPath & vbCrLf & vbCrLf
+    If logError Then
+        errorMsg = errorMsg & "ATENÇÃO: Erros foram detectados no log!" & vbCrLf
+    End If
+    errorMsg = errorMsg & vbCrLf & "Tente acessar: https://localhost:5000"
+    
+    shell.Popup errorMsg, _
+                8, "Aviso - Plante Uma Flor", vbExclamation
 End If
 
 ' Limpar objetos

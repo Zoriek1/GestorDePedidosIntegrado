@@ -6,14 +6,17 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
-from google.oauth2.service_account import Credentials
 
 from app.config import Config
 
-SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive",
+]
 
 DEFAULT_CREDENTIAL_PATHS = [
     Config.BASE_DIR / "user" / "config" / "google_credentials.json",
@@ -52,7 +55,9 @@ class GoogleDriveBackup:
             creds = Credentials.from_service_account_file(str(self.credentials_path), scopes=SCOPES)
             return build("drive", "v3", credentials=creds)
         except Exception as exc:
-            raise GoogleDriveBackupError(f"Falha ao inicializar cliente do Google Drive: {exc}") from exc
+            raise GoogleDriveBackupError(
+                f"Falha ao inicializar cliente do Google Drive: {exc}"
+            ) from exc
 
     def upload_backup(self, file_path: Path, mime_type: str = "application/octet-stream") -> str:
         file_path = Path(file_path)
@@ -76,20 +81,24 @@ class GoogleDriveBackup:
                 .execute()
             )
             file_id = created.get("id")
-            
+
             # Transferir propriedade para o dono da pasta (se folder_id foi fornecido)
             # Isso evita problemas de quota da service account
             if self.folder_id:
                 try:
                     # Busca o email do proprietário da pasta
-                    pasta_info = self.service.files().get(
-                        fileId=self.folder_id,
-                        fields="owners",
-                        supportsAllDrives=True
-                    ).execute()
-                    
+                    pasta_info = (
+                        self.service.files()
+                        .get(
+                            fileId=self.folder_id,
+                            fields="owners",
+                            supportsAllDrives=True,
+                        )
+                        .execute()
+                    )
+
                     owner_email = pasta_info.get("owners", [{}])[0].get("emailAddress")
-                    
+
                     if owner_email:
                         # Transfere propriedade
                         self.service.permissions().create(
@@ -97,16 +106,16 @@ class GoogleDriveBackup:
                             body={
                                 "type": "user",
                                 "role": "owner",
-                                "emailAddress": owner_email
+                                "emailAddress": owner_email,
                             },
                             transferOwnership=True,
-                            supportsAllDrives=True
+                            supportsAllDrives=True,
                         ).execute()
                         print(f"[GDRIVE] Propriedade transferida para: {owner_email}")
                 except Exception as e:
                     # Não falha o upload se a transferência der erro
                     print(f"[AVISO] Não foi possível transferir propriedade: {e}")
-            
+
             return file_id
         except HttpError as exc:
             raise GoogleDriveBackupError(f"Erro ao fazer upload para o Drive: {exc}") from exc
@@ -152,8 +161,9 @@ class GoogleDriveBackup:
         return deleted
 
     def download_backup(self, file_id: str, dst: Path) -> Path:
-        from googleapiclient.http import MediaIoBaseDownload
         import io
+
+        from googleapiclient.http import MediaIoBaseDownload
 
         dst = Path(dst)
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -168,4 +178,3 @@ class GoogleDriveBackup:
             return dst
         except HttpError as exc:
             raise GoogleDriveBackupError(f"Erro ao baixar backup do Drive: {exc}") from exc
-

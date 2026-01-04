@@ -1,8 +1,8 @@
-import sqlite3
 import os
+import sqlite3
 
 # Path to database
-db_path = os.path.join(os.path.dirname(__file__), 'database.db')
+db_path = os.path.join(os.path.dirname(__file__), "database.db")
 
 print(f"Connecting to database at: {db_path}")
 
@@ -16,7 +16,7 @@ try:
     print(f"Existing columns: {columns}")
 
     # Add fonte_pedido if missing
-    if 'fonte_pedido' not in columns:
+    if "fonte_pedido" not in columns:
         print("Adding column 'fonte_pedido'...")
         cursor.execute("ALTER TABLE pedidos ADD COLUMN fonte_pedido VARCHAR(50)")
         print("Column 'fonte_pedido' added.")
@@ -24,7 +24,7 @@ try:
         print("Column 'fonte_pedido' already exists.")
 
     # Add status_pagamento if missing
-    if 'status_pagamento' not in columns:
+    if "status_pagamento" not in columns:
         print("Adding column 'status_pagamento'...")
         cursor.execute("ALTER TABLE pedidos ADD COLUMN status_pagamento VARCHAR(50)")
         print("Column 'status_pagamento' added.")

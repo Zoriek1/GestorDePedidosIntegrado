@@ -20,7 +20,7 @@ BACKEND_DIR = CURRENT_DIR.parent.parent  # backend/
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.config import Config
+from app.config import Config  # noqa: E402
 
 
 def integrity_check(db_path: Path) -> bool:
@@ -97,4 +97,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

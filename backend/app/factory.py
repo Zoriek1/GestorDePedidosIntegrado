@@ -4,16 +4,17 @@ Application Factory - Criação e configuração da aplicação Flask
 Orquestra a inicialização de todos os componentes da aplicação
 """
 from flask import Flask
-from app.extensions import init_extensions, init_database
+
 from app.cors import setup_cors
 from app.errors import register_error_handlers
+from app.extensions import init_database, init_extensions
 from app.static import register_static_routes
 
 
 def create_app(config=None):
     """
     Application Factory - cria e configura aplicação Flask
-    
+
     Esta função orquestra a inicialização de todos os componentes
     da aplicação na ordem correta:
     1. Configuração
@@ -23,57 +24,59 @@ def create_app(config=None):
     5. Error Handlers
     6. Static Routes
     7. Security/Middleware
-    
+
     Args:
         config: Dicionário com configurações opcionais
-        
+
     Returns:
         Flask: Instância configurada da aplicação Flask
     """
     # Criar aplicação Flask
     app = Flask(__name__)
-    
+
     # 1. Configuração (PRIMEIRO)
     if config:
         app.config.update(config)
     else:
         from app.config import BaseConfig
+
         app.config.from_object(BaseConfig)
-    
+
     # 2. Extensões (ANTES de importar models)
     init_extensions(app)
-    
+
     # 3. CORS (pode ser antes ou depois, mas antes das rotas)
     setup_cors(app)
-    
+
     # 4. Blueprints e Database (dentro de app_context)
     with app.app_context():
         from app.routes.api import api_bp
+        from app.routes.auth import auth_bp
         from app.routes.clientes import clientes_bp
+        from app.routes.develop.backup import backup_admin_bp
         from app.routes.pedidos import pedidos_bp
         from app.routes.rotas import rotas_bp
-        from app.routes.auth import auth_bp
-        from app.routes.develop.backup import backup_admin_bp
-        
+
         # Registrar blueprints existentes (mantidos para compatibilidade)
         app.register_blueprint(api_bp)
         app.register_blueprint(clientes_bp)
-        
+
         # Registrar novos blueprints organizados por domínio
         app.register_blueprint(pedidos_bp)
         app.register_blueprint(rotas_bp)
         app.register_blueprint(auth_bp)
         app.register_blueprint(backup_admin_bp)
-        
+
         # Criar tabelas (APÓS todos os models serem importados)
         init_database(app)
-    
+
     # 5. Error handlers (antes de static routes)
     register_error_handlers(app)
-    
+
     # 6. OpenAPI/Swagger (ANTES das rotas estáticas para não ser interceptado pelo catch-all)
     try:
         from app.openapi import init_openapi
+
         init_openapi(app)
         print("[OPENAPI] Swagger UI disponível em /docs/swagger")
     except ImportError:
@@ -83,28 +86,29 @@ def create_app(config=None):
         # Erro ao inicializar OpenAPI, continuar sem documentação
         print(f"[AVISO] Erro ao inicializar OpenAPI: {e}")
         print("[AVISO] Swagger UI não estará disponível, mas a API continua funcionando")
-    
+
     # 7. Static routes (POR ÚLTIMO - catch-all)
     register_static_routes(app)
-    
+
     # 8. Security/Middleware (pode ser a qualquer momento)
     setup_security(app)
-    
+
     # 9. Registrar comandos CLI
     register_cli_commands(app)
-    
+
     return app
 
 
 def register_cli_commands(app):
     """
     Registra comandos CLI na aplicação
-    
+
     Args:
         app: Instância da aplicação Flask
     """
     try:
         from app.cli import register_commands
+
         register_commands(app)
     except ImportError:
         # CLI não disponível (pode acontecer durante setup inicial)
@@ -114,25 +118,27 @@ def register_cli_commands(app):
 def setup_security(app):
     """
     Configura segurança e middleware da aplicação
-    
+
     Args:
         app: Instância da aplicação Flask
     """
     import os
+
     from app.middleware import setup_security_middleware
-    
-    ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'true').lower() == 'true'
-    ENABLE_RATE_LIMIT = os.environ.get('ENABLE_RATE_LIMIT', 'true').lower() == 'true'
-    ENABLE_DEBUG_ENDPOINTS = os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true'
-    
+
+    ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
+    ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
+
     try:
         setup_security_middleware(
             app,
             enable_auth=False,  # Autenticação global desativada - apenas rotas específicas
-            enable_rate_limit=ENABLE_RATE_LIMIT
+            enable_rate_limit=ENABLE_RATE_LIMIT,
         )
         print("[SEGURANCA] OK Autenticacao seletiva ATIVADA")
-        print("[SEGURANCA]   Visualizacao livre - Apenas criar/deletar pedidos requerem autenticacao")
+        print(
+            "[SEGURANCA]   Visualizacao livre - Apenas criar/deletar pedidos requerem autenticacao"
+        )
         print("[SEGURANCA]   Usuario: admin")
         if ENABLE_RATE_LIMIT:
             print("[SEGURANCA] OK Rate Limiting ATIVADO (60/min, 1000/hora)")
@@ -142,4 +148,3 @@ def setup_security(app):
         print("[AVISO] Middleware de segurança não encontrado.")
     except Exception as e:
         print(f"[AVISO] Erro ao configurar segurança: {e}")
-

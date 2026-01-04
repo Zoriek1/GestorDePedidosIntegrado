@@ -127,5 +127,10 @@ def decrypt_file(src: Path, dst: Optional[Path] = None, key: Optional[str] = Non
     return dst
 
 
-__all__ = ["ensure_env_key", "encrypt_file", "decrypt_file", "EncryptionError", "generate_key"]
-
+__all__ = [
+    "ensure_env_key",
+    "encrypt_file",
+    "decrypt_file",
+    "EncryptionError",
+    "generate_key",
+]

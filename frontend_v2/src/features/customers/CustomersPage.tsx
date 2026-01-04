@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Box, Typography, Stack, TextField } from '@mui/material';
-import { useCustomers, useCustomerOrders, type Customer } from '../../api/endpoints/customers';
+import { useCustomers, useCustomerOrders, type Customer, type CustomersFilters } from '../../api/endpoints/customers';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { CustomersKPIGrid } from './components/CustomersKPIGrid';
 import { CustomersTable } from './components/CustomersTable';
 import { CustomerDetailsDrawer } from './components/CustomerDetailsDrawer';
+import { CustomersAdvancedFilters } from './components/CustomersAdvancedFilters';
 import { CustomerInsightsService } from './services/CustomerInsightsService';
 
 const insights = new CustomerInsightsService();
@@ -13,8 +14,16 @@ const insights = new CustomerInsightsService();
 export default function CustomersPage() {
   const [searchValue, setSearchValue] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [advancedFilters, setAdvancedFilters] = useState<CustomersFilters>({});
 
-  const { data, isLoading, error, refetch } = useCustomers({ search: searchValue, includeStats: true, perPage: 100 });
+  const filters: CustomersFilters = {
+    search: searchValue,
+    includeStats: true,
+    perPage: 100,
+    ...advancedFilters,
+  };
+
+  const { data, isLoading, error, refetch } = useCustomers(filters);
   const ordersQuery = useCustomerOrders(selectedCustomer?.id, 50);
 
   const customers = data?.clientes || [];
@@ -54,6 +63,16 @@ export default function CustomersPage() {
       ) : (
         <>
           <CustomersKPIGrid kpis={kpis} />
+
+          <CustomersAdvancedFilters
+            minPedidos={advancedFilters.minPedidos}
+            maxPedidos={advancedFilters.maxPedidos}
+            minLTV={advancedFilters.minLTV}
+            maxLTV={advancedFilters.maxLTV}
+            ultimoPedidoApos={advancedFilters.ultimoPedidoApos}
+            ultimoPedidoAntes={advancedFilters.ultimoPedidoAntes}
+            onChange={(filters) => setAdvancedFilters(filters)}
+          />
 
           <CustomersTable customers={customers} badgesMap={badgesMap} onRowClick={handleRowClick} />
         </>

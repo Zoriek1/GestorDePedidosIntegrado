@@ -13,7 +13,10 @@ import {
   Checkbox,
   FormControlLabel,
   Typography,
+  InputAdornment,
+  IconButton,
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from './authStore';
 import { AppButton } from '../../components/common/AppButton';
 import { useToast } from '../../components/system/useToast';
@@ -23,6 +26,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [usernameError, setUsernameError] = useState(false);
+  const [passwordError, setPasswordError] = useState(false);
 
   const { login } = useAuth();
   const { error: showError } = useToast();
@@ -34,26 +40,73 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setUsernameError(false);
+    setPasswordError(false);
 
-    if (!username.trim() || !password.trim()) {
+    // Validação em tempo real
+    let hasError = false;
+    if (!username.trim()) {
+      setUsernameError(true);
+      hasError = true;
+    }
+    if (!password.trim()) {
+      setPasswordError(true);
+      hasError = true;
+    }
+
+    if (hasError) {
       showError('Por favor, preencha usuário e senha');
       setLoading(false);
       return;
     }
 
+    // Prevenção básica de SQL injection (sanitização)
+    const sanitizedUsername = username.trim().replace(/[<>'"]/g, '');
+    if (sanitizedUsername !== username.trim()) {
+      showError('Usuário contém caracteres inválidos');
+      setUsernameError(true);
+      setLoading(false);
+      return;
+    }
+
     try {
-      const result = await login(username.trim(), password, remember);
+      const result = await login(sanitizedUsername, password, remember);
 
       if (result.success) {
         // Navigate to original route or home
         navigate(from, { replace: true });
       } else {
-        showError(result.error || 'Credenciais inválidas');
+        // Mensagens de erro específicas
+        if (result.error?.toLowerCase().includes('credenciais') || result.error?.toLowerCase().includes('inválid')) {
+          showError('Credenciais inválidas. Verifique seu usuário e senha.');
+        } else if (result.error?.toLowerCase().includes('autenticação') || result.error?.toLowerCase().includes('auth')) {
+          showError('Erro de autenticação. Tente novamente.');
+        } else {
+          showError(result.error || 'Erro ao fazer login. Tente novamente.');
+        }
+        setPasswordError(true);
       }
     } catch (err) {
       showError('Erro ao fazer login. Tente novamente.');
+      setPasswordError(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUsernameBlur = () => {
+    if (!username.trim()) {
+      setUsernameError(true);
+    } else {
+      setUsernameError(false);
+    }
+  };
+
+  const handlePasswordBlur = () => {
+    if (!password.trim()) {
+      setPasswordError(true);
+    } else {
+      setPasswordError(false);
     }
   };
 
@@ -82,9 +135,17 @@ export default function LoginPage() {
               label="Usuário"
               variant="outlined"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                if (usernameError && e.target.value.trim()) {
+                  setUsernameError(false);
+                }
+              }}
+              onBlur={handleUsernameBlur}
               disabled={loading}
               autoComplete="username"
+              error={usernameError}
+              helperText={usernameError ? 'Usuário é obrigatório' : ''}
               sx={{ mb: 2 }}
               autoFocus
             />
@@ -92,13 +153,36 @@ export default function LoginPage() {
             <TextField
               fullWidth
               label="Senha"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               variant="outlined"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (passwordError && e.target.value.trim()) {
+                  setPasswordError(false);
+                }
+              }}
+              onBlur={handlePasswordBlur}
               disabled={loading}
               autoComplete="current-password"
+              error={passwordError}
+              helperText={passwordError ? 'Senha é obrigatória' : ''}
               sx={{ mb: 2 }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      aria-label="toggle password visibility"
+                      onClick={() => setShowPassword(!showPassword)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      edge="end"
+                      disabled={loading}
+                    >
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
             />
 
             <FormControlLabel

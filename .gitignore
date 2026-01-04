@@ -59,6 +59,7 @@ wheels/
 .project
 .pydevproject
 .settings/
+.cursor/
 
 # OS
 .DS_Store

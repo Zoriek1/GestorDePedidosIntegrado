@@ -230,7 +230,19 @@ export function CreateOrderWizard({
     setActiveStep(step);
   };
 
-  // Submissão
+  // Salvar apenas rascunho (sem submeter)
+  const handleSaveDraft = () => {
+    const currentData = methods.getValues();
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+      // Mostrar feedback visual (pode usar toast se disponível)
+      console.log('Rascunho salvo');
+    } catch (error) {
+      console.warn('Erro ao salvar rascunho:', error);
+    }
+  };
+
+  // Submissão (salvar e concluir)
   const onFormSubmit = async (data: PedidoFormData) => {
     // Prevenir submissão automática: só permite se estiver no último step E isReadyToSubmit for true
     if (activeStep !== STEPS.length - 1 || !isReadyToSubmit) {
@@ -363,21 +375,33 @@ export function CreateOrderWizard({
             </Box>
 
             {activeStep === STEPS.length - 1 ? (
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={isSubmitting || !isReadyToSubmit}
-                startIcon={
-                  isSubmitting ? (
-                    <CircularProgress size={20} color="inherit" />
-                  ) : (
-                    <SaveIcon />
-                  )
-                }
-              >
-                {isSubmitting ? 'Salvando...' : 'Salvar Pedido'}
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  color="primary"
+                  onClick={handleSaveDraft}
+                  disabled={isSubmitting}
+                  startIcon={<SaveIcon />}
+                >
+                  Salvar Rascunho
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  disabled={isSubmitting || !isReadyToSubmit}
+                  startIcon={
+                    isSubmitting ? (
+                      <CircularProgress size={20} color="inherit" />
+                    ) : (
+                      <SaveIcon />
+                    )
+                  }
+                >
+                  {isSubmitting ? 'Salvando...' : 'Salvar e Concluir'}
+                </Button>
+              </Box>
             ) : (
               <Button
                 type="button"
@@ -405,18 +429,29 @@ export function CreateOrderWizard({
             }}
             nextButton={
               activeStep === STEPS.length - 1 ? (
-                <Button
-                  type="submit"
-                  size="small"
-                  disabled={isSubmitting || !isReadyToSubmit}
-                  startIcon={
-                    isSubmitting ? (
-                      <CircularProgress size={16} color="inherit" />
-                    ) : null
-                  }
-                >
-                  {isSubmitting ? '...' : 'Salvar'}
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outlined"
+                    onClick={handleSaveDraft}
+                    disabled={isSubmitting}
+                  >
+                    Rascunho
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="small"
+                    disabled={isSubmitting || !isReadyToSubmit}
+                    startIcon={
+                      isSubmitting ? (
+                        <CircularProgress size={16} color="inherit" />
+                      ) : null
+                    }
+                  >
+                    {isSubmitting ? '...' : 'Concluir'}
+                  </Button>
+                </Box>
               ) : (
                 <Button type="button" size="small" onClick={handleNext}>
                   Próximo

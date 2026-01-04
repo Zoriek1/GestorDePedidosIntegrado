@@ -332,7 +332,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
 
   return {
     cliente: formData.cliente.trim(),
-    telefone_cliente: formData.telefone_cliente.trim(),
+    telefone_cliente: parsePhoneToDigits(formData.telefone_cliente.trim()),
     cliente_id: formData.cliente_id || undefined,
     tipo_pedido: formData.tipo_pedido,
     destinatario: formData.destinatario.trim(),

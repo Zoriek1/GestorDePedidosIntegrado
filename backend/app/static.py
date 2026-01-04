@@ -38,7 +38,7 @@ def add_security_headers(response):
     # Permitir recursos do mesmo origin e CDNs comuns
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # unsafe-inline/eval necessário para alguns bundlers
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; "  # unsafe-inline/eval necessário para alguns bundlers
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https:; "

@@ -56,11 +56,30 @@ class Cliente(db.Model):
         for pedido in self.pedidos:
             if pedido.valor:
                 try:
-                    # Limpar valor: "R$ 150,00" -> 150.00
-                    valor_limpo = re.sub(r"[^\d,.]", "", str(pedido.valor))
-                    valor_limpo = valor_limpo.replace(",", ".")
+                    # Parse valor de qualquer formato
+                    valor_str = str(pedido.valor).strip().replace("R$", "").strip()
+                    if not valor_str:
+                        continue
+                    
+                    # Detectar formato brasileiro (tem vírgula)
+                    if "," in valor_str:
+                        # Formato BR: "65,00" ou "1.234,56"
+                        valor_limpo = valor_str.replace(".", "").replace(",", ".")
+                    elif "." in valor_str:
+                        # Formato US: "10.00" ou número simples
+                        dot_count = valor_str.count(".")
+                        if dot_count == 1:
+                            # Um ponto = decimal: "10.00"
+                            valor_limpo = valor_str
+                        else:
+                            # Múltiplos pontos = separadores de milhar
+                            valor_limpo = valor_str.replace(".", "")
+                    else:
+                        # String simples: "10"
+                        valor_limpo = valor_str
+                    
                     total += float(valor_limpo)
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     # Se não conseguir converter, pula
                     continue
 

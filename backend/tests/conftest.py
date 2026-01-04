@@ -2,19 +2,19 @@
 """
 Configuração de testes - Fixtures compartilhadas
 """
-import pytest
-import tempfile
 import os
 import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 
 # Adicionar backend ao path para que os imports funcionem
 backend_dir = Path(__file__).parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from app import create_app, db
-from app.config import Config
+from app import create_app, db  # noqa: E402
 
 
 @pytest.fixture
@@ -22,15 +22,17 @@ def app():
     """Cria aplicação Flask para testes"""
     # Criar banco de dados temporário
     db_fd, db_path = tempfile.mkstemp()
-    
+
     # Configurar app para testes
-    app = create_app(config={
-        'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_path}',
-        'SECRET_KEY': 'test-secret-key',
-        'WTF_CSRF_ENABLED': False
-    })
-    
+    app = create_app(
+        config={
+            "TESTING": True,
+            "SQLALCHEMY_DATABASE_URI": f"sqlite:///{db_path}",
+            "SECRET_KEY": "test-secret-key",
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
+
     with app.app_context():
         db.create_all()
         yield app
@@ -38,7 +40,7 @@ def app():
         db.session.close()
         db.engine.dispose()
         db.drop_all()
-    
+
     os.close(db_fd)
     # Tentar deletar o arquivo, ignorar erro se ainda estiver em uso
     try:
@@ -66,8 +68,7 @@ def session(app):
         # Usar a sessão do Flask-SQLAlchemy diretamente
         # Cada teste terá seu próprio app_context, então a sessão será isolada
         yield db.session
-        
+
         # Limpar após cada teste
         db.session.rollback()
         db.session.remove()
-

@@ -31,8 +31,14 @@ jobs:
     - name: Lint with ruff
       working-directory: ./backend
       run: |
+        ruff check --fix .
         ruff check .
 
+    - name: Format with black
+      working-directory: ./backend
+      run: |
+        black .
+    
     - name: Check formatting with black
       working-directory: ./backend
       run: |

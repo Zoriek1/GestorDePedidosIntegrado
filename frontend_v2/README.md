@@ -195,31 +195,17 @@ O app é um PWA completo com:
 - **Armazenamento**: `localStorage` (remember) ou `sessionStorage`
 - **Auto-logout**: Em caso de 401/403
 
-## 📚 Estrutura de Features
+## 📚 Documentação
 
-Cada feature segue uma estrutura organizada:
+Documentação completa disponível em [`docs/`](docs/):
 
-```
-features/pedidos/
-├── components/        # Componentes específicos da feature
-├── contexts/         # Contextos React
-├── services/         # Serviços e interfaces
-├── useCases/         # Casos de uso e lógica de negócio
-├── schemas.ts        # Schemas Zod para validação
-└── OrdersPage.tsx    # Páginas principais
-```
-
-## 🧪 Desenvolvimento
-
-### TypeScript
-
-- **Strict Mode**: Habilitado
-- **Path Aliases**: Configurados para imports limpos
-- **Type Safety**: Type guards em pontos críticos
-
-### ESLint
-
-Execute `npm run lint` para verificar problemas de código.
+- **[README.md](docs/README.md)** - Índice da documentação
+- **[TECHNOLOGY.md](docs/TECHNOLOGY.md)** - Stack tecnológico e dependências
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Arquitetura e estrutura do projeto
+- **[DATA_PATTERNS.md](docs/DATA_PATTERNS.md)** - Padrões de dados e state management
+- **[FEATURES.md](docs/FEATURES.md)** - Funcionalidades atuais e roadmap
+- **[PRODUCTION.md](docs/PRODUCTION.md)** - Build, deploy e configuração
+- **[PWA.md](docs/PWA.md)** - Progressive Web App e offline
 
 ## 🐞 Troubleshooting
 
@@ -238,13 +224,16 @@ Se você ver este erro, significa que a API retornou HTML ao invés de JSON. Ver
 
 ### Build falha
 
+Veja [docs/PRODUCTION.md](docs/PRODUCTION.md) para troubleshooting completo de build.
+
+**Soluções rápidas**:
 1. Limpe `node_modules` e reinstale: `rm -rf node_modules && npm install`
-2. Limpe cache do Vite: `rm -rf dist .vite`
-3. Verifique se todas as dependências estão instaladas
+2. Limpe cache do Vite: `npm run clean`
+3. Use `npm run build:fast` para build mais rápido (sem type check)
 
 ## 📝 Notas
 
-- O frontend roda independentemente na porta 3000
+- O frontend roda independentemente na porta 5173 (dev) ou 3000 (produção)
 - O backend roda na porta 5000
 - Em produção, use Cloudflare Tunnel para rotear corretamente
-- A documentação Swagger está disponível apenas localmente em `http://localhost:5000/docs/swagger`
+- A documentação Swagger está disponível em `http://localhost:5000/docs/swagger`

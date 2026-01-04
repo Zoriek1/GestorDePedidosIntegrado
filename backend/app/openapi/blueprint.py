@@ -6,14 +6,15 @@ Esta é uma versão inicial que documenta os endpoints principais do frontend_v2
 A documentação pode ser evoluída incrementalmente para incluir mais endpoints.
 """
 from flask_smorest import Blueprint
+
 from app.openapi.schemas import (
-    HealthResponseSchema,
     AuthCheckResponseSchema,
-    PedidosResponseSchema,
-    PedidosQuerySchema,
-    StatsResponseSchema,
-    ClientesBuscarResponseSchema,
     ClientesBuscarQuerySchema,
+    ClientesBuscarResponseSchema,
+    HealthResponseSchema,
+    PedidosQuerySchema,
+    PedidosResponseSchema,
+    StatsResponseSchema,
 )
 
 # Criar blueprint do Flask-Smorest (não do Flask normal)
@@ -39,7 +40,7 @@ blp = Blueprint(
 def health_check_doc():
     """
     Health Check
-    
+
     Endpoint para verificar o status da API.
     Não requer autenticação.
     """
@@ -59,7 +60,7 @@ def health_check_doc():
 def auth_check_doc():
     """
     Verificar Autenticação
-    
+
     Verifica se as credenciais fornecidas são válidas.
     Requer autenticação HTTP Basic.
     """
@@ -79,7 +80,7 @@ def auth_check_doc():
 def pedidos_list_doc(**kwargs):
     """
     Listar Pedidos
-    
+
     Retorna lista de pedidos com filtros opcionais:
     - status: Filtrar por status
     - data_inicio: Data inicial (YYYY-MM-DD)
@@ -101,7 +102,7 @@ def pedidos_list_doc(**kwargs):
 def stats_doc():
     """
     Obter Estatísticas
-    
+
     Retorna estatísticas consolidadas dos pedidos.
     """
     # Importar e chamar endpoint real
@@ -120,10 +121,10 @@ def stats_doc():
 def clientes_buscar_doc(**kwargs):
     """
     Buscar Clientes
-    
+
     Busca clientes por termo de busca (nome ou telefone).
     Útil para autocomplete.
-    
+
     Query Parameters:
     - q (obrigatório): Termo de busca
     - limit (opcional): Limite de resultados (padrão: 10)

@@ -18,7 +18,7 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
-    echo [OK] Waitress instalado com sucesso!
+    echo [OK] Waitress importado com sucesso!
     echo.
 )
 
@@ -48,17 +48,9 @@ if not exist "wsgi.py" (
     exit /b 1
 )
 
-echo [INFO] Iniciando servidor de producao com Waitress...
-echo [INFO] Host: 0.0.0.0
-echo [INFO] Porta: 5000
-echo [INFO] Threads: 4
-echo.
-echo [OK] Pressione Ctrl+C para parar o servidor
-echo ============================================================
-echo.
-
 REM Iniciar servidor com Waitress
-python -m waitress --listen=0.0.0.0:5000 --threads=4 wsgi:app
+
+python wsgi.py
 
 if errorlevel 1 (
     echo.

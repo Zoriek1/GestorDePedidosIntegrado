@@ -6,19 +6,21 @@ Execute este script ANTES de rodar a migração
 Uso:
     python criar_tabelas_clientes.py
 """
-from app import create_app, db
 from sqlalchemy import text
+
+from app import create_app, db
+
 
 def criar_tabelas():
     """Cria tabelas e adiciona coluna cliente_id"""
     app = create_app()
-    
+
     with app.app_context():
         try:
             print("\n" + "="*60)
             print("CRIANDO TABELAS E COLUNAS - Sistema de Clientes")
             print("="*60)
-            
+
             # 1) Adicionar coluna cliente_id em pedidos (se não existir)
             print("\n[1/5] Adicionando coluna cliente_id em pedidos...")
             try:
@@ -41,10 +43,10 @@ def criar_tabelas():
                             print("  ℹ Coluna cliente_id já existe (OK)")
                         else:
                             raise
-                    except:
+                    except Exception as e:
                         print(f"  ⚠ Erro ao adicionar coluna: {e}")
                         print("  Tentando continuar...")
-            
+
             # 2) Criar tabela clientes
             print("\n[2/5] Criando tabela clientes...")
             db.session.execute(text("""
@@ -60,7 +62,7 @@ def criar_tabelas():
             """))
             db.session.commit()
             print("  ✓ Tabela clientes criada!")
-            
+
             # 3) Criar tabela enderecos_clientes
             print("\n[3/5] Criando tabela enderecos_clientes...")
             db.session.execute(text("""
@@ -82,7 +84,7 @@ def criar_tabelas():
             """))
             db.session.commit()
             print("  ✓ Tabela enderecos_clientes criada!")
-            
+
             # 4) Criar índices
             print("\n[4/5] Criando índices...")
             indices = [
@@ -91,21 +93,21 @@ def criar_tabelas():
                 "CREATE INDEX IF NOT EXISTS idx_clientes_telefone ON clientes(telefone)",
                 "CREATE INDEX IF NOT EXISTS idx_enderecos_cliente ON enderecos_clientes(cliente_id)"
             ]
-            
+
             for idx_sql in indices:
                 try:
                     db.session.execute(text(idx_sql))
                 except Exception as e:
                     print(f"  ⚠ Aviso ao criar índice: {e}")
-            
+
             db.session.commit()
             print("  ✓ Índices criados!")
-            
+
             # 5) Verificar
             print("\n[5/5] Verificando estrutura...")
             from sqlalchemy import inspect
             inspector = inspect(db.engine)
-            
+
             tabelas = inspector.get_table_names()
             print(f"\n  Tabelas encontradas: {len(tabelas)}")
             tabelas_clientes = [t for t in tabelas if 'cliente' in t.lower()]
@@ -114,17 +116,17 @@ def criar_tabelas():
                     print(f"    ✓ {tabela}")
             else:
                 print("    ⚠ Nenhuma tabela de cliente encontrada")
-            
+
             # Verificar coluna cliente_id em pedidos
             try:
                 colunas_pedidos = [col['name'] for col in inspector.get_columns('pedidos')]
                 if 'cliente_id' in colunas_pedidos:
-                    print(f"    ✓ Coluna cliente_id em pedidos: OK")
+                    print("    ✓ Coluna cliente_id em pedidos: OK")
                 else:
-                    print(f"    ⚠ Coluna cliente_id não encontrada em pedidos")
+                    print("    ⚠ Coluna cliente_id não encontrada em pedidos")
             except Exception as e:
                 print(f"    ⚠ Erro ao verificar colunas: {e}")
-            
+
             print("\n" + "="*60)
             print("✅ SUCESSO! Tabelas e colunas criadas com sucesso!")
             print("="*60)
@@ -135,7 +137,7 @@ def criar_tabelas():
             print("     python scripts/migrar_clientes.py")
             print("\n  3. Reinicie o servidor Flask")
             print()
-            
+
         except Exception as e:
             db.session.rollback()
             print("\n" + "="*60)

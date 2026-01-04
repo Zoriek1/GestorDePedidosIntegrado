@@ -2,19 +2,21 @@
 """
 Rotas de Pedidos - Blueprint para endpoints de pedidos
 """
-from flask import Blueprint, request
-from datetime import datetime
-from app.repositories.pedido_repository import PedidoRepository
-from app.schemas.common import success_response, error_response
-from app.schemas.pedido_schema import PedidoSchema, PedidoCreateSchema, PedidoUpdateSchema
-from app.middleware import requires_edit_auth
-from app.utils.backup_helper import create_backup
-from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
 import importlib.util
+from datetime import datetime
 from pathlib import Path
+
+from flask import Blueprint, request
 
 # Command Pattern Imports
 from app.commands.gerar_comprovante_command import GerarComprovanteCommand
+from app.middleware import requires_edit_auth
+from app.repositories.pedido_repository import PedidoRepository
+from app.schemas.common import error_response, success_response
+from app.schemas.pedido_schema import PedidoCreateSchema, PedidoSchema, PedidoUpdateSchema
+from app.utils.destructive_action_guard import (
+    ensure_backup_before_destructive_action,
+)
 
 pedidos_bp = Blueprint('pedidos', __name__, url_prefix='/api/pedidos')
 
@@ -29,13 +31,13 @@ def listar_pedidos():
     """Lista pedidos com filtros opcionais"""
     try:
         from datetime import timedelta
-        
+
         status = request.args.get('status')
         data_inicio = request.args.get('data_inicio')
         data_fim = request.args.get('data_fim')
         search = request.args.get('search')
         filtrar_por_criacao = request.args.get('filtrar_por_criacao', '').lower() == 'true'
-        
+
         # Converter datas se fornecidas
         data_inicio_obj = None
         data_fim_obj = None
@@ -54,13 +56,13 @@ def listar_pedidos():
                     data_fim_obj = data_fim_original
             except ValueError:
                 return error_response('Formato de data_fim inválido. Use YYYY-MM-DD', 400)
-        
+
         # REGRA CRÍTICA: Quando filtrar_por_criacao=True (usado pela tela de vendas),
         # ocultos SEMPRE ENTRAM (excluir_ocultos=False).
         # O campo 'oculto' é apenas para limpeza visual na tela de pedidos.
         # Vendas devem mostrar TODOS os pedidos do mês, incluindo ocultos.
         excluir_ocultos = not filtrar_por_criacao  # False quando filtrar_por_criacao=True
-        
+
         pedidos = pedido_repo.buscar_com_filtros(
             status=status,
             data_inicio=data_inicio_obj,
@@ -69,10 +71,10 @@ def listar_pedidos():
             excluir_ocultos=excluir_ocultos,
             filtrar_por_criacao=filtrar_por_criacao
         )
-        
+
         # Serializar pedidos
         pedidos_data = [p.to_dict() for p in pedidos]
-        
+
         return success_response({'pedidos': pedidos_data, 'total': len(pedidos_data)})
     except Exception as e:
         return error_response(f'Erro ao listar pedidos: {str(e)}', 500)
@@ -85,7 +87,7 @@ def obter_pedido(pedido_id):
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response('Pedido não encontrado', 404)
-        
+
         return success_response({'pedido': pedido.to_dict()})
     except Exception as e:
         return error_response(f'Erro ao obter pedido: {str(e)}', 500)
@@ -98,14 +100,14 @@ def atualizar_status(pedido_id):
     try:
         data = request.get_json() or {}
         novo_status = data.get('status', '').strip()
-        
+
         if not novo_status:
             return error_response('Status é obrigatório', 400)
-        
+
         pedido = pedido_repo.atualizar_status(pedido_id, novo_status)
         if not pedido:
             return error_response('Pedido não encontrado', 404)
-        
+
         return success_response(
             {'pedido': pedido.to_dict()},
             message='Status atualizado com sucesso'
@@ -118,15 +120,12 @@ def atualizar_status(pedido_id):
 @requires_edit_auth
 def deletar_pedido(pedido_id):
     """Deleta pedido"""
-    from app import db
-    from app.models.pedido import Pedido
-    from sqlalchemy import text
-    
+
     # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
     # IMPORTANTE: Esta verificação deve estar FORA do try/except genérico
     # para garantir que BackupRequiredException seja tratada corretamente
     from app.utils.destructive_action_guard import BackupRequiredException
-    
+
     try:
         ensure_backup_before_destructive_action(reason='delete_pedido', context={'pedido_id': pedido_id})
     except BackupRequiredException as backup_error:
@@ -138,23 +137,23 @@ def deletar_pedido(pedido_id):
             503,
             details={'error': error_msg, 'pedido_id': pedido_id}
         )
-    
+
     # Se chegou aqui, backup foi criado com sucesso
     try:
         # Soft delete (P0.3) - não remove fisicamente
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response('Pedido não encontrado', 404)
-        
+
         if pedido.is_deleted:
             return error_response('Pedido já foi deletado', 400)
-        
+
         # Obter actor (usuário) se disponível
         actor = 'system'  # TODO: extrair de autenticação se disponível
-        
+
         # Executar soft delete via repository (já registra auditoria)
         pedido_atualizado = pedido_repo.soft_delete_pedido(pedido_id, actor=actor)
-        
+
         if pedido_atualizado:
             print(f"[SUCCESS] Pedido #{pedido_id} soft-deleted com sucesso")
             return success_response(
@@ -163,7 +162,7 @@ def deletar_pedido(pedido_id):
             )
         else:
             return error_response('Falha ao arquivar pedido', 500)
-                
+
     except Exception as e:
         error_msg = str(e)
         error_type = type(e).__name__
@@ -183,35 +182,35 @@ def exportar_planilha():
     try:
         backend_dir = Path(__file__).parent.parent.parent
         script_path = backend_dir / 'scripts' / 'export' / 'exportar_vendas_sheets.py'
-        
+
         if not script_path.exists():
             return error_response(
                 'Script não encontrado',
                 500,
                 details={'path': str(script_path)}
             )
-        
+
         # Importar e executar script (preservar lógica exata)
         import sys
         if str(backend_dir) not in sys.path:
             sys.path.insert(0, str(backend_dir))
-        
+
         spec = importlib.util.spec_from_file_location("exportar_vendas_sheets", str(script_path))
         if spec is None or spec.loader is None:
             return error_response('Erro ao carregar módulo', 500)
-        
+
         module = importlib.util.module_from_spec(spec)
         module.__file__ = str(script_path)
         spec.loader.exec_module(module)
-        
+
         # Nota: O script agora resolve credenciais automaticamente
         # via _resolve_credentials_path() em backend/user/config/ ou variável de ambiente
-        
+
         if not hasattr(module, 'exportar_vendas'):
             return error_response('Função exportar_vendas não encontrada', 500)
-        
+
         resultado = module.exportar_vendas()
-        
+
         if resultado:
             return success_response(message='Planilha atualizada com sucesso!')
         else:
@@ -219,7 +218,7 @@ def exportar_planilha():
                 'Erro ao exportar. Verifique as credenciais do Google.',
                 500
             )
-            
+
     except FileNotFoundError as e:
         return error_response(
             'Credenciais do Google não configuradas',
@@ -244,16 +243,17 @@ def criar_pedido():
     CRÍTICO: Preservar toda a lógica existente de api.py
     """
     try:
-        from app import db
-        from app.models import Pedido, Cliente, FontePedido
-        from datetime import datetime
         import re
-        
+        from datetime import datetime
+
+        from app import db
+        from app.models import Cliente, FontePedido, Pedido
+
         data = request.get_json()
-        
+
         if not data:
             return error_response('Nenhum dado fornecido', 400)
-        
+
         # Extração de dados (preservar lógica exata)
         cliente = data.get('cliente', '').strip()
         telefone_cliente = data.get('telefone_cliente', data.get('telefone', '')).strip()
@@ -261,13 +261,13 @@ def criar_pedido():
         tipo_pedido = data.get('tipo_pedido', 'Entrega')
         fonte_pedido_id = data.get('fonte_pedido_id')
         fonte_pedido = data.get('fonte_pedido', '').strip()
-        
+
         produto = data.get('produto', '').strip()
         flores_cor = data.get('flores_cor', '').strip()
         valor = data.get('valor', '').strip()
         horario = data.get('horario', data.get('hora_entrega', '')).strip()
         dia_entrega_str = data.get('dia_entrega', data.get('data_entrega', '')).strip()
-        
+
         cep = data.get('cep', '').strip()
         rua = data.get('rua', '').strip()
         numero = data.get('numero', '').strip()
@@ -275,14 +275,14 @@ def criar_pedido():
         cidade = data.get('cidade', '').strip()
         endereco = data.get('endereco', '').strip()
         obs_entrega = data.get('obs_entrega', '').strip()
-        
+
         mensagem = data.get('mensagem', '').strip()
         pagamento = data.get('pagamento', '').strip()
         observacoes = data.get('observacoes', '').strip()
         status_pagamento = data.get('status_pagamento', '').strip()
-        
+
         quantidade_raw = data.get('quantidade', 1)
-        
+
         # Validação de campos obrigatórios
         campos_obrigatorios = {
             'telefone_cliente': telefone_cliente,
@@ -291,7 +291,7 @@ def criar_pedido():
             'horario': horario,
             'dia_entrega': dia_entrega_str
         }
-        
+
         campos_faltantes = [campo for campo, valor in campos_obrigatorios.items() if not valor]
         if campos_faltantes:
             return error_response(
@@ -299,7 +299,7 @@ def criar_pedido():
                 400,
                 details={'campos_enviados': list(data.keys())}
             )
-        
+
         # Conversão de quantidade
         try:
             if isinstance(quantidade_raw, str):
@@ -309,11 +309,11 @@ def criar_pedido():
                 quantidade = 1
         except (ValueError, TypeError):
             quantidade = 1
-        
+
         # Validação de horário: aceita HH:MM ou intervalo HH:MM - HH:MM
         pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
         pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
-        
+
         if not (re.match(pattern_simples, horario) or re.match(pattern_intervalo, horario)):
             return error_response(
                 'Formato de horário inválido',
@@ -323,7 +323,7 @@ def criar_pedido():
                     'formato_esperado': 'HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)'
                 }
             )
-        
+
         # Se for intervalo, validar que horário final é depois do inicial
         if ' - ' in horario:
             partes = horario.split(' - ')
@@ -345,7 +345,7 @@ def criar_pedido():
                         400,
                         details={'horario_recebido': horario}
                     )
-        
+
         # Conversão de data
         try:
             if '/' in dia_entrega_str:
@@ -362,7 +362,7 @@ def criar_pedido():
                     'detalhes': str(e)
                 }
             )
-        
+
         # Gerenciar cliente_id
         cliente_id = data.get('cliente_id', '').strip()
         if not cliente_id and cliente and telefone_cliente:
@@ -382,9 +382,9 @@ def criar_pedido():
                     cliente_id = novo_cliente.id
                 except Exception:
                     cliente_id = None
-        
+
         cliente_id_int = int(cliente_id) if cliente_id else None
-        
+
         # Processar fonte_pedido_id
         fonte_pedido_id_int = None
         if fonte_pedido_id:
@@ -396,7 +396,7 @@ def criar_pedido():
             fonte = FontePedido.query.filter_by(nome=fonte_pedido, ativo=True).first()
             if fonte:
                 fonte_pedido_id_int = fonte.id
-        
+
         # Criar pedido
         pedido = Pedido(
             cliente=cliente if cliente else None,
@@ -425,10 +425,10 @@ def criar_pedido():
             quantidade=quantidade,
             cliente_id=cliente_id_int
         )
-        
+
         db.session.add(pedido)
         db.session.commit()
-        
+
         # Inserir na tabela auxiliar da fonte (se houver)
         if fonte_pedido_id_int:
             try:
@@ -436,13 +436,13 @@ def criar_pedido():
                 PedidoFonte.adicionar_pedido(pedido.id, fonte_pedido_id_int, valor if valor else None)
             except Exception:
                 pass  # Não falhar se houver erro
-        
+
         return success_response(
             {'pedido_id': pedido.id, 'pedido': pedido.to_dict()},
             message='Pedido criado com sucesso',
             status_code=201
         )
-        
+
     except Exception as e:
         from app import db
         db.session.rollback()
@@ -459,16 +459,17 @@ def atualizar_pedido(pedido_id):
     CRÍTICO: Preservar lógica de resetar distância quando endereço muda
     """
     try:
-        from app import db
-        from app.models import Pedido, FontePedido
         from datetime import datetime
-        
+
+        from app import db
+        from app.models import FontePedido
+
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response('Pedido não encontrado', 404, details={'pedido_id': pedido_id})
-        
+
         data = request.get_json() or {}
-        
+
         # Atualizar campos (preservar lógica exata)
         if 'cliente' in data:
             pedido.cliente = data['cliente']
@@ -502,7 +503,7 @@ def atualizar_pedido(pedido_id):
                 pedido.dia_entrega = datetime.strptime(dia_entrega_str, '%d/%m/%Y').date()
             else:
                 pedido.dia_entrega = datetime.strptime(dia_entrega_str, '%Y-%m-%d').date()
-        
+
         # Verificar se endereço mudou (resetar distância)
         endereco_mudou = False
         campos_endereco = ['cep', 'rua', 'numero', 'bairro', 'cidade', 'endereco']
@@ -510,10 +511,10 @@ def atualizar_pedido(pedido_id):
             if campo in data and data[campo] != getattr(pedido, campo):
                 setattr(pedido, campo, data[campo])
                 endereco_mudou = True
-        
+
         if endereco_mudou:
             pedido.distancia_km = None
-        
+
         if 'obs_entrega' in data:
             pedido.obs_entrega = data['obs_entrega']
         if 'mensagem' in data:
@@ -526,16 +527,16 @@ def atualizar_pedido(pedido_id):
             pedido.status_pagamento = data['status_pagamento']
         if 'status' in data:
             pedido.status = data['status']
-        
+
         pedido.updated_at = datetime.utcnow()
-        
+
         db.session.commit()
-        
+
         return success_response(
             {'pedido': pedido.to_dict()},
             message='Pedido atualizado com sucesso'
         )
-        
+
     except Exception as e:
         from app import db
         db.session.rollback()
@@ -548,9 +549,8 @@ def atualizar_pedido(pedido_id):
 def get_pedidos_por_data():
     """Retorna contagem de pedidos por horário para uma data específica"""
     try:
-        from app.models import Pedido
         from datetime import datetime
-        
+
         data_str = request.args.get('data')
         if not data_str:
             return error_response(
@@ -558,7 +558,7 @@ def get_pedidos_por_data():
                 400,
                 details={'formato_esperado': 'YYYY-MM-DD (ex: 2025-12-20)'}
             )
-        
+
         # Converter data
         try:
             if '/' in data_str:
@@ -579,24 +579,24 @@ def get_pedidos_por_data():
                     'formato_esperado': 'YYYY-MM-DD ou DD/MM/YYYY'
                 }
             )
-        
+
         # Buscar pedidos do dia
         pedidos = pedido_repo.buscar_por_data(data_entrega, data_entrega, excluir_ocultos=True)
-        
+
         # Agrupar por horário
         horarios = {}
         for pedido in pedidos:
             horario = pedido.horario.strip() if pedido.horario else ''
             if horario:
                 horarios[horario] = horarios.get(horario, 0) + 1
-        
+
         return success_response({
             'data': data_str,
             'data_formatada': data_entrega.strftime('%Y-%m-%d'),
             'total_pedidos': len(pedidos),
             'horarios': horarios
         })
-        
+
     except Exception as e:
         return error_response(f'Erro ao buscar pedidos por data: {str(e)}', 500)
 
@@ -606,22 +606,23 @@ def get_pedidos_por_data():
 def marcar_impresso(pedido_id):
     """Marca pedido como impresso"""
     try:
-        from app import db
         from datetime import datetime
-        
+
+        from app import db
+
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response('Pedido não encontrado', 404)
-        
+
         pedido.impresso = True
         pedido.updated_at = datetime.utcnow()
         db.session.commit()
-        
+
         return success_response(
             {'pedido': pedido.to_dict()},
             message='Pedido marcado como impresso'
         )
-        
+
     except Exception as e:
         from app import db
         db.session.rollback()
@@ -633,10 +634,10 @@ def obter_comprovante(pedido_id):
     """Gera comprovante de pedido (HTML)"""
     try:
         from flask import Response
-        
+
         command = GerarComprovanteCommand(pedido_id)
         html = command.execute()
-        
+
         return Response(html, mimetype='text/html')
     except ValueError as e:
         return error_response(str(e), 404)
@@ -652,7 +653,7 @@ def ocultar_concluidos():
     """Oculta todos os pedidos concluídos do painel"""
     try:
         count = pedido_repo.ocultar_concluidos()
-        
+
         return success_response(
             {'count': count},
             message=f'{count} pedido(s) concluído(s) ocultado(s) do painel'
@@ -671,16 +672,16 @@ def restaurar_pedido(pedido_id):
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response('Pedido não encontrado', 404)
-        
+
         if not pedido.is_deleted:
             return error_response('Pedido não está deletado', 400)
-        
+
         # Obter actor (usuário) se disponível
         actor = 'system'  # TODO: extrair de autenticação se disponível
-        
+
         # Executar restore via repository (já registra auditoria)
         pedido_restaurado = pedido_repo.restore_pedido(pedido_id, actor=actor)
-        
+
         if pedido_restaurado:
             return success_response(
                 {'pedido': pedido_restaurado.to_dict()},
@@ -688,7 +689,7 @@ def restaurar_pedido(pedido_id):
             )
         else:
             return error_response('Falha ao restaurar pedido', 500)
-            
+
     except Exception as e:
         from app import db
         db.session.rollback()
@@ -702,7 +703,7 @@ def listar_deletados():
     try:
         pedidos_deletados = pedido_repo.buscar_deletados()
         pedidos_data = [p.to_dict() for p in pedidos_deletados]
-        
+
         return success_response({
             'pedidos': pedidos_data,
             'total': len(pedidos_data)

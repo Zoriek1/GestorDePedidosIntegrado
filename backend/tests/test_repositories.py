@@ -2,20 +2,20 @@
 """
 Testes para Repositories
 """
-import pytest
-from datetime import date, datetime
-from app.repositories.pedido_repository import PedidoRepository
+from datetime import date
+
+from app.models import Cliente, Pedido
 from app.repositories.cliente_repository import ClienteRepository
-from app.models import Pedido, Cliente
+from app.repositories.pedido_repository import PedidoRepository
 
 
 class TestPedidoRepository:
     """Testes para PedidoRepository"""
-    
+
     def test_get_by_id(self, session):
         """Testa busca de pedido por ID"""
         repo = PedidoRepository()
-        
+
         # Criar pedido de teste
         pedido = Pedido(
             cliente="Test Client",
@@ -29,17 +29,17 @@ class TestPedidoRepository:
         )
         session.add(pedido)
         session.commit()
-        
+
         # Buscar por ID
         found = repo.get_by_id(pedido.id)
         assert found is not None
         assert found.id == pedido.id
         assert found.cliente == "Test Client"
-    
+
     def test_buscar_por_status(self, session):
         """Testa busca de pedidos por status"""
         repo = PedidoRepository()
-        
+
         # Criar pedidos com diferentes status
         pedido1 = Pedido(
             cliente="Client 1",
@@ -63,20 +63,20 @@ class TestPedidoRepository:
         )
         session.add_all([pedido1, pedido2])
         session.commit()
-        
+
         # Buscar por status
         agendados = repo.buscar_por_status("agendado")
         assert len(agendados) == 1
         assert agendados[0].status == "agendado"
-        
+
         em_producao = repo.buscar_por_status("em_producao")
         assert len(em_producao) == 1
         assert em_producao[0].status == "em_producao"
-    
+
     def test_buscar_com_filtros(self, session):
         """Testa busca com múltiplos filtros"""
         repo = PedidoRepository()
-        
+
         # Criar pedidos de teste
         pedido1 = Pedido(
             cliente="John Doe",
@@ -100,11 +100,11 @@ class TestPedidoRepository:
         )
         session.add_all([pedido1, pedido2])
         session.commit()
-        
+
         # Buscar por status
         resultados = repo.buscar_com_filtros(status="agendado")
         assert len(resultados) == 2
-        
+
         # Buscar por data
         resultados = repo.buscar_com_filtros(
             data_inicio=date(2024, 12, 31),
@@ -112,15 +112,15 @@ class TestPedidoRepository:
         )
         assert len(resultados) == 1
         assert resultados[0].cliente == "John Doe"
-        
+
         # Buscar por texto
         resultados = repo.buscar_com_filtros(search="John")
         assert len(resultados) >= 1
-    
+
     def test_atualizar_status(self, session):
         """Testa atualização de status"""
         repo = PedidoRepository()
-        
+
         pedido = Pedido(
             cliente="Test Client",
             telefone_cliente="11987654321",
@@ -133,12 +133,12 @@ class TestPedidoRepository:
         )
         session.add(pedido)
         session.commit()
-        
+
         # Atualizar status
         updated = repo.atualizar_status(pedido.id, "em_producao")
         assert updated is not None
         assert updated.status == "em_producao"
-        
+
         # Verificar no banco
         found = repo.get_by_id(pedido.id)
         assert found.status == "em_producao"
@@ -146,11 +146,11 @@ class TestPedidoRepository:
 
 class TestClienteRepository:
     """Testes para ClienteRepository"""
-    
+
     def test_get_by_id(self, session):
         """Testa busca de cliente por ID"""
         repo = ClienteRepository()
-        
+
         cliente = Cliente(
             nome="Test Client",
             telefone="11987654321",
@@ -158,15 +158,15 @@ class TestClienteRepository:
         )
         session.add(cliente)
         session.commit()
-        
+
         found = repo.get_by_id(cliente.id)
         assert found is not None
         assert found.nome == "Test Client"
-    
+
     def test_buscar_por_telefone(self, session):
         """Testa busca de cliente por telefone"""
         repo = ClienteRepository()
-        
+
         cliente = Cliente(
             nome="Test Client",
             telefone="11987654321",
@@ -174,20 +174,20 @@ class TestClienteRepository:
         )
         session.add(cliente)
         session.commit()
-        
+
         # Buscar por telefone formatado
         found = repo.buscar_por_telefone("(11) 98765-4321")
         assert found is not None
         assert found.telefone == "11987654321"
-        
+
         # Buscar por telefone limpo
         found = repo.buscar_por_telefone("11987654321")
         assert found is not None
-    
+
     def test_criar_ou_buscar(self, session):
         """Testa criação ou busca de cliente existente"""
         repo = ClienteRepository()
-        
+
         # Criar primeiro cliente
         cliente1 = repo.criar_ou_buscar(
             nome="Test Client",
@@ -196,7 +196,7 @@ class TestClienteRepository:
         )
         assert cliente1 is not None
         assert cliente1.nome == "Test Client"
-        
+
         # Tentar criar novamente (deve retornar o existente)
         cliente2 = repo.criar_ou_buscar(
             nome="Another Name",
@@ -205,20 +205,20 @@ class TestClienteRepository:
         )
         assert cliente2.id == cliente1.id
         assert cliente2.nome == "Test Client"  # Nome original mantido
-    
+
     def test_buscar_por_nome(self, session):
         """Testa busca de clientes por nome"""
         repo = ClienteRepository()
-        
+
         cliente1 = Cliente(nome="John Doe", telefone="11987654321")
         cliente2 = Cliente(nome="Jane Doe", telefone="11987654322")
         session.add_all([cliente1, cliente2])
         session.commit()
-        
+
         resultados = repo.buscar_por_nome("John")
         assert len(resultados) == 1
         assert resultados[0].nome == "John Doe"
-        
+
         resultados = repo.buscar_por_nome("Doe")
         assert len(resultados) == 2
 

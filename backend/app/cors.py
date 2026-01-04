@@ -3,17 +3,18 @@
 Configuração de CORS - Cross-Origin Resource Sharing
 Gerencia descoberta de hostname/IP e configuração de CORS para PWA
 """
+import configparser
 import os
 import socket
-import configparser
 from pathlib import Path
+
 from flask_cors import CORS
 
 
 def get_server_info():
     """
     Descobre informações do servidor (hostname e IP local)
-    
+
     Returns:
         tuple: (hostname, local_ip)
     """
@@ -26,30 +27,30 @@ def get_server_info():
             hostname = parser.get('SERVIDOR', 'hostname', fallback='Gestor-pedidos.local')
         else:
             hostname = 'Gestor-pedidos.local'
-    except:
+    except Exception:
         hostname = 'Gestor-pedidos.local'
-    
+
     # Descobrir IP local
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
         s.close()
-    except:
+    except Exception:
         local_ip = "192.168.1.148"  # Fallback
-    
+
     return hostname, local_ip
 
 
 def get_allowed_origins():
     """
     Gera lista de origens permitidas para CORS
-    
+
     Returns:
         list: Lista de URLs permitidas
     """
     hostname, local_ip = get_server_info()
-    
+
     # Lista de origens permitidas (apenas HTTPS do próprio servidor)
     allowed_origins = [
         "https://localhost:5000",
@@ -64,7 +65,7 @@ def get_allowed_origins():
         # Cloudflare Tunnel (produção)
         "https://gestaopedidos.planteumaflor.online",
     ]
-    
+
     # Permitir HTTP apenas para localhost (desenvolvimento)
     if os.environ.get('FLASK_ENV') == 'development':
         allowed_origins.extend([
@@ -75,22 +76,22 @@ def get_allowed_origins():
             f"http://{hostname}:3000",
             f"http://{local_ip}:3000"
         ])
-    
+
     return allowed_origins
 
 
 def setup_cors(app):
     """
     Configura CORS na aplicação Flask
-    
+
     SEGURANÇA: Apenas origens do próprio servidor (localhost + hostname configurado)
     são permitidas para evitar requisições de origens não autorizadas.
-    
+
     Args:
         app: Instância da aplicação Flask
     """
     allowed_origins = get_allowed_origins()
-    
+
     CORS(app, resources={
         r"/api/*": {
             "origins": allowed_origins,
@@ -99,6 +100,6 @@ def setup_cors(app):
             "supports_credentials": True
         }
     })
-    
+
     print(f"[SEGURANCA] OK CORS restrito a: {len(allowed_origins)} origens permitidas")
 

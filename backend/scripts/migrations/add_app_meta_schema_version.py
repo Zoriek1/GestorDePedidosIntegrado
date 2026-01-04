@@ -9,8 +9,8 @@ Adiciona:
 Uso:
     python scripts/migrations/add_app_meta_schema_version.py
 """
-import sys
 import sqlite3
+import sys
 from pathlib import Path
 
 # Adicionar backend ao path
@@ -18,7 +18,7 @@ backend_dir = Path(__file__).parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from app.config import Config
+from app.config import Config  # noqa: E402
 
 
 def check_table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -41,19 +41,19 @@ def check_key_exists(conn: sqlite3.Connection, key: str) -> bool:
 def migrate():
     """Executa a migração"""
     db_path = Config.DATABASE_PATH
-    
+
     if not db_path.exists():
         print(f"[ERRO] Banco de dados não encontrado: {db_path}")
         return False
-    
+
     print("=" * 60)
     print("MIGRAÇÃO: app_meta e schema_version (P1.1)")
     print("=" * 60)
     print(f"\nBanco de dados: {db_path}")
-    
+
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
-    
+
     try:
         # 1. Criar tabela app_meta se não existir
         print("\n[1/2] Verificando tabela app_meta...")
@@ -69,12 +69,12 @@ def migrate():
             """)
             conn.commit()
             print("  ✓ Tabela app_meta criada")
-        
+
         # 2. Inserir schema_version se não existir
         print("\n[2/2] Verificando schema_version...")
         schema_version = Config.APP_SCHEMA_VERSION
         if check_key_exists(conn, 'schema_version'):
-            print(f"  ✓ schema_version já existe")
+            print("  ✓ schema_version já existe")
             # Atualizar valor se diferente
             cursor.execute("SELECT value FROM app_meta WHERE key='schema_version'")
             current_version = cursor.fetchone()[0]
@@ -94,7 +94,7 @@ def migrate():
             )
             conn.commit()
             print(f"  ✓ schema_version inserido: '{schema_version}'")
-        
+
         # Verificar integridade
         print("\n[VERIFICAÇÃO] Executando integrity check...")
         cursor.execute("PRAGMA integrity_check")
@@ -104,12 +104,12 @@ def migrate():
         else:
             print(f"  ✗ Integridade falhou: {result[0]}")
             return False
-        
+
         print("\n" + "=" * 60)
         print("[OK] Migração concluída com sucesso!")
         print("=" * 60)
         return True
-        
+
     except Exception as e:
         conn.rollback()
         print(f"\n[ERRO] Falha na migração: {e}")

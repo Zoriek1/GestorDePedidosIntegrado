@@ -1,0 +1,347 @@
+<!-- Página: Gestão de Fontes de Pedido -->
+<div class="max-w-4xl mx-auto">
+    
+    <!-- Cabeçalho -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">
+                    <i class="fas fa-folder text-primary"></i>
+                    Fontes de Pedido
+                </h1>
+                <p class="text-gray-600">Gerencie as fontes/origens dos pedidos (Ifood, Site, WhatsApp, etc)</p>
+            </div>
+            <sl-button id="btn-nova-fonte" variant="primary">
+                <i class="fas fa-plus-circle"></i>
+                Nova Fonte
+            </sl-button>
+        </div>
+    </div>
+
+    <!-- Lista de Fontes -->
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="fontes-list" class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                            <i class="fas fa-spinner fa-spin mr-2"></i>
+                            Carregando fontes...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Criar/Editar Fonte (Shoelace Dialog) -->
+<sl-dialog id="modal-fonte" label="Nova Fonte" class="max-w-md">
+    <form id="form-fonte" class="space-y-4">
+        <input type="hidden" id="fonte-id" value="">
+        
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+                Nome da Fonte <span class="text-red-500">*</span>
+            </label>
+            <sl-input id="fonte-nome" required placeholder="Ex: Ifood, Site, WhatsApp (Caio)"></sl-input>
+        </div>
+
+        <div>
+            <label class="flex items-center">
+                <input type="checkbox" id="fonte-ativo" checked
+                    class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                <span class="ml-2 text-sm text-gray-700">Fonte ativa</span>
+            </label>
+        </div>
+
+        <div class="flex gap-3 pt-4" slot="footer">
+            <sl-button type="button" data-modal-close variant="default" class="flex-1">
+                Cancelar
+            </sl-button>
+            <sl-button type="submit" variant="primary" class="flex-1">
+                <i class="fas fa-save"></i>
+                Salvar
+            </sl-button>
+        </div>
+    </form>
+</sl-dialog>
+
+<script>
+// Gerenciador de Fontes
+// Tornar global para ser acessível após execução do script inline
+window.FontesManager = {
+    fontes: [],
+    fonteEditando: null,
+    inicializado: false,
+
+    async init() {
+        // Evitar múltiplas inicializações
+        if (this.inicializado) {
+            console.log('📁 FontesManager já foi inicializado, ignorando...');
+            return;
+        }
+        
+        console.log('📁 Inicializando gerenciador de fontes...');
+        this.inicializado = true;
+        
+        // Carregar fontes
+        await this.carregarFontes();
+        
+        // Configurar listeners
+        this.setupListeners();
+    },
+
+    setupListeners() {
+        // Botão Nova Fonte
+        const btnNovaFonte = document.getElementById('btn-nova-fonte');
+        if (btnNovaFonte) {
+            btnNovaFonte.addEventListener('click', () => {
+                this.abrirModalNova();
+            });
+        }
+
+        // Formulário
+        const formFonte = document.getElementById('form-fonte');
+        if (formFonte) {
+            formFonte.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.salvarFonte();
+            });
+        }
+
+        // Fechar modal
+        document.querySelectorAll('[data-modal-close]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.fecharModal();
+            });
+        });
+    },
+
+    async carregarFontes() {
+        try {
+            console.log('[FONTES] Iniciando carregamento de fontes...');
+            const response = await API.getAllFontesPedido();
+            console.log('[FONTES] Resposta recebida:', response);
+            
+            // Verificar estrutura da resposta
+            if (!response.success) {
+                throw new Error(response.error || 'Erro na requisição');
+            }
+            
+            if (!response.data) {
+                throw new Error('Resposta da API não contém dados');
+            }
+            
+            // Simplificar verificação - response.data já contém o objeto retornado pela API
+            const fontes = response.data.fontes || [];
+            
+            console.log('[FONTES] Fontes extraídas:', fontes);
+            
+            if (Array.isArray(fontes)) {
+                this.fontes = fontes;
+                this.renderizarFontes();
+                console.log(`[FONTES] ✅ ${fontes.length} fontes carregadas com sucesso`);
+            } else {
+                throw new Error('Formato de resposta inválido: fontes não é um array');
+            }
+        } catch (error) {
+            console.error('[FONTES] Erro ao carregar fontes:', error);
+            const errorMessage = error.message || error.toString() || 'Erro desconhecido';
+            Notification.error(`Erro ao carregar fontes de pedido: ${errorMessage}`);
+            
+            // Mostrar mensagem de erro na tabela
+            const tbody = document.getElementById('fontes-list');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-red-500">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>
+                            Erro ao carregar fontes: ${Utils.escapeHtml(errorMessage)}
+                            <br><small class="text-gray-500 mt-2 block">Verifique se a migração foi executada: python backend/scripts/migrations/migrate_fonte_pedido.py</small>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+    },
+
+    renderizarFontes() {
+        const tbody = document.getElementById('fontes-list');
+        
+        if (!tbody) return;
+
+        if (this.fontes.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                        Nenhuma fonte cadastrada
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = this.fontes.map(fonte => `
+            <tr class="hover:bg-gray-50 ${!fonte.ativo ? 'opacity-60' : ''}">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    #${fonte.id}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm font-medium text-gray-900">${Utils.escapeHtml(fonte.nome)}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    ${fonte.ativo 
+                        ? '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Ativa</span>'
+                        : '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">Inativa</span>'
+                    }
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onclick="FontesManager.editarFonte(${fonte.id})" 
+                        class="text-blue-600 hover:text-blue-900 mr-3">
+                        <i class="fas fa-edit"></i> Editar
+                    </button>
+                    ${fonte.ativo
+                        ? `<button onclick="FontesManager.desativarFonte(${fonte.id})" 
+                            class="text-red-600 hover:text-red-900">
+                            <i class="fas fa-ban"></i> Desativar
+                        </button>`
+                        : `<button onclick="FontesManager.ativarFonte(${fonte.id})" 
+                            class="text-green-600 hover:text-green-900">
+                            <i class="fas fa-check"></i> Ativar
+                        </button>`
+                    }
+                </td>
+            </tr>
+        `).join('');
+    },
+
+    abrirModalNova() {
+        this.fonteEditando = null;
+        document.getElementById('modal-fonte-title').textContent = 'Nova Fonte';
+        document.getElementById('fonte-id').value = '';
+        document.getElementById('fonte-nome').value = '';
+        document.getElementById('fonte-ativo').checked = true;
+        const modal = document.getElementById('modal-fonte');
+        if (modal && modal.show) {
+            modal.label = 'Nova Fonte';
+            modal.show();
+        }
+    },
+
+    editarFonte(fonteId) {
+        const fonte = this.fontes.find(f => f.id === fonteId);
+        if (!fonte) return;
+
+        this.fonteEditando = fonte;
+        document.getElementById('modal-fonte-title').textContent = 'Editar Fonte';
+        document.getElementById('fonte-id').value = fonte.id;
+        document.getElementById('fonte-nome').value = fonte.nome;
+        document.getElementById('fonte-ativo').checked = fonte.ativo;
+        const modal = document.getElementById('modal-fonte');
+        if (modal && modal.show) {
+            modal.label = 'Editar Fonte';
+            modal.show();
+        }
+    },
+
+    fecharModal() {
+        const modal = document.getElementById('modal-fonte');
+        if (modal && modal.hide) {
+            modal.hide();
+        }
+        this.fonteEditando = null;
+    },
+
+    async salvarFonte() {
+        const id = document.getElementById('fonte-id').value;
+        const nome = document.getElementById('fonte-nome').value.trim();
+        const ativo = document.getElementById('fonte-ativo').checked;
+
+        if (!nome) {
+            Notification.warning('Nome da fonte é obrigatório');
+            return;
+        }
+
+        try {
+            Utils.showLoading();
+
+            let result;
+            if (id) {
+                // Atualizar
+                result = await API.updateFontePedido(parseInt(id), { nome, ativo });
+            } else {
+                // Criar
+                result = await API.createFontePedido({ nome, ativo });
+            }
+
+            if (result.success) {
+                Notification.success(id ? 'Fonte atualizada com sucesso!' : 'Fonte criada com sucesso!');
+                this.fecharModal();
+                await this.carregarFontes();
+            } else {
+                throw new Error(result.error || 'Erro ao salvar fonte');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar fonte:', error);
+            Notification.error(`Erro ao salvar fonte: ${error.message}`);
+        } finally {
+            Utils.hideLoading();
+        }
+    },
+
+    async desativarFonte(fonteId) {
+        if (!confirm('Tem certeza que deseja desativar esta fonte?')) {
+            return;
+        }
+
+        try {
+            Utils.showLoading();
+            const result = await API.deleteFontePedido(fonteId);
+
+            if (result.success) {
+                Notification.success('Fonte desativada com sucesso!');
+                await this.carregarFontes();
+            } else {
+                throw new Error(result.error || 'Erro ao desativar fonte');
+            }
+        } catch (error) {
+            console.error('Erro ao desativar fonte:', error);
+            Notification.error(`Erro ao desativar fonte: ${error.message}`);
+        } finally {
+            Utils.hideLoading();
+        }
+    },
+
+    async ativarFonte(fonteId) {
+        try {
+            Utils.showLoading();
+            const result = await API.updateFontePedido(fonteId, { ativo: true });
+
+            if (result.success) {
+                Notification.success('Fonte ativada com sucesso!');
+                await this.carregarFontes();
+            } else {
+                throw new Error(result.error || 'Erro ao ativar fonte');
+            }
+        } catch (error) {
+            console.error('Erro ao ativar fonte:', error);
+            Notification.error(`Erro ao ativar fonte: ${error.message}`);
+        } finally {
+            Utils.hideLoading();
+        }
+    }
+};
+
+// O FontesManager será inicializado pelo Router após o HTML ser inserido
+// Não usar IIFE aqui pois scripts inline não são executados quando inseridos via innerHTML
+</script>
+

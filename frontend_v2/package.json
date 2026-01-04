@@ -39,6 +39,7 @@
     "react-leaflet": "^5.0.0",
     "react-number-format": "^5.4.4",
     "react-router-dom": "^7.11.0",
+    "recharts": "^3.6.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {

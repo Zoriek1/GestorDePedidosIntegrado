@@ -34,6 +34,8 @@ import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
 import { OrdersKPIGrid } from './components/OrdersKPIGrid';
 import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
+import { OrdersSorting } from './components/OrdersSorting';
+import { OrdersPagination } from './components/OrdersPagination';
 
 export default function OrdersPage() {
   const theme = useTheme();
@@ -42,6 +44,10 @@ export default function OrdersPage() {
   const [filters, setFilters] = useState<PedidosFilters>({
     status: '',
     search: '',
+    sort_by: 'dia_entrega',
+    sort_order: 'asc',
+    page: 1,
+    per_page: 20,
   });
   const [sortByDistance, setSortByDistance] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -49,11 +55,21 @@ export default function OrdersPage() {
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
 
   const queryClient = useQueryClient();
-  const { data: pedidosData, isLoading: isLoadingPedidos, isFetching: isFetchingPedidos, error: pedidosError, refetch: refetchPedidos } = usePedidos(filters);
-  const { data: statsData, isFetching: isFetchingStats } = useStats();
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUserRole } = useAuth();
   const { success, error: showError, info } = useToast();
   const confirm = useConfirm();
+  
+  const userRole = getUserRole() || 'admin'; // Default para admin se não especificado
+  const isAdmin = userRole === 'admin';
+  const isEntregador = userRole === 'entregador';
+  
+  // Entregadores só podem ver pedidos agendados e em rota
+  const adjustedFilters = isEntregador 
+    ? { ...filters, statuses: ['agendado', 'em_rota'] }
+    : filters;
+  
+  const { data: pedidosData, isLoading: isLoadingPedidos, isFetching: isFetchingPedidos, error: pedidosError, refetch: refetchPedidos } = usePedidos(adjustedFilters);
+  const { data: statsData, isFetching: isFetchingStats } = useStats();
   const calcDistanciasLote = useCalcularDistanciasLote();
   const ocultarConcluidos = useOcultarPedidosConcluidos();
 
@@ -252,18 +268,20 @@ export default function OrdersPage() {
           }}
         >
           {/* Botão Roteirizar - sempre visível no topo */}
-          <Button
-            variant={selectionMode ? 'contained' : 'outlined'}
-            size="small"
-            color="primary"
-            startIcon={<Route />}
-            onClick={handleToggleSelectionMode}
-            sx={{
-              fontWeight: selectionMode ? 600 : 400,
-            }}
-          >
-            {isMobile ? (selectionMode ? 'Sair' : 'Rota') : (selectionMode ? 'Sair do modo de rota' : 'Roteirizar')}
-          </Button>
+          <Tooltip title={selectionMode ? 'Sair do modo de roteirização' : 'Selecionar pedidos para criar rota de entrega'}>
+            <Button
+              variant={selectionMode ? 'contained' : 'outlined'}
+              size="small"
+              color="primary"
+              startIcon={<Route />}
+              onClick={handleToggleSelectionMode}
+              sx={{
+                fontWeight: selectionMode ? 600 : 400,
+              }}
+            >
+              {isMobile ? (selectionMode ? 'Sair' : 'Rota') : (selectionMode ? 'Sair do modo de rota' : 'Roteirizar')}
+            </Button>
+          </Tooltip>
           
           {/* Mobile: Menu de filtros */}
           {isMobile ? (
@@ -321,15 +339,17 @@ export default function OrdersPage() {
                   Fontes
                 </MenuItem>
                 <Divider />
-                <MenuItem 
-                  onClick={() => {
-                    handleOcultarConcluidos();
-                  }}
-                  disabled={ocultarConcluidos.isPending}
-                >
-                  <DeleteSweep sx={{ mr: 1.5 }} />
-                  {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
-                </MenuItem>
+                {isAdmin && (
+                  <MenuItem 
+                    onClick={() => {
+                      handleOcultarConcluidos();
+                    }}
+                    disabled={ocultarConcluidos.isPending}
+                  >
+                    <DeleteSweep sx={{ mr: 1.5 }} />
+                    {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                  </MenuItem>
+                )}
               </Menu>
               <Tooltip title="Atualizar dados">
                 <IconButton
@@ -344,44 +364,52 @@ export default function OrdersPage() {
           ) : (
             /* Desktop: Botões completos */
             <>
-              <Button 
-                variant="outlined" 
-                size="small" 
-                startIcon={<Sort />}
-                onClick={() => setSortByDistance((prev) => !prev)}
-              >
-                {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
-              </Button>
-              <Button 
-                variant="outlined" 
-                size="small" 
-                startIcon={<FileDownload />}
-                onClick={handleExportSheet}
-              >
-                Exportar planilha
-              </Button>
-              <Button 
-                variant="outlined" 
-                size="small" 
-                startIcon={<Folder />} 
-                onClick={() => (window.location.href = '/fontes-pedido')}
-              >
-                Fontes
-              </Button>
-              <Tooltip title="Ocultar todos os pedidos concluídos do painel">
-                <span>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<DeleteSweep />}
-                    onClick={handleOcultarConcluidos}
-                    disabled={ocultarConcluidos.isPending}
-                    color="secondary"
-                  >
-                    {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
-                  </Button>
-                </span>
+              <Tooltip title={sortByDistance ? 'Voltar para ordem padrão' : 'Ordenar pedidos por distância da origem'}>
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  startIcon={<Sort />}
+                  onClick={() => setSortByDistance((prev) => !prev)}
+                >
+                  {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
+                </Button>
               </Tooltip>
+              <Tooltip title="Exportar lista de pedidos para planilha Excel">
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  startIcon={<FileDownload />}
+                  onClick={handleExportSheet}
+                >
+                  Exportar planilha
+                </Button>
+              </Tooltip>
+              <Tooltip title="Gerenciar fontes de pedido (Catálogo, Site, WhatsApp)">
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  startIcon={<Folder />} 
+                  onClick={() => (window.location.href = '/fontes-pedido')}
+                >
+                  Fontes
+                </Button>
+              </Tooltip>
+              {isAdmin && (
+                <Tooltip title="Ocultar todos os pedidos concluídos do painel">
+                  <span>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<DeleteSweep />}
+                      onClick={handleOcultarConcluidos}
+                      disabled={ocultarConcluidos.isPending}
+                      color="secondary"
+                    >
+                      {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               <Tooltip title="Atualizar dados">
                 <IconButton
                   onClick={handleRefresh}
@@ -471,8 +499,21 @@ export default function OrdersPage() {
           search={filters.search || ''}
           status={filters.status || ''}
           onSearchChange={(val) => setFilters((prev) => ({ ...prev, search: val }))}
-          onStatusChange={(status) => setFilters((prev) => ({ ...prev, status: status || undefined }))}
+          onStatusChange={(status) => {
+            setFilters((prev) => ({ ...prev, status: status || undefined }));
+          }}
           onDateRangeChange={(start, end) => setFilters((prev) => ({ ...prev, data_inicio: start, data_fim: end }))}
+        />
+      </Paper>
+
+      {/* Ordenação */}
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <OrdersSorting
+          sortBy={filters.sort_by || 'dia_entrega'}
+          sortOrder={filters.sort_order || 'asc'}
+          onChange={(sortBy, sortOrder) => {
+            setFilters((prev) => ({ ...prev, sort_by: sortBy, sort_order: sortOrder, page: 1 }));
+          }}
         />
       </Paper>
 
@@ -485,13 +526,30 @@ export default function OrdersPage() {
           onRetry={() => refetchPedidos()}
         />
       ) : pedidosData && typeof pedidosData === 'object' && 'pedidos' in pedidosData && pedidosData.pedidos ? (
-        <OrderList
-          pedidos={sortedPedidos}
-          onOrderClick={handleOrderClick}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelect={handleToggleSelectPedido}
-        />
+        <>
+          <OrderList
+            pedidos={sortedPedidos}
+            onOrderClick={handleOrderClick}
+            selectionMode={selectionMode}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelectPedido}
+          />
+          {pedidosData.total_pages && pedidosData.total_pages > 1 && (
+            <OrdersPagination
+              page={filters.page || 1}
+              perPage={filters.per_page || 20}
+              total={pedidosData.total}
+              totalPages={pedidosData.total_pages}
+              onPageChange={(page) => {
+                setFilters((prev) => ({ ...prev, page }));
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onPerPageChange={(perPage) => {
+                setFilters((prev) => ({ ...prev, per_page: perPage, page: 1 }));
+              }}
+            />
+          )}
+        </>
       ) : (
         <Box
           display="flex"

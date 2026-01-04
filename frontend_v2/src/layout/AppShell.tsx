@@ -56,6 +56,8 @@ export function AppShell({ children }: AppShellProps) {
   const authenticated = isAuthenticated();
   const credentials = authenticated ? getCredentials() : null;
   const username = credentials?.username;
+  const userRole = credentials?.role || 'admin'; // Default para admin se não especificado
+  const isEntregador = userRole === 'entregador';
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -134,9 +136,13 @@ export function AppShell({ children }: AppShellProps) {
             </IconButton>
             <Menu anchorEl={navMenuEl} open={Boolean(navMenuEl)} onClose={handleNavMenuClose}>
               <MenuItem onClick={() => handleNavigate('/')}>Pedidos</MenuItem>
-              <MenuItem onClick={() => handleNavigate('/vendas')}>Vendas</MenuItem>
-              <MenuItem onClick={() => handleNavigate('/clientes')}>Clientes</MenuItem>
-              <MenuItem onClick={() => handleNavigate('/fontes-pedido')}>Fontes</MenuItem>
+              {!isEntregador && (
+                <>
+                  <MenuItem onClick={() => handleNavigate('/vendas')}>Vendas</MenuItem>
+                  <MenuItem onClick={() => handleNavigate('/clientes')}>Clientes</MenuItem>
+                  <MenuItem onClick={() => handleNavigate('/fontes-pedido')}>Fontes</MenuItem>
+                </>
+              )}
               <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
             </Menu>
           </Box>
@@ -183,15 +189,19 @@ export function AppShell({ children }: AppShellProps) {
             <Button color="inherit" onClick={() => handleNavigate('/')} sx={{ textTransform: 'none' }}>
               Pedidos
             </Button>
-            <Button color="inherit" onClick={() => handleNavigate('/vendas')} sx={{ textTransform: 'none' }}>
-              Vendas
-            </Button>
-            <Button color="inherit" onClick={() => handleNavigate('/clientes')} sx={{ textTransform: 'none' }}>
-              Clientes
-            </Button>
-            <Button color="inherit" onClick={() => handleNavigate('/fontes-pedido')} sx={{ textTransform: 'none' }}>
-              Fontes
-            </Button>
+            {!isEntregador && (
+              <>
+                <Button color="inherit" onClick={() => handleNavigate('/vendas')} sx={{ textTransform: 'none' }}>
+                  Vendas
+                </Button>
+                <Button color="inherit" onClick={() => handleNavigate('/clientes')} sx={{ textTransform: 'none' }}>
+                  Clientes
+                </Button>
+                <Button color="inherit" onClick={() => handleNavigate('/fontes-pedido')} sx={{ textTransform: 'none' }}>
+                  Fontes
+                </Button>
+              </>
+            )}
             <Button color="inherit" onClick={() => handleNavigate('/rota-entrega')} sx={{ textTransform: 'none' }}>
               Rota
             </Button>

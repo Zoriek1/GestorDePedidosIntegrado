@@ -44,7 +44,9 @@ def criar_pedido():
         # Extração de dados do JSON
         # Step 1 - Dados do Cliente
         cliente = data.get("cliente", "").strip()
-        telefone_cliente = data.get("telefone_cliente", data.get("telefone", "")).strip()
+        telefone_cliente_raw = data.get("telefone_cliente", data.get("telefone", "")).strip()
+        # Remover formatação do telefone (máscara deve existir apenas no frontend)
+        telefone_cliente = re.sub(r"[^\d]", "", telefone_cliente_raw)
         destinatario = data.get("destinatario", "").strip()
         tipo_pedido = data.get("tipo_pedido", "Entrega")
         # Aceitar tanto fonte_pedido_id (novo) quanto fonte_pedido (string) para compatibilidade
@@ -866,7 +868,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
         )
 
         # Verificar se houve erro de validação
-        if resultado and "error" in resultado:
+        if isinstance(resultado, dict) and resultado.get("error"):
             print(f"[ERRO] Validação falhou: {resultado['error']}")
             return (
                 jsonify(

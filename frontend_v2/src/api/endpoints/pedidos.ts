@@ -54,6 +54,9 @@ export interface PedidosResponse {
   success: boolean;
   pedidos: Pedido[];
   total: number;
+  page?: number;
+  per_page?: number;
+  total_pages?: number;
 }
 
 export interface OverduePedidosResponse {
@@ -67,6 +70,10 @@ export interface PedidosFilters {
   data_fim?: string; // YYYY-MM-DD
   search?: string;
   filtrar_por_criacao?: boolean; // Novo parâmetro: filtrar por created_at ao invés de dia_entrega
+  sort_by?: string; // Campo para ordenação: 'dia_entrega', 'valor', 'cliente', 'created_at'
+  sort_order?: 'asc' | 'desc'; // Direção da ordenação
+  page?: number; // Número da página (1-indexed)
+  per_page?: number; // Itens por página
 }
 
 /**
@@ -86,6 +93,10 @@ export function usePedidos(filters: PedidosFilters = {}) {
       if (filters.data_fim) params.append('data_fim', filters.data_fim);
       if (filters.search) params.append('search', filters.search);
       if (filters.filtrar_por_criacao) params.append('filtrar_por_criacao', 'true');
+      if (filters.sort_by) params.append('sort_by', filters.sort_by);
+      if (filters.sort_order) params.append('sort_order', filters.sort_order);
+      if (filters.page) params.append('page', filters.page.toString());
+      if (filters.per_page) params.append('per_page', filters.per_page.toString());
 
       const queryString = params.toString();
       const endpoint = `/pedidos${queryString ? `?${queryString}` : ''}`;

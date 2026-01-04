@@ -24,27 +24,28 @@ export function SalesKPIGrid({ kpis }: SalesKPIGridProps) {
       title: 'Quantidade de Pedidos', 
       value: kpis.quantidade, 
       color: '#2563eb',
-      isCurrency: false 
+      isCurrency: false,
+      isText: false
     },
     { 
       title: 'Total de Vendas no Mês', 
       value: formatMoney(kpis.totalVendasBruto), 
       color: '#16a34a',
-      isCurrency: false, // Já formatado
+      isCurrency: false, // Já formatado como string
       isText: true
     },
     { 
       title: 'Total Recebido', 
       value: formatMoney(kpis.totalRecebido), 
       color: '#f59e0b',
-      isCurrency: false, // Já formatado
+      isCurrency: false, // Já formatado como string
       isText: true
     },
     { 
       title: 'Total Efetivo', 
       value: formatMoney(kpis.totalEfetivo), 
       color: '#8b5cf6',
-      isCurrency: false, // Já formatado
+      isCurrency: false, // Já formatado como string
       isText: true
     },
   ];

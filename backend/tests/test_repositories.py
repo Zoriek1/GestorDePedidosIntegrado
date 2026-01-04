@@ -102,19 +102,22 @@ class TestPedidoRepository:
         session.commit()
 
         # Buscar por status
-        resultados = repo.buscar_com_filtros(status="agendado")
+        resultados, total = repo.buscar_com_filtros(status="agendado")
         assert len(resultados) == 2
+        assert total == 2
 
         # Buscar por data
-        resultados = repo.buscar_com_filtros(
+        resultados, total = repo.buscar_com_filtros(
             data_inicio=date(2024, 12, 31), data_fim=date(2024, 12, 31)
         )
         assert len(resultados) == 1
+        assert total == 1
         assert resultados[0].cliente == "John Doe"
 
         # Buscar por texto
-        resultados = repo.buscar_com_filtros(search="John")
+        resultados, total = repo.buscar_com_filtros(search="John")
         assert len(resultados) >= 1
+        assert total >= 1
 
     def test_atualizar_status(self, session):
         """Testa atualização de status"""

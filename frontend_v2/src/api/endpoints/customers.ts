@@ -98,19 +98,38 @@ export interface CustomersListResponse {
   clientes: Customer[];
 }
 
-export function useCustomers(params: { search?: string; page?: number; perPage?: number; includeStats?: boolean } = {}) {
+export interface CustomersFilters {
+  search?: string;
+  page?: number;
+  perPage?: number;
+  includeStats?: boolean;
+  minPedidos?: number;
+  maxPedidos?: number;
+  minLTV?: number;
+  maxLTV?: number;
+  ultimoPedidoApos?: string;
+  ultimoPedidoAntes?: string;
+}
+
+export function useCustomers(params: CustomersFilters = {}) {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
-  const { search = '', page = 1, perPage = 50, includeStats = true } = params;
+  const { search = '', page = 1, perPage = 50, includeStats = true, minPedidos, maxPedidos, minLTV, maxLTV, ultimoPedidoApos, ultimoPedidoAntes } = params;
 
   return useQuery<CustomersListResponse>({
-    queryKey: ['customers.list', { search, page, perPage, includeStats }],
+    queryKey: ['customers.list', { search, page, perPage, includeStats, minPedidos, maxPedidos, minLTV, maxLTV, ultimoPedidoApos, ultimoPedidoAntes }],
     queryFn: async () => {
       const query = new URLSearchParams();
       if (search) query.append('search', search);
       query.append('page', page.toString());
       query.append('per_page', perPage.toString());
       query.append('stats', includeStats ? 'true' : 'false');
+      if (minPedidos !== undefined) query.append('min_pedidos', minPedidos.toString());
+      if (maxPedidos !== undefined) query.append('max_pedidos', maxPedidos.toString());
+      if (minLTV !== undefined) query.append('min_ltv', minLTV.toString());
+      if (maxLTV !== undefined) query.append('max_ltv', maxLTV.toString());
+      if (ultimoPedidoApos) query.append('ultimo_pedido_apos', ultimoPedidoApos);
+      if (ultimoPedidoAntes) query.append('ultimo_pedido_antes', ultimoPedidoAntes);
 
       const response = await apiRequest<CustomersListResponse>(`/clientes?${query.toString()}`);
       if (!response.ok) {

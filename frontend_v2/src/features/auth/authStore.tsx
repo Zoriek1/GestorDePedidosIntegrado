@@ -12,16 +12,18 @@ const CACHE_DURATION = 5000; // 5 seconds
 interface AuthCredentials {
   username: string;
   password: string;
+  role?: string; // Papel do usuário (admin, atendente, entregador)
   timestamp: number;
 }
 
 interface AuthContextType {
   isAuthenticated: () => boolean;
   getCredentials: () => AuthCredentials | null;
+  getUserRole: () => string | null; // Retorna o papel do usuário
   loadSavedCredentials: () => AuthCredentials | null; // Public alias for getCredentials
   saveCredentials: (username: string, password: string, remember?: boolean) => void;
   getAuthHeader: () => Record<string, string>;
-  login: (username: string, password: string, remember?: boolean) => Promise<{ success: boolean; error?: string; message?: string }>;
+  login: (username: string, password: string, remember?: boolean) => Promise<{ success: boolean; error?: string; message?: string; role?: string }>;
   logout: () => void;
   checkAuth: () => Promise<boolean>;
 }
@@ -100,10 +102,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [authCache, cacheTimestamp]);
 
-  const saveCredentials = useCallback((username: string, password: string, remember = false): void => {
+  const saveCredentials = useCallback((username: string, password: string, remember = false, role?: string): void => {
     const authData: AuthCredentials = {
       username,
       password,
+      role,
       timestamp: Date.now()
     };
 
@@ -117,6 +120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthCache(true);
     setCacheTimestamp(Date.now());
   }, []);
+
+  const getUserRole = useCallback((): string | null => {
+    const creds = getCredentials();
+    return creds?.role || null;
+  }, [getCredentials]);
 
   const getAuthHeader = useCallback((): Record<string, string> => {
     const creds = getCredentials();
@@ -173,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [logout]);
 
-  const login = useCallback(async (username: string, password: string, remember = false): Promise<{ success: boolean; error?: string; message?: string }> => {
+  const login = useCallback(async (username: string, password: string, remember = false): Promise<{ success: boolean; error?: string; message?: string; role?: string }> => {
     try {
       // Primary approach (robust): Save credentials first, then validate via GET /api/auth/check
       // This is the robust Basic Auth approach - do NOT require POST /api/auth/login
@@ -201,12 +209,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Create request with explicit Authorization header (bypass getAuthHeader exclusion)
       const tempAuthHeaderValue = tempAuthHeader();
       const apiRequest = createApiRequest(tempAuthHeader);
-      const response = await apiRequest<{ success: boolean; authenticated?: boolean; message?: string }>('/auth/check', {
+      const response = await apiRequest<{ success: boolean; authenticated?: boolean; message?: string; role?: string }>('/auth/check', {
         headers: tempAuthHeaderValue
       });
 
       if (response.ok && response.data?.success && response.data?.authenticated === true) {
-        return { success: true, message: 'Login realizado com sucesso' };
+        const role = (response.data as any)?.role || 'admin'; // Default para admin se não especificado
+        saveCredentials(username, password, remember, role);
+        return { success: true, message: 'Login realizado com sucesso', role };
       } else {
         // Validation failed - clear credentials
         logout();
@@ -239,12 +249,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       const data = await response.json();
-      return data.success && data.authenticated === true;
+      if (data.success && data.authenticated === true) {
+        // Atualizar papel se retornado pelo servidor
+        if (data.role && creds.role !== data.role) {
+          saveCredentials(creds.username, creds.password, !!localStorage.getItem(STORAGE_KEY), data.role);
+        }
+        return true;
+      }
+      return false;
     } catch (error) {
       console.error('Erro ao verificar autenticação:', error);
       return false;
     }
-  }, [getCredentials, getAuthHeader]);
+  }, [getCredentials, getAuthHeader, saveCredentials]);
 
   const loadSavedCredentials = useCallback((): AuthCredentials | null => {
     return getCredentials();
@@ -253,6 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextType = {
     isAuthenticated,
     getCredentials,
+    getUserRole,
     loadSavedCredentials,
     saveCredentials,
     getAuthHeader,

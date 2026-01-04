@@ -133,10 +133,11 @@ class TestIntegration:
         assert agendados[0].cliente == "John Doe"
 
         # Buscar com filtros múltiplos
-        resultados = repo.buscar_com_filtros(
+        resultados, total = repo.buscar_com_filtros(
             status="agendado",
             data_inicio=date(2024, 12, 31),
             data_fim=date(2024, 12, 31),
         )
         assert len(resultados) == 1
+        assert total == 1
         assert resultados[0].cliente == "John Doe"

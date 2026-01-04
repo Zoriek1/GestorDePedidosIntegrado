@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 
 from app import db
 from app.models import Cliente, EnderecoCliente, Pedido
+from app.middleware import requires_any_role, requires_role
 
 clientes_bp = Blueprint("clientes", __name__, url_prefix="/api/clientes")
 
@@ -17,6 +18,7 @@ clientes_bp = Blueprint("clientes", __name__, url_prefix="/api/clientes")
 
 
 @clientes_bp.route("", methods=["POST"])
+@requires_any_role("admin", "atendente")
 def criar_cliente():
     """
     Cria novo cliente
@@ -86,6 +88,7 @@ def criar_cliente():
 
 
 @clientes_bp.route("", methods=["GET"])
+@requires_any_role("admin", "atendente")
 def listar_clientes():
     """
     Lista todos os clientes com filtros e paginação
@@ -98,6 +101,14 @@ def listar_clientes():
         page = request.args.get("page", 1, type=int)
         per_page = request.args.get("per_page", 50, type=int)
         include_stats = request.args.get("stats", "false").lower() == "true"
+        
+        # Filtros avançados
+        min_pedidos = request.args.get("min_pedidos", type=int)
+        max_pedidos = request.args.get("max_pedidos", type=int)
+        min_ltv = request.args.get("min_ltv", type=float)
+        max_ltv = request.args.get("max_ltv", type=float)
+        ultimo_pedido_apos = request.args.get("ultimo_pedido_apos")  # YYYY-MM-DD
+        ultimo_pedido_antes = request.args.get("ultimo_pedido_antes")  # YYYY-MM-DD
 
         # Query base
         query = Cliente.query
@@ -112,17 +123,55 @@ def listar_clientes():
                 )
             )
 
-        # Ordenar por nome
-        query = query.order_by(Cliente.nome)
+        # Buscar todos os clientes (sem paginação ainda)
+        todos_clientes = query.order_by(Cliente.nome).all()
 
+        # Aplicar filtros avançados (após calcular estatísticas)
+        from datetime import datetime
+        
+        clientes_filtrados = []
+        for cliente in todos_clientes:
+            # Calcular estatísticas
+            total_pedidos = cliente.get_total_pedidos()
+            ltv = cliente.calcular_ltv()
+            ultimo_pedido_obj = cliente.get_ultimo_pedido()
+            ultimo_pedido_date = ultimo_pedido_obj.dia_entrega if ultimo_pedido_obj else None
+
+            # Aplicar filtros
+            if min_pedidos is not None and total_pedidos < min_pedidos:
+                continue
+            if max_pedidos is not None and total_pedidos > max_pedidos:
+                continue
+            if min_ltv is not None and ltv < min_ltv:
+                continue
+            if max_ltv is not None and ltv > max_ltv:
+                continue
+            if ultimo_pedido_apos and ultimo_pedido_date:
+                try:
+                    data_apos = datetime.strptime(ultimo_pedido_apos, "%Y-%m-%d").date()
+                    if ultimo_pedido_date < data_apos:
+                        continue
+                except ValueError:
+                    pass
+            if ultimo_pedido_antes and ultimo_pedido_date:
+                try:
+                    data_antes = datetime.strptime(ultimo_pedido_antes, "%Y-%m-%d").date()
+                    if ultimo_pedido_date > data_antes:
+                        continue
+                except ValueError:
+                    pass
+
+            clientes_filtrados.append(cliente)
+
+        # Contar total após filtros
+        total = len(clientes_filtrados)
+        
         # Paginação
         if per_page > 0:
-            pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-            clientes = pagination.items
-            total = pagination.total
+            offset = (page - 1) * per_page
+            clientes = clientes_filtrados[offset:offset + per_page]
         else:
-            clientes = query.all()
-            total = len(clientes)
+            clientes = clientes_filtrados
 
         return jsonify(
             {
@@ -195,6 +244,7 @@ def obter_cliente(cliente_id):
 
 
 @clientes_bp.route("/<int:cliente_id>", methods=["PUT"])
+@requires_any_role("admin", "atendente")
 def atualizar_cliente(cliente_id):
     """
     Atualiza dados do cliente
@@ -265,6 +315,7 @@ def atualizar_cliente(cliente_id):
 
 
 @clientes_bp.route("/<int:cliente_id>", methods=["DELETE"])
+@requires_role("admin")
 def deletar_cliente(cliente_id):
     """
     Deleta cliente

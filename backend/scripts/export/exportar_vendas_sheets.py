@@ -14,14 +14,14 @@ import sys
 from datetime import date, datetime
 
 # Adiciona o diretório backend ao path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 try:
     import gspread
     from google.oauth2.service_account import Credentials  # noqa: E402
 except ImportError:
     print("Instalando dependências...")
-    os.system('pip install gspread google-auth')
+    os.system("pip install gspread google-auth")
     import gspread
     from google.oauth2.service_account import Credentials  # noqa: E402
 
@@ -41,7 +41,7 @@ def _resolve_credentials_path():
       3. backend/config/google_credentials.json (legado, compatibilidade)
     """
     # 1. Variável de ambiente tem prioridade máxima
-    env_creds = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+    env_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if env_creds and os.path.exists(env_creds):
         return env_creds
 
@@ -56,46 +56,62 @@ def _resolve_credentials_path():
         backend_dir = None
         for path in sys.path:
             path_abs = os.path.abspath(path)
-            if os.path.exists(os.path.join(path_abs, 'app', '__init__.py')):
+            if os.path.exists(os.path.join(path_abs, "app", "__init__.py")):
                 backend_dir = path_abs
                 break
         if not backend_dir:
             try:
                 current_dir = os.path.abspath(os.path.dirname(sys.modules[__name__].__file__))
             except (AttributeError, KeyError):
-                current_dir = os.path.abspath('.')
+                current_dir = os.path.abspath(".")
             backend_dir = os.path.dirname(os.path.dirname(current_dir))
 
     # 2. Caminho atual: backend/user/config/ (prioridade)
-    user_config_path = os.path.join(backend_dir, 'user', 'config', 'google_credentials.json')
+    user_config_path = os.path.join(backend_dir, "user", "config", "google_credentials.json")
     if os.path.exists(user_config_path):
         return user_config_path
 
     # 3. Caminho legado: backend/config/ (compatibilidade)
-    legacy_path = os.path.join(backend_dir, 'config', 'google_credentials.json')
+    legacy_path = os.path.join(backend_dir, "config", "google_credentials.json")
     if os.path.exists(legacy_path):
         return legacy_path
 
     # Retorna caminho preferido para mensagem de erro clara
     return user_config_path
 
+
 CREDENTIALS_PATH = _resolve_credentials_path()
 SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
 ]
 
 # Mapeamento de fontes para abas
 FONTES_ABAS = {
-    'WhatsApp': ['WhatsApp', 'whatsapp', 'Whatsapp', 'WhatsApp (Caio)', 'WhatsApp (Paula)'],
-    'Catálogo': ['Catálogo', 'Catalogo', 'catalogo', 'catálogo'],
-    'Site': ['Site', 'site']
+    "WhatsApp": [
+        "WhatsApp",
+        "whatsapp",
+        "Whatsapp",
+        "WhatsApp (Caio)",
+        "WhatsApp (Paula)",
+    ],
+    "Catálogo": ["Catálogo", "Catalogo", "catalogo", "catálogo"],
+    "Site": ["Site", "site"],
 }
 
 MESES_PT = {
-    1: 'JANEIRO', 2: 'FEVEREIRO', 3: 'MARCO', 4: 'ABRIL',
-    5: 'MAIO', 6: 'JUNHO', 7: 'JULHO', 8: 'AGOSTO',
-    9: 'SETEMBRO', 10: 'OUTUBRO', 11: 'NOVEMBRO', 12: 'DEZEMBRO'
+    1: "JANEIRO",
+    2: "FEVEREIRO",
+    3: "MARCO",
+    4: "ABRIL",
+    5: "MAIO",
+    6: "JUNHO",
+    7: "JULHO",
+    8: "AGOSTO",
+    9: "SETEMBRO",
+    10: "OUTUBRO",
+    11: "NOVEMBRO",
+    12: "DEZEMBRO",
 }
 
 
@@ -103,7 +119,7 @@ def parse_valor(valor_str):
     """Converte string de valor para float"""
     if not valor_str:
         return 0.0
-    valor_limpo = re.sub(r'[R$\s]', '', str(valor_str)).replace(',', '.')
+    valor_limpo = re.sub(r"[R$\s]", "", str(valor_str)).replace(",", ".")
     try:
         return float(valor_limpo)
     except (ValueError, TypeError):
@@ -146,7 +162,9 @@ def get_or_create_spreadsheet(client, mes, ano):
         print("4. Compartilhe com a Service Account como Editor")
         print("   (email está em backend/config/google_credentials.json)")
         print("\nApós criar, execute novamente.")
-        raise Exception(f"Planilha '{nome_planilha}' não existe. Crie manualmente no Google Sheets.") from None
+        raise Exception(
+            f"Planilha '{nome_planilha}' não existe. Crie manualmente no Google Sheets."
+        ) from None
 
 
 def criar_planilha_na_pasta(client, nome_planilha, nome_pasta):
@@ -155,52 +173,50 @@ def criar_planilha_na_pasta(client, nome_planilha, nome_pasta):
     from googleapiclient.discovery import build
 
     creds = ServiceCredentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
-    drive_service = build('drive', 'v3', credentials=creds)
+    drive_service = build("drive", "v3", credentials=creds)
 
     # Busca a pasta
     folder_id = get_folder_id(drive_service, nome_pasta)
 
     if not folder_id:
-        raise Exception(f"Pasta '{nome_pasta}' não encontrada. Compartilhe a pasta com a Service Account.")
+        raise Exception(
+            f"Pasta '{nome_pasta}' não encontrada. Compartilhe a pasta com a Service Account."
+        )
 
     # Cria a planilha diretamente na pasta (supportsAllDrives para pastas compartilhadas)
     file_metadata = {
-        'name': nome_planilha,
-        'mimeType': 'application/vnd.google-apps.spreadsheet',
-        'parents': [folder_id]
+        "name": nome_planilha,
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "parents": [folder_id],
     }
 
-    file = drive_service.files().create(
-        body=file_metadata,
-        fields='id',
-        supportsAllDrives=True
-    ).execute()
+    file = (
+        drive_service.files()
+        .create(body=file_metadata, fields="id", supportsAllDrives=True)
+        .execute()
+    )
 
-    spreadsheet_id = file.get('id')
+    spreadsheet_id = file.get("id")
     print(f"✓ Planilha criada na pasta (ID: {spreadsheet_id})")
 
     # Transfere propriedade para o dono da pasta (sua conta pessoal)
     try:
         # Busca o email do proprietário da pasta
-        pasta_info = drive_service.files().get(
-            fileId=folder_id,
-            fields='owners',
-            supportsAllDrives=True
-        ).execute()
+        pasta_info = (
+            drive_service.files()
+            .get(fileId=folder_id, fields="owners", supportsAllDrives=True)
+            .execute()
+        )
 
-        owner_email = pasta_info.get('owners', [{}])[0].get('emailAddress')
+        owner_email = pasta_info.get("owners", [{}])[0].get("emailAddress")
 
         if owner_email:
             # Transfere propriedade
             drive_service.permissions().create(
                 fileId=spreadsheet_id,
-                body={
-                    'type': 'user',
-                    'role': 'owner',
-                    'emailAddress': owner_email
-                },
+                body={"type": "user", "role": "owner", "emailAddress": owner_email},
                 transferOwnership=True,
-                supportsAllDrives=True
+                supportsAllDrives=True,
             ).execute()
             print(f"✓ Propriedade transferida para: {owner_email}")
     except Exception as e:
@@ -214,15 +230,19 @@ def get_folder_id(drive_service, nome_pasta):
     """Busca o ID da pasta pelo nome"""
     try:
         # Busca pasta pelo nome
-        results = drive_service.files().list(
-            q=f"name='{nome_pasta}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            spaces='drive',
-            fields='files(id, name)'
-        ).execute()
+        results = (
+            drive_service.files()
+            .list(
+                q=f"name='{nome_pasta}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+                spaces="drive",
+                fields="files(id, name)",
+            )
+            .execute()
+        )
 
-        folders = results.get('files', [])
+        folders = results.get("files", [])
         if folders:
-            folder_id = folders[0]['id']
+            folder_id = folders[0]["id"]
             print(f"✓ Pasta encontrada: {nome_pasta} (ID: {folder_id})")
             return folder_id
         else:
@@ -239,15 +259,15 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
     _, num_dias = calendar.monthrange(ano, mes)
 
     # Cria abas
-    for nome_aba in ['WhatsApp', 'Catálogo', 'Site']:
+    for nome_aba in ["WhatsApp", "Catálogo", "Site"]:
         try:
             worksheet = spreadsheet.add_worksheet(title=nome_aba, rows=100, cols=10)
         except Exception:
             worksheet = spreadsheet.worksheet(nome_aba)
 
         # Cabeçalhos
-        headers = ['Valor', 'Cliente', 'Telefone', 'Data Venda', '', 'Dia', 'Total']
-        worksheet.update('A1:G1', [headers])
+        headers = ["Valor", "Cliente", "Telefone", "Data Venda", "", "Dia", "Total"]
+        worksheet.update("A1:G1", [headers])
 
         # Coluna de dias do mês (F2:G32)
         dias_data = []
@@ -256,15 +276,15 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
             dia_semana = data_dia.weekday()  # 6 = domingo
 
             if dia_semana == 6:
-                dias_data.append(['DOMINGO', '-'])
+                dias_data.append(["DOMINGO", "-"])
             else:
-                dias_data.append([str(dia), 'R$ 0,00'])
+                dias_data.append([str(dia), "R$ 0,00"])
 
-        worksheet.update(f'F2:G{num_dias + 1}', dias_data)
+        worksheet.update(f"F2:G{num_dias + 1}", dias_data)
 
     # Remove Sheet1 padrão
     try:
-        default_sheet = spreadsheet.worksheet('Sheet1')
+        default_sheet = spreadsheet.worksheet("Sheet1")
         spreadsheet.del_worksheet(default_sheet)
     except Exception:
         pass
@@ -274,7 +294,7 @@ def get_fonte_nome(pedido):
     """Retorna o nome da fonte do pedido"""
     if pedido.fonte_pedido_rel:
         return pedido.fonte_pedido_rel.nome
-    return pedido.fonte_pedido or ''
+    return pedido.fonte_pedido or ""
 
 
 def identificar_aba(fonte_nome):
@@ -325,15 +345,19 @@ def exportar_vendas():
         _, ultimo = calendar.monthrange(ano, mes)
         ultimo_dia = date(ano, mes, ultimo)
 
-        pedidos = Pedido.query.filter(
-            Pedido.created_at >= datetime.combine(primeiro_dia, datetime.min.time()),
-            Pedido.created_at <= datetime.combine(ultimo_dia, datetime.max.time())
-        ).order_by(Pedido.created_at).all()
+        pedidos = (
+            Pedido.query.filter(
+                Pedido.created_at >= datetime.combine(primeiro_dia, datetime.min.time()),
+                Pedido.created_at <= datetime.combine(ultimo_dia, datetime.max.time()),
+            )
+            .order_by(Pedido.created_at)
+            .all()
+        )
 
         print(f"Total de pedidos no mês: {len(pedidos)}")
 
         # Organiza pedidos por aba e dia
-        dados_por_aba = {'WhatsApp': {}, 'Catálogo': {}, 'Site': {}}
+        dados_por_aba = {"WhatsApp": {}, "Catálogo": {}, "Site": {}}
 
         for pedido in pedidos:
             fonte = get_fonte_nome(pedido)
@@ -347,25 +371,37 @@ def exportar_vendas():
             if dia not in dados_por_aba[aba]:
                 dados_por_aba[aba][dia] = []
 
-            dados_por_aba[aba][dia].append({
-                'valor': parse_valor(pedido.valor),
-                'cliente': pedido.cliente or '',
-                'telefone': pedido.telefone_cliente or '',
-                'data_venda': pedido.created_at.strftime('%d/%m/%Y %H:%M') if pedido.created_at else ''
-            })
+            dados_por_aba[aba][dia].append(
+                {
+                    "valor": parse_valor(pedido.valor),
+                    "cliente": pedido.cliente or "",
+                    "telefone": pedido.telefone_cliente or "",
+                    "data_venda": pedido.created_at.strftime("%d/%m/%Y %H:%M")
+                    if pedido.created_at
+                    else "",
+                }
+            )
 
         # Atualiza cada aba
-        for nome_aba in ['WhatsApp', 'Catálogo', 'Site']:
+        for nome_aba in ["WhatsApp", "Catálogo", "Site"]:
             try:
                 worksheet = spreadsheet.worksheet(nome_aba)
             except Exception:
                 # Cria aba se não existir
                 worksheet = spreadsheet.add_worksheet(title=nome_aba, rows=100, cols=10)
-                headers = ['Valor', 'Cliente', 'Telefone', 'Data Venda', '', 'Dia', 'Total']
-                worksheet.update('A1:G1', [headers])
+                headers = [
+                    "Valor",
+                    "Cliente",
+                    "Telefone",
+                    "Data Venda",
+                    "",
+                    "Dia",
+                    "Total",
+                ]
+                worksheet.update("A1:G1", [headers])
 
             # Limpa dados antigos (mantém cabeçalho)
-            worksheet.batch_clear(['A2:D100'])
+            worksheet.batch_clear(["A2:D100"])
 
             # Prepara dados de pedidos (esquerda)
             pedidos_aba = dados_por_aba[nome_aba]
@@ -373,15 +409,17 @@ def exportar_vendas():
 
             for dia in sorted(pedidos_aba.keys()):
                 for p in pedidos_aba[dia]:
-                    linhas_pedidos.append([
-                        f"R$ {p['valor']:.2f}".replace('.', ','),
-                        p['cliente'],
-                        p['telefone'],
-                        p['data_venda']
-                    ])
+                    linhas_pedidos.append(
+                        [
+                            f"R$ {p['valor']:.2f}".replace(".", ","),
+                            p["cliente"],
+                            p["telefone"],
+                            p["data_venda"],
+                        ]
+                    )
 
             if linhas_pedidos:
-                worksheet.update(f'A2:D{len(linhas_pedidos) + 1}', linhas_pedidos)
+                worksheet.update(f"A2:D{len(linhas_pedidos) + 1}", linhas_pedidos)
 
             # Atualiza totais por dia (direita)
             _, num_dias = calendar.monthrange(ano, mes)
@@ -392,15 +430,17 @@ def exportar_vendas():
                 dia_semana = data_dia.weekday()
 
                 if dia_semana == 6:  # Domingo
-                    totais_data.append(['DOMINGO', '-'])
+                    totais_data.append(["DOMINGO", "-"])
                 else:
-                    total_dia = sum(p['valor'] for p in pedidos_aba.get(dia, []))
-                    totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace('.', ',')])
+                    total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
+                    totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace(".", ",")])
 
-            worksheet.update(f'F2:G{num_dias + 1}', totais_data)
+            worksheet.update(f"F2:G{num_dias + 1}", totais_data)
 
-            total_aba = sum(p['valor'] for dia_pedidos in pedidos_aba.values() for p in dia_pedidos)
-            print(f"  {nome_aba}: {sum(len(v) for v in pedidos_aba.values())} pedidos - R$ {total_aba:.2f}")
+            total_aba = sum(p["valor"] for dia_pedidos in pedidos_aba.values() for p in dia_pedidos)
+            print(
+                f"  {nome_aba}: {sum(len(v) for v in pedidos_aba.values())} pedidos - R$ {total_aba:.2f}"
+            )
 
         print("\n✓ Exportação concluída!")
         print(f"  Planilha: {spreadsheet.url}")
@@ -421,11 +461,11 @@ def teste_conexao():
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Exportar vendas para Google Sheets')
-    parser.add_argument('--teste', action='store_true', help='Testar conexão')
+    parser = argparse.ArgumentParser(description="Exportar vendas para Google Sheets")
+    parser.add_argument("--teste", action="store_true", help="Testar conexão")
 
     args = parser.parse_args()
 

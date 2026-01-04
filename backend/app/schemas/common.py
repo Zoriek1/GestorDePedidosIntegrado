@@ -7,7 +7,9 @@ from typing import Any, Dict, Optional
 from flask import jsonify
 
 
-def success_response(data: Any = None, message: Optional[str] = None, status_code: int = 200) -> tuple:
+def success_response(
+    data: Any = None, message: Optional[str] = None, status_code: int = 200
+) -> tuple:
     """
     Cria resposta de sucesso padronizada
 
@@ -19,18 +21,18 @@ def success_response(data: Any = None, message: Optional[str] = None, status_cod
     Returns:
         Tupla (jsonify response, status_code)
     """
-    response = {'success': True}
+    response = {"success": True}
 
     if message:
-        response['message'] = message
+        response["message"] = message
 
     if data is not None:
         if isinstance(data, dict):
             response.update(data)
         elif isinstance(data, list):
-            response['data'] = data
+            response["data"] = data
         else:
-            response['data'] = data
+            response["data"] = data
 
     return jsonify(response), status_code
 
@@ -47,13 +49,9 @@ def error_response(message: str, code: int = 400, details: Optional[Dict] = None
     Returns:
         Tupla (jsonify response, status_code)
     """
-    response = {
-        'success': False,
-        'error': message
-    }
+    response = {"success": False, "error": message}
 
     if details:
-        response['details'] = details
+        response["details"] = details
 
     return jsonify(response), code
-

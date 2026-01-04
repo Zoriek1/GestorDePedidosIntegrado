@@ -8,7 +8,7 @@ from pathlib import Path
 
 def add_distancia_column():
     """Adiciona a coluna 'distancia_km' se não existir"""
-    db_path = Path(__file__).parent / 'database.db'
+    db_path = Path(__file__).parent / "database.db"
 
     if not db_path.exists():
         print(f"Banco de dados não encontrado em: {db_path}")
@@ -22,7 +22,7 @@ def add_distancia_column():
         cursor.execute("PRAGMA table_info(pedidos)")
         columns = [col[1] for col in cursor.fetchall()]
 
-        if 'distancia_km' in columns:
+        if "distancia_km" in columns:
             print("Coluna 'distancia_km' já existe na tabela 'pedidos'")
             conn.close()
             return True
@@ -40,10 +40,10 @@ def add_distancia_column():
         print(f"Erro ao adicionar coluna: {e}")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("=" * 60)
     print("Migração: Adicionar coluna 'distancia_km'")
     print("=" * 60)
     add_distancia_column()
     print("=" * 60)
-

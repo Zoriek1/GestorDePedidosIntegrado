@@ -35,7 +35,7 @@ def alterar_horario_column():
 
         horario_col = None
         for col in columns:
-            if col[1] == 'horario':
+            if col[1] == "horario":
                 horario_col = col
                 break
 
@@ -53,7 +53,8 @@ def alterar_horario_column():
         print("   📋 Criando tabela temporária...")
 
         # 1. Criar tabela temporária com nova estrutura
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE pedidos_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente VARCHAR(100) NOT NULL,
@@ -92,14 +93,17 @@ def alterar_horario_column():
                 FOREIGN KEY (fonte_pedido_id) REFERENCES fontes_pedido(id),
                 FOREIGN KEY (cliente_id) REFERENCES clientes(id)
             )
-        """)
+        """
+        )
 
         # 2. Copiar dados da tabela antiga para a nova
         print("   📦 Copiando dados...")
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO pedidos_new
             SELECT * FROM pedidos
-        """)
+        """
+        )
 
         # 3. Contar registros copiados
         cursor.execute("SELECT COUNT(*) FROM pedidos_new")
@@ -116,11 +120,15 @@ def alterar_horario_column():
 
         # 6. Recriar índices se existirem
         # Verificar índices existentes
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='pedidos' AND name NOT LIKE 'sqlite_%'")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='pedidos' AND name NOT LIKE 'sqlite_%'"
+        )
         indexes = cursor.fetchall()
 
         if indexes:
-            print(f"   🔍 {len(indexes)} índice(s) encontrado(s) - serão recriados automaticamente pelo SQLAlchemy se necessário")
+            print(
+                f"   🔍 {len(indexes)} índice(s) encontrado(s) - serão recriados automaticamente pelo SQLAlchemy se necessário"
+            )
 
         conn.commit()
         conn.close()
@@ -134,11 +142,12 @@ def alterar_horario_column():
     except Exception as e:
         print(f"❌ Erro ao alterar coluna: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("=" * 60)
     print("Migração: Alterar tamanho da coluna 'horario'")
     print("=" * 60)
@@ -147,7 +156,7 @@ if __name__ == '__main__':
 
     # Confirmar antes de executar
     resposta = input("Deseja continuar? (s/N): ").strip().lower()
-    if resposta not in ['s', 'sim', 'y', 'yes']:
+    if resposta not in ["s", "sim", "y", "yes"]:
         print("❌ Migração cancelada pelo usuário")
         sys.exit(0)
 
@@ -159,4 +168,3 @@ if __name__ == '__main__':
     else:
         print("❌ Migração falhou!")
         sys.exit(1)
-

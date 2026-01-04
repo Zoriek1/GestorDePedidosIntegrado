@@ -20,15 +20,15 @@ def get_server_info():
     """
     # Descobrir hostname configurado
     try:
-        config_file = Path(__file__).parent.parent / 'config' / 'config_servidor.ini'
+        config_file = Path(__file__).parent.parent / "config" / "config_servidor.ini"
         if config_file.exists():
             parser = configparser.ConfigParser()
-            parser.read(config_file, encoding='utf-8')
-            hostname = parser.get('SERVIDOR', 'hostname', fallback='Gestor-pedidos.local')
+            parser.read(config_file, encoding="utf-8")
+            hostname = parser.get("SERVIDOR", "hostname", fallback="Gestor-pedidos.local")
         else:
-            hostname = 'Gestor-pedidos.local'
+            hostname = "Gestor-pedidos.local"
     except Exception:
-        hostname = 'Gestor-pedidos.local'
+        hostname = "Gestor-pedidos.local"
 
     # Descobrir IP local
     try:
@@ -67,15 +67,17 @@ def get_allowed_origins():
     ]
 
     # Permitir HTTP apenas para localhost (desenvolvimento)
-    if os.environ.get('FLASK_ENV') == 'development':
-        allowed_origins.extend([
-            "http://localhost:5000",
-            "http://127.0.0.1:5000",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            f"http://{hostname}:3000",
-            f"http://{local_ip}:3000"
-        ])
+    if os.environ.get("FLASK_ENV") == "development":
+        allowed_origins.extend(
+            [
+                "http://localhost:5000",
+                "http://127.0.0.1:5000",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                f"http://{hostname}:3000",
+                f"http://{local_ip}:3000",
+            ]
+        )
 
     return allowed_origins
 
@@ -92,14 +94,16 @@ def setup_cors(app):
     """
     allowed_origins = get_allowed_origins()
 
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": allowed_origins,
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
-            "supports_credentials": True
-        }
-    })
+    CORS(
+        app,
+        resources={
+            r"/api/*": {
+                "origins": allowed_origins,
+                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                "allow_headers": ["Content-Type", "Authorization"],
+                "supports_credentials": True,
+            }
+        },
+    )
 
     print(f"[SEGURANCA] OK CORS restrito a: {len(allowed_origins)} origens permitidas")
-

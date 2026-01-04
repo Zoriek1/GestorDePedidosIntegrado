@@ -28,9 +28,9 @@ class MigradorClientes:
 
     def executar(self):
         """Executa a migração completa"""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("MIGRAÇÃO DE CLIENTES - Pedidos → Tabela Clientes")
-        print("="*60)
+        print("=" * 60)
 
         if self.dry_run:
             print("\n[DRY RUN] Modo de teste - nenhuma alteração será salva no banco")
@@ -58,10 +58,7 @@ class MigradorClientes:
         Agrupa por telefone (chave única)
         """
         pedidos = Pedido.query.all()
-        clientes_dict = defaultdict(lambda: {
-            'pedidos': [],
-            'enderecos': set()
-        })
+        clientes_dict = defaultdict(lambda: {"pedidos": [], "enderecos": set()})
 
         print(f"[INFO] Analisando {len(pedidos)} pedidos...")
 
@@ -73,7 +70,7 @@ class MigradorClientes:
                 continue
 
             # Limpar telefone (remover formatação)
-            telefone_limpo = ''.join(c for c in telefone if c.isdigit())
+            telefone_limpo = "".join(c for c in telefone if c.isdigit())
 
             if not telefone_limpo:
                 self.erros.append(f"Pedido #{pedido.id}: telefone inválido")
@@ -81,29 +78,31 @@ class MigradorClientes:
 
             # Adicionar à lista de clientes
             cliente_data = clientes_dict[telefone_limpo]
-            cliente_data['pedidos'].append(pedido)
+            cliente_data["pedidos"].append(pedido)
 
             # Usar nome mais recente ou mais completo
             if pedido.cliente:
-                if 'nome' not in cliente_data or len(pedido.cliente) > len(cliente_data.get('nome', '')):
-                    cliente_data['nome'] = pedido.cliente
+                if "nome" not in cliente_data or len(pedido.cliente) > len(
+                    cliente_data.get("nome", "")
+                ):
+                    cliente_data["nome"] = pedido.cliente
 
             # Coletar endereços únicos
             if pedido.endereco:
-                cliente_data['enderecos'].add(pedido.endereco)
+                cliente_data["enderecos"].add(pedido.endereco)
 
             # Armazenar dados de endereço separados
             if pedido.cep or pedido.rua:
                 endereco_key = f"{pedido.cep}|{pedido.rua}|{pedido.numero}"
-                if 'enderecos_detalhados' not in cliente_data:
-                    cliente_data['enderecos_detalhados'] = {}
+                if "enderecos_detalhados" not in cliente_data:
+                    cliente_data["enderecos_detalhados"] = {}
 
-                cliente_data['enderecos_detalhados'][endereco_key] = {
-                    'cep': pedido.cep,
-                    'rua': pedido.rua,
-                    'numero': pedido.numero,
-                    'bairro': pedido.bairro,
-                    'cidade': pedido.cidade
+                cliente_data["enderecos_detalhados"][endereco_key] = {
+                    "cep": pedido.cep,
+                    "rua": pedido.rua,
+                    "numero": pedido.numero,
+                    "bairro": pedido.bairro,
+                    "cidade": pedido.cidade,
                 }
 
         return dict(clientes_dict)
@@ -118,30 +117,27 @@ class MigradorClientes:
                 if cliente_existente:
                     print(f"  [SKIP] Cliente já existe: {cliente_existente.nome} ({telefone})")
                     # Atualizar dados
-                    dados['cliente_obj'] = cliente_existente
+                    dados["cliente_obj"] = cliente_existente
                     continue
 
                 # Nome do cliente
-                nome = dados.get('nome', f'Cliente {telefone}')
+                nome = dados.get("nome", f"Cliente {telefone}")
 
                 # Criar cliente
-                cliente = Cliente(
-                    nome=nome,
-                    telefone=telefone
-                )
+                cliente = Cliente(nome=nome, telefone=telefone)
 
                 if not self.dry_run:
                     db.session.add(cliente)
                     db.session.flush()  # Obter ID sem commit
 
-                dados['cliente_obj'] = cliente
+                dados["cliente_obj"] = cliente
                 self.clientes_criados += 1
 
                 print(f"  [✓] {nome} ({telefone}) - {len(dados['pedidos'])} pedidos")
 
                 # Criar endereços
-                if not self.dry_run and 'enderecos_detalhados' in dados:
-                    self.criar_enderecos(cliente, dados['enderecos_detalhados'])
+                if not self.dry_run and "enderecos_detalhados" in dados:
+                    self.criar_enderecos(cliente, dados["enderecos_detalhados"])
 
             except Exception as e:
                 erro_msg = f"Erro ao criar cliente {telefone}: {e}"
@@ -164,18 +160,18 @@ class MigradorClientes:
         for _endereco_key, endereco_data in enderecos_dict.items():
             try:
                 # Verificar se tem dados suficientes
-                if not endereco_data.get('rua') and not endereco_data.get('cep'):
+                if not endereco_data.get("rua") and not endereco_data.get("cep"):
                     continue
 
                 # Criar endereço
                 endereco = EnderecoCliente(
                     cliente_id=cliente.id,
-                    cep=endereco_data.get('cep'),
-                    rua=endereco_data.get('rua'),
-                    numero=endereco_data.get('numero'),
-                    bairro=endereco_data.get('bairro'),
-                    cidade=endereco_data.get('cidade'),
-                    principal=primeiro  # Primeiro endereço é principal
+                    cep=endereco_data.get("cep"),
+                    rua=endereco_data.get("rua"),
+                    numero=endereco_data.get("numero"),
+                    bairro=endereco_data.get("bairro"),
+                    cidade=endereco_data.get("cidade"),
+                    principal=primeiro,  # Primeiro endereço é principal
                 )
 
                 db.session.add(endereco)
@@ -223,9 +219,9 @@ class MigradorClientes:
 
     def exibir_resumo(self):
         """Exibe resumo da migração"""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("RESUMO DA MIGRAÇÃO")
-        print("="*60)
+        print("=" * 60)
 
         if self.dry_run:
             print("\n[DRY RUN] Nenhuma alteração foi salva no banco")
@@ -242,15 +238,17 @@ class MigradorClientes:
         else:
             print("\n✨ Migração concluída sem erros!")
 
-        print("\n" + "="*60 + "\n")
+        print("\n" + "=" * 60 + "\n")
 
 
 def main():
     """Função principal"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Migração de Clientes dos Pedidos')
-    parser.add_argument('--dry-run', action='store_true', help='Executa sem salvar no banco (teste)')
+    parser = argparse.ArgumentParser(description="Migração de Clientes dos Pedidos")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Executa sem salvar no banco (teste)"
+    )
 
     args = parser.parse_args()
 
@@ -277,10 +275,10 @@ def main():
         except Exception as e:
             print(f"\n[ERRO FATAL] {e}")
             import traceback
+
             traceback.print_exc()
             sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Adicionar o diretório scripts ao path para importar BackupManager
 backend_dir = Path(__file__).parent.parent.parent
-scripts_dir = backend_dir / 'scripts' / 'backup'
+scripts_dir = backend_dir / "scripts" / "backup"
 sys.path.insert(0, str(scripts_dir))
 
 try:
@@ -18,7 +18,8 @@ try:
 except ImportError:
     # Fallback: importar diretamente
     import importlib.util
-    backup_module_path = scripts_dir / 'backup.py'
+
+    backup_module_path = scripts_dir / "backup.py"
     spec = importlib.util.spec_from_file_location("backup", backup_module_path)
     backup_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(backup_module)
@@ -38,38 +39,33 @@ class BackupAuditLogger:
         if log_dir:
             self.log_dir = Path(log_dir)
         else:
-            self.log_dir = backend_dir / 'instance' / 'logs'
+            self.log_dir = backend_dir / "instance" / "logs"
 
         # Criar diretório de logs se não existir
         self.log_dir.mkdir(exist_ok=True)
 
         # Configurar logger
-        log_file = self.log_dir / 'backup_audit.log'
+        log_file = self.log_dir / "backup_audit.log"
 
         # Criar logger
-        self.logger = logging.getLogger('backup_audit')
+        self.logger = logging.getLogger("backup_audit")
         self.logger.setLevel(logging.INFO)
 
         # Evitar duplicação de handlers
         if not self.logger.handlers:
             # Handler para arquivo
-            file_handler = logging.FileHandler(
-                log_file,
-                encoding='utf-8',
-                mode='a'
-            )
+            file_handler = logging.FileHandler(log_file, encoding="utf-8", mode="a")
             file_handler.setLevel(logging.INFO)
 
             # Formato do log
             formatter = logging.Formatter(
-                '%(asctime)s | %(levelname)s | %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
+                "%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
             )
             file_handler.setFormatter(formatter)
 
             self.logger.addHandler(file_handler)
 
-    def log_backup_created(self, backup_path, reason='manual', size_mb=None):
+    def log_backup_created(self, backup_path, reason="manual", size_mb=None):
         """
         Registra criação de backup
 
@@ -78,11 +74,10 @@ class BackupAuditLogger:
             reason: Motivo do backup (manual, automatic, critical_operation, startup, etc)
             size_mb: Tamanho do backup em MB
         """
-        backup_name = Path(backup_path).name if backup_path else 'N/A'
+        backup_name = Path(backup_path).name if backup_path else "N/A"
         size_info = f" ({size_mb:.2f} MB)" if size_mb else ""
         self.logger.info(
-            f"BACKUP CRIADO | Arquivo: {backup_name} | "
-            f"Motivo: {reason} | Tamanho: {size_info}"
+            f"BACKUP CRIADO | Arquivo: {backup_name} | " f"Motivo: {reason} | Tamanho: {size_info}"
         )
 
     def log_backup_failed(self, reason, error_msg):
@@ -93,9 +88,7 @@ class BackupAuditLogger:
             reason: Motivo do backup que falhou
             error_msg: Mensagem de erro
         """
-        self.logger.error(
-            f"BACKUP FALHOU | Motivo: {reason} | Erro: {error_msg}"
-        )
+        self.logger.error(f"BACKUP FALHOU | Motivo: {reason} | Erro: {error_msg}")
 
     def log_restore_attempt(self, backup_path, user_confirmed=False):
         """
@@ -105,11 +98,9 @@ class BackupAuditLogger:
             backup_path: Caminho do backup a ser restaurado
             user_confirmed: Se o usuário confirmou a operação
         """
-        backup_name = Path(backup_path).name if backup_path else 'N/A'
+        backup_name = Path(backup_path).name if backup_path else "N/A"
         status = "CONFIRMADO" if user_confirmed else "CANCELADO"
-        self.logger.warning(
-            f"RESTORE TENTATIVA | Arquivo: {backup_name} | Status: {status}"
-        )
+        self.logger.warning(f"RESTORE TENTATIVA | Arquivo: {backup_name} | Status: {status}")
 
     def log_restore_completed(self, backup_path, success=True):
         """
@@ -119,15 +110,14 @@ class BackupAuditLogger:
             backup_path: Caminho do backup restaurado
             success: Se a restauração foi bem-sucedida
         """
-        backup_name = Path(backup_path).name if backup_path else 'N/A'
+        backup_name = Path(backup_path).name if backup_path else "N/A"
         status = "SUCESSO" if success else "FALHA"
-        self.logger.warning(
-            f"RESTORE {status} | Arquivo: {backup_name}"
-        )
+        self.logger.warning(f"RESTORE {status} | Arquivo: {backup_name}")
 
 
 # Instância global do logger de auditoria
 _audit_logger = None
+
 
 def get_audit_logger():
     """Retorna instância global do logger de auditoria"""
@@ -137,7 +127,7 @@ def get_audit_logger():
     return _audit_logger
 
 
-def create_backup(reason='automatic', compress=True, silent=False):
+def create_backup(reason="automatic", compress=True, silent=False):
     """
     Cria um backup do banco de dados programaticamente
 
@@ -158,8 +148,8 @@ def create_backup(reason='automatic', compress=True, silent=False):
 
         # Diretório de backups continua em backend/instance/backups
         backend_dir = Path(__file__).parent.parent.parent
-        instance_dir = backend_dir / 'instance'
-        backup_dir = instance_dir / 'backups'
+        instance_dir = backend_dir / "instance"
+        backup_dir = instance_dir / "backups"
 
         # Criar diretórios se não existirem
         instance_dir.mkdir(exist_ok=True)
@@ -174,11 +164,7 @@ def create_backup(reason='automatic', compress=True, silent=False):
         if backup_path:
             # Registrar no log de auditoria
             size_mb = backup_path.stat().st_size / (1024 * 1024)
-            get_audit_logger().log_backup_created(
-                backup_path,
-                reason=reason,
-                size_mb=size_mb
-            )
+            get_audit_logger().log_backup_created(backup_path, reason=reason, size_mb=size_mb)
 
             if not silent:
                 print(f"[BACKUP] Backup criado: {backup_path.name} ({reason})")
@@ -186,10 +172,7 @@ def create_backup(reason='automatic', compress=True, silent=False):
             return backup_path
         else:
             # Registrar falha
-            get_audit_logger().log_backup_failed(
-                reason,
-                "Falha ao criar backup (retornou None)"
-            )
+            get_audit_logger().log_backup_failed(reason, "Falha ao criar backup (retornou None)")
             return None
 
     except Exception as e:
@@ -219,8 +202,8 @@ def get_last_backup_time():
 
         # Diretório de backups continua em backend/instance/backups
         backend_dir = Path(__file__).parent.parent.parent
-        instance_dir = backend_dir / 'instance'
-        backup_dir = instance_dir / 'backups'
+        instance_dir = backend_dir / "instance"
+        backup_dir = instance_dir / "backups"
         backup_mgr = BackupManager(db_path=db_path, backup_dir=backup_dir)
         backups = backup_mgr.list_backups()
 
@@ -270,16 +253,10 @@ def get_backup_stats():
 
         # Diretório de backups continua em backend/instance/backups
         backend_dir = Path(__file__).parent.parent.parent
-        instance_dir = backend_dir / 'instance'
-        backup_dir = instance_dir / 'backups'
+        instance_dir = backend_dir / "instance"
+        backup_dir = instance_dir / "backups"
         backup_mgr = BackupManager(db_path=db_path, backup_dir=backup_dir)
         return backup_mgr.get_backup_stats()
     except Exception as e:
         print(f"[ERRO] Erro ao obter estatísticas: {e}")
-        return {
-            'count': 0,
-            'total_size_mb': 0,
-            'oldest': None,
-            'newest': None
-        }
-
+        return {"count": 0, "total_size_mb": 0, "oldest": None, "newest": None}

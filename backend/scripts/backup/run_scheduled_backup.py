@@ -82,10 +82,10 @@ def get_recent_backup_timestamp(backup_dir: Path, minutes_threshold: int = 55):
             try:
                 # Extrair timestamp do nome do arquivo
                 # Formato: database_YYYYMMDD_HHMMSS.ext
-                match = re.search(r'(\d{8}_\d{6})', backup_file.name)
+                match = re.search(r"(\d{8}_\d{6})", backup_file.name)
                 if match:
                     timestamp_str = match.group(1)
-                    file_time = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+                    file_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
 
                     if file_time >= cutoff_time:
                         if most_recent_time is None or file_time > most_recent_time:
@@ -106,20 +106,20 @@ def get_recent_backup_timestamp(backup_dir: Path, minutes_threshold: int = 55):
 def main():
     """Função principal do script agendado"""
     now = datetime.now()
-    timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
 
     # Configurar logging
     backend_dir = Path(__file__).parent.parent.parent
-    logs_dir = backend_dir / 'instance' / 'logs'
+    logs_dir = backend_dir / "instance" / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    log_file = logs_dir / 'scheduled_backup.log'
+    log_file = logs_dir / "scheduled_backup.log"
 
     def log_message(level: str, message: str):
         """Loga mensagem no arquivo e no console"""
         log_entry = f"{timestamp} | {level} | {message}\n"
         try:
-            with open(log_file, 'a', encoding='utf-8') as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
         except Exception:
             pass
@@ -127,41 +127,58 @@ def main():
 
     # Verificar janela de execução
     if not should_run_backup_now():
-        weekday_name = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][now.weekday()]
-        log_message('INFO', f"Fora da janela de execução ({weekday_name} {now.hour:02d}:{now.minute:02d}) - ignorado")
+        weekday_name = [
+            "Segunda",
+            "Terça",
+            "Quarta",
+            "Quinta",
+            "Sexta",
+            "Sábado",
+            "Domingo",
+        ][now.weekday()]
+        log_message(
+            "INFO",
+            f"Fora da janela de execução ({weekday_name} {now.hour:02d}:{now.minute:02d}) - ignorado",
+        )
         sys.exit(0)
 
     # Verificar idempotência
-    backup_dir = backend_dir / 'instance' / 'backups'
+    backup_dir = backend_dir / "instance" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     recent_backup = get_recent_backup_timestamp(backup_dir, minutes_threshold=55)
     if recent_backup:
         age_minutes = (now - recent_backup).total_seconds() / 60
-        log_message('INFO', f"Backup recente encontrado (criado há {age_minutes:.1f} min) - idempotência ativa, ignorado")
+        log_message(
+            "INFO",
+            f"Backup recente encontrado (criado há {age_minutes:.1f} min) - idempotência ativa, ignorado",
+        )
         sys.exit(0)
 
     # Executar backup
-    log_message('INFO', "Iniciando backup agendado (motivo: scheduled_hourly)")
+    log_message("INFO", "Iniciando backup agendado (motivo: scheduled_hourly)")
     try:
-        backup_path = create_backup(reason='scheduled_hourly', compress=True, silent=False)
+        backup_path = create_backup(reason="scheduled_hourly", compress=True, silent=False)
 
         if backup_path:
             size_mb = backup_path.stat().st_size / (1024 * 1024)
-            log_message('SUCCESS', f"Backup criado com sucesso: {backup_path.name} ({size_mb:.2f} MB)")
+            log_message(
+                "SUCCESS",
+                f"Backup criado com sucesso: {backup_path.name} ({size_mb:.2f} MB)",
+            )
             sys.exit(0)
         else:
-            log_message('ERROR', "Falha ao criar backup (retornou None)")
+            log_message("ERROR", "Falha ao criar backup (retornou None)")
             sys.exit(1)
 
     except Exception as e:
         error_msg = str(e)
-        log_message('ERROR', f"Erro ao criar backup: {error_msg}")
+        log_message("ERROR", f"Erro ao criar backup: {error_msg}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

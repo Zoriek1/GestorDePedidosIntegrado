@@ -10,7 +10,13 @@ from app import db
 from app.models.audit_log import AuditLog
 
 
-def log_action(action: str, entity_type: str, entity_id: int, actor: str = None, metadata: dict = None):
+def log_action(
+    action: str,
+    entity_type: str,
+    entity_id: int,
+    actor: str = None,
+    metadata: dict = None,
+):
     """
     Registra uma ação na trilha de auditoria
 
@@ -36,7 +42,7 @@ def log_action(action: str, entity_type: str, entity_id: int, actor: str = None,
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            metadata_json=metadata_str
+            metadata_json=metadata_str,
         )
 
         db.session.add(audit_entry)
@@ -47,4 +53,3 @@ def log_action(action: str, entity_type: str, entity_id: int, actor: str = None,
         db.session.rollback()
         print(f"[AVISO] Erro ao registrar auditoria: {e}")
         # Logar mas não levantar exceção
-

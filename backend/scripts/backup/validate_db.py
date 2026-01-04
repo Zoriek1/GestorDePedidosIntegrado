@@ -12,6 +12,7 @@ from typing import List, Optional, Tuple
 @dataclass
 class ValidationResult:
     """Resultado de validação de banco de dados"""
+
     success: bool
     errors: List[str]
     warnings: List[str]
@@ -22,9 +23,9 @@ class ValidationResult:
     def to_dict(self):
         """Converte para dicionário (para logging/serialização)"""
         return {
-            'success': self.success,
-            'errors': self.errors,
-            'warnings': self.warnings
+            "success": self.success,
+            "errors": self.errors,
+            "warnings": self.warnings,
         }
 
 
@@ -32,7 +33,7 @@ def validate_restored_db(
     db_path: Path,
     app_schema_version: Optional[str] = None,
     check_invariants: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> ValidationResult:
     """
     Valida banco de dados restaurado com checks obrigatórios
@@ -53,7 +54,7 @@ def validate_restored_db(
         return ValidationResult(
             success=False,
             errors=[f"Arquivo de banco não encontrado: {db_path}"],
-            warnings=[]
+            warnings=[],
         )
 
     try:
@@ -62,11 +63,11 @@ def validate_restored_db(
 
         # 1. PRAGMA integrity_check (OBRIGATÓRIO)
         try:
-            cursor.execute('PRAGMA integrity_check')
+            cursor.execute("PRAGMA integrity_check")
             result = cursor.fetchone()
 
-            if not result or result[0] != 'ok':
-                error_msg = result[0] if result else 'unknown error'
+            if not result or result[0] != "ok":
+                error_msg = result[0] if result else "unknown error"
                 errors.append(f"Integrity check falhou: {error_msg}")
                 conn.close()
                 return ValidationResult(success=False, errors=errors, warnings=warnings)
@@ -74,6 +75,7 @@ def validate_restored_db(
             errors.append(f"Erro ao executar integrity_check: {str(e)}")
             if verbose:
                 import traceback
+
                 errors.append(traceback.format_exc())
             conn.close()
             return ValidationResult(success=False, errors=errors, warnings=warnings)
@@ -87,9 +89,7 @@ def validate_restored_db(
             warnings.extend(schema_warnings)
 
         # 3. Sanity checks (tabelas essenciais, queries básicas)
-        sanity_ok, sanity_errors, sanity_warnings = _run_sanity_checks(
-            cursor, verbose
-        )
+        sanity_ok, sanity_errors, sanity_warnings = _run_sanity_checks(cursor, verbose)
         errors.extend(sanity_errors)
         warnings.extend(sanity_warnings)
 
@@ -112,14 +112,13 @@ def validate_restored_db(
         errors.append(error_msg)
         if verbose:
             import traceback
+
             errors.append(traceback.format_exc())
         return ValidationResult(success=False, errors=errors, warnings=warnings)
 
 
 def _validate_schema_version(
-    cursor: sqlite3.Cursor,
-    app_schema_version: str,
-    verbose: bool = False
+    cursor: sqlite3.Cursor, app_schema_version: str, verbose: bool = False
 ) -> Tuple[bool, List[str], List[str]]:
     """
     Valida schema_version do banco
@@ -132,7 +131,9 @@ def _validate_schema_version(
 
     try:
         # Verificar se existe tabela schema_version (legado)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        )
         has_schema_version_table = cursor.fetchone() is not None
 
         # Verificar se existe tabela app_meta (novo padrão)
@@ -144,7 +145,7 @@ def _validate_schema_version(
         if has_schema_version_table:
             # Tabela schema_version legada
             try:
-                cursor.execute('SELECT version FROM schema_version LIMIT 1')
+                cursor.execute("SELECT version FROM schema_version LIMIT 1")
                 result = cursor.fetchone()
                 if result:
                     db_schema_version = result[0]
@@ -180,13 +181,13 @@ def _validate_schema_version(
         errors.append(f"Erro ao validar schema_version: {str(e)}")
         if verbose:
             import traceback
+
             errors.append(traceback.format_exc())
         return (False, errors, warnings)
 
 
 def _run_sanity_checks(
-    cursor: sqlite3.Cursor,
-    verbose: bool = False
+    cursor: sqlite3.Cursor, verbose: bool = False
 ) -> Tuple[bool, List[str], List[str]]:
     """
     Executa sanity checks básicos
@@ -199,7 +200,7 @@ def _run_sanity_checks(
 
     try:
         # 1. Verificar se tabelas essenciais existem
-        essential_tables = ['pedidos', 'clientes', 'fonte_pedido']
+        essential_tables = ["pedidos", "clientes", "fonte_pedido"]
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         existing_tables = {row[0] for row in cursor.fetchall()}
 
@@ -208,9 +209,9 @@ def _run_sanity_checks(
                 errors.append(f"Tabela essencial '{table}' não encontrada")
 
         # 2. Verificar que queries básicas funcionam (COUNT(*))
-        if 'pedidos' in existing_tables:
+        if "pedidos" in existing_tables:
             try:
-                cursor.execute('SELECT COUNT(*) FROM pedidos')
+                cursor.execute("SELECT COUNT(*) FROM pedidos")
                 count_pedidos = cursor.fetchone()[0]
                 if count_pedidos < 0:
                     errors.append(f"Contagem de pedidos inválida: {count_pedidos}")
@@ -218,11 +219,12 @@ def _run_sanity_checks(
                 errors.append(f"Erro ao contar pedidos: {str(e)}")
                 if verbose:
                     import traceback
+
                     errors.append(traceback.format_exc())
 
-        if 'clientes' in existing_tables:
+        if "clientes" in existing_tables:
             try:
-                cursor.execute('SELECT COUNT(*) FROM clientes')
+                cursor.execute("SELECT COUNT(*) FROM clientes")
                 count_clientes = cursor.fetchone()[0]
                 if count_clientes < 0:
                     errors.append(f"Contagem de clientes inválida: {count_clientes}")
@@ -230,11 +232,12 @@ def _run_sanity_checks(
                 errors.append(f"Erro ao contar clientes: {str(e)}")
                 if verbose:
                     import traceback
+
                     errors.append(traceback.format_exc())
 
-        if 'fonte_pedido' in existing_tables:
+        if "fonte_pedido" in existing_tables:
             try:
-                cursor.execute('SELECT COUNT(*) FROM fonte_pedido')
+                cursor.execute("SELECT COUNT(*) FROM fonte_pedido")
                 count_fontes = cursor.fetchone()[0]
                 if count_fontes < 0:
                     errors.append(f"Contagem de fontes inválida: {count_fontes}")
@@ -248,13 +251,13 @@ def _run_sanity_checks(
         errors.append(f"Erro ao executar sanity checks: {str(e)}")
         if verbose:
             import traceback
+
             errors.append(traceback.format_exc())
         return (False, errors, warnings)
 
 
 def _check_invariants(
-    cursor: sqlite3.Cursor,
-    verbose: bool = False
+    cursor: sqlite3.Cursor, verbose: bool = False
 ) -> Tuple[bool, List[str], List[str]]:
     """
     Verifica invariantes básicas (foreign keys, etc)
@@ -267,7 +270,7 @@ def _check_invariants(
 
     try:
         # Verificar foreign keys se habilitadas
-        cursor.execute('PRAGMA foreign_key_check')
+        cursor.execute("PRAGMA foreign_key_check")
         fk_violations = cursor.fetchall()
 
         if fk_violations:
@@ -290,4 +293,3 @@ def _check_invariants(
         # Foreign keys podem não estar habilitadas - warning apenas
         warnings.append(f"Não foi possível verificar foreign keys: {str(e)}")
         return (True, errors, warnings)
-

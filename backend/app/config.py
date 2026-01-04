@@ -13,11 +13,29 @@ from pathlib import Path
 # #region agent log
 def log_debug(msg, data):
     try:
-        with open(r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps({"sessionId": "debug-session", "timestamp": int(time.time()*1000), "location": "config.py", "message": msg, "data": data}) + "\n")
+        with open(
+            r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(
+                json.dumps(
+                    {
+                        "sessionId": "debug-session",
+                        "timestamp": int(time.time() * 1000),
+                        "location": "config.py",
+                        "message": msg,
+                        "data": data,
+                    }
+                )
+                + "\n"
+            )
     except Exception as e:
         print(f"Log error: {e}")
+
+
 # #endregion
+
 
 class BaseConfig:
     """Configurações base da aplicação"""
@@ -26,7 +44,7 @@ class BaseConfig:
     BASE_DIR = Path(__file__).parent.parent
 
     # Diretório instance (dados de runtime não versionados)
-    INSTANCE_DIR = BASE_DIR / 'instance'
+    INSTANCE_DIR = BASE_DIR / "instance"
     # Garantir que instance/ existe
     INSTANCE_DIR.mkdir(exist_ok=True)
 
@@ -38,23 +56,27 @@ class BaseConfig:
     # Diretório do Google Drive Desktop para backups encriptados
     # Padrão: C:\Users\<USER>\Meu Drive\Plante Uma Flor Confidential\Database - Pedidos Gestor
     GDRIVE_BACKUP_DIR = Path(
-        os.environ.get('GDRIVE_BACKUP_DIR') or
-        _HOME_DIR / "Meu Drive" / "Plante Uma Flor Confidential" / "Database - Pedidos Gestor"
+        os.environ.get("GDRIVE_BACKUP_DIR")
+        or _HOME_DIR / "Meu Drive" / "Plante Uma Flor Confidential" / "Database - Pedidos Gestor"
     )
     # Criar diretório automaticamente se não existir
     GDRIVE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
     # Diretório secundário para backups (P1.4) - opcional
-    BACKUP_SECONDARY_DIR = Path(os.environ.get('BACKUP_SECONDARY_DIR')) if os.environ.get('BACKUP_SECONDARY_DIR') else None
+    BACKUP_SECONDARY_DIR = (
+        Path(os.environ.get("BACKUP_SECONDARY_DIR"))
+        if os.environ.get("BACKUP_SECONDARY_DIR")
+        else None
+    )
 
     # Secret key para sessões
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'plante-uma-flor-pwa-secret-key-2024'
+    SECRET_KEY = os.environ.get("SECRET_KEY") or "plante-uma-flor-pwa-secret-key-2024"
 
     # Banco de dados SQLite
     # Novo local: %USERPROFILE%/var/lib/database/database.db (fora do repositório)
-    DATABASE_PATH = _DB_EXTERNAL_DIR / 'database.db'
+    DATABASE_PATH = _DB_EXTERNAL_DIR / "database.db"
     # Formatar caminho para SQLite (Windows precisa de barras normais ou r'')
-    SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH.as_posix()}'
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE_PATH.as_posix()}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Configurações gerais
@@ -62,43 +84,43 @@ class BaseConfig:
     JSON_SORT_KEYS = False  # Manter ordem dos campos
 
     # Servidor
-    HOST = os.environ.get('HOST') or '0.0.0.0'
-    PORT = int(os.environ.get('PORT') or 5000)
-    DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+    HOST = os.environ.get("HOST") or "0.0.0.0"
+    PORT = int(os.environ.get("PORT") or 5000)
+    DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
     # Autenticação
-    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD') or 'plante1998'
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "plante1998"
 
     # APIs Externas
-    GRAPHHOPPER_API_KEY = os.environ.get('GRAPHHOPPER_API_KEY') or ''
-    OPENROUTE_API_KEY = os.environ.get('OPENROUTE_API_KEY') or ''
-    ENDERECO_FLORICULTURA = os.environ.get('ENDERECO_FLORICULTURA') or ''
+    GRAPHHOPPER_API_KEY = os.environ.get("GRAPHHOPPER_API_KEY") or ""
+    OPENROUTE_API_KEY = os.environ.get("OPENROUTE_API_KEY") or ""
+    ENDERECO_FLORICULTURA = os.environ.get("ENDERECO_FLORICULTURA") or ""
 
     # Segurança e Middleware
-    ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'true').lower() == 'true'
-    ENABLE_RATE_LIMIT = os.environ.get('ENABLE_RATE_LIMIT', 'true').lower() == 'true'
-    ENABLE_DEBUG_ENDPOINTS = os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true'
+    ENABLE_AUTH = os.environ.get("ENABLE_AUTH", "true").lower() == "true"
+    ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
+    ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
 
     # Ambiente
-    FLASK_ENV = os.environ.get('FLASK_ENV') or os.environ.get('ENVIRONMENT') or 'development'
-    APP_ENV = os.environ.get('APP_ENV') or os.environ.get('ENVIRONMENT') or 'development'
+    FLASK_ENV = os.environ.get("FLASK_ENV") or os.environ.get("ENVIRONMENT") or "development"
+    APP_ENV = os.environ.get("APP_ENV") or os.environ.get("ENVIRONMENT") or "development"
 
     # Servidor (opções)
-    USE_HTTPS = os.environ.get('USE_HTTPS', 'false').lower() == 'true'
-    NO_RELOAD = os.environ.get('NO_RELOAD', 'false').lower() == 'true'
-    FORCE_START = os.environ.get('FORCE_START', 'false').lower() == 'true'
+    USE_HTTPS = os.environ.get("USE_HTTPS", "false").lower() == "true"
+    NO_RELOAD = os.environ.get("NO_RELOAD", "false").lower() == "true"
+    FORCE_START = os.environ.get("FORCE_START", "false").lower() == "true"
 
     # Database (SQLite)
-    SQLITE_SYNCHRONOUS = os.environ.get('SQLITE_SYNCHRONOUS', 'FULL')
-    ALLOW_DB_BOOTSTRAP = os.environ.get('ALLOW_DB_BOOTSTRAP', 'false').lower() == 'true'
+    SQLITE_SYNCHRONOUS = os.environ.get("SQLITE_SYNCHRONOUS", "FULL")
+    ALLOW_DB_BOOTSTRAP = os.environ.get("ALLOW_DB_BOOTSTRAP", "false").lower() == "true"
 
     # Google Services
-    GOOGLE_APPLICATION_CREDENTIALS = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or ''
-    GOOGLE_CREDENTIALS_PATH = os.environ.get('GOOGLE_CREDENTIALS_PATH') or ''
-    GDRIVE_BACKUP_FOLDER_ID = os.environ.get('GDRIVE_BACKUP_FOLDER_ID') or ''
+    GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or ""
+    GOOGLE_CREDENTIALS_PATH = os.environ.get("GOOGLE_CREDENTIALS_PATH") or ""
+    GDRIVE_BACKUP_FOLDER_ID = os.environ.get("GDRIVE_BACKUP_FOLDER_ID") or ""
 
     # Schema Version (P1.1)
-    APP_SCHEMA_VERSION = '1.0'
+    APP_SCHEMA_VERSION = "1.0"
 
     @staticmethod
     def init_app(app):
@@ -108,8 +130,11 @@ class BaseConfig:
             "BaseConfig.init_app",
             {
                 "DATABASE_PATH": str(BaseConfig.DATABASE_PATH),
-                "ADMIN_PASSWORD_LEN": len(BaseConfig.ADMIN_PASSWORD) if BaseConfig.ADMIN_PASSWORD else 0,
-                "ADMIN_PASSWORD_IS_LOWER": bool(BaseConfig.ADMIN_PASSWORD) and BaseConfig.ADMIN_PASSWORD == BaseConfig.ADMIN_PASSWORD.lower(),
+                "ADMIN_PASSWORD_LEN": len(BaseConfig.ADMIN_PASSWORD)
+                if BaseConfig.ADMIN_PASSWORD
+                else 0,
+                "ADMIN_PASSWORD_IS_LOWER": bool(BaseConfig.ADMIN_PASSWORD)
+                and BaseConfig.ADMIN_PASSWORD == BaseConfig.ADMIN_PASSWORD.lower(),
             },
         )
 
@@ -122,43 +147,50 @@ Config = BaseConfig
 
 class DevelopmentConfig(BaseConfig):
     """Configurações de desenvolvimento"""
+
     # DEBUG desativado por padrão para estabilidade com múltiplos clientes
     # Use --no-reload para garantir modo estável
     DEBUG = False
-    FLASK_ENV = 'development'
-    APP_ENV = 'development'
+    FLASK_ENV = "development"
+    APP_ENV = "development"
 
 
 class ProductionConfig(BaseConfig):
     """Configurações de produção"""
+
     DEBUG = False
-    FLASK_ENV = 'production'
-    APP_ENV = 'production'
+    FLASK_ENV = "production"
+    APP_ENV = "production"
 
     # Em produção, usar secret key da variável de ambiente
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'change-this-in-production-please'
+    SECRET_KEY = os.environ.get("SECRET_KEY") or "change-this-in-production-please"
 
     @staticmethod
     def init_app(app):
         # Validar SECRET_KEY apenas quando a app for iniciada
-        if app.config.get('SECRET_KEY') == 'change-this-in-production-please':
+        if app.config.get("SECRET_KEY") == "change-this-in-production-please":
             import warnings
-            warnings.warn('SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção.', stacklevel=2)
+
+            warnings.warn(
+                "SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção.",
+                stacklevel=2,
+            )
 
 
 class TestingConfig(BaseConfig):
     """Configurações para testes"""
+
     TESTING = True
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    SECRET_KEY = 'test-secret-key'
+    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    SECRET_KEY = "test-secret-key"
     WTF_CSRF_ENABLED = False
 
 
 # Dicionário de configurações disponíveis
 config = {
-    'development': DevelopmentConfig,
-    'production': ProductionConfig,
-    'testing': TestingConfig,
-    'default': DevelopmentConfig
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+    "testing": TestingConfig,
+    "default": DevelopmentConfig,
 }

@@ -11,7 +11,7 @@ def add_impresso_column():
     """Adiciona a coluna 'impresso' se não existir"""
     # Caminho do banco de dados (backend/database.db)
     backend_dir = Path(__file__).parent.parent.parent
-    db_path = backend_dir / 'database.db'
+    db_path = backend_dir / "database.db"
 
     if not db_path.exists():
         print(f"[ERRO] Banco de dados nao encontrado em: {db_path}")
@@ -25,7 +25,7 @@ def add_impresso_column():
         cursor.execute("PRAGMA table_info(pedidos)")
         columns = [col[1] for col in cursor.fetchall()]
 
-        if 'impresso' in columns:
+        if "impresso" in columns:
             print("[OK] Coluna 'impresso' ja existe na tabela 'pedidos'")
             conn.close()
             return True
@@ -45,7 +45,8 @@ def add_impresso_column():
         print(f"[ERRO] Erro ao adicionar coluna: {e}")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("=" * 60)
     print("Migração: Adicionar coluna 'impresso'")
     print("=" * 60)

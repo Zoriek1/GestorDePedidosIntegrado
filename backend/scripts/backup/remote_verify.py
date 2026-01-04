@@ -20,7 +20,7 @@ def copy_and_verify_remote(
     source: Path,
     dest_dir: Path,
     check_hash: bool = False,
-    stability_wait_seconds: int = 3
+    stability_wait_seconds: int = 3,
 ) -> Tuple[bool, Optional[str]]:
     """
     Copia arquivo para diretório remoto e verifica recebimento
@@ -67,7 +67,10 @@ def copy_and_verify_remote(
         dest_size_after = dest_file.stat().st_size
 
         if dest_size_after != source_size:
-            return False, f"Tamanho mudou após stability check: {dest_size_after} != {source_size} (arquivo ainda sendo escrito?)"
+            return (
+                False,
+                f"Tamanho mudou após stability check: {dest_size_after} != {source_size} (arquivo ainda sendo escrito?)",
+            )
 
     # 4. Hash opcional (SHA-256)
     if check_hash:
@@ -76,7 +79,10 @@ def copy_and_verify_remote(
             dest_hash = _calculate_file_hash(dest_file)
 
             if source_hash != dest_hash:
-                return False, f"Hash diferente: origem={source_hash[:16]}..., destino={dest_hash[:16]}..."
+                return (
+                    False,
+                    f"Hash diferente: origem={source_hash[:16]}..., destino={dest_hash[:16]}...",
+                )
         except Exception as e:
             return False, f"Erro ao calcular hash: {e}"
 
@@ -96,9 +102,8 @@ def _calculate_file_hash(file_path: Path, chunk_size: int = 8192) -> str:
     """
     sha256 = hashlib.sha256()
 
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         while chunk := f.read(chunk_size):
             sha256.update(chunk)
 
     return sha256.hexdigest()
-

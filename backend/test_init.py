@@ -16,6 +16,7 @@ print()
 try:
     print("[1/4] Importando modulos...")
     from app import create_app
+
     print("  [OK] Modulos importados")
 
     print()
@@ -31,11 +32,11 @@ try:
 
     print()
     print("[4/4] Verificando frontend...")
-    frontend_dir = Path(__file__).parent.parent / 'frontend_v2' / 'dist'
+    frontend_dir = Path(__file__).parent.parent / "frontend_v2" / "dist"
     print(f"  -> Caminho: {frontend_dir}")
     print(f"  -> Existe: {frontend_dir.exists()}")
     if frontend_dir.exists():
-        index_file = frontend_dir / 'index.html'
+        index_file = frontend_dir / "index.html"
         print(f"  -> index.html existe: {index_file.exists()}")
 
     print()
@@ -52,5 +53,6 @@ except Exception as e:
     print("=" * 60)
     print(f"Erro: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)

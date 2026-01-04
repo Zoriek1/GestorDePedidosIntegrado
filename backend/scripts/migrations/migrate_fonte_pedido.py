@@ -17,7 +17,7 @@ def migrate_fonte_pedido():
     """Executa migração completa de fontes de pedido"""
     # Caminho do banco de dados (backend/database.db)
     backend_dir = Path(__file__).parent.parent.parent
-    db_path = backend_dir / 'database.db'
+    db_path = backend_dir / "database.db"
 
     if not db_path.exists():
         print(f"[ERRO] Banco de dados não encontrado em: {db_path}")
@@ -33,7 +33,8 @@ def migrate_fonte_pedido():
 
         # 1. Criar tabela fontes_pedido se não existir
         print("\n[1/5] Criando tabela fontes_pedido...")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS fontes_pedido (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome VARCHAR(100) NOT NULL UNIQUE,
@@ -41,18 +42,19 @@ def migrate_fonte_pedido():
                 created_at DATETIME,
                 updated_at DATETIME
             )
-        """)
+        """
+        )
         conn.commit()
         print("[OK] Tabela fontes_pedido criada/verificada")
 
         # 2. Popular com fontes iniciais
         print("\n[2/5] Populando fontes iniciais...")
         fontes_iniciais = [
-            'Ifood',
-            'Site',
-            'Catálogo',
-            'WhatsApp (Caio)',
-            'WhatsApp (Paula)'
+            "Ifood",
+            "Site",
+            "Catálogo",
+            "WhatsApp (Caio)",
+            "WhatsApp (Paula)",
         ]
 
         fonte_whatsapp_caio_id = None
@@ -62,16 +64,19 @@ def migrate_fonte_pedido():
             existe = cursor.fetchone()
 
             if not existe:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO fontes_pedido (nome, ativo, created_at)
                     VALUES (?, 1, ?)
-                """, (fonte_nome, datetime.utcnow().isoformat()))
+                """,
+                    (fonte_nome, datetime.utcnow().isoformat()),
+                )
                 print(f"   - Fonte '{fonte_nome}' criada")
             else:
                 print(f"   - Fonte '{fonte_nome}' já existe (ID: {existe[0]})")
 
             # Guardar ID do WhatsApp (Caio) para usar como padrão
-            if fonte_nome == 'WhatsApp (Caio)':
+            if fonte_nome == "WhatsApp (Caio)":
                 if not existe:
                     fonte_whatsapp_caio_id = cursor.lastrowid
                 else:
@@ -85,7 +90,7 @@ def migrate_fonte_pedido():
         cursor.execute("PRAGMA table_info(pedidos)")
         columns = [col[1] for col in cursor.fetchall()]
 
-        if 'fonte_pedido_id' not in columns:
+        if "fonte_pedido_id" not in columns:
             cursor.execute("ALTER TABLE pedidos ADD COLUMN fonte_pedido_id INTEGER")
             conn.commit()
             print("[OK] Coluna fonte_pedido_id adicionada")
@@ -119,17 +124,22 @@ def migrate_fonte_pedido():
                 sem_fonte += 1
 
             # Atualizar pedido
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE pedidos
                 SET fonte_pedido_id = ?
                 WHERE id = ?
-            """, (fonte_id, pedido_id))
+            """,
+                (fonte_id, pedido_id),
+            )
 
             migrados += 1
 
         conn.commit()
         print(f"[OK] {migrados} pedidos migrados")
-        print(f"   - {sem_fonte} pedidos sem fonte ou com fonte desconhecida → associados a 'WhatsApp (Caio)'")
+        print(
+            f"   - {sem_fonte} pedidos sem fonte ou com fonte desconhecida → associados a 'WhatsApp (Caio)'"
+        )
 
         # 5. NOTA: Não vamos remover a coluna fonte_pedido ainda para manter compatibilidade
         # A coluna será mantida mas não será mais usada
@@ -143,11 +153,12 @@ def migrate_fonte_pedido():
     except Exception as e:
         print(f"\n[ERRO] Erro durante migração: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success = migrate_fonte_pedido()
     print("=" * 60)
     if success:
@@ -155,4 +166,3 @@ if __name__ == '__main__':
     else:
         print("Migração falhou. Verifique os erros acima.")
     print("=" * 60)
-

@@ -27,21 +27,16 @@ class ClienteRepository(BaseRepository):
             Cliente ou None
         """
         # Remover formatação do telefone
-        telefone_limpo = re.sub(r'[^\d]', '', telefone)
+        telefone_limpo = re.sub(r"[^\d]", "", telefone)
 
         # Buscar por telefone exato ou limpo
         return self.model.query.filter(
-            db.or_(
-                Cliente.telefone == telefone,
-                Cliente.telefone == telefone_limpo
-            )
+            db.or_(Cliente.telefone == telefone, Cliente.telefone == telefone_limpo)
         ).first()
 
     def buscar_por_nome(self, nome: str, limit: int = 10) -> List[Cliente]:
         """Busca clientes por nome (autocomplete)"""
-        return self.model.query.filter(
-            Cliente.nome.like(f"%{nome}%")
-        ).limit(limit).all()
+        return self.model.query.filter(Cliente.nome.like(f"%{nome}%")).limit(limit).all()
 
     def buscar_com_filtros(self, search: Optional[str] = None) -> List[Cliente]:
         """
@@ -61,7 +56,7 @@ class ClienteRepository(BaseRepository):
                 db.or_(
                     Cliente.nome.like(search_term),
                     Cliente.telefone.like(search_term),
-                    Cliente.email.like(search_term)
+                    Cliente.email.like(search_term),
                 )
             )
 
@@ -102,26 +97,28 @@ class ClienteRepository(BaseRepository):
         novos_mes = self.model.query.filter(Cliente.created_at >= inicio_mes).count()
 
         # Cliente com mais pedidos
-        cliente_mais_pedidos = db.session.query(
-            Cliente,
-            func.count(Pedido.id).label('total')
-        ).outerjoin(Pedido, Cliente.id == Pedido.cliente_id).group_by(Cliente.id).order_by(db.desc('total')).first()
+        cliente_mais_pedidos = (
+            db.session.query(Cliente, func.count(Pedido.id).label("total"))
+            .outerjoin(Pedido, Cliente.id == Pedido.cliente_id)
+            .group_by(Cliente.id)
+            .order_by(db.desc("total"))
+            .first()
+        )
 
         stats = {
-            'total_clientes': total_clientes,
-            'novos_este_mes': novos_mes,
-            'cliente_mais_pedidos': None
+            "total_clientes": total_clientes,
+            "novos_este_mes": novos_mes,
+            "cliente_mais_pedidos": None,
         }
 
         if cliente_mais_pedidos:
             cliente, total = cliente_mais_pedidos
-            stats['cliente_mais_pedidos'] = {
-                'id': cliente.id,
-                'nome': cliente.nome,
-                'telefone': cliente.telefone,
-                'total_pedidos': total,
-                'ltv': cliente.calcular_ltv()
+            stats["cliente_mais_pedidos"] = {
+                "id": cliente.id,
+                "nome": cliente.nome,
+                "telefone": cliente.telefone,
+                "total_pedidos": total,
+                "ltv": cliente.calcular_ltv(),
             }
 
         return stats
-

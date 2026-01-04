@@ -7,7 +7,7 @@ import os
 import sys
 
 # Adiciona o diretório backend ao path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import re  # noqa: E402
 from datetime import datetime  # noqa: E402
@@ -18,7 +18,7 @@ try:
     from openpyxl.utils import get_column_letter  # noqa: E402
 except ImportError:
     print("Instalando openpyxl...")
-    os.system('pip install openpyxl')
+    os.system("pip install openpyxl")
     import openpyxl
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
@@ -32,7 +32,7 @@ def parse_valor(valor_str):
     if not valor_str:
         return 0.0
     # Remove R$, espaços e troca vírgula por ponto
-    valor_limpo = re.sub(r'[R$\s]', '', str(valor_str)).replace(',', '.')
+    valor_limpo = re.sub(r"[R$\s]", "", str(valor_str)).replace(",", ".")
     try:
         return float(valor_limpo)
     except (ValueError, TypeError):
@@ -56,12 +56,12 @@ def exportar_vendas(data_inicio=None, data_fim=None, output_file=None):
 
         if data_inicio:
             if isinstance(data_inicio, str):
-                data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
+                data_inicio = datetime.strptime(data_inicio, "%Y-%m-%d")
             query = query.filter(Pedido.created_at >= data_inicio)
 
         if data_fim:
             if isinstance(data_fim, str):
-                data_fim = datetime.strptime(data_fim, '%Y-%m-%d')
+                data_fim = datetime.strptime(data_fim, "%Y-%m-%d")
             # Inclui o dia inteiro
             data_fim = datetime.combine(data_fim.date(), datetime.max.time())
             query = query.filter(Pedido.created_at <= data_fim)
@@ -82,18 +82,29 @@ def exportar_vendas(data_inicio=None, data_fim=None, output_file=None):
         header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
         header_align = Alignment(horizontal="center", vertical="center")
         border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
         )
-        money_format = 'R$ #,##0.00'
+        money_format = "R$ #,##0.00"
 
         # Cabeçalhos
         headers = [
-            'ID', 'Data Criação', 'Cliente', 'Destinatário', 'Produto',
-            'Valor', 'Data Entrega', 'Horário', 'Status', 'Pagamento',
-            'Status Pgto', 'Fonte', 'Cidade', 'Bairro'
+            "ID",
+            "Data Criação",
+            "Cliente",
+            "Destinatário",
+            "Produto",
+            "Valor",
+            "Data Entrega",
+            "Horário",
+            "Status",
+            "Pagamento",
+            "Status Pgto",
+            "Fonte",
+            "Cidade",
+            "Bairro",
         ]
 
         for col, header in enumerate(headers, 1):
@@ -111,19 +122,21 @@ def exportar_vendas(data_inicio=None, data_fim=None, output_file=None):
 
             dados = [
                 pedido.id,
-                pedido.created_at.strftime('%d/%m/%Y %H:%M') if pedido.created_at else '',
+                pedido.created_at.strftime("%d/%m/%Y %H:%M") if pedido.created_at else "",
                 pedido.cliente,
                 pedido.destinatario,
                 pedido.produto,
                 valor,
-                pedido.dia_entrega.strftime('%d/%m/%Y') if pedido.dia_entrega else '',
+                pedido.dia_entrega.strftime("%d/%m/%Y") if pedido.dia_entrega else "",
                 pedido.horario,
                 pedido.status,
-                pedido.pagamento or '',
-                pedido.status_pagamento or '',
-                pedido.fonte_pedido_rel.nome if pedido.fonte_pedido_rel else (pedido.fonte_pedido or ''),
-                pedido.cidade or '',
-                pedido.bairro or ''
+                pedido.pagamento or "",
+                pedido.status_pagamento or "",
+                pedido.fonte_pedido_rel.nome
+                if pedido.fonte_pedido_rel
+                else (pedido.fonte_pedido or ""),
+                pedido.cidade or "",
+                pedido.bairro or "",
             ]
 
             for col, valor_cell in enumerate(dados, 1):
@@ -154,7 +167,7 @@ def exportar_vendas(data_inicio=None, data_fim=None, output_file=None):
             output_file = f"vendas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
         # Salva na pasta backups
-        output_path = os.path.join(os.path.dirname(__file__), '..', 'backups', output_file)
+        output_path = os.path.join(os.path.dirname(__file__), "..", "backups", output_file)
         wb.save(output_path)
 
         print(f"\n✓ Exportado: {output_path}")
@@ -164,13 +177,13 @@ def exportar_vendas(data_inicio=None, data_fim=None, output_file=None):
         return output_path
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Exportar vendas para Excel')
-    parser.add_argument('--inicio', '-i', help='Data inicial (YYYY-MM-DD)')
-    parser.add_argument('--fim', '-f', help='Data final (YYYY-MM-DD)')
-    parser.add_argument('--output', '-o', help='Nome do arquivo de saída')
+    parser = argparse.ArgumentParser(description="Exportar vendas para Excel")
+    parser.add_argument("--inicio", "-i", help="Data inicial (YYYY-MM-DD)")
+    parser.add_argument("--fim", "-f", help="Data final (YYYY-MM-DD)")
+    parser.add_argument("--output", "-o", help="Nome do arquivo de saída")
 
     args = parser.parse_args()
 

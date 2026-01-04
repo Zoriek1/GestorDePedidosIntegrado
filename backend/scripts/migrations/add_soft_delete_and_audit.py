@@ -32,10 +32,7 @@ def check_column_exists(conn: sqlite3.Connection, table: str, column: str) -> bo
 def check_table_exists(conn: sqlite3.Connection, table: str) -> bool:
     """Verifica se tabela existe"""
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        (table,)
-    )
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
     return cursor.fetchone() is not None
 
 
@@ -58,7 +55,7 @@ def migrate():
     try:
         # 1. Adicionar coluna deleted_at na tabela pedidos
         print("\n[1/2] Verificando coluna deleted_at em pedidos...")
-        if check_column_exists(conn, 'pedidos', 'deleted_at'):
+        if check_column_exists(conn, "pedidos", "deleted_at"):
             print("  ✓ Coluna deleted_at já existe")
         else:
             print("  → Adicionando coluna deleted_at...")
@@ -68,11 +65,12 @@ def migrate():
 
         # 2. Criar tabela audit_log
         print("\n[2/2] Verificando tabela audit_log...")
-        if check_table_exists(conn, 'audit_log'):
+        if check_table_exists(conn, "audit_log"):
             print("  ✓ Tabela audit_log já existe")
         else:
             print("  → Criando tabela audit_log...")
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE audit_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -82,7 +80,8 @@ def migrate():
                     entity_id INTEGER,
                     metadata_json TEXT
                 )
-            """)
+            """
+            )
 
             # Criar índices para melhor performance
             cursor.execute("CREATE INDEX idx_audit_log_ts ON audit_log(ts)")
@@ -96,7 +95,7 @@ def migrate():
         print("\n[VERIFICAÇÃO] Executando integrity check...")
         cursor.execute("PRAGMA integrity_check")
         result = cursor.fetchone()
-        if result[0] == 'ok':
+        if result[0] == "ok":
             print("  ✓ Integridade verificada")
         else:
             print(f"  ✗ Integridade falhou: {result[0]}")
@@ -111,13 +110,13 @@ def migrate():
         conn.rollback()
         print(f"\n[ERRO] Falha na migração: {e}")
         import traceback
+
         traceback.print_exc()
         return False
     finally:
         conn.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success = migrate()
     sys.exit(0 if success else 1)
-

@@ -13,7 +13,8 @@ class Cliente(db.Model):
     """
     Model de Cliente com relacionamentos para Pedidos e Endereços
     """
-    __tablename__ = 'clientes'
+
+    __tablename__ = "clientes"
 
     # Campos principais
     id = db.Column(db.Integer, primary_key=True)
@@ -27,11 +28,21 @@ class Cliente(db.Model):
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
     # Relacionamentos (lazy='dynamic' permite queries)
-    enderecos = db.relationship('EnderecoCliente', backref='cliente', lazy='dynamic', cascade='all, delete-orphan')
-    pedidos = db.relationship('Pedido', backref='cliente_rel', lazy='dynamic', foreign_keys='Pedido.cliente_id')
+    enderecos = db.relationship(
+        "EnderecoCliente",
+        backref="cliente",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+    pedidos = db.relationship(
+        "Pedido",
+        backref="cliente_rel",
+        lazy="dynamic",
+        foreign_keys="Pedido.cliente_id",
+    )
 
     def __repr__(self):
-        return f'<Cliente #{self.id} - {self.nome} ({self.telefone})>'
+        return f"<Cliente #{self.id} - {self.nome} ({self.telefone})>"
 
     def calcular_ltv(self):
         """
@@ -46,8 +57,8 @@ class Cliente(db.Model):
             if pedido.valor:
                 try:
                     # Limpar valor: "R$ 150,00" -> 150.00
-                    valor_limpo = re.sub(r'[^\d,.]', '', str(pedido.valor))
-                    valor_limpo = valor_limpo.replace(',', '.')
+                    valor_limpo = re.sub(r"[^\d,.]", "", str(pedido.valor))
+                    valor_limpo = valor_limpo.replace(",", ".")
                     total += float(valor_limpo)
                 except (ValueError, AttributeError):
                     # Se não conseguir converter, pula
@@ -83,7 +94,7 @@ class Cliente(db.Model):
         Returns:
             Pedido ou None
         """
-        return self.pedidos.order_by(db.desc('created_at')).first()
+        return self.pedidos.order_by(db.desc("created_at")).first()
 
     def to_dict(self, include_stats=False):
         """
@@ -96,22 +107,26 @@ class Cliente(db.Model):
             dict: Dados do cliente
         """
         data = {
-            'id': self.id,
-            'nome': self.nome,
-            'telefone': self.telefone,
-            'email': self.email or '',
-            'observacoes': self.observacoes or '',
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            "id": self.id,
+            "nome": self.nome,
+            "telefone": self.telefone,
+            "email": self.email or "",
+            "observacoes": self.observacoes or "",
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
         if include_stats:
             ultimo_pedido = self.get_ultimo_pedido()
-            data.update({
-                'total_pedidos': self.get_total_pedidos(),
-                'ltv': self.calcular_ltv(),
-                'ultimo_pedido': ultimo_pedido.created_at.isoformat() if ultimo_pedido else None
-            })
+            data.update(
+                {
+                    "total_pedidos": self.get_total_pedidos(),
+                    "ltv": self.calcular_ltv(),
+                    "ultimo_pedido": ultimo_pedido.created_at.isoformat()
+                    if ultimo_pedido
+                    else None,
+                }
+            )
 
         return data
 
@@ -123,10 +138,10 @@ class Cliente(db.Model):
             dict: Dados mínimos para autocomplete
         """
         return {
-            'id': self.id,
-            'nome': self.nome,
-            'telefone': self.telefone,
-            'total_pedidos': self.get_total_pedidos()
+            "id": self.id,
+            "nome": self.nome,
+            "telefone": self.telefone,
+            "total_pedidos": self.get_total_pedidos(),
         }
 
     @staticmethod
@@ -141,14 +156,11 @@ class Cliente(db.Model):
             Cliente ou None
         """
         # Remover formatação do telefone
-        telefone_limpo = re.sub(r'[^\d]', '', telefone)
+        telefone_limpo = re.sub(r"[^\d]", "", telefone)
 
         # Buscar por telefone exato ou limpo
         return Cliente.query.filter(
-            db.or_(
-                Cliente.telefone == telefone,
-                Cliente.telefone == telefone_limpo
-            )
+            db.or_(Cliente.telefone == telefone, Cliente.telefone == telefone_limpo)
         ).first()
 
     @staticmethod
@@ -172,26 +184,29 @@ class Cliente(db.Model):
         # Cliente com mais pedidos
         # Usar subquery para contar pedidos
         from app.models.pedido import Pedido
-        cliente_mais_pedidos = db.session.query(
-            Cliente,
-            func.count(Pedido.id).label('total')
-        ).outerjoin(Pedido, Cliente.id == Pedido.cliente_id).group_by(Cliente.id).order_by(db.desc('total')).first()
+
+        cliente_mais_pedidos = (
+            db.session.query(Cliente, func.count(Pedido.id).label("total"))
+            .outerjoin(Pedido, Cliente.id == Pedido.cliente_id)
+            .group_by(Cliente.id)
+            .order_by(db.desc("total"))
+            .first()
+        )
 
         stats = {
-            'total_clientes': total_clientes,
-            'novos_este_mes': novos_mes,
-            'cliente_mais_pedidos': None
+            "total_clientes": total_clientes,
+            "novos_este_mes": novos_mes,
+            "cliente_mais_pedidos": None,
         }
 
         if cliente_mais_pedidos:
             cliente, total = cliente_mais_pedidos
-            stats['cliente_mais_pedidos'] = {
-                'id': cliente.id,
-                'nome': cliente.nome,
-                'telefone': cliente.telefone,
-                'total_pedidos': total,
-                'ltv': cliente.calcular_ltv()
+            stats["cliente_mais_pedidos"] = {
+                "id": cliente.id,
+                "nome": cliente.nome,
+                "telefone": cliente.telefone,
+                "total_pedidos": total,
+                "ltv": cliente.calcular_ltv(),
             }
 
         return stats
-

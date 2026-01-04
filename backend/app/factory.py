@@ -39,6 +39,7 @@ def create_app(config=None):
         app.config.update(config)
     else:
         from app.config import BaseConfig
+
         app.config.from_object(BaseConfig)
 
     # 2. Extensões (ANTES de importar models)
@@ -75,6 +76,7 @@ def create_app(config=None):
     # 6. OpenAPI/Swagger (ANTES das rotas estáticas para não ser interceptado pelo catch-all)
     try:
         from app.openapi import init_openapi
+
         init_openapi(app)
         print("[OPENAPI] Swagger UI disponível em /docs/swagger")
     except ImportError:
@@ -106,6 +108,7 @@ def register_cli_commands(app):
     """
     try:
         from app.cli import register_commands
+
         register_commands(app)
     except ImportError:
         # CLI não disponível (pode acontecer durante setup inicial)
@@ -123,17 +126,19 @@ def setup_security(app):
 
     from app.middleware import setup_security_middleware
 
-    ENABLE_RATE_LIMIT = os.environ.get('ENABLE_RATE_LIMIT', 'true').lower() == 'true'
-    ENABLE_DEBUG_ENDPOINTS = os.environ.get('ENABLE_DEBUG_ENDPOINTS', 'false').lower() == 'true'
+    ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
+    ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
 
     try:
         setup_security_middleware(
             app,
             enable_auth=False,  # Autenticação global desativada - apenas rotas específicas
-            enable_rate_limit=ENABLE_RATE_LIMIT
+            enable_rate_limit=ENABLE_RATE_LIMIT,
         )
         print("[SEGURANCA] OK Autenticacao seletiva ATIVADA")
-        print("[SEGURANCA]   Visualizacao livre - Apenas criar/deletar pedidos requerem autenticacao")
+        print(
+            "[SEGURANCA]   Visualizacao livre - Apenas criar/deletar pedidos requerem autenticacao"
+        )
         print("[SEGURANCA]   Usuario: admin")
         if ENABLE_RATE_LIMIT:
             print("[SEGURANCA] OK Rate Limiting ATIVADO (60/min, 1000/hora)")
@@ -143,4 +148,3 @@ def setup_security(app):
         print("[AVISO] Middleware de segurança não encontrado.")
     except Exception as e:
         print(f"[AVISO] Erro ao configurar segurança: {e}")
-

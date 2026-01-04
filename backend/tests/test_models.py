@@ -9,6 +9,7 @@ from app.models import Cliente, Pedido
 def test_pedido_creation(app):
     """Testa criação de pedido"""
     from datetime import date
+
     with app.app_context():
         pedido = Pedido(
             cliente="Teste Cliente",
@@ -17,7 +18,7 @@ def test_pedido_creation(app):
             produto="Teste Produto",
             valor="100.00",
             dia_entrega=date(2024, 12, 31),
-            horario="14:00"
+            horario="14:00",
         )
         db.session.add(pedido)
         db.session.commit()
@@ -29,13 +30,9 @@ def test_pedido_creation(app):
 def test_cliente_creation(app):
     """Testa criação de cliente"""
     with app.app_context():
-        cliente = Cliente(
-            nome="Teste Cliente",
-            telefone="123456789"
-        )
+        cliente = Cliente(nome="Teste Cliente", telefone="123456789")
         db.session.add(cliente)
         db.session.commit()
 
         assert cliente.id is not None
         assert cliente.nome == "Teste Cliente"
-

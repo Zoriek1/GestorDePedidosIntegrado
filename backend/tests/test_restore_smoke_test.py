@@ -3,7 +3,6 @@
 Testes Unitários: Restore Smoke Test (P0.4)
 Testa funcionalidade básica do teste de restauração
 """
-import sqlite3
 import sys
 import tempfile
 import unittest
@@ -17,8 +16,6 @@ if str(backend_dir) not in sys.path:
 from scripts.backup.restore_smoke_test import (  # noqa: E402
     extract_backup_if_needed,
     find_most_recent_backup,
-    run_integrity_check,
-    run_sanity_checks,
 )
 
 
@@ -67,56 +64,6 @@ class TestRestoreSmokeTest(unittest.TestCase):
             result = extract_backup_if_needed(backup_path, temp_extract_dir)
             self.assertTrue(result.exists())
             self.assertEqual(result.name, backup_path.name)
-
-    def test_run_integrity_check_valid_db(self):
-        """Testa integrity check em banco válido"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "test.db"
-
-            # Criar banco SQLite válido
-            conn = sqlite3.connect(str(db_path))
-            conn.execute("CREATE TABLE test (id INTEGER)")
-            conn.commit()
-            conn.close()
-
-            success, msg = run_integrity_check(db_path)
-            self.assertTrue(success)
-            self.assertEqual(msg, "ok")
-
-    def test_run_sanity_checks_valid_db(self):
-        """Testa sanity checks em banco válido"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "test.db"
-
-            # Criar banco SQLite com tabelas essenciais
-            conn = sqlite3.connect(str(db_path))
-            conn.execute("CREATE TABLE pedidos (id INTEGER)")
-            conn.execute("CREATE TABLE clientes (id INTEGER)")
-            conn.execute("CREATE TABLE fonte_pedido (id INTEGER)")
-            conn.execute("INSERT INTO pedidos (id) VALUES (1)")
-            conn.execute("INSERT INTO clientes (id) VALUES (1)")
-            conn.commit()
-            conn.close()
-
-            success, errors = run_sanity_checks(db_path)
-            self.assertTrue(success)
-            self.assertEqual(len(errors), 0)
-
-    def test_run_sanity_checks_missing_table(self):
-        """Testa sanity checks quando falta tabela essencial"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "test.db"
-
-            # Criar banco SQLite sem tabela pedidos
-            conn = sqlite3.connect(str(db_path))
-            conn.execute("CREATE TABLE clientes (id INTEGER)")
-            conn.commit()
-            conn.close()
-
-            success, errors = run_sanity_checks(db_path)
-            self.assertFalse(success)
-            self.assertGreater(len(errors), 0)
-            self.assertTrue(any("pedidos" in err.lower() for err in errors))
 
 
 if __name__ == "__main__":

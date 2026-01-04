@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 
 # Path to database
 db_path = os.path.join(os.path.dirname(__file__), 'database.db')

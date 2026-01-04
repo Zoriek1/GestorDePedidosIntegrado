@@ -2,19 +2,21 @@
 """
 Script de teste rápido para verificar se o servidor está respondendo
 """
-import requests
-import time
 import sys
+import time
+
+import requests
+
 
 def test_server():
     """Testa se o servidor está respondendo"""
     base_url = "http://localhost:5000"
-    
+
     print("=" * 60)
     print("TESTE DE SERVIDOR")
     print("=" * 60)
     print()
-    
+
     # Teste 1: Health check
     print("[1/3] Testando /api/health...")
     try:
@@ -31,7 +33,7 @@ def test_server():
     except Exception as e:
         print(f"  ✗ ERRO: {e}")
         return False
-    
+
     # Teste 2: Frontend root
     print()
     print("[2/3] Testando / (frontend)...")
@@ -46,7 +48,7 @@ def test_server():
     except Exception as e:
         print(f"  ✗ ERRO: {e}")
         return False
-    
+
     # Teste 3: Deep link
     print()
     print("[3/3] Testando /pedidos (deep link)...")
@@ -60,7 +62,7 @@ def test_server():
     except Exception as e:
         print(f"  ✗ ERRO: {e}")
         return False
-    
+
     print()
     print("=" * 60)
     print("✓ TODOS OS TESTES PASSARAM!")
@@ -70,7 +72,7 @@ def test_server():
 if __name__ == '__main__':
     print("Aguardando 2 segundos para o servidor inicializar...")
     time.sleep(2)
-    
+
     if not test_server():
         print()
         print("=" * 60)

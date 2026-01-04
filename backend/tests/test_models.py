@@ -2,9 +2,8 @@
 """
 Testes dos Models - Validação de modelos de dados
 """
-import pytest
 from app import db
-from app.models import Pedido, Cliente
+from app.models import Cliente, Pedido
 
 
 def test_pedido_creation(app):
@@ -22,7 +21,7 @@ def test_pedido_creation(app):
         )
         db.session.add(pedido)
         db.session.commit()
-        
+
         assert pedido.id is not None
         assert pedido.cliente == "Teste Cliente"
 
@@ -36,7 +35,7 @@ def test_cliente_creation(app):
         )
         db.session.add(cliente)
         db.session.commit()
-        
+
         assert cliente.id is not None
         assert cliente.nome == "Teste Cliente"
 

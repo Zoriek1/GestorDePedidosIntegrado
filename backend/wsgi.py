@@ -15,11 +15,12 @@ if sys.platform=='win32':
 
 # Carregar variáveis de ambiente do arquivo .env
 from dotenv import load_dotenv
+
 env_path = Path(__file__).parent/'.env'
 load_dotenv(env_path)
 
-from app import create_app
-from app.config import config
+from app import create_app  # noqa: E402
+from app.config import config  # noqa: E402
 
 # Determinar ambiente (padrão: production)
 env = os.environ.get('FLASK_ENV','production')
@@ -40,24 +41,23 @@ app = create_app(config={
 if __name__ == '__main__':
     try:
         from waitress import serve
-        
+
         host = os.environ.get('HOST', '0.0.0.0')
         port = int(os.environ.get('PORT', 5000))
         threads = int(os.environ.get('THREADS', 4))
-        
+
         # Parâmetros otimizados para produção
         channel_timeout = int(os.environ.get('CHANNEL_TIMEOUT', 120))  # Timeout para conexões (segundos)
         cleanup_interval = int(os.environ.get('CLEANUP_INTERVAL', 30))  # Intervalo de limpeza (segundos)
-        
+
         # Forçar flush do stdout para garantir que as mensagens apareçam
-        import sys
         sys.stdout.flush()
-        
+
         print("\n" + "="*60, flush=True)
         print("PLANTE UMA FLOR - PWA v3.0 (PRODUÇÃO)", flush=True)
         print("="*60, flush=True)
         print(f"Ambiente: {env}", flush=True)
-        print(f"Servidor: Waitress (WSGI)", flush=True)
+        print("Servidor: Waitress (WSGI)", flush=True)
         print(f"Host: {host}", flush=True)
         print(f"Porta: {port}", flush=True)
         print(f"Threads: {threads}", flush=True)
@@ -73,7 +73,7 @@ if __name__ == '__main__':
         print(f"[INFO] Escutando em {host}:{port}", flush=True)
         print("[INFO] Pressione Ctrl+C para parar o servidor\n", flush=True)
         sys.stdout.flush()
-        
+
         try:
             serve(
                 app,

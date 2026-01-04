@@ -6,10 +6,10 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
-from google.oauth2.service_account import Credentials
 
 from app.config import Config
 
@@ -76,7 +76,7 @@ class GoogleDriveBackup:
                 .execute()
             )
             file_id = created.get("id")
-            
+
             # Transferir propriedade para o dono da pasta (se folder_id foi fornecido)
             # Isso evita problemas de quota da service account
             if self.folder_id:
@@ -87,9 +87,9 @@ class GoogleDriveBackup:
                         fields="owners",
                         supportsAllDrives=True
                     ).execute()
-                    
+
                     owner_email = pasta_info.get("owners", [{}])[0].get("emailAddress")
-                    
+
                     if owner_email:
                         # Transfere propriedade
                         self.service.permissions().create(
@@ -106,7 +106,7 @@ class GoogleDriveBackup:
                 except Exception as e:
                     # Não falha o upload se a transferência der erro
                     print(f"[AVISO] Não foi possível transferir propriedade: {e}")
-            
+
             return file_id
         except HttpError as exc:
             raise GoogleDriveBackupError(f"Erro ao fazer upload para o Drive: {exc}") from exc
@@ -152,8 +152,9 @@ class GoogleDriveBackup:
         return deleted
 
     def download_backup(self, file_id: str, dst: Path) -> Path:
-        from googleapiclient.http import MediaIoBaseDownload
         import io
+
+        from googleapiclient.http import MediaIoBaseDownload
 
         dst = Path(dst)
         dst.parent.mkdir(parents=True, exist_ok=True)

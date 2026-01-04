@@ -4,13 +4,13 @@ CLI Unificado - Plante Uma Flor
 Comandos Flask CLI + Click para operações do sistema
 """
 import os
-import sys
 import socket
 import subprocess
 from pathlib import Path
+
+import click
 from flask import Flask
 from flask.cli import AppGroup
-import click
 
 # Criar grupo de comandos
 cli = AppGroup('cli')
@@ -29,18 +29,18 @@ def get_app():
 def start_server(https, port, host, no_reload):
     """Inicia o servidor Flask"""
     app = get_app()
-    
+
     # Configurar porta e host
     server_port = port or int(os.environ.get('PORT', 5000))
     server_host = host or os.environ.get('HOST', '0.0.0.0')
-    
+
     # Verificar porta
     if check_port_in_use(server_port):
         click.echo(f'[AVISO] Porta {server_port} já está em uso!', err=True)
         if not os.environ.get('FORCE_START', '').lower() == 'true':
             if not click.confirm('Deseja tentar iniciar mesmo assim?'):
                 return
-    
+
     # Configurar SSL se necessário
     ssl_context = None
     if https:
@@ -49,22 +49,22 @@ def start_server(https, port, host, no_reload):
             click.echo('[AVISO] Certificados SSL não encontrados!', err=True)
             click.echo('Execute: flask cli ssl generate')
             https = False
-    
+
     # Configurar opções de execução
     debug = not no_reload and (os.environ.get('DEBUG', 'False').lower() == 'true')
     use_reloader = not no_reload
-    
-    click.echo(f'\n[OK] Iniciando servidor...')
+
+    click.echo('\n[OK] Iniciando servidor...')
     click.echo(f'  Host: {server_host}')
     click.echo(f'  Porta: {server_port}')
     click.echo(f'  Protocolo: {"HTTPS" if https else "HTTP"}')
     click.echo(f'  Debug: {debug}')
     click.echo()
-    
+
     try:
         # Usar run_simple do Werkzeug diretamente para evitar bloqueio do Flask CLI
         from werkzeug.serving import run_simple
-        
+
         run_simple(
             hostname=server_host,
             port=server_port,
@@ -86,7 +86,7 @@ def backup_command(restore, list_backups, stats):
     """Gerencia backups do banco de dados"""
     from app.utils.backup_helper import create_backup, get_backup_stats
     app = get_app()
-    
+
     with app.app_context():
         if restore:
             # Restaurar backup
@@ -97,21 +97,21 @@ def backup_command(restore, list_backups, stats):
                 db_path=instance_dir / 'database.db',
                 backup_dir=instance_dir / 'backups'
             )
-            
+
             backup_path = Path(restore)
             if not backup_path.exists():
                 click.echo(f'[ERRO] Backup não encontrado: {backup_path}', err=True)
                 return
-            
+
             if not click.confirm(f'Restaurar backup {backup_path.name}? Isso substituirá o banco atual!'):
                 return
-            
+
             try:
                 restore_mgr.restore_backup(str(backup_path))
                 click.echo('[OK] Backup restaurado com sucesso!')
             except Exception as e:
                 click.echo(f'[ERRO] Falha ao restaurar: {e}', err=True)
-        
+
         elif list_backups:
             # Listar backups
             from scripts.backup.backup import BackupManager
@@ -121,16 +121,16 @@ def backup_command(restore, list_backups, stats):
                 db_path=instance_dir / 'database.db',
                 backup_dir=instance_dir / 'backups'
             )
-            
+
             backups = backup_mgr.list_backups()
             if not backups:
                 click.echo('[INFO] Nenhum backup encontrado')
                 return
-            
+
             click.echo(f'\nBackups disponíveis ({len(backups)}):')
             for i, (backup_path, size_mb, mod_time) in enumerate(backups, 1):
                 click.echo(f'  {i}. {backup_path.name} ({size_mb:.2f} MB) - {mod_time.strftime("%Y-%m-%d %H:%M:%S")}')
-        
+
         elif stats:
             # Estatísticas
             backup_stats = get_backup_stats()
@@ -141,7 +141,7 @@ def backup_command(restore, list_backups, stats):
                 click.echo(f'  Mais antigo: {backup_stats["oldest"].strftime("%Y-%m-%d %H:%M:%S")}')
             if backup_stats["newest"]:
                 click.echo(f'  Mais recente: {backup_stats["newest"].strftime("%Y-%m-%d %H:%M:%S")}')
-        
+
         else:
             # Criar backup
             click.echo('[INFO] Criando backup...')
@@ -199,39 +199,39 @@ def check_command(resource, port):
 @click.option('--revision', type=str, default=None, help='Revisão para upgrade/downgrade')
 def db_command(action, message, revision):
     """Comandos de migração do banco de dados (Flask-Migrate)"""
-    from flask_migrate import init, migrate, upgrade, downgrade, current, history
-    
+    from flask_migrate import current, downgrade, history, init, migrate, upgrade
+
     app = get_app()
-    
+
     with app.app_context():
         if action == 'init':
             if message:
                 click.echo('[AVISO] --message não é usado com init')
             init()
             click.echo('[OK] Migrações inicializadas')
-        
+
         elif action == 'migrate':
             if not message:
                 message = click.prompt('Mensagem da migração', default='Auto migration')
             migrate(message=message)
             click.echo('[OK] Migração criada')
-        
+
         elif action == 'upgrade':
             if revision:
                 upgrade(revision=revision)
             else:
                 upgrade()
             click.echo('[OK] Migrações aplicadas')
-        
+
         elif action == 'downgrade':
             if not revision:
                 revision = click.prompt('Revisão para downgrade')
             downgrade(revision=revision)
             click.echo('[OK] Downgrade aplicado')
-        
+
         elif action == 'current':
             current()
-        
+
         elif action == 'history':
             history()
 
@@ -246,7 +246,7 @@ def check_port_in_use(port):
         result = sock.connect_ex(('localhost', port))
         sock.close()
         return result == 0
-    except:
+    except Exception:
         return False
 
 
@@ -254,13 +254,13 @@ def check_ssl_certificates():
     """Verifica se os certificados SSL existem e retorna tupla (cert, key) ou None"""
     from app.config import Config
     ssl_dir = Config.INSTANCE_DIR / 'ssl'
-    
+
     if not ssl_dir.exists():
         ssl_dir.mkdir(parents=True, exist_ok=True)
-    
+
     cert_file = ssl_dir / 'cert.pem'
     key_file = ssl_dir / 'key.pem'
-    
+
     if cert_file.exists() and key_file.exists():
         return (str(cert_file), str(key_file))
     return None
@@ -269,7 +269,7 @@ def check_ssl_certificates():
 def generate_ssl_certificates(hostname=None):
     """Gera certificados SSL usando mkcert"""
     import configparser
-    
+
     # Obter hostname
     if not hostname:
         config_file = Path(__file__).parent.parent / 'config' / 'config_servidor.ini'
@@ -278,11 +278,11 @@ def generate_ssl_certificates(hostname=None):
                 parser = configparser.ConfigParser()
                 parser.read(config_file, encoding='utf-8')
                 hostname = parser.get('SERVIDOR', 'hostname', fallback='Gestor-pedidos.local')
-            except:
+            except Exception:
                 hostname = 'Gestor-pedidos.local'
         else:
             hostname = 'Gestor-pedidos.local'
-    
+
     # Descobrir IPs
     ip_list = ['localhost', '127.0.0.1', '::1']
     try:
@@ -292,34 +292,34 @@ def generate_ssl_certificates(hostname=None):
         s.close()
         if local_ip not in ip_list:
             ip_list.append(local_ip)
-    except:
+    except Exception:
         pass
-    
+
     # Verificar mkcert
     scripts_dir = Path(__file__).parent.parent / 'scripts' / 'ssl'
     mkcert_exe = scripts_dir / 'mkcert.exe'
-    
+
     if not mkcert_exe.exists():
         click.echo('[ERRO] mkcert.exe não encontrado!', err=True)
         click.echo('Execute primeiro: scripts\\ssl\\INSTALAR_MKCERT_SIMPLES.bat')
         return
-    
+
     # Criar diretório SSL
     from app.config import Config
     ssl_dir = Config.INSTANCE_DIR / 'ssl'
     ssl_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Instalar CA (pode falhar se já estiver instalado)
     click.echo('[INFO] Instalando CA raiz...')
     subprocess.run([str(mkcert_exe), '-install'], check=False)
-    
+
     # Gerar certificados
     click.echo(f'[INFO] Gerando certificados para {hostname} e IPs...')
     cert_file = ssl_dir / 'cert.pem'
     key_file = ssl_dir / 'key.pem'
-    
+
     cmd = [str(mkcert_exe), '-cert-file', str(cert_file), '-key-file', str(key_file), hostname] + ip_list
-    
+
     try:
         subprocess.run(cmd, check=True)
         click.echo(f'[OK] Certificados gerados em {ssl_dir}')
@@ -345,19 +345,19 @@ def update_service_worker_cache():
     """Atualiza versão do cache do service worker"""
     frontend_dir = Path(__file__).parent.parent.parent / 'frontend'
     sw_file = frontend_dir / 'sw.js'
-    
+
     if not sw_file.exists():
         click.echo('[ERRO] sw.js não encontrado!', err=True)
         return
-    
+
     # Ler arquivo
     content = sw_file.read_text(encoding='utf-8')
-    
+
     # Encontrar e incrementar versão do cache
     import re
     pattern = r"cacheName\s*=\s*['\"]plante-uma-flor-v(\d+)['\"]"
     match = re.search(pattern, content)
-    
+
     if match:
         current_version = int(match.group(1))
         new_version = current_version + 1

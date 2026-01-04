@@ -5,9 +5,9 @@ Faz backup do database.db com timestamp e gerencia retenção
 """
 import os
 import sys
-from pathlib import Path
-from datetime import datetime, timedelta
 import zipfile
+from datetime import datetime, timedelta
+from pathlib import Path
 
 # Tentar importar o logger de auditoria se disponível
 try:
@@ -17,9 +17,10 @@ try:
     sys.path.insert(0, str(app_utils_dir))
 
     from backup_helper import get_audit_logger
-    from encryption import encrypt_file
-    from gdrive_backup import GoogleDriveBackup, GoogleDriveBackupError
-    from app.config import Config
+    from encryption import encrypt_file  # noqa: F401
+    from gdrive_backup import GoogleDriveBackup, GoogleDriveBackupError  # noqa: F401
+
+    from app.config import Config  # noqa: F401
     AUDIT_LOGGER_AVAILABLE = True
 except ImportError:
     AUDIT_LOGGER_AVAILABLE = False
@@ -36,7 +37,7 @@ except ImportError:
     pass
 
 try:
-    from scripts.backup.remote_verify import copy_and_verify_remote
+    from scripts.backup.remote_verify import copy_and_verify_remote  # noqa: F401
     REMOTE_VERIFY_AVAILABLE = True
 except ImportError:
     pass
@@ -65,11 +66,11 @@ except ImportError:
 
 class BackupManager:
     """Gerenciador de backups do banco de dados"""
-    
+
     def __init__(self, db_path=None, backup_dir=None, retention_days=30):
         """
         Inicializa o gerenciador de backups
-        
+
         Args:
             db_path: Caminho para o database.db (padrão: backend/database.db)
             backup_dir: Diretório para salvar backups (padrão: backend/backups)
@@ -77,11 +78,11 @@ class BackupManager:
         """
         # Definir diretórios
         self.backend_dir = Path(__file__).parent.parent.parent
-        
+
         # Adicionar backend_dir ao path para importar app.config
         if str(self.backend_dir) not in sys.path:
             sys.path.insert(0, str(self.backend_dir))
-            
+
         try:
             from app.config import Config
             default_db_path = Config.DATABASE_PATH
@@ -90,35 +91,35 @@ class BackupManager:
             # Fallback seguro (ex: durante setup inicial)
             default_db_path = self.backend_dir / 'instance' / 'database.db'
             default_backup_dir = self.backend_dir / 'instance' / 'backups'
-        
+
         if db_path:
             self.db_path = Path(db_path)
         else:
             self.db_path = default_db_path
-        
+
         if backup_dir:
             self.backup_dir = Path(backup_dir)
         else:
             self.backup_dir = default_backup_dir
-        
+
         self.retention_days = retention_days
-        
+
         # Criar diretório de backups se não existir
         self.backup_dir.mkdir(exist_ok=True)
-    
+
     def _get_gdrive_backup_dir(self, gdrive_dir=None):
         """
         Obtém o diretório do Google Drive Desktop para backups encriptados.
-        
+
         Args:
             gdrive_dir: Caminho customizado (opcional)
-        
+
         Returns:
             Path do diretório do Google Drive Desktop
         """
         if gdrive_dir:
             return Path(gdrive_dir)
-        
+
         try:
             from app.config import Config
             return Config.GDRIVE_BACKUP_DIR
@@ -126,15 +127,15 @@ class BackupManager:
             # Fallback se não conseguir importar Config
             _HOME_DIR = Path(os.path.expanduser("~"))
             return _HOME_DIR / "Meu Drive" / "Plante Uma Flor Confidential" / "Database - Pedidos Gestor"
-    
+
     def create_backup(self, compress=True, reason='manual'):
         """
         Cria um backup do banco de dados usando sqlite3.Connection.backup()
         e valida integridade com PRAGMA integrity_check
-        
+
         Args:
             compress: Se True, comprime o backup em .zip
-        
+
         Returns:
             Path do arquivo de backup criado ou None em caso de erro
         """
@@ -206,7 +207,7 @@ class BackupManager:
                     )
             except Exception as log_error:
                 print(f"[AVISO] Erro ao registrar no log de auditoria: {log_error}")
-            
+
             # Atualizar status (P1.5)
             if STATUS_AVAILABLE:
                 try:
@@ -217,7 +218,7 @@ class BackupManager:
                     update_backup_status(backups_local_count=backups_count)
                 except Exception as status_error:
                     print(f"[AVISO] Erro ao atualizar status de backup: {status_error}")
-            
+
             # Cópia para diretório secundário (P1.4)
             try:
                 from app.config import Config as BackupConfig
@@ -226,11 +227,11 @@ class BackupManager:
                         secondary_dir = Path(BackupConfig.BACKUP_SECONDARY_DIR)
                         secondary_dir.mkdir(parents=True, exist_ok=True)
                         secondary_backup = secondary_dir / backup_path.name
-                        
+
                         # Copiar backup para secundário
                         import shutil
                         shutil.copy2(backup_path, secondary_backup)
-                        
+
                         # Verificar cópia (tamanho)
                         if secondary_backup.exists():
                             source_size = backup_path.stat().st_size
@@ -240,10 +241,10 @@ class BackupManager:
                             else:
                                 print(f"[AVISO] Tamanho diferente no diretório secundário: {source_size} != {dest_size}")
                         else:
-                            print(f"[AVISO] Cópia para diretório secundário falhou: arquivo não encontrado")
+                            print("[AVISO] Cópia para diretório secundário falhou: arquivo não encontrado")
                     except Exception as secondary_error:
                         print(f"[AVISO] Erro ao copiar para diretório secundário: {secondary_error}")
-                
+
                 # Verificação de separação de drives (P1.4)
                 if DRIVE_UTILS_AVAILABLE and BackupConfig.BACKUP_SECONDARY_DIR:
                     try:
@@ -275,7 +276,7 @@ class BackupManager:
                     )
             except Exception as log_error:
                 print(f"[AVISO] Erro ao registrar falha no log: {log_error}")
-            
+
             # Atualizar status (P1.5)
             if STATUS_AVAILABLE:
                 try:
@@ -303,7 +304,7 @@ class BackupManager:
     ):
         """
         Cria backup não encriptado localmente, encripta cópia e salva no Google Drive Desktop.
-        
+
         Fluxo:
         1. Cria backup não encriptado localmente (mantém)
         2. Encripta cópia do backup
@@ -320,7 +321,7 @@ class BackupManager:
         backup_path = self.create_backup(compress=compress, reason=reason)
         if not backup_path:
             return None
-        
+
         print(f"[BACKUP] Backup local não encriptado mantido: {backup_path.name}")
 
         # 2. Encriptar cópia do backup
@@ -328,15 +329,15 @@ class BackupManager:
             # Obter diretório do Google Drive Desktop
             gdrive_backup_dir = self._get_gdrive_backup_dir(gdrive_dir)
             gdrive_backup_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Definir destino do arquivo encriptado no Google Drive Desktop
             encrypted_filename = backup_path.name + ".enc"
             encrypted_path = gdrive_backup_dir / encrypted_filename
-            
+
             # Encriptar e salvar diretamente no Google Drive Desktop
             encrypted_path = encrypt_file(backup_path, dst=encrypted_path)
             print(f"[BACKUP] Arquivo encriptado salvo no Google Drive Desktop: {encrypted_path}")
-            
+
             # Verificação remota (P1.3) - verificar que arquivo foi recebido
             remote_ok = False
             if encrypted_path.exists():
@@ -345,18 +346,18 @@ class BackupManager:
                 if encrypted_size > 0:
                     remote_ok = True
                     print(f"[BACKUP] Verificação remota: OK (arquivo existe, {encrypted_size / (1024*1024):.2f} MB)")
-                    
+
                     # Stability check: re-verificar após alguns segundos
                     try:
                         import time
                         time.sleep(3)  # Esperar 3 segundos
                         encrypted_size_after = encrypted_path.stat().st_size
                         if encrypted_size_after != encrypted_size:
-                            print(f"[AVISO] Tamanho do arquivo mudou após stability check - arquivo ainda sendo escrito?")
+                            print("[AVISO] Tamanho do arquivo mudou após stability check - arquivo ainda sendo escrito?")
                             remote_ok = False
                     except Exception as stability_error:
                         print(f"[AVISO] Erro no stability check: {stability_error}")
-                    
+
                     if remote_ok:
                         # Atualizar status (P1.5)
                         if STATUS_AVAILABLE:
@@ -369,24 +370,24 @@ class BackupManager:
                             except Exception as status_error:
                                 print(f"[AVISO] Erro ao atualizar status remoto: {status_error}")
                 else:
-                    print(f"[AVISO] Arquivo remoto existe mas está vazio")
+                    print("[AVISO] Arquivo remoto existe mas está vazio")
                     if STATUS_AVAILABLE:
                         try:
                             update_backup_status(last_remote_error="Arquivo remoto vazio")
                         except Exception:
                             pass
             else:
-                print(f"[AVISO] Arquivo remoto não encontrado após encriptação")
+                print("[AVISO] Arquivo remoto não encontrado após encriptação")
                 if STATUS_AVAILABLE:
                     try:
                         update_backup_status(last_remote_error="Arquivo não encontrado no destino")
                     except Exception:
                         pass
-            
+
             # 3. Remover backup encriptado local (já está no Drive, será sincronizado)
             # O arquivo encriptado já foi salvo diretamente no Drive, não precisa remover local
             # pois não foi criado localmente primeiro
-            
+
         except Exception as exc:
             print(f"[ERRO] Falha ao encriptar e salvar no Google Drive Desktop: {exc}")
             import traceback
@@ -403,7 +404,10 @@ class BackupManager:
         if upload_drive:
             try:
                 try:
-                    from gdrive_backup import GoogleDriveBackup, GoogleDriveBackupError  # noqa: F401
+                    from gdrive_backup import (  # noqa: F401
+                        GoogleDriveBackup,
+                        GoogleDriveBackupError,
+                    )
                 except ImportError as exc:
                     print(f"[AVISO] Upload via API não disponível: {exc}")
                     print(f"[INFO] Backup encriptado já está no Google Drive Desktop: {encrypted_path}")
@@ -432,23 +436,23 @@ class BackupManager:
 
         # Retorna o backup local não encriptado (mantido)
         return backup_path
-    
+
     def cleanup_old_backups(self):
         """
         Remove backups antigos baseado no retention_days
-        
+
         Returns:
             Número de backups removidos
         """
         if self.retention_days <= 0:
             print("[INFO] Retenção ilimitada - nenhum backup será removido")
             return 0
-        
+
         cutoff_date = datetime.now() - timedelta(days=self.retention_days)
         removed_count = 0
-        
+
         print(f"[LIMPEZA] Removendo backups anteriores a {cutoff_date.strftime('%Y-%m-%d')}")
-        
+
         patterns = ["database_*.db", "database_*.zip", "database_*.enc", "database_*.zip.enc"]
         for pattern in patterns:
             for backup_file in self.backup_dir.glob(pattern):
@@ -463,23 +467,23 @@ class BackupManager:
 
                 except Exception as e:
                     print(f"[AVISO] Erro ao processar {backup_file.name}: {e}")
-        
+
         if removed_count > 0:
             print(f"[LIMPEZA] {removed_count} backup(s) antigo(s) removido(s)")
         else:
-            print(f"[LIMPEZA] Nenhum backup antigo para remover")
-        
+            print("[LIMPEZA] Nenhum backup antigo para remover")
+
         return removed_count
-    
+
     def list_backups(self):
         """
         Lista todos os backups disponíveis
-        
+
         Returns:
             Lista de tuplas (path, size_mb, date)
         """
         backups = []
-        
+
         for backup_file in sorted(self.backup_dir.glob('database_*.*'), reverse=True):
             try:
                 size_mb = backup_file.stat().st_size / (1024 * 1024)
@@ -487,18 +491,18 @@ class BackupManager:
                 backups.append((backup_file, size_mb, mod_time))
             except Exception as e:
                 print(f"[AVISO] Erro ao processar {backup_file.name}: {e}")
-        
+
         return backups
-    
+
     def get_backup_stats(self):
         """
         Retorna estatísticas dos backups
-        
+
         Returns:
             Dicionário com estatísticas
         """
         backups = self.list_backups()
-        
+
         if not backups:
             return {
                 'count': 0,
@@ -506,9 +510,9 @@ class BackupManager:
                 'oldest': None,
                 'newest': None
             }
-        
+
         total_size = sum(b[1] for b in backups)
-        
+
         return {
             'count': len(backups),
             'total_size_mb': total_size,
@@ -520,7 +524,7 @@ class BackupManager:
 def main():
     """Função principal para executar backup via linha de comando"""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='Sistema de Backup do Banco de Dados')
     parser.add_argument('--no-compress', action='store_true', help='Não comprimir backup')
     parser.add_argument('--no-cleanup', action='store_true', help='Não remover backups antigos')
@@ -533,16 +537,16 @@ def main():
     parser.add_argument('--no-encrypt', action='store_true', help='Não encriptar (apenas backup local)')
     parser.add_argument('--folder-id', type=str, help='ID da pasta no Google Drive (opcional, para upload via API)')
     parser.add_argument('--gdrive-dir', type=str, help='Caminho do diretório do Google Drive Desktop para backups encriptados (padrão: Config.GDRIVE_BACKUP_DIR)')
-    
+
     args = parser.parse_args()
-    
+
     # Criar gerenciador de backups
     backup_mgr = BackupManager(retention_days=args.retention)
-    
+
     print("\n" + "="*60)
     print("SISTEMA DE BACKUP - Gestor de Pedidos")
     print("="*60)
-    
+
     # Modo listar
     if args.list:
         backups = backup_mgr.list_backups()
@@ -554,11 +558,11 @@ def main():
             print(f"    Data: {mod_time.strftime('%Y-%m-%d %H:%M:%S')}")
             print()
         return
-    
+
     # Modo estatísticas
     if args.stats:
         stats = backup_mgr.get_backup_stats()
-        print(f"\nEstatísticas de Backups:")
+        print("\nEstatísticas de Backups:")
         print("-"*60)
         print(f"  Total de backups: {stats['count']}")
         print(f"  Tamanho total: {stats['total_size_mb']:.2f} MB")
@@ -568,7 +572,7 @@ def main():
             print(f"  Mais recente: {stats['newest'].strftime('%Y-%m-%d %H:%M:%S')}")
         print()
         return
-    
+
     # Criar backup (com encriptação e Drive se solicitado)
     if args.upload_drive or not args.no_encrypt:
         backup_path = backup_mgr.create_encrypted_backup(

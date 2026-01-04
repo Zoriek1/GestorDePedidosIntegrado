@@ -3,13 +3,19 @@
 Rotas da API REST - PWA v3.0
 API completa para o frontend PWA
 """
-from flask import Blueprint, request, jsonify
-from app import db
-from app.models import Pedido, RotaOtimizada, Cliente, FontePedido
-from app.middleware import requires_edit_auth
-from app.utils.backup_helper import create_backup, get_backup_stats, has_recent_backup, get_last_backup_time
-from datetime import datetime
 import re
+from datetime import datetime
+
+from flask import Blueprint, jsonify, request
+
+from app import db
+from app.middleware import requires_edit_auth
+from app.models import Cliente, FontePedido, Pedido
+from app.utils.backup_helper import (
+    get_backup_stats,
+    get_last_backup_time,
+    has_recent_backup,
+)
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -29,11 +35,11 @@ def criar_pedido():
     """
     try:
         data = request.get_json()
-        
+
         # Verificação inicial de dados
         if not data:
             return jsonify({'error': 'Nenhum dado fornecido'}), 400
-        
+
         # Extração de dados do JSON
         # Step 1 - Dados do Cliente
         cliente = data.get('cliente', '').strip()
@@ -43,14 +49,14 @@ def criar_pedido():
         # Aceitar tanto fonte_pedido_id (novo) quanto fonte_pedido (string) para compatibilidade
         fonte_pedido_id = data.get('fonte_pedido_id')
         fonte_pedido = data.get('fonte_pedido', '').strip()  # Mantido para compatibilidade
-        
+
         # Step 2 - Produto e Agendamento
         produto = data.get('produto', '').strip()
         flores_cor = data.get('flores_cor', '').strip()
         valor = data.get('valor', '').strip()
         horario = data.get('horario', data.get('hora_entrega', '')).strip()
         dia_entrega_str = data.get('dia_entrega', data.get('data_entrega', '')).strip()
-        
+
         # Step 3 - Logística (campos de endereço separados)
         cep = data.get('cep', '').strip()
         rua = data.get('rua', '').strip()
@@ -59,16 +65,16 @@ def criar_pedido():
         cidade = data.get('cidade', '').strip()
         endereco = data.get('endereco', '').strip()
         obs_entrega = data.get('obs_entrega', '').strip()
-        
+
         # Step 4 - Finalização
         mensagem = data.get('mensagem', '').strip()
         pagamento = data.get('pagamento', '').strip()
         observacoes = data.get('observacoes', '').strip()
         status_pagamento = data.get('status_pagamento', '').strip()
-        
+
         # Quantidade (compatibilidade)
         quantidade_raw = data.get('quantidade', 1)
-        
+
         # Validação de campos obrigatórios
         campos_obrigatorios = {
             'telefone_cliente': telefone_cliente,
@@ -77,14 +83,14 @@ def criar_pedido():
             'horario': horario,
             'dia_entrega': dia_entrega_str
         }
-        
+
         campos_faltantes = [campo for campo, valor in campos_obrigatorios.items() if not valor]
         if campos_faltantes:
             return jsonify({
                 'error': f'Campos obrigatórios ausentes: {", ".join(campos_faltantes)}',
                 'campos_enviados': list(data.keys())
             }), 400
-        
+
         # Conversão de quantidade para inteiro
         try:
             if isinstance(quantidade_raw, str):
@@ -94,18 +100,18 @@ def criar_pedido():
                 quantidade = 1
         except (ValueError, TypeError):
             quantidade = 1
-        
+
         # Validação de formato de horário: aceita HH:MM ou intervalo HH:MM - HH:MM
         pattern_simples = r'^([01]?\d|2[0-3]):[0-5]\d$'
         pattern_intervalo = r'^([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d$'
-        
+
         if not (re.match(pattern_simples, horario) or re.match(pattern_intervalo, horario)):
             return jsonify({
                 'error': 'Formato de horário inválido',
                 'horario_recebido': horario,
                 'formato_esperado': 'HH:MM (ex: 14:30) ou intervalo HH:MM - HH:MM (ex: 08:00 - 10:00)'
             }), 400
-        
+
         # Se for intervalo, validar que horário final é depois do inicial
         if ' - ' in horario:
             partes = horario.split(' - ')
@@ -125,7 +131,7 @@ def criar_pedido():
                         'error': 'Formato de intervalo inválido',
                         'horario_recebido': horario
                     }), 400
-        
+
         # Conversão de data de entrega
         try:
             # Aceita formatos: YYYY-MM-DD ou DD/MM/YYYY
@@ -140,16 +146,16 @@ def criar_pedido():
                 'formatos_aceitos': ['YYYY-MM-DD', 'DD/MM/YYYY'],
                 'detalhes': str(e)
             }), 400
-        
+
         # Gerenciar cliente_id - criar cliente se necessário
         raw_cliente_id = data.get('cliente_id', '')
         cliente_id = raw_cliente_id.strip() if isinstance(raw_cliente_id, str) else raw_cliente_id
-        
+
         # Se cliente_id não foi fornecido mas temos nome e telefone, buscar ou criar cliente
         if not cliente_id and cliente and telefone_cliente:
             # Buscar cliente existente por telefone
             cliente_existente = Cliente.buscar_por_telefone(telefone_cliente)
-            
+
             if cliente_existente:
                 # Cliente já existe, usar o ID
                 cliente_id = cliente_existente.id
@@ -170,10 +176,10 @@ def criar_pedido():
                     print(f"[ERRO] Erro ao criar cliente: {e}")
                     # Continuar sem cliente_id se houver erro
                     cliente_id = None
-        
+
         # Converter cliente_id para int se não for None
         cliente_id_int = int(cliente_id) if cliente_id else None
-        
+
         # Processar fonte_pedido_id
         fonte_pedido_id_int = None
         if fonte_pedido_id:
@@ -185,11 +191,11 @@ def criar_pedido():
             fonte = FontePedido.query.filter_by(nome=fonte_pedido, ativo=True).first()
             if fonte:
                 fonte_pedido_id_int = fonte.id
-        
+
         # Debug: Log dos campos recebidos
         print(f"[DEBUG] Criando pedido - fonte_pedido_id: {fonte_pedido_id_int}, fonte_pedido (legacy): '{fonte_pedido}', pagamento: '{pagamento}'")
         print(f"[DEBUG] Dados recebidos: {list(data.keys())}")
-        
+
         # Criar instância do pedido
         pedido = Pedido(
             # Step 1
@@ -224,14 +230,14 @@ def criar_pedido():
             # Relacionamento com cliente
             cliente_id=cliente_id_int
         )
-        
+
         # Inserir no banco de dados
         db.session.add(pedido)
         db.session.commit()
-        
+
         # Debug: Verificar se os campos foram salvos
         print(f"[DEBUG] Pedido #{pedido.id} criado - fonte_pedido salvo: '{pedido.fonte_pedido}', pagamento salvo: '{pedido.pagamento}'")
-        
+
         # Inserir pedido na tabela auxiliar da fonte (se houver fonte)
         if fonte_pedido_id_int:
             try:
@@ -248,7 +254,7 @@ def criar_pedido():
             except Exception as e:
                 # Não falhar a criação do pedido se houver erro na inserção na tabela auxiliar
                 print(f"[ERRO] Erro ao inserir pedido na tabela da fonte: {e}")
-        
+
         # Resposta de sucesso
         return jsonify({
             'success': True,
@@ -256,7 +262,7 @@ def criar_pedido():
             'message': 'Pedido criado com sucesso',
             'pedido': pedido.to_dict()
         }), 201
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -276,7 +282,7 @@ def listar_pedidos():
     """
     MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
     Mantido aqui apenas para compatibilidade durante transição
-    
+
     Se filtrar_por_criacao ou data_inicio/data_fim estiverem presentes,
     redireciona para a nova rota em pedidos.py que tem suporte completo.
     """
@@ -285,25 +291,25 @@ def listar_pedidos():
         filtrar_por_criacao = request.args.get('filtrar_por_criacao', '').lower() == 'true'
         data_inicio = request.args.get('data_inicio')
         data_fim = request.args.get('data_fim')
-        
+
         if filtrar_por_criacao or data_inicio or data_fim:
             # Redirecionar para a nova rota que tem suporte completo
             from app.routes.pedidos import listar_pedidos as nova_listar_pedidos
             return nova_listar_pedidos()
-        
+
         # Comportamento antigo (sem filtrar_por_criacao) - manter para compatibilidade
         # Parâmetros de filtro
         status = request.args.get('status')
         limit = request.args.get('limit', type=int)
         search = request.args.get('search', '').strip()
-        
+
         # Query base - excluir pedidos ocultos/arquivados (comportamento antigo)
-        query = Pedido.query.filter(Pedido.oculto == False)
-        
+        query = Pedido.query.filter(Pedido.oculto is False)
+
         # Aplicar filtros
         if status:
             query = query.filter(Pedido.status == status)
-        
+
         # Busca por cliente ou destinatário
         if search:
             query = query.filter(
@@ -312,22 +318,22 @@ def listar_pedidos():
                     Pedido.destinatario.ilike(f'%{search}%')
                 )
             )
-        
+
         # Ordenar por data de entrega e horário (mais recentes primeiro)
         query = query.order_by(Pedido.dia_entrega.desc(), Pedido.horario.desc())
-        
+
         # Aplicar limite
         if limit:
             query = query.limit(limit)
-        
+
         pedidos = query.all()
-        
+
         return jsonify({
             'success': True,
             'count': len(pedidos),
             'pedidos': [p.to_dict() for p in pedidos]
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro interno do servidor',
@@ -349,13 +355,13 @@ def get_pedidos_por_data():
     """
     try:
         data_str = request.args.get('data')
-        
+
         if not data_str:
             return jsonify({
                 'error': 'Parâmetro "data" é obrigatório',
                 'formato_esperado': 'YYYY-MM-DD (ex: 2025-12-20)'
             }), 400
-        
+
         # Converter data para formato do banco (YYYY-MM-DD)
         try:
             # Aceita formatos: YYYY-MM-DD ou DD/MM/YYYY
@@ -376,13 +382,13 @@ def get_pedidos_por_data():
                 'detalhes': str(e),
                 'formato_esperado': 'YYYY-MM-DD ou DD/MM/YYYY'
             }), 400
-        
+
         # Buscar todos os pedidos do dia (não ocultos)
         pedidos = Pedido.query.filter(
             Pedido.dia_entrega == data_entrega,
-            Pedido.oculto == False
+            Pedido.oculto is False
         ).all()
-        
+
         # Agrupar por horário e contar
         horarios = {}
         for pedido in pedidos:
@@ -392,7 +398,7 @@ def get_pedidos_por_data():
                     horarios[horario] += 1
                 else:
                     horarios[horario] = 1
-        
+
         return jsonify({
             'success': True,
             'data': data_str,
@@ -400,7 +406,7 @@ def get_pedidos_por_data():
             'total_pedidos': len(pedidos),
             'horarios': horarios
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro interno do servidor',
@@ -413,18 +419,18 @@ def obter_pedido(pedido_id):
     """Obtém pedido específico"""
     try:
         pedido = Pedido.query.get(pedido_id)
-        
+
         if not pedido:
             return jsonify({
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
-        
+
         return jsonify({
             'success': True,
             'pedido': pedido.to_dict()
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro ao obter pedido',
@@ -438,10 +444,10 @@ def atualizar_status(pedido_id):
     try:
         data = request.get_json() or {}
         novo_status = data.get('status') or request.form.get('status')
-        
+
         if not novo_status:
             return jsonify({'error': 'Status não fornecido'}), 400
-        
+
         # Validar status
         status_validos = ['agendado', 'em_producao', 'pronto_entrega', 'em_rota', 'pronto_retirada', 'concluido']
         if novo_status not in status_validos:
@@ -449,27 +455,27 @@ def atualizar_status(pedido_id):
                 'error': 'Status inválido',
                 'status_validos': status_validos
             }), 400
-        
+
         # Atualizar pedido
         pedido = Pedido.query.get(pedido_id)
-        
+
         if not pedido:
             return jsonify({
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
-        
+
         pedido.status = novo_status
         pedido.updated_at = datetime.utcnow()
-        
+
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'message': f'Status atualizado para {novo_status}',
             'pedido': pedido.to_dict()
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -491,40 +497,40 @@ def marcar_impresso(pedido_id):
     Mantido aqui apenas para compatibilidade durante transição
     """
     print(f"[BACKEND] marcar_impresso: Recebido pedido_id={pedido_id}, method={request.method}")
-    
+
     # Suporte a OPTIONS para CORS
     if request.method == 'OPTIONS':
-        print(f"[BACKEND] marcar_impresso: Respondendo OPTIONS para CORS")
+        print("[BACKEND] marcar_impresso: Respondendo OPTIONS para CORS")
         return jsonify({'success': True}), 200
-    
+
     try:
         print(f"[BACKEND] marcar_impresso: Buscando pedido {pedido_id} no banco...")
         pedido = Pedido.query.get(pedido_id)
-        
+
         if not pedido:
             print(f"[BACKEND] marcar_impresso: Pedido {pedido_id} não encontrado")
             return jsonify({
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
-        
+
         print(f"[BACKEND] marcar_impresso: Pedido encontrado - ID={pedido.id}, Cliente={pedido.cliente}, Impresso atual={pedido.impresso}")
-        print(f"[BACKEND] marcar_impresso: Marcando como impresso...")
-        
+        print("[BACKEND] marcar_impresso: Marcando como impresso...")
+
         pedido.impresso = True
         pedido.updated_at = datetime.utcnow()
-        
-        print(f"[BACKEND] marcar_impresso: Fazendo commit no banco...")
+
+        print("[BACKEND] marcar_impresso: Fazendo commit no banco...")
         db.session.commit()
-        
+
         print(f"[BACKEND] marcar_impresso: Sucesso - pedido {pedido_id} marcado como impresso")
-        
+
         return jsonify({
             'success': True,
             'message': 'Pedido marcado como impresso',
             'pedido': pedido.to_dict()
         })
-        
+
     except Exception as e:
         print(f"[BACKEND] marcar_impresso: Erro - {str(e)}")
         import traceback
@@ -551,17 +557,17 @@ def atualizar_pedido(pedido_id):
     try:
         print(f"[API] Atualizando pedido {pedido_id}")
         pedido = Pedido.query.get(pedido_id)
-        
+
         if not pedido:
             print(f"[API] Pedido {pedido_id} não encontrado")
             return jsonify({
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
-        
+
         data = request.get_json()
         print(f"[API] Dados recebidos: {list(data.keys()) if data else 'Nenhum dado'}")
-        
+
         # Atualizar campos fornecidos
         if 'cliente' in data:
             pedido.cliente = data['cliente']
@@ -615,7 +621,7 @@ def atualizar_pedido(pedido_id):
         if 'endereco' in data and data['endereco'] != pedido.endereco:
             pedido.endereco = data['endereco']
             endereco_mudou = True
-        
+
         # Se o endereço mudou, limpar distância para forçar recálculo
         if endereco_mudou:
             pedido.distancia_km = None
@@ -632,18 +638,18 @@ def atualizar_pedido(pedido_id):
             pedido.status_pagamento = data['status_pagamento']
         if 'status' in data:
             pedido.status = data['status']
-        
+
         pedido.updated_at = datetime.utcnow()
-        
+
         db.session.commit()
         print(f"[API] Pedido {pedido_id} atualizado com sucesso")
-        
+
         return jsonify({
             'success': True,
             'message': 'Pedido atualizado com sucesso',
             'pedido': pedido.to_dict()
         })
-        
+
     except Exception as e:
         db.session.rollback()
         print(f"[API] Erro ao atualizar pedido {pedido_id}: {e}")
@@ -686,7 +692,7 @@ def obter_status_backup():
         stats = get_backup_stats()
         last_backup = get_last_backup_time()
         has_recent = has_recent_backup(hours=24)
-        
+
         response = {
             'success': True,
             'backup_stats': {
@@ -702,7 +708,7 @@ def obter_status_backup():
                 } if last_backup else None
             }
         }
-        
+
         return jsonify(response)
     except Exception as e:
         return jsonify({
@@ -716,13 +722,13 @@ def pedidos_atrasados():
     """Retorna pedidos atrasados"""
     try:
         overdue_pedidos = Pedido.get_overdue_pedidos()
-        
+
         return jsonify({
             'success': True,
             'count': len(overdue_pedidos),
             'pedidos': [p.to_dict() for p in overdue_pedidos]
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro ao obter pedidos atrasados',
@@ -736,15 +742,15 @@ def limpar_pedidos_antigos():
     try:
         data = request.get_json() or {}
         days = data.get('days', 1)
-        
+
         count = Pedido.cleanup_old_pedidos(days=days)
-        
+
         return jsonify({
             'success': True,
             'message': f'{count} pedidos antigos arquivados (ocultos da lista)',
             'count': count
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro ao limpar pedidos antigos',
@@ -757,18 +763,18 @@ def calcular_distancia_pedido_endpoint(pedido_id):
     """Calcula e retorna a distância da floricultura até o endereço do pedido"""
     try:
         from app.services.distancia import distancia_service
-        
+
         pedido = Pedido.query.get(pedido_id)
-        
+
         if not pedido:
             return jsonify({
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
-        
+
         # Verificar se tem query param force_recalc
         force_recalc = request.args.get('force_recalc', 'false').lower() == 'true'
-        
+
         # Se já tem distância calculada e não é forçado, retornar do cache
         if pedido.distancia_km is not None and not force_recalc:
             print(f"[DEBUG] Pedido {pedido_id}: retornando distância do cache: {pedido.distancia_km} km")
@@ -779,12 +785,12 @@ def calcular_distancia_pedido_endpoint(pedido_id):
                 'endereco': pedido.endereco,
                 'cached': True
             })
-        
-        print(f"\n[DEBUG] ========== CALCULANDO DISTÂNCIA INDIVIDUAL ==========")
+
+        print("\n[DEBUG] ========== CALCULANDO DISTÂNCIA INDIVIDUAL ==========")
         print(f"[DEBUG] Pedido ID: {pedido_id}")
         print(f"[DEBUG] Campos: rua={pedido.rua}, num={pedido.numero}, bairro={pedido.bairro}, cidade={pedido.cidade}, cep={pedido.cep}")
         print(f"[DEBUG] Forçar recálculo: {force_recalc}")
-        
+
         # Calcular distância usando APENAS campos separados (não usa pedido.endereco)
         resultado = distancia_service.calcular_distancia_pedido(
             pedido_id=pedido_id,
@@ -794,7 +800,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
             cidade=pedido.cidade,
             cep=pedido.cep
         )
-        
+
         # Verificar se houve erro de validação
         if resultado and 'error' in resultado:
             print(f"[ERRO] Validação falhou: {resultado['error']}")
@@ -805,7 +811,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
                 'detalhes': resultado.get('detalhes'),
                 'campos_recebidos': resultado.get('campos_recebidos')
             }), 400
-        
+
         if resultado:
             # Salvar no banco para cache
             pedido.distancia_km = resultado['distancia_km']
@@ -815,7 +821,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
             if 'coords_destino_lon' in resultado:
                 pedido.coords_lon = resultado['coords_destino_lon']
             db.session.commit()
-            
+
             return jsonify({
                 'success': True,
                 'pedido_id': pedido_id,
@@ -831,7 +837,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
                 'error': 'Não foi possível calcular a distância',
                 'detalhes': 'Resultado inesperado do serviço de distância'
             }), 500
-            
+
     except Exception as e:
         print(f"[ERRO] Exceção ao calcular distância do pedido {pedido_id}: {e}")
         return jsonify({
@@ -845,18 +851,18 @@ def calcular_distancias_lote():
     """Calcula distâncias para múltiplos pedidos em lote"""
     try:
         from app.services.distancia import distancia_service
-        
+
         data = request.get_json() or {}
         pedido_ids = data.get('pedido_ids', [])
         force_recalc = data.get('force_recalc', False)  # Forçar recálculo mesmo se já tiver cache
-        
+
         if not pedido_ids:
             # Se não especificar IDs, calcular apenas para pedidos:
             # - Não ocultos
             # - Não concluídos (status != 'concluido')
             # - Tipo Entrega (tipo_pedido == 'Entrega')
             pedidos = Pedido.query.filter(
-                Pedido.oculto == False,
+                Pedido.oculto is False,
                 Pedido.status != 'concluido',
                 Pedido.tipo_pedido == 'Entrega'
             ).all()
@@ -867,13 +873,13 @@ def calcular_distancias_lote():
                 Pedido.status != 'concluido',
                 Pedido.tipo_pedido == 'Entrega'
             ).all()
-        
+
         resultados = []
         calculados = 0
         do_cache = 0
         erros = 0
         ignorados = 0
-        
+
         for pedido in pedidos:
             try:
                 # Se já tem distância e não é forçado, usar cache
@@ -885,7 +891,7 @@ def calcular_distancias_lote():
                     })
                     do_cache += 1
                     continue
-                
+
                 # Pular pedidos sem endereço
                 if not pedido.endereco:
                     resultados.append({
@@ -895,7 +901,7 @@ def calcular_distancias_lote():
                     })
                     ignorados += 1
                     continue
-                
+
                 # Pular pedidos do tipo Retirada
                 if pedido.tipo_pedido == 'Retirada':
                     resultados.append({
@@ -905,7 +911,7 @@ def calcular_distancias_lote():
                     })
                     ignorados += 1
                     continue
-                
+
                 # Calcular distância usando campos separados para melhor precisão
                 resultado = distancia_service.calcular_distancia_pedido(
                     endereco_pedido=pedido.endereco,
@@ -916,7 +922,7 @@ def calcular_distancias_lote():
                     cidade=pedido.cidade,
                     cep=pedido.cep
                 )
-                
+
                 if resultado:
                     pedido.distancia_km = resultado['distancia_km']
                     # Salvar coordenadas se disponíveis
@@ -948,7 +954,7 @@ def calcular_distancias_lote():
                         'error': 'Falha na geocodificação'
                     })
                     erros += 1
-                    
+
             except Exception as pedido_error:
                 # Erro ao processar pedido individual - não interrompe o lote
                 print(f"[ERRO] Erro ao calcular distância do pedido {pedido.id}: {pedido_error}")
@@ -958,17 +964,17 @@ def calcular_distancias_lote():
                     'error': f'Erro interno: {str(pedido_error)[:50]}'
                 })
                 erros += 1
-        
+
         # Salvar distâncias calculadas no banco
         try:
             db.session.commit()
         except Exception as commit_error:
             print(f"[ERRO] Erro ao salvar distâncias: {commit_error}")
             db.session.rollback()
-        
+
         # Ordenar por distância (None no final)
         resultados.sort(key=lambda x: (x['distancia_km'] is None, x['distancia_km'] or 0))
-        
+
         return jsonify({
             'success': True,
             'total': len(resultados),
@@ -978,7 +984,7 @@ def calcular_distancias_lote():
             'ignorados': ignorados,
             'resultados': resultados
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -993,15 +999,15 @@ def calcular_taxa_pedido(pedido_id):
     try:
         from app.services.distancia import distancia_service
         from app.services.taxa_entrega import taxa_entrega_service
-        
+
         pedido = Pedido.query.get(pedido_id)
-        
+
         if not pedido:
             return jsonify({
                 'error': 'Pedido não encontrado',
                 'pedido_id': pedido_id
             }), 404
-        
+
         # Verificar se já tem distância calculada
         if pedido.distancia_km is None:
             # Calcular distância primeiro
@@ -1014,7 +1020,7 @@ def calcular_taxa_pedido(pedido_id):
                 cidade=pedido.cidade,
                 cep=pedido.cep
             )
-            
+
             if not resultado:
                 return jsonify({
                     'success': False,
@@ -1022,7 +1028,7 @@ def calcular_taxa_pedido(pedido_id):
                     'error': 'Não foi possível calcular a distância para calcular a taxa',
                     'endereco': pedido.endereco
                 }), 400
-            
+
             # Salvar distância e coordenadas
             pedido.distancia_km = resultado['distancia_km']
             if 'coords_destino_lat' in resultado:
@@ -1030,14 +1036,14 @@ def calcular_taxa_pedido(pedido_id):
             if 'coords_destino_lon' in resultado:
                 pedido.coords_lon = resultado['coords_destino_lon']
             db.session.commit()
-        
+
         # Calcular taxa de entrega
         taxa = taxa_entrega_service.calcular_taxa(pedido.distancia_km)
-        
+
         # Salvar taxa no pedido
         pedido.taxa_entrega = taxa
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'pedido_id': pedido_id,
@@ -1045,7 +1051,7 @@ def calcular_taxa_pedido(pedido_id):
             'taxa_entrega': taxa,
             'endereco': pedido.endereco
         })
-        
+
     except Exception as e:
         db.session.rollback()
         print(f"[ERRO] Exceção ao calcular taxa do pedido {pedido_id}: {e}")
@@ -1059,25 +1065,24 @@ def agrupar_pedidos_por_horario(pedidos):
     """
     Agrupa pedidos por data de entrega e ordena por horário dentro de cada grupo.
     Cria grupos de horários próximos (janela de 2 horas).
-    
+
     Returns:
         Lista de grupos, onde cada grupo é uma lista de pedidos ordenados por horário
     """
     from collections import defaultdict
-    from datetime import datetime, timedelta
-    
+
     # Agrupar por data de entrega
     pedidos_por_data = defaultdict(list)
     for pedido in pedidos:
         if pedido.dia_entrega:
             pedidos_por_data[pedido.dia_entrega].append(pedido)
-    
+
     grupos_finais = []
-    
+
     # Para cada data, ordenar por horário e criar grupos de horários próximos
     for data_entrega in sorted(pedidos_por_data.keys()):
         pedidos_do_dia = pedidos_por_data[data_entrega]
-        
+
         # Ordenar por horário (mais cedo primeiro)
         def parse_horario(horario_str):
             try:
@@ -1092,19 +1097,19 @@ def agrupar_pedidos_por_horario(pedidos):
                     h, m = map(int, horario_str.split(':'))
                     return h * 60 + m  # Converter para minutos desde meia-noite
                 return 0
-            except:
+            except (ValueError, IndexError):
                 return 0
-        
+
         pedidos_do_dia.sort(key=lambda p: parse_horario(p.horario or '00:00'))
-        
+
         # Criar grupos de horários próximos (janela de 2 horas)
         grupos_horario = []
         grupo_atual = []
         horario_base = None
-        
+
         for pedido in pedidos_do_dia:
             horario_minutos = parse_horario(pedido.horario or '00:00')
-            
+
             if horario_base is None:
                 horario_base = horario_minutos
                 grupo_atual = [pedido]
@@ -1116,13 +1121,13 @@ def agrupar_pedidos_por_horario(pedidos):
                     grupos_horario.append(grupo_atual)
                 horario_base = horario_minutos
                 grupo_atual = [pedido]
-        
+
         # Adicionar último grupo
         if grupo_atual:
             grupos_horario.append(grupo_atual)
-        
+
         grupos_finais.extend(grupos_horario)
-    
+
     return grupos_finais
 
 
@@ -1130,33 +1135,33 @@ def mapear_waypoints_para_pedidos(waypoints_otimizados, pedidos_com_coords):
     """
     Mapeia waypoints otimizados de volta para pedidos com validação rigorosa.
     Evita duplicatas e usa tolerância precisa.
-    
+
     Returns:
         Lista de IDs de pedidos na ordem correta
     """
     import math
-    
+
     sequencia_pedidos = []
     pedidos_disponiveis = pedidos_com_coords.copy()
     pedidos_mapeados = set()  # Para evitar duplicatas
-    
+
     # Criar mapeamento inicial de coordenadas para pedidos
     coords_para_pedido = {}
     for pedido in pedidos_com_coords:
         if pedido.coords_lat and pedido.coords_lon:
             coords_para_pedido[(pedido.coords_lat, pedido.coords_lon)] = pedido
-    
+
     # Tolerância de distância (em graus) - aproximadamente 11 metros
     TOLERANCIA_DISTANCIA = 0.0001
-    
+
     for waypoint in waypoints_otimizados:
         if not pedidos_disponiveis:
             break
-        
+
         pedido_encontrado = None
         menor_dist = float('inf')
         indice_encontrado = -1
-        
+
         # Tentar match exato primeiro
         coords_waypoint = (round(waypoint[0], 6), round(waypoint[1], 6))
         if coords_waypoint in coords_para_pedido:
@@ -1168,37 +1173,37 @@ def mapear_waypoints_para_pedidos(waypoints_otimizados, pedidos_com_coords):
                     if p.id == pedido_exato.id:
                         indice_encontrado = i
                         break
-        
+
         # Se não encontrou match exato, buscar por proximidade
         if not pedido_encontrado:
             for i, pedido in enumerate(pedidos_disponiveis):
                 if pedido.id in pedidos_mapeados:
                     continue  # Já mapeado
-                    
+
                 if pedido.coords_lat and pedido.coords_lon:
                     # Calcular distância usando fórmula de Haversine aproximada
                     lat_diff = pedido.coords_lat - waypoint[0]
                     lon_diff = pedido.coords_lon - waypoint[1]
                     dist = math.sqrt(lat_diff**2 + lon_diff**2)
-                    
+
                     if dist < menor_dist and dist <= TOLERANCIA_DISTANCIA:
                         menor_dist = dist
                         pedido_encontrado = pedido
                         indice_encontrado = i
-        
+
         # Adicionar pedido encontrado à sequência
         if pedido_encontrado and pedido_encontrado.id not in pedidos_mapeados:
             sequencia_pedidos.append(pedido_encontrado.id)
             pedidos_mapeados.add(pedido_encontrado.id)
             if indice_encontrado >= 0:
                 pedidos_disponiveis.pop(indice_encontrado)
-    
+
     # Adicionar pedidos restantes que não foram mapeados (não devem ter coordenadas válidas)
     for pedido in pedidos_disponiveis:
         if pedido.id not in pedidos_mapeados:
             sequencia_pedidos.append(pedido.id)
             pedidos_mapeados.add(pedido.id)
-    
+
     return sequencia_pedidos
 
 
@@ -1218,19 +1223,19 @@ def calcular_rota_otimizada():
     """
     try:
         import os
-        import math
+
+        from app.models import RotaOtimizada
         from app.services.distancia import distancia_service
         from app.services.graphhopper import graphhopper_service
-        from app.models import RotaOtimizada
-        
+
         data = request.get_json() or {}
         pedido_ids = data.get('pedido_ids', [])
         nome_rota = data.get('nome', 'Rota Otimizada')
-        
+
         if not pedido_ids:
             # Se não especificar IDs, usar pedidos elegíveis
             pedidos = Pedido.query.filter(
-                Pedido.oculto == False,
+                Pedido.oculto is False,
                 Pedido.status != 'concluido',
                 Pedido.tipo_pedido == 'Entrega',
                 Pedido.distancia_km.isnot(None)  # Apenas pedidos com distância calculada
@@ -1241,26 +1246,26 @@ def calcular_rota_otimizada():
                 Pedido.status != 'concluido',
                 Pedido.tipo_pedido == 'Entrega'
             ).all()
-        
+
         if len(pedidos) < 2:
             return jsonify({
                 'error': 'É necessário pelo menos 2 pedidos para calcular rota otimizada',
                 'pedidos_encontrados': len(pedidos)
             }), 400
-        
+
         # Obter coordenadas da floricultura
         origem = distancia_service.coords_floricultura
         if not origem:
             return jsonify({
                 'error': 'Não foi possível obter coordenadas da floricultura'
             }), 500
-        
+
         # Converter para formato (lat, lon) para GraphHopper
         origem_gh = (origem[1], origem[0])
-        
+
         # Coletar waypoints dos pedidos (apenas os que têm coordenadas)
         pedidos_com_coords = []
-        
+
         for pedido in pedidos:
             if pedido.coords_lat and pedido.coords_lon:
                 pedidos_com_coords.append(pedido)
@@ -1274,7 +1279,7 @@ def calcular_rota_otimizada():
                     cidade=pedido.cidade,
                     cep=pedido.cep
                 )
-                
+
                 # Verificar se houve erro ou se obteve coordenadas
                 if resultado and 'error' not in resultado and 'coords_destino_lat' in resultado:
                     lat = resultado['coords_destino_lat']
@@ -1284,41 +1289,41 @@ def calcular_rota_otimizada():
                     pedidos_com_coords.append(pedido)
                 elif resultado and 'error' in resultado:
                     print(f"[AVISO] Pedido {pedido.id} não pôde ser geocodificado: {resultado['error']}")
-        
+
         if len(pedidos_com_coords) < 2:
             return jsonify({
                 'error': 'É necessário pelo menos 2 pedidos com coordenadas válidas',
                 'waypoints_encontrados': len(pedidos_com_coords)
             }), 400
-        
+
         # NOVA LÓGICA: Agrupar pedidos por horário antes de otimizar
         grupos_horario = agrupar_pedidos_por_horario(pedidos_com_coords)
-        
+
         sequencia_pedidos_final = []
         waypoints_finais = []
         distancia_total = 0.0
         duracao_total = 0.0
-        
+
         # Para cada grupo de horário, otimizar geograficamente
         for grupo in grupos_horario:
             if len(grupo) == 0:
                 continue
-            
+
             # Se grupo tem apenas 1 pedido, adicionar diretamente
             if len(grupo) == 1:
                 pedido = grupo[0]
                 sequencia_pedidos_final.append(pedido.id)
                 waypoints_finais.append((pedido.coords_lat, pedido.coords_lon))
                 continue
-            
+
             # Coletar waypoints do grupo
             waypoints_grupo = [(p.coords_lat, p.coords_lon) for p in grupo]
-            
+
             # Otimizar ordem geográfica dentro do grupo
             resultado_grupo = graphhopper_service.calcular_rota_otimizada(
                 origem_gh, waypoints_grupo, retornar_origem=False
             )
-            
+
             if resultado_grupo:
                 waypoints_otimizados_grupo = resultado_grupo.get('sequencia_otimizada', waypoints_grupo)
                 distancia_total += resultado_grupo.get('distancia_total_km', 0)
@@ -1326,14 +1331,14 @@ def calcular_rota_otimizada():
             else:
                 # Se falhar otimização, usar ordem original por horário
                 waypoints_otimizados_grupo = waypoints_grupo
-            
+
             # Mapear waypoints otimizados de volta para pedidos do grupo
             sequencia_grupo = mapear_waypoints_para_pedidos(waypoints_otimizados_grupo, grupo)
-            
+
             # Adicionar à sequência final
             sequencia_pedidos_final.extend(sequencia_grupo)
             waypoints_finais.extend(waypoints_otimizados_grupo)
-        
+
         # Validar sequência final (verificar duplicatas)
         sequencia_validada = []
         ids_vistos = set()
@@ -1343,7 +1348,7 @@ def calcular_rota_otimizada():
                 ids_vistos.add(pedido_id)
             else:
                 print(f"[AVISO] Pedido {pedido_id} duplicado na sequência, removendo duplicata")
-        
+
         # Se a sequência validada tem menos pedidos, usar a original mas sem duplicatas
         if len(sequencia_validada) < len(pedidos_com_coords):
             print(f"[AVISO] Sequência validada perdeu pedidos. Original: {len(sequencia_pedidos_final)}, Validada: {len(sequencia_validada)}")
@@ -1352,9 +1357,9 @@ def calcular_rota_otimizada():
                 if pedido.id not in ids_vistos:
                     sequencia_validada.append(pedido.id)
                     ids_vistos.add(pedido.id)
-        
+
         sequencia_pedidos = sequencia_validada
-        
+
         # Verificar se a sequência está invertida comparando com ordem esperada por horário
         def get_horario_pedido(pedido_id):
             for p in pedidos_com_coords:
@@ -1370,28 +1375,28 @@ def calcular_rota_otimizada():
                             if ':' in horario_str:
                                 h, m = map(int, horario_str.split(':'))
                                 return h * 60 + m
-                    except:
+                    except (ValueError, IndexError):
                         pass
             return 9999  # Valor alto para pedidos sem horário válido
-        
+
         # Verificar ordem temporal da sequência
         if len(sequencia_pedidos) >= 2:
             horarios_sequencia = [get_horario_pedido(pid) for pid in sequencia_pedidos]
-            
+
             # Verificar se a sequência está em ordem crescente de horário
             # Se não estiver, pode estar invertida
-            ordem_crescente = all(horarios_sequencia[i] <= horarios_sequencia[i+1] 
+            ordem_crescente = all(horarios_sequencia[i] <= horarios_sequencia[i+1]
                                  for i in range(len(horarios_sequencia)-1))
-            
+
             # Se a ordem está decrescente e não há valores inválidos, provavelmente está invertida
-            ordem_decrescente = all(horarios_sequencia[i] >= horarios_sequencia[i+1] 
+            ordem_decrescente = all(horarios_sequencia[i] >= horarios_sequencia[i+1]
                                    for i in range(len(horarios_sequencia)-1))
-            
+
             if ordem_decrescente and not ordem_crescente and all(h < 9999 for h in horarios_sequencia):
-                print(f"[INFO] Detectada sequência invertida (ordem decrescente de horários). Revertendo...")
+                print("[INFO] Detectada sequência invertida (ordem decrescente de horários). Revertendo...")
                 sequencia_pedidos = sequencia_pedidos[::-1]
                 waypoints_finais = waypoints_finais[::-1]
-        
+
         # Calcular distância e duração total se não foram calculadas por grupos
         if distancia_total == 0 or duracao_total == 0:
             # Calcular rota completa para obter distância e duração totais
@@ -1400,29 +1405,29 @@ def calcular_rota_otimizada():
             resultado_rota_completa = graphhopper_service.calcular_rota_otimizada(
                 origem_gh, waypoints_gh, retornar_origem=True
             )
-            
+
             if resultado_rota_completa:
                 distancia_total = resultado_rota_completa.get('distancia_total_km', 0)
                 duracao_total = resultado_rota_completa.get('duracao_total_min', 0)
                 # Atualizar waypoints finais com a sequência otimizada completa
                 waypoints_otimizados_completa = resultado_rota_completa.get('sequencia_otimizada', waypoints_finais)
-                
+
                 # Re-mapear waypoints otimizados para pedidos mantendo a ordem temporal
                 # Mas respeitando a otimização geográfica dentro dos grupos
                 sequencia_pedidos_nova = mapear_waypoints_para_pedidos(waypoints_otimizados_completa, pedidos_com_coords)
-                
+
                 # Validar que não perdemos pedidos
                 if len(sequencia_pedidos_nova) == len(sequencia_pedidos):
                     sequencia_pedidos = sequencia_pedidos_nova
                     waypoints_finais = waypoints_otimizados_completa
                 else:
-                    print(f"[AVISO] Re-mapeamento perdeu pedidos. Mantendo sequência original baseada em horário.")
+                    print("[AVISO] Re-mapeamento perdeu pedidos. Mantendo sequência original baseada em horário.")
             else:
                 # Fallback: usar estimativa baseada em distâncias individuais
                 distancia_total = sum(p.distancia_km or 0 for p in pedidos_com_coords)
                 duracao_total = distancia_total * 2  # Estimativa: 2 min/km
-                print(f"[AVISO] Não foi possível calcular rota completa. Usando estimativas.")
-        
+                print("[AVISO] Não foi possível calcular rota completa. Usando estimativas.")
+
         # Salvar rota no banco
         rota = RotaOtimizada(
             nome=nome_rota,
@@ -1435,9 +1440,9 @@ def calcular_rota_otimizada():
         )
         rota.set_sequencia_pedidos(sequencia_pedidos)
         rota.set_waypoints_coords(waypoints_finais)
-        
+
         db.session.add(rota)
-        
+
         # Salvar coordenadas dos pedidos se ainda não tiverem
         try:
             db.session.commit()
@@ -1445,24 +1450,24 @@ def calcular_rota_otimizada():
             print(f"[ERRO] Erro ao salvar rota: {commit_error}")
             db.session.rollback()
             raise
-        
+
         # Gerar link do GraphHopper Maps para visualização
         graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
         graphhopper_maps_url = None
-        
+
         if graphhopper_key:
             # Construir URL do GraphHopper Maps com todos os pontos
             waypoints_coords = rota.get_waypoints_coords()
             points_params = f"point={origem[1]},{origem[0]}"  # Origem (lat,lon)
-            
+
             for wp in waypoints_coords:
                 points_params += f"&point={wp[0]},{wp[1]}"
-            
+
             # Sempre adicionar retorno à origem
             points_params += f"&point={origem[1]},{origem[0]}"  # Retornar à origem
-            
+
             graphhopper_maps_url = f"https://graphhopper.com/maps/?{points_params}&profile=car&layer=Omniscale&key={graphhopper_key}"
-        
+
         return jsonify({
             'success': True,
             'rota_id': rota.id,
@@ -1479,7 +1484,7 @@ def calcular_rota_otimizada():
             'waypoints': rota.get_waypoints_coords(),
             'graphhopper_maps_url': graphhopper_maps_url
         })
-        
+
     except Exception as e:
         db.session.rollback()
         print(f"[ERRO] Exceção ao calcular rota otimizada: {e}")
@@ -1506,16 +1511,17 @@ def obter_rota_otimizada(rota_id):
     """
     try:
         import os
+
         from app.models import RotaOtimizada
-        
+
         rota = RotaOtimizada.query.get(rota_id)
-        
+
         if not rota:
             return jsonify({
                 'error': 'Rota não encontrada',
                 'rota_id': rota_id
             }), 404
-        
+
         # Buscar informações dos pedidos na sequência
         pedidos_info = []
         for pedido_id in rota.get_sequencia_pedidos():
@@ -1530,12 +1536,12 @@ def obter_rota_otimizada(rota_id):
                     'coords_lat': pedido.coords_lat,
                     'coords_lon': pedido.coords_lon
                 })
-        
+
         # Gerar URL do GraphHopper Maps ou Google Maps
         graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
         graphhopper_maps_url = None
         google_maps_url = None
-        
+
         # Coletar coordenadas dos pedidos se waypoints não estiverem salvos
         waypoints_coords = rota.get_waypoints_coords()
         if not waypoints_coords or len(waypoints_coords) == 0:
@@ -1544,24 +1550,24 @@ def obter_rota_otimizada(rota_id):
             for pedido_info in pedidos_info:
                 if pedido_info.get('coords_lat') and pedido_info.get('coords_lon'):
                     waypoints_coords.append([pedido_info['coords_lat'], pedido_info['coords_lon']])
-        
+
         # Gerar URL do GraphHopper Maps se tiver chave e waypoints
         if graphhopper_key and waypoints_coords and len(waypoints_coords) > 0:
             points_params = f"point={rota.origem_lat},{rota.origem_lon}"  # Origem
-            
+
             for wp in waypoints_coords:
                 points_params += f"&point={wp[0]},{wp[1]}"
-            
+
             # Sempre adicionar retorno à origem
             points_params += f"&point={rota.origem_lat},{rota.origem_lon}"
-            
+
             graphhopper_maps_url = f"https://graphhopper.com/maps/?{points_params}&profile=car&layer=Omniscale&key={graphhopper_key}"
-        
+
         # Gerar URL do Google Maps como alternativa (sempre disponível)
         if waypoints_coords and len(waypoints_coords) > 0:
             # Construir URL do Google Maps com waypoints
             origem_str = f"{rota.origem_lat},{rota.origem_lon}"
-            
+
             # Se houver apenas um waypoint, usar formato simples
             if len(waypoints_coords) == 1:
                 wp = waypoints_coords[0]
@@ -1571,17 +1577,17 @@ def obter_rota_otimizada(rota_id):
                 waypoints_str = '/'.join([f"{wp[0]},{wp[1]}" for wp in waypoints_coords])
                 destino_str = f"{waypoints_coords[-1][0]},{waypoints_coords[-1][1]}"
                 google_maps_url = f"https://www.google.com/maps/dir/{origem_str}/{waypoints_str}/{destino_str}/{origem_str}"
-        
+
         rota_dict = rota.to_dict()
         rota_dict['graphhopper_maps_url'] = graphhopper_maps_url
         rota_dict['google_maps_url'] = google_maps_url
-        
+
         return jsonify({
             'success': True,
             'rota': rota_dict,
             'pedidos': pedidos_info
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro ao obter rota otimizada',
@@ -1595,7 +1601,7 @@ def health_check():
     try:
         # Verificar se o banco está acessível
         Pedido.query.count()
-        
+
         return jsonify({
             'success': True,
             'status': 'healthy',
@@ -1619,14 +1625,14 @@ def listar_fontes_pedido():
     try:
         apenas_ativas = request.args.get('ativas', 'true').lower() == 'true'
         print(f"[API] Listando fontes (apenas ativas: {apenas_ativas})...")
-        
+
         if apenas_ativas:
             fontes = FontePedido.get_ativas()
         else:
             fontes = FontePedido.get_all()
-        
+
         print(f"[API] {len(fontes)} fontes encontradas")
-        
+
         return jsonify({
             'success': True,
             'count': len(fontes),
@@ -1651,7 +1657,7 @@ def listar_todas_fontes():
         print("[API] Listando todas as fontes...")
         fontes = FontePedido.get_all()
         print(f"[API] {len(fontes)} fontes encontradas")
-        
+
         return jsonify({
             'success': True,
             'count': len(fontes),
@@ -1675,15 +1681,15 @@ def criar_fonte_pedido():
     """Cria nova fonte de pedido"""
     try:
         data = request.get_json()
-        
+
         if not data:
             return jsonify({'error': 'Nenhum dado fornecido'}), 400
-        
+
         nome = data.get('nome', '').strip()
-        
+
         if not nome:
             return jsonify({'error': 'Nome da fonte é obrigatório'}), 400
-        
+
         # Verificar se já existe
         fonte_existente = FontePedido.query.filter_by(nome=nome).first()
         if fonte_existente:
@@ -1691,16 +1697,16 @@ def criar_fonte_pedido():
                 'error': 'Fonte com este nome já existe',
                 'fonte_id': fonte_existente.id
             }), 400
-        
+
         # Criar nova fonte
         fonte = FontePedido(
             nome=nome,
             ativo=data.get('ativo', True)
         )
-        
+
         db.session.add(fonte)
         db.session.commit()
-        
+
         # Criar tabela auxiliar para a nova fonte (se estiver ativa)
         if fonte.ativo:
             try:
@@ -1711,13 +1717,13 @@ def criar_fonte_pedido():
             except Exception as e:
                 print(f"[WARN] Erro ao criar tabela para nova fonte: {e}")
                 # Não falhar a criação da fonte se houver erro na tabela
-        
+
         return jsonify({
             'success': True,
             'message': 'Fonte criada com sucesso',
             'fonte': fonte.to_dict()
         }), 201
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -1732,15 +1738,15 @@ def atualizar_fonte_pedido(fonte_id):
     """Atualiza fonte de pedido"""
     try:
         fonte = FontePedido.query.get(fonte_id)
-        
+
         if not fonte:
             return jsonify({
                 'error': 'Fonte não encontrada',
                 'fonte_id': fonte_id
             }), 404
-        
+
         data = request.get_json()
-        
+
         if 'nome' in data:
             novo_nome = data['nome'].strip()
             if novo_nome and novo_nome != fonte.nome:
@@ -1751,20 +1757,20 @@ def atualizar_fonte_pedido(fonte_id):
                         'error': 'Fonte com este nome já existe'
                     }), 400
                 fonte.nome = novo_nome
-        
+
         if 'ativo' in data:
             fonte.ativo = bool(data['ativo'])
-        
+
         fonte.updated_at = datetime.utcnow()
-        
+
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'message': 'Fonte atualizada com sucesso',
             'fonte': fonte.to_dict()
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -1777,18 +1783,21 @@ def atualizar_fonte_pedido(fonte_id):
 @requires_edit_auth
 def deletar_fonte_pedido(fonte_id):
     """Desativa fonte de pedido (soft delete)"""
-    from app.utils.destructive_action_guard import ensure_backup_before_destructive_action, BackupRequiredException
     from app.schemas.common import error_response
-    
+    from app.utils.destructive_action_guard import (
+        BackupRequiredException,
+        ensure_backup_before_destructive_action,
+    )
+
     try:
         fonte = FontePedido.query.get(fonte_id)
-        
+
         if not fonte:
             return jsonify({
                 'error': 'Fonte não encontrada',
                 'fonte_id': fonte_id
             }), 404
-        
+
         # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
         # Nota: Embora seja soft delete, mantemos guard para consistência
         try:
@@ -1800,19 +1809,19 @@ def deletar_fonte_pedido(fonte_id):
                 503,
                 details={'error': error_msg, 'fonte_id': fonte_id}
             )
-        
+
         # Soft delete: apenas desativar
         fonte.ativo = False
         fonte.updated_at = datetime.utcnow()
-        
+
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'message': 'Fonte desativada com sucesso',
             'fonte': fonte.to_dict()
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -1833,7 +1842,7 @@ def listar_pedidos_fonte(fonte_id):
     """
     try:
         from app.models.pedido_fonte import PedidoFonte
-        
+
         # Verificar se fonte existe
         fonte = FontePedido.query.get(fonte_id)
         if not fonte:
@@ -1841,21 +1850,21 @@ def listar_pedidos_fonte(fonte_id):
                 'error': 'Fonte não encontrada',
                 'fonte_id': fonte_id
             }), 404
-        
+
         # Parâmetros de paginação
         limit = request.args.get('limit', type=int)
         offset = request.args.get('offset', type=int) or 0
-        
+
         # Buscar pedidos da fonte
         pedidos = PedidoFonte.obter_pedidos(fonte_id, limit=limit, offset=offset)
-        
+
         return jsonify({
             'success': True,
             'fonte': fonte.to_dict(),
             'count': len(pedidos),
             'pedidos': pedidos
         })
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1873,7 +1882,7 @@ def estatisticas_fonte(fonte_id):
     """
     try:
         from app.models.pedido_fonte import PedidoFonte
-        
+
         # Verificar se fonte existe
         fonte = FontePedido.query.get(fonte_id)
         if not fonte:
@@ -1881,21 +1890,21 @@ def estatisticas_fonte(fonte_id):
                 'error': 'Fonte não encontrada',
                 'fonte_id': fonte_id
             }), 404
-        
+
         # Obter estatísticas
         estatisticas = PedidoFonte.obter_estatisticas(fonte_id)
-        
+
         # Obter nome da tabela
         from app.utils.fonte_helper import get_tabela_fonte
         nome_tabela = get_tabela_fonte(fonte_id)
-        
+
         return jsonify({
             'success': True,
             'fonte': fonte.to_dict(),
             'tabela': nome_tabela,
             'estatisticas': estatisticas
         })
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1932,11 +1941,11 @@ def debug_geocode():
     """
     Endpoint de debug para testar geocodificação de um endereço.
     Mostra detalhes completos do que a API retorna.
-    
+
     GET: /api/debug/geocode?endereco=Rua+X,+123
     GET: /api/debug/geocode?rua=Rua+X&numero=123&bairro=Centro&cidade=Goiania&cep=74000000
     POST: {"endereco": "Rua X, 123"} ou {"rua": "Rua X", "numero": "123", ...}
-    
+
     SEGURANÇA: Requer autenticação
     """
     # Verificar se debug endpoints estão habilitados
@@ -1946,11 +1955,11 @@ def debug_geocode():
             'error': 'Endpoint de debug desabilitado',
             'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
         }), 403
-    
+
     try:
+
         from app.services.distancia import distancia_service
-        import requests
-        
+
         # Aceitar tanto GET (query param) quanto POST (json body)
         if request.method == 'GET':
             endereco = request.args.get('endereco', '')
@@ -1967,10 +1976,10 @@ def debug_geocode():
             bairro = data.get('bairro', '')
             cidade = data.get('cidade', '')
             cep = data.get('cep', '')
-        
+
         # Verificar se tem campos separados ou endereço completo
         tem_campos_separados = rua or bairro or cep
-        
+
         if not endereco and not tem_campos_separados:
             return jsonify({
                 'error': 'Endereço é obrigatório',
@@ -1981,11 +1990,11 @@ def debug_geocode():
                     'POST {"rua": "Rua X", "numero": "123", "bairro": "Centro", "cidade": "Goiânia", "cep": "74000-000"}'
                 ]
             }), 400
-        
-        print(f"\n[DEBUG] ========== TESTE DE GEOCODIFICAÇÃO ==========")
+
+        print("\n[DEBUG] ========== TESTE DE GEOCODIFICAÇÃO ==========")
         print(f"[DEBUG] Endereço original: {endereco}")
         print(f"[DEBUG] Campos separados: rua={rua}, num={numero}, bairro={bairro}, cidade={cidade}, cep={cep}")
-        
+
         # Construir endereço otimizado para geocodificação
         if tem_campos_separados and rua and bairro:
             # Se tem campos separados válidos (rua + bairro), usar construir_endereco_para_geocode
@@ -1999,17 +2008,17 @@ def debug_geocode():
             if endereco_para_geocode:
                 print(f"[DEBUG] Endereço construído dos campos: {endereco_para_geocode}")
             else:
-                print(f"[DEBUG] Validação de campos falhou, tentando com endereço completo...")
+                print("[DEBUG] Validação de campos falhou, tentando com endereço completo...")
                 endereco_para_geocode = distancia_service.limpar_endereco(endereco) if endereco else None
         else:
             # Fallback: usar endereço completo limpo
             endereco_para_geocode = distancia_service.limpar_endereco(endereco) if endereco else None
             print(f"[DEBUG] Endereço limpo: {endereco_para_geocode}")
-        
+
         # Usar a função de geocodificação do serviço (usa Nominatim + OpenRouteService)
-        print(f"[DEBUG] Chamando geocodificar()...")
+        print("[DEBUG] Chamando geocodificar()...")
         coords = distancia_service.geocodificar(endereco_para_geocode, normalizar=False)
-        
+
         if not coords:
             return jsonify({
                 'success': False,
@@ -2025,18 +2034,18 @@ def debug_geocode():
                 'error': 'Nenhum resultado encontrado (Nominatim e OpenRouteService falharam)',
                 'dica': 'Verifique se o endereço está correto e completo. Tente com: Rua, Número, Bairro, Cidade'
             })
-        
+
         # Calcular distância da floricultura
         distancia = None
         duracao = None
         coords_floricultura = distancia_service.coords_floricultura
-        
+
         if coords_floricultura:
             resultado_dist = distancia_service.calcular_distancia(coords_floricultura, coords)
             if resultado_dist:
                 distancia = resultado_dist['distancia_km']
                 duracao = resultado_dist['duracao_min']
-        
+
         return jsonify({
             'success': True,
             'endereco_original': endereco,
@@ -2060,7 +2069,7 @@ def debug_geocode():
                 'latitude': coords_floricultura[1] if coords_floricultura else None
             } if coords_floricultura else None
         })
-        
+
     except Exception as e:
         print(f"[ERRO] Exceção no debug de geocodificação: {e}")
         import traceback
@@ -2076,7 +2085,7 @@ def debug_limpar_distancias():
     """
     Endpoint de debug para limpar todas as distâncias cacheadas.
     Força recálculo na próxima chamada.
-    
+
     SEGURANÇA: Requer autenticação
     """
     # Verificar se debug endpoints estão habilitados
@@ -2086,23 +2095,23 @@ def debug_limpar_distancias():
             'error': 'Endpoint de debug desabilitado',
             'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
         }), 403
-    
+
     try:
         # Limpar todas as distâncias
         pedidos = Pedido.query.filter(Pedido.distancia_km.isnot(None)).all()
         count = len(pedidos)
-        
+
         for pedido in pedidos:
             pedido.distancia_km = None
-        
+
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'message': f'{count} distâncias limpas do cache',
             'count': count
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -2116,7 +2125,7 @@ def debug_config_floricultura():
     """
     Endpoint de debug para verificar a configuração da floricultura.
     Mostra o endereço configurado e as coordenadas geocodificadas.
-    
+
     SEGURANÇA: Requer autenticação - Expõe informações sensíveis
     """
     # Verificar se debug endpoints estão habilitados
@@ -2126,18 +2135,19 @@ def debug_config_floricultura():
             'error': 'Endpoint de debug desabilitado',
             'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
         }), 403
-    
+
     try:
-        from app.services.distancia import distancia_service
         import os
-        
+
+        from app.services.distancia import distancia_service
+
         endereco = os.environ.get('ENDERECO_FLORICULTURA', '')
         api_key = os.environ.get('OPENROUTE_API_KEY', '')
-        
+
         # Forçar re-geocodificação da floricultura
         distancia_service._coords_floricultura = None
         coords = distancia_service.coords_floricultura
-        
+
         return jsonify({
             'success': True,
             'endereco_configurado': endereco,
@@ -2150,7 +2160,7 @@ def debug_config_floricultura():
             'google_maps_link': f"https://www.google.com/maps?q={coords[1]},{coords[0]}" if coords else None,
             'status': 'OK' if coords else 'ERRO - Não foi possível geocodificar'
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro ao verificar configuração',
@@ -2162,7 +2172,7 @@ def debug_config_floricultura():
 def debug_reset_floricultura():
     """
     Força recálculo das coordenadas da floricultura.
-    
+
     SEGURANÇA: Requer autenticação
     """
     # Verificar se debug endpoints estão habilitados
@@ -2172,17 +2182,17 @@ def debug_reset_floricultura():
             'error': 'Endpoint de debug desabilitado',
             'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
         }), 403
-    
+
     try:
         from app.services.distancia import distancia_service
-        
+
         # Limpar cache
         distancia_service._coords_floricultura = None
         distancia_service._enderecos_invalidos.clear()
-        
+
         # Forçar re-geocodificação
         coords = distancia_service.coords_floricultura
-        
+
         return jsonify({
             'success': True,
             'message': 'Cache da floricultura limpo e recalculado',
@@ -2193,7 +2203,7 @@ def debug_reset_floricultura():
             } if coords else None,
             'google_maps_link': f"https://www.google.com/maps?q={coords[1]},{coords[0]}" if coords else None
         })
-        
+
     except Exception as e:
         return jsonify({
             'error': 'Erro ao resetar floricultura',
@@ -2205,7 +2215,7 @@ def debug_reset_floricultura():
 def debug_testar_apis():
     """
     Testa conectividade com as APIs externas (GraphHopper, OpenRouteService, Nominatim)
-    
+
     SEGURANÇA: Requer autenticação - Expõe API keys parcialmente
     """
     # Verificar se debug endpoints estão habilitados
@@ -2215,19 +2225,18 @@ def debug_testar_apis():
             'error': 'Endpoint de debug desabilitado',
             'message': 'Defina ENABLE_DEBUG_ENDPOINTS=true no .env para habilitar'
         }), 403
-    
+
     try:
-        from app.services.distancia import distancia_service
-        from app.services.graphhopper import graphhopper_service
-        import requests
         import os
-        
+
+        import requests
+
         resultados = {
             'graphhopper': {'status': 'não testado', 'details': {}},
             'openroute': {'status': 'não testado', 'details': {}},
             'nominatim': {'status': 'não testado', 'details': {}}
         }
-        
+
         # Teste 1: GraphHopper API
         graphhopper_key = os.environ.get('GRAPHHOPPER_API_KEY', '')
         if graphhopper_key:
@@ -2244,7 +2253,7 @@ def debug_testar_apis():
                     params=test_params,
                     timeout=10
                 )
-                
+
                 if response.status_code == 200:
                     resultados['graphhopper']['status'] = 'OK'
                     resultados['graphhopper']['details'] = {
@@ -2266,7 +2275,7 @@ def debug_testar_apis():
             resultados['graphhopper']['details'] = {
                 'message': 'GRAPHHOPPER_API_KEY não definida no .env'
             }
-        
+
         # Teste 2: OpenRouteService API
         openroute_key = os.environ.get('OPENROUTE_API_KEY', '')
         if openroute_key:
@@ -2280,7 +2289,7 @@ def debug_testar_apis():
                     json=test_body,
                     timeout=10
                 )
-                
+
                 if response.status_code == 200:
                     resultados['openroute']['status'] = 'OK'
                     resultados['openroute']['details'] = {
@@ -2302,7 +2311,7 @@ def debug_testar_apis():
             resultados['openroute']['details'] = {
                 'message': 'OPENROUTE_API_KEY não definida no .env'
             }
-        
+
         # Teste 3: Nominatim (não precisa de API key)
         try:
             response = requests.get(
@@ -2311,7 +2320,7 @@ def debug_testar_apis():
                 params={'q': 'Goiânia, GO, Brasil', 'format': 'json', 'limit': 1},
                 timeout=10
             )
-            
+
             if response.status_code == 200:
                 results = response.json()
                 if results:
@@ -2334,23 +2343,23 @@ def debug_testar_apis():
         except Exception as e:
             resultados['nominatim']['status'] = 'ERRO'
             resultados['nominatim']['details'] = {'error': str(e)}
-        
+
         # Resumo geral
         status_geral = 'OK'
         problemas = []
-        
+
         if resultados['graphhopper']['status'] in ['ERRO', 'NÃO CONFIGURADO']:
             problemas.append('GraphHopper não disponível (rotas otimizadas podem falhar)')
-        
+
         if resultados['openroute']['status'] in ['ERRO', 'NÃO CONFIGURADO']:
             problemas.append('OpenRouteService não disponível (fallback de rotas)')
-        
+
         if resultados['nominatim']['status'] == 'ERRO':
             problemas.append('Nominatim não disponível (geocodificação pode falhar)')
-        
+
         if problemas:
             status_geral = 'PARCIAL' if resultados['nominatim']['status'] == 'OK' else 'ERRO'
-        
+
         return jsonify({
             'success': True,
             'status_geral': status_geral,
@@ -2362,7 +2371,7 @@ def debug_testar_apis():
                 'nominatim': 'Não precisa configuração, mas respeite o limite de uso (1 req/segundo)'
             }
         })
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -2380,11 +2389,11 @@ def exportar_planilha():
         import importlib.util
         import sys
         from pathlib import Path
-        
+
         # Obter caminho absoluto do script
         backend_dir = Path(__file__).parent.parent.parent
         script_path = backend_dir / 'scripts' / 'export' / 'exportar_vendas_sheets.py'
-        
+
         # Verificar se arquivo existe
         if not script_path.exists():
             return jsonify({
@@ -2392,11 +2401,11 @@ def exportar_planilha():
                 'error': f'Script não encontrado: {script_path}',
                 'detalhes': 'Arquivo exportar_vendas_sheets.py não encontrado'
             }), 500
-        
+
         # Adicionar backend ao path (necessário para imports do app dentro do script)
         if str(backend_dir) not in sys.path:
             sys.path.insert(0, str(backend_dir))
-        
+
         # Carregar módulo dinamicamente
         spec = importlib.util.spec_from_file_location("exportar_vendas_sheets", str(script_path))
         if spec is None or spec.loader is None:
@@ -2405,27 +2414,27 @@ def exportar_planilha():
                 'error': 'Erro ao carregar módulo',
                 'detalhes': 'Não foi possível criar spec do módulo'
             }), 500
-        
+
         module = importlib.util.module_from_spec(spec)
-        
+
         # Definir __file__ no módulo para que o script possa calcular caminhos corretamente
         module.__file__ = str(script_path)
-        
+
         # Executar o módulo
         spec.loader.exec_module(module)
-        
+
         # Nota: O script agora resolve credenciais automaticamente
         # via _resolve_credentials_path() em backend/user/config/ ou variável de ambiente
-        
+
         # Chamar função exportar_vendas
         if not hasattr(module, 'exportar_vendas'):
             return jsonify({
                 'success': False,
                 'error': 'Função exportar_vendas não encontrada no módulo'
             }), 500
-        
+
         resultado = module.exportar_vendas()
-        
+
         if resultado:
             return jsonify({
                 'success': True,
@@ -2436,7 +2445,7 @@ def exportar_planilha():
                 'success': False,
                 'error': 'Erro ao exportar. Verifique as credenciais do Google.'
             }), 500
-            
+
     except FileNotFoundError as e:
         return jsonify({
             'success': False,

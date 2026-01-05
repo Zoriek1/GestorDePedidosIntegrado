@@ -102,7 +102,7 @@ export function CreateOrderWizard({
         return { ...pedidoFormDefaultValues, ...parsed, ...initialData };
       }
     } catch (error) {
-      console.warn('Erro ao carregar rascunho:', error);
+      // Erro ao carregar rascunho (silenciado em produção)
     }
     return { ...pedidoFormDefaultValues, ...initialData };
   }, [initialData]);
@@ -126,7 +126,7 @@ export function CreateOrderWizard({
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         } catch (error) {
-          console.warn('Erro ao salvar rascunho:', error);
+          // Erro ao salvar rascunho (silenciado em produção)
         }
       }, DEBOUNCE_DELAY);
     });
@@ -235,10 +235,9 @@ export function CreateOrderWizard({
     const currentData = methods.getValues();
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
-      // Mostrar feedback visual (pode usar toast se disponível)
-      console.log('Rascunho salvo');
+      // Rascunho salvo (feedback visual pode ser adicionado se necessário)
     } catch (error) {
-      console.warn('Erro ao salvar rascunho:', error);
+      // Erro ao salvar rascunho (silenciado em produção)
     }
   };
 

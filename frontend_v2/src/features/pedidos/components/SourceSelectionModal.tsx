@@ -39,10 +39,13 @@ export function SourceSelectionModal({ open, onConfirm }: SourceSelectionModalPr
   const { data, isLoading } = useFontesPedido(true);
   const fontes = data?.fontes || [];
 
+  // Memoizar fontes para evitar recálculos desnecessários
+  const fontesMemo = useMemo(() => fontes, [fontes]);
+  
   const mapped: FonteMapped[] = useMemo(() => {
-    const whatsappId = matchFonte(fontes, 'whatsapp') ?? matchFonte(fontes, 'zap') ?? matchFonte(fontes, 'caio');
-    const catalogoId = matchFonte(fontes, 'catalogo') ?? matchFonte(fontes, 'catálogo');
-    const siteId = matchFonte(fontes, 'site');
+    const whatsappId = matchFonte(fontesMemo, 'whatsapp') ?? matchFonte(fontesMemo, 'zap') ?? matchFonte(fontesMemo, 'caio');
+    const catalogoId = matchFonte(fontesMemo, 'catalogo') ?? matchFonte(fontesMemo, 'catálogo');
+    const siteId = matchFonte(fontesMemo, 'site');
 
     return [
       {
@@ -64,7 +67,7 @@ export function SourceSelectionModal({ open, onConfirm }: SourceSelectionModalPr
         icon: <LanguageIcon color="info" />,
       },
     ];
-  }, [fontes]);
+  }, [fontesMemo]);
 
   const handleSelect = (id: number) => {
     if (id === -1) return;

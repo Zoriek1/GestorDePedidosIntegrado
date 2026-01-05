@@ -83,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(interval);
       window.removeEventListener('storage', handleStorageChange);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run on mount/unmount
 
   const isAuthenticated = useCallback((): boolean => {
@@ -214,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (response.ok && response.data?.success && response.data?.authenticated === true) {
-        const role = (response.data as any)?.role || 'admin'; // Default para admin se não especificado
+        const role = (response.data as { role?: string })?.role || 'admin'; // Default para admin se não especificado
         saveCredentials(username, password, remember, role);
         return { success: true, message: 'Login realizado com sucesso', role };
       } else {
@@ -282,6 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (context === undefined) {

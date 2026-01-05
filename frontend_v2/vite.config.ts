@@ -14,7 +14,9 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       secure: false, // allow self-signed HTTPS backend
       ws: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       configure: (proxy: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         proxy.on('proxyReq', (proxyReq: any, req: any) => {
           // Forward Authorization header explicitly (alguns proxies/ambientes podem omitir)
           if (req?.headers?.authorization) {

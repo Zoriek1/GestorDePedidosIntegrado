@@ -101,7 +101,7 @@ export function CreateOrderWizard({
         // Importante: `initialData` deve ganhar do rascunho (ex: fonte escolhida no modal)
         return { ...pedidoFormDefaultValues, ...parsed, ...initialData };
       }
-    } catch (error) {
+    } catch {
       // Erro ao carregar rascunho (silenciado em produção)
     }
     return { ...pedidoFormDefaultValues, ...initialData };
@@ -120,12 +120,13 @@ export function CreateOrderWizard({
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((data) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        } catch (error) {
+        } catch {
           // Erro ao salvar rascunho (silenciado em produção)
         }
       }, DEBOUNCE_DELAY);
@@ -236,7 +237,7 @@ export function CreateOrderWizard({
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
       // Rascunho salvo (feedback visual pode ser adicionado se necessário)
-    } catch (error) {
+    } catch {
       // Erro ao salvar rascunho (silenciado em produção)
     }
   };

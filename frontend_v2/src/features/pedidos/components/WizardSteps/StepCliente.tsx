@@ -68,7 +68,11 @@ export function StepCliente() {
 
   // Sincronizar input controlado com valor do formulário (evita ghost value)
   useEffect(() => {
-    setInputValue(clienteNome || '');
+    // Usar setTimeout para evitar setState síncrono em effect
+    const timer = setTimeout(() => {
+      setInputValue(clienteNome || '');
+    }, 0);
+    return () => clearTimeout(timer);
   }, [clienteNome]);
 
   // Atualizar destinatário quando cliente mudar e checkbox estiver marcado

@@ -27,11 +27,13 @@ export default function CustomersPage() {
   const ordersQuery = useCustomerOrders(selectedCustomer?.id, 50);
 
   const customers = data?.clientes || [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const kpis = useMemo(() => insights.computeKPIs(customers), [customers]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const vipThreshold = useMemo(() => insights.resolveVipThreshold(customers), [customers]);
 
   const badgesMap = useMemo(() => {
-    const map: Record<number, any[]> = {};
+    const map: Record<number, import('./services/ICustomerInsightsService').CustomerBadge[]> = {};
     customers.forEach((c) => {
       map[c.id] = insights.getBadges(c, vipThreshold);
     });

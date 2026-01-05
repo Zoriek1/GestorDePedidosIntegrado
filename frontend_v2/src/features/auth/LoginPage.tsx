@@ -35,7 +35,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = (location.state as any)?.from?.pathname || '/';
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +86,7 @@ export default function LoginPage() {
         }
         setPasswordError(true);
       }
-    } catch (err) {
+    } catch {
       showError('Erro ao fazer login. Tente novamente.');
       setPasswordError(true);
     } finally {

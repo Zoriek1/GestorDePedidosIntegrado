@@ -104,6 +104,49 @@ export default function OfflineDiagnostics() {
   const { success, error, info } = useToast();
   const queryClient = useQueryClient();
 
+  // Hooks devem ser chamados incondicionalmente (regra do React)
+  const { data: queue, refetch: refetchQueue } = useQuery({
+    queryKey: ['outbox-queue'],
+    queryFn: getQueue,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 2000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: outboxStats } = useQuery({
+    queryKey: ['outbox-stats'],
+    queryFn: getOutboxStats,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 2000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: cacheKeys } = useQuery({
+    queryKey: ['cache-keys'],
+    queryFn: getAllCacheKeys,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: dexieCacheStats } = useQuery({
+    queryKey: ['dexie-cache-stats'],
+    queryFn: getCacheStats,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: workboxCounts } = useQuery({
+    queryKey: ['workbox-cache-counts'],
+    queryFn: getWorkboxCacheCounts,
+    staleTime: 10000,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 10000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: storageEstimate } = useQuery({
+    queryKey: ['storage-estimate'],
+    queryFn: getStorageEstimate,
+    staleTime: 10000,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 10000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
   // Extra safety: even if route gating fails, hide diagnostics in prod unless flag is enabled
   if (!DIAGNOSTICS_ENABLED) {
     return (
@@ -117,42 +160,6 @@ export default function OfflineDiagnostics() {
       </Box>
     );
   }
-
-  const { data: queue, refetch: refetchQueue } = useQuery({
-    queryKey: ['outbox-queue'],
-    queryFn: getQueue,
-    refetchInterval: 2000,
-  });
-
-  const { data: outboxStats } = useQuery({
-    queryKey: ['outbox-stats'],
-    queryFn: getOutboxStats,
-    refetchInterval: 2000,
-  });
-
-  const { data: cacheKeys } = useQuery({
-    queryKey: ['cache-keys'],
-    queryFn: getAllCacheKeys,
-  });
-
-  const { data: dexieCacheStats } = useQuery({
-    queryKey: ['dexie-cache-stats'],
-    queryFn: getCacheStats,
-  });
-
-  const { data: workboxCounts } = useQuery({
-    queryKey: ['workbox-cache-counts'],
-    queryFn: getWorkboxCacheCounts,
-    staleTime: 10000,
-    refetchInterval: 10000,
-  });
-
-  const { data: storageEstimate } = useQuery({
-    queryKey: ['storage-estimate'],
-    queryFn: getStorageEstimate,
-    staleTime: 10000,
-    refetchInterval: 10000,
-  });
 
   const authBlockedCount =
     queue?.filter((i) => i.status === 'FAILED' && i.blocked && (i.lastStatus === 401 || i.lastStatus === 403)).length ??

@@ -3,6 +3,7 @@
 Rotas de Pedidos - Blueprint para endpoints de pedidos
 """
 import importlib.util
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from flask import Blueprint, request
 
 # Command Pattern Imports
 from app.commands.gerar_comprovante_command import GerarComprovanteCommand
-from app.middleware import requires_edit_auth, requires_role, requires_any_role
+from app.middleware import requires_any_role, requires_edit_auth, requires_role
 from app.repositories.pedido_repository import PedidoRepository
 from app.schemas.common import error_response, success_response
 from app.schemas.pedido_schema import (
@@ -41,7 +42,7 @@ def listar_pedidos():
         data_fim = request.args.get("data_fim")
         search = request.args.get("search")
         filtrar_por_criacao = request.args.get("filtrar_por_criacao", "").lower() == "true"
-        
+
         # Ordenação e paginação
         sort_by = request.args.get("sort_by", "dia_entrega")
         sort_order = request.args.get("sort_order", "asc")
@@ -93,7 +94,7 @@ def listar_pedidos():
             "pedidos": pedidos_data,
             "total": total,
         }
-        
+
         if page is not None and per_page is not None:
             response_data["page"] = page
             response_data["per_page"] = per_page

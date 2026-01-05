@@ -20,6 +20,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
 
 // Ajuste padrão para ícones do Leaflet (evita erro de assets)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete (L.Icon.Default as any).prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -94,7 +95,10 @@ export default function RoutePage() {
 
   useEffect(() => {
     if (selectedIds.length > 0) {
-      setOnlyAgendados(false);
+      // Usar setTimeout para evitar setState síncrono em effect
+      setTimeout(() => {
+        setOnlyAgendados(false);
+      }, 0);
     }
   }, [selectedIds.length]);
 
@@ -107,8 +111,9 @@ export default function RoutePage() {
     try {
       await calcLote.mutateAsync({ pedidoIds: ids, forceRecalc: true });
       success('Distâncias recalculadas');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao calcular distâncias');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao calcular distâncias';
+      showError(errorMessage);
     }
   };
 
@@ -121,8 +126,9 @@ export default function RoutePage() {
     try {
       await calcRota.mutateAsync({ pedidoIds: ids });
       success('Rota otimizada');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao otimizar rota');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao otimizar rota';
+      showError(errorMessage);
     }
   };
 

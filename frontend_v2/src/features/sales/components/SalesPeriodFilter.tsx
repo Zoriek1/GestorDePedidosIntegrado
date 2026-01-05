@@ -38,7 +38,7 @@ export function SalesPeriodFilter({ startDate, endDate, onChange }: SalesPeriodF
   const handleQuickPeriod = (months: number) => {
     const now = dayjs();
     let newStart: Dayjs;
-    let newEnd: Dayjs = now.endOf('month');
+    const newEnd: Dayjs = now.endOf('month');
 
     if (months === 0) {
       // Este mês

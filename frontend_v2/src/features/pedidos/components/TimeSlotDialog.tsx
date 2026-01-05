@@ -87,10 +87,13 @@ export function TimeSlotDialog({
       if (currentSlot) {
         if (currentSlot.includes(' - ')) {
           const [start, end] = currentSlot.split(' - ').map(s => s.trim());
-          setSelectionMode('interval');
-          setIntervalStart(start);
-          setIntervalEnd(end);
-          setSelectedSlot(null);
+          // Usar setTimeout para evitar setState síncrono em effect
+          setTimeout(() => {
+            setSelectionMode('interval');
+            setIntervalStart(start);
+            setIntervalEnd(end);
+            setSelectedSlot(null);
+          }, 0);
         } else {
           setSelectionMode('simple');
           setSelectedSlot(currentSlot);

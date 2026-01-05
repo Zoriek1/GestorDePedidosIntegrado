@@ -66,8 +66,9 @@ export function OrderCardActions({ pedido, showRecalcButtons = false, compact = 
     try {
       await calcDistancia.mutateAsync({ id: pedido.id, forceRecalc: true });
       success('Distância recalculada');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao calcular distância');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao calcular distância';
+      showError(errorMessage);
     }
   };
 
@@ -76,8 +77,9 @@ export function OrderCardActions({ pedido, showRecalcButtons = false, compact = 
     try {
       await calcTaxa.mutateAsync({ id: pedido.id });
       success('Taxa recalculada');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao calcular taxa');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao calcular taxa';
+      showError(errorMessage);
     }
   };
 
@@ -105,8 +107,9 @@ export function OrderCardActions({ pedido, showRecalcButtons = false, compact = 
     try {
       await deletePedido.mutateAsync(pedido.id);
       success('Pedido deletado');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao deletar pedido');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar pedido';
+      showError(errorMessage);
     }
   };
 

@@ -13,14 +13,14 @@ export interface ApiError {
   code: string;
   message: string;
   error?: string;
-  details?: any;
+  details?: unknown;
   requestId: string;
   timeout?: boolean;
   offline?: boolean;
   networkError?: boolean;
 }
 
-export interface ApiSuccess<T = any> {
+export interface ApiSuccess<T = unknown> {
   ok: true;
   success: true;
   data: T;
@@ -28,7 +28,7 @@ export interface ApiSuccess<T = any> {
   requestId: string;
 }
 
-export type ApiResponse<T = any> = ApiSuccess<T> | ApiError;
+export type ApiResponse<T = unknown> = ApiSuccess<T> | ApiError;
 
 /**
  * Generate unique request ID
@@ -40,7 +40,7 @@ function generateRequestId(): string {
 /**
  * Parse HTTP response
  */
-async function parseResponse(response: Response): Promise<{ data: any; isJson: boolean; parseError: Error | null; isHtml?: boolean }> {
+async function parseResponse(response: Response): Promise<{ data: unknown; isJson: boolean; parseError: Error | null; isHtml?: boolean }> {
   // 204 No Content - no body
   if (response.status === 204) {
     return { data: null, isJson: false, parseError: null, isHtml: false };
@@ -106,7 +106,7 @@ function getAuthHeader(endpoint: string, getAuthHeaderFn: () => Record<string, s
 /**
  * Make HTTP request
  */
-export async function request<T = any>(
+export async function request<T = unknown>(
   endpoint: string,
   options: RequestInit = {},
   getAuthHeaderFn: () => Record<string, string>
@@ -134,13 +134,14 @@ export async function request<T = any>(
   }
 
   // Timeout with AbortController
-  const timeoutMs = (options as any).timeoutMs ?? DEFAULT_TIMEOUT;
+  const timeoutMs = (options as RequestInit & { timeoutMs?: number }).timeoutMs ?? DEFAULT_TIMEOUT;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   // IMPORTANT: não permitir que options.headers sobrescreva o header mergeado
   // (caso contrário, POST/PUT com headers custom perde Authorization)
-  const { headers: _ignoredHeaders, ...restOptions } = options as any;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { headers: _ignoredHeaders, ...restOptions } = options as RequestInit & { timeoutMs?: number };
   const config: RequestInit = {
     method,
     ...restOptions,
@@ -174,7 +175,7 @@ export async function request<T = any>(
         return {
           ok: true,
           success: true,
-          data: parseResult.data || null,
+          data: (parseResult.data || null) as T,
           status: response.status,
           requestId
         };
@@ -183,8 +184,9 @@ export async function request<T = any>(
     }
 
     if (!response.ok) {
-      const errorMsg = parseResult.isJson && parseResult.data
-        ? (parseResult.data.error || parseResult.data.message || `Erro ${response.status}`)
+      const errorData = parseResult.data as { error?: string; message?: string } | null;
+      const errorMsg = parseResult.isJson && errorData
+        ? (errorData.error || errorData.message || `Erro ${response.status}`)
         : `Erro ${response.status}`;
 
       // Notificar listeners de auth inválida (401/403)
@@ -211,7 +213,7 @@ export async function request<T = any>(
     return {
       ok: true,
       success: true,
-      data: parseResult.data,
+      data: parseResult.data as T,
       status: response.status,
       requestId
     };
@@ -273,7 +275,7 @@ export async function request<T = any>(
  * This should be called from React Query hooks, not directly
  */
 export function createApiRequest(getAuthHeaderFn: () => Record<string, string>) {
-  return <T = any>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> => {
+  return <T = unknown>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> => {
     return request<T>(endpoint, options, getAuthHeaderFn);
   };
 }

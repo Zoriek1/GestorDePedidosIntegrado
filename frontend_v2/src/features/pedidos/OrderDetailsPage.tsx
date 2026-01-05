@@ -81,8 +81,9 @@ export default function OrderDetailsPage() {
       await deletePedido.mutateAsync(pedido.id);
       success('Pedido deletado');
       navigate('/');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao deletar pedido');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar pedido';
+      showError(errorMessage);
     }
   };
 
@@ -90,8 +91,9 @@ export default function OrderDetailsPage() {
     try {
       await printService.print(pedido.id);
       success('Impressão iniciada');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao imprimir');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao imprimir';
+      showError(errorMessage);
     }
   };
 

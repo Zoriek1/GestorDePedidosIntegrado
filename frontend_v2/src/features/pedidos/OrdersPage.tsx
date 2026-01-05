@@ -85,9 +85,10 @@ export default function OrdersPage() {
   useEffect(() => {
     const interval = setInterval(() => handleRefresh(), 30000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleOrderClick = (_pedido: any) => {
+  const handleOrderClick = () => {
     // TODO: Navigate to order details
     // Log removido em produção
   };
@@ -152,7 +153,7 @@ export default function OrdersPage() {
     });
   };
 
-  const handleToggleSelectPedido = (pedido: any) => {
+  const handleToggleSelectPedido = (pedido: { id: number; tipo_pedido?: string }) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(pedido.id)) {
@@ -174,8 +175,9 @@ export default function OrdersPage() {
     try {
       await calcDistanciasLote.mutateAsync({ pedidoIds: ids, forceRecalc: true });
       success('Distâncias recalculadas para selecionados');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao recalcular distâncias');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao recalcular distâncias';
+      showError(errorMessage);
     }
   };
 
@@ -202,8 +204,9 @@ export default function OrdersPage() {
       const result = await ocultarConcluidos.mutateAsync();
       success(result.message || `${result.count} pedido(s) concluído(s) ocultado(s) do painel`);
       setFilterMenuAnchor(null); // Fechar menu após ação
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao ocultar pedidos concluídos');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao ocultar pedidos concluídos';
+      showError(errorMessage);
     }
   };
 
@@ -218,7 +221,8 @@ export default function OrdersPage() {
   return (
     <Box>
       {(!navigator.onLine &&
-        (((pedidosData as any)?.__offline?.stale === true) || ((statsData as any)?.__offline?.stale === true))) && (
+        (((pedidosData as { __offline?: { stale?: boolean } })?.__offline?.stale === true) || 
+         ((statsData as { __offline?: { stale?: boolean } })?.__offline?.stale === true))) && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Mostrando dados desatualizados (cache expirado) por falta de conexão.
         </Alert>

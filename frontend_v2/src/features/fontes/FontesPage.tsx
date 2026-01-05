@@ -44,11 +44,11 @@ export default function FontesPage() {
     }
   };
 
-  const handleDialogSubmit = async (data: any) => {
+  const handleDialogSubmit = async (data: import('../../api/endpoints/fontes').CreateFontePayload | import('../../api/endpoints/fontes').UpdateFontePayload) => {
     if (selectedFonte) {
-      await updateFonte.mutateAsync({ id: selectedFonte.id, payload: data });
+      await updateFonte.mutateAsync({ id: selectedFonte.id, payload: data as import('../../api/endpoints/fontes').UpdateFontePayload });
     } else {
-      await createFonte.mutateAsync(data);
+      await createFonte.mutateAsync(data as import('../../api/endpoints/fontes').CreateFontePayload);
     }
     setDialogOpen(false);
     setSelectedFonte(null);

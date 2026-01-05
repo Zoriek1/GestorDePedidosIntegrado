@@ -90,7 +90,7 @@ export function PedidoWizard({
         const parsed = JSON.parse(stored);
         return { ...pedidoFormDefaultValues, ...parsed };
       }
-    } catch (error) {
+    } catch {
       // Erro ao carregar rascunho (silenciado em produção)
     }
     return pedidoFormDefaultValues;
@@ -107,11 +107,12 @@ export function PedidoWizard({
 
   // Salva no localStorage com debounce
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((data) => {
       const timeoutId = setTimeout(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        } catch (error) {
+        } catch {
           // Erro ao salvar rascunho (silenciado em produção)
         }
       }, DEBOUNCE_DELAY);

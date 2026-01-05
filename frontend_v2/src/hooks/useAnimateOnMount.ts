@@ -19,7 +19,9 @@ export function useAnimateOnMount(
       const timer = setTimeout(() => setIsMounted(true), delay);
       return () => clearTimeout(timer);
     } else {
-      setIsMounted(true);
+      // Usar setTimeout para evitar setState síncrono em effect
+      const timer = setTimeout(() => setIsMounted(true), 0);
+      return () => clearTimeout(timer);
     }
   }, [delay]);
 

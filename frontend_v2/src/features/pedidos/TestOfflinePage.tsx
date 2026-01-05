@@ -49,7 +49,7 @@ export default function TestOfflinePage() {
         horario: '14:00',
         quantidade: 1
       });
-    } catch (error) {
+    } catch {
       // Error is expected when offline (OFFLINE_ENQUEUED)
     }
   };
@@ -64,7 +64,7 @@ export default function TestOfflinePage() {
         id: parseInt(orderId),
         produto: 'Buquê Atualizado - ' + new Date().toLocaleTimeString()
       });
-    } catch (error) {
+    } catch {
       // Error is expected when offline (OFFLINE_ENQUEUED)
     }
   };

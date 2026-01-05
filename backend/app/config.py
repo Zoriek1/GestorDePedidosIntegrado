@@ -12,26 +12,30 @@ from pathlib import Path
 
 # #region agent log
 def log_debug(msg, data):
-    try:
-        with open(
-            r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
-            "a",
-            encoding="utf-8",
-        ) as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "debug-session",
-                        "timestamp": int(time.time() * 1000),
-                        "location": "config.py",
-                        "message": msg,
-                        "data": data,
-                    }
+    """Log de debug apenas em modo desenvolvimento"""
+    env = os.environ.get("FLASK_ENV", "development")
+    if env != "production":
+        try:
+            with open(
+                r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
+                "a",
+                encoding="utf-8",
+            ) as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "debug-session",
+                            "timestamp": int(time.time() * 1000),
+                            "location": "config.py",
+                            "message": msg,
+                            "data": data,
+                        }
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
-    except Exception as e:
-        print(f"Log error: {e}")
+        except Exception:
+            # Silenciar erros de log em produção
+            pass
 
 
 # #endregion

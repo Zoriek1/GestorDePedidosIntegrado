@@ -169,7 +169,7 @@ export async function request<T = any>(
     }
 
     if (parseResult.parseError) {
-      console.warn(`[API] Parse error:`, parseResult.parseError);
+      // Log removido em produção
       if (response.ok) {
         return {
           ok: true,

@@ -91,7 +91,7 @@ export function PedidoWizard({
         return { ...pedidoFormDefaultValues, ...parsed };
       }
     } catch (error) {
-      console.warn('Erro ao carregar rascunho:', error);
+      // Erro ao carregar rascunho (silenciado em produção)
     }
     return pedidoFormDefaultValues;
   }, []);
@@ -112,7 +112,7 @@ export function PedidoWizard({
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         } catch (error) {
-          console.warn('Erro ao salvar rascunho:', error);
+          // Erro ao salvar rascunho (silenciado em produção)
         }
       }, DEBOUNCE_DELAY);
 

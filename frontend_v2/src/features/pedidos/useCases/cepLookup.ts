@@ -4,6 +4,8 @@
  * Implementado com DI (Interface + Classe)
  */
 
+import { logger } from '../../../lib/logger';
+
 // ============================================================================
 // Interface (Contrato)
 // ============================================================================
@@ -47,6 +49,7 @@ interface ViaCepResponse {
 
 export class ViaCepLookupService implements ICepLookupService {
   private readonly baseUrl = 'https://viacep.com.br/ws';
+  private readonly timeoutMs = 10000; // 10 segundos
 
   async lookup(cep: string): Promise<CepLookupResult | null> {
     // Remove caracteres não numéricos
@@ -54,38 +57,92 @@ export class ViaCepLookupService implements ICepLookupService {
 
     // Valida formato
     if (cleanCep.length !== 8) {
+      logger.warn(`[ViaCepLookupService] CEP inválido: ${cep} (limpo: ${cleanCep})`);
       return null;
     }
 
+    const url = `${this.baseUrl}/${cleanCep}/json/`;
+    
     try {
-      const response = await fetch(`${this.baseUrl}/${cleanCep}/json/`, {
+      // Criar AbortController para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
+      // Verificar status HTTP
       if (!response.ok) {
-        console.warn(`[ViaCepLookupService] Erro HTTP: ${response.status}`);
+        logger.warn(`[ViaCepLookupService] Erro HTTP ${response.status} para CEP ${cleanCep}`);
         return null;
       }
 
-      const data: ViaCepResponse = await response.json();
+      // Verificar Content-Type
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn(`[ViaCepLookupService] Resposta não é JSON para CEP ${cleanCep}. Content-Type: ${contentType}`);
+        return null;
+      }
+
+      // Parse JSON com tratamento de erro
+      let data: ViaCepResponse;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        logger.error(`[ViaCepLookupService] Erro ao parsear JSON para CEP ${cleanCep}:`, parseError);
+        return null;
+      }
+
+      // Verificar se a resposta é válida
+      if (!data || typeof data !== 'object') {
+        logger.warn(`[ViaCepLookupService] Resposta inválida para CEP ${cleanCep}:`, data);
+        return null;
+      }
 
       // ViaCEP retorna { erro: true } quando CEP não existe
-      if (data.erro) {
+      // IMPORTANTE: Verificar explicitamente se erro é true (não apenas truthy)
+      if (data.erro === true) {
+        logger.info(`[ViaCepLookupService] CEP ${cleanCep} não encontrado na base do ViaCEP`);
         return null;
       }
 
-      return {
-        cep: data.cep,
+      // Validar campos obrigatórios
+      if (!data.localidade || !data.uf) {
+        logger.warn(`[ViaCepLookupService] Resposta incompleta para CEP ${cleanCep}:`, data);
+        return null;
+      }
+
+      // Retornar resultado formatado
+      const result: CepLookupResult = {
+        cep: data.cep || cleanCep,
         rua: data.logradouro || '',
         bairro: data.bairro || '',
         cidade: data.localidade || '',
         uf: data.uf || '',
       };
+
+      logger.debug(`[ViaCepLookupService] CEP ${cleanCep} encontrado:`, result);
+      return result;
     } catch (error) {
-      console.error('[ViaCepLookupService] Erro ao buscar CEP:', error);
+      // Tratar diferentes tipos de erro
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          logger.error(`[ViaCepLookupService] Timeout ao buscar CEP ${cleanCep}`);
+        } else if (error.message.includes('fetch')) {
+          logger.error(`[ViaCepLookupService] Erro de rede ao buscar CEP ${cleanCep}:`, error.message);
+        } else {
+          logger.error(`[ViaCepLookupService] Erro ao buscar CEP ${cleanCep}:`, error.message);
+        }
+      } else {
+        logger.error(`[ViaCepLookupService] Erro desconhecido ao buscar CEP ${cleanCep}:`, error);
+      }
       return null;
     }
   }

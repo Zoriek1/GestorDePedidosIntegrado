@@ -13,26 +13,30 @@ from pathlib import Path
 
 # #region agent log
 def log_debug(msg, data):
-    try:
-        with open(
-            r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
-            "a",
-            encoding="utf-8",
-        ) as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "debug-session",
-                        "timestamp": int(time.time() * 1000),
-                        "location": "main.py",
-                        "message": msg,
-                        "data": data,
-                    }
+    """Log de debug apenas em modo desenvolvimento"""
+    env = os.environ.get("FLASK_ENV", "development")
+    if env != "production":
+        try:
+            with open(
+                r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
+                "a",
+                encoding="utf-8",
+            ) as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "debug-session",
+                            "timestamp": int(time.time() * 1000),
+                            "location": "main.py",
+                            "message": msg,
+                            "data": data,
+                        }
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
-    except Exception as e:
-        print(f"Log error: {e}")
+        except Exception:
+            # Silenciar erros de log em produção
+            pass
 
 
 # #endregion
@@ -136,10 +140,12 @@ def main():
     # Verificar se a porta já está em uso (SKIP if in reloader child process)
     if not is_reloader:
         if check_port_in_use(5000):
-            print("\n[AVISO] A porta 5000 ja esta em uso!")
-            print("   Servidor pode ja estar rodando.")
-            print("   Para parar: Execute parar_servidor.bat")
-            print("   Ou tente acessar: https://localhost:5000\n")
+            # Apenas mostrar avisos em desenvolvimento
+            if env != "production":
+                print("\n[AVISO] A porta 5000 ja esta em uso!")
+                print("   Servidor pode ja estar rodando.")
+                print("   Para parar: Execute parar_servidor.bat")
+                print("   Ou tente acessar: https://localhost:5000\n")
 
             # Verificar se foi passado --force ou --yes para pular input
             force_start = (
@@ -148,7 +154,7 @@ def main():
                 or os.environ.get("FORCE_START", "").lower() == "true"
             )
 
-            if not force_start:
+            if not force_start and env != "production":
                 try:
                     resposta = input("Deseja tentar iniciar mesmo assim? (s/n): ")
                     if resposta.lower() != "s":
@@ -160,8 +166,6 @@ def main():
                     )
                     print("[INFO] Inicializacao cancelada.")
                     return
-    else:
-        log_debug("Skipping port check", {"reason": "Running in reloader subprocess"})
 
     # Determinar ambiente (development ou production)
     env = os.environ.get("FLASK_ENV", "development")
@@ -325,16 +329,18 @@ def main():
 
     # Iniciar servidor com run_simple (mais robusto que app.run())
     try:
-        log_debug(
-            "run_simple calling",
-            {
-                "host": app_config.HOST,
-                "port": app_config.PORT,
-                "threaded": True,
-                "debug": debug_mode,
-                "reloader": use_reloader_mode,
-            },
-        )
+        # Log apenas em desenvolvimento
+        if env != "production":
+            log_debug(
+                "run_simple calling",
+                {
+                    "host": app_config.HOST,
+                    "port": app_config.PORT,
+                    "threaded": True,
+                    "debug": debug_mode,
+                    "reloader": use_reloader_mode,
+                },
+            )
 
         run_simple(
             hostname=app_config.HOST,
@@ -350,7 +356,8 @@ def main():
         print("\n\n[AVISO] Servidor encerrado pelo usuario")
         print("[OK] Obrigado por usar Plante Uma Flor!\n")
     except Exception as e:
-        log_debug("app.run exception", {"error": str(e)})
+        if env != "production":
+            log_debug("app.run exception", {"error": str(e)})
         print(f"\n[ERRO] Erro ao iniciar servidor: {e}\n")
         raise
 

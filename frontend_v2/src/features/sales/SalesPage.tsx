@@ -39,15 +39,9 @@ export default function SalesPage() {
   // Filtrar cancelados no frontend (defensivo) e alertar se backend retornou cancelados
   const vendas = useMemo(() => {
     const pedidos = data?.pedidos || [];
-    const cancelados = pedidos.filter((p) => p.status?.toLowerCase().trim() === 'cancelado');
-    
-    // Alertar se backend retornou cancelados (indica bug no filtro server-side)
-    if (cancelados.length > 0) {
-      console.warn(
-        `[VENDAS] Backend retornou ${cancelados.length} pedido(s) cancelado(s). ` +
-        `Isso indica um bug no filtro server-side. IDs: ${cancelados.map(p => p.id).join(', ')}`
-      );
-    }
+    // Backend retornou cancelados (indica bug no filtro server-side) - silenciado em produção
+    // const cancelados = pedidos.filter((p) => p.status?.toLowerCase().trim() === 'cancelado');
+    // if (cancelados.length > 0) { ... }
     
     return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
   }, [data?.pedidos]);

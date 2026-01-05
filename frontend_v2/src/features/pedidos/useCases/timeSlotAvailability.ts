@@ -84,13 +84,13 @@ export class TimeSlotAvailabilityService implements ITimeSlotAvailabilityService
       );
 
       if (!response.ok) {
-        console.warn('[TimeSlotAvailability] Erro ao buscar pedidos:', response.message);
+        // Erro ao buscar pedidos (silenciado em produção)
         return this.createFallbackAvailability(date);
       }
 
       // Type guard: ensure response.data is an object with pedidos property
       if (!response.data || typeof response.data !== 'object' || !('pedidos' in response.data)) {
-        console.warn('[TimeSlotAvailability] Resposta inválida: data não é um objeto com pedidos');
+        // Resposta inválida (silenciado em produção)
         return this.createFallbackAvailability(date);
       }
 

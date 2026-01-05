@@ -87,9 +87,9 @@ export default function OrdersPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleOrderClick = (pedido: any) => {
+  const handleOrderClick = (_pedido: any) => {
     // TODO: Navigate to order details
-    console.log('Order clicked:', pedido);
+    // Log removido em produção
   };
 
   const visiblePedidos = useMemo(() => {

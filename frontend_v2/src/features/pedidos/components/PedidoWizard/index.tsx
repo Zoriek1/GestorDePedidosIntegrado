@@ -98,6 +98,7 @@ export function PedidoWizard({
 
   // Hook Form com Zod
   const methods = useForm<PedidoFormData>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(pedidoFormSchema) as any,
     defaultValues: loadDraft(),
     mode: 'onBlur',
@@ -214,7 +215,7 @@ export function PedidoWizard({
 
   return (
     <FormProvider {...methods}>
-      <Box component="form" onSubmit={handleSubmit(onFormSubmit as any)}>
+      <Box component="form" onSubmit={handleSubmit(onFormSubmit as any)}> {/* eslint-disable-line @typescript-eslint/no-explicit-any */}
         {/* Stepper - Desktop */}
         {!isMobile && (
           <Stepper activeStep={activeStep} sx={{ mb: 4 }}>

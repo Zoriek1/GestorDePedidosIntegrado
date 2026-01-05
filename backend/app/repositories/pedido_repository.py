@@ -3,7 +3,7 @@
 Repository de Pedidos - Isolamento de acesso ao banco para Pedidos
 """
 from datetime import date, datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app import db
 from app.models import Pedido
@@ -105,7 +105,7 @@ class PedidoRepository(BaseRepository):
         filtrar_por_criacao: bool = False,
         page: Optional[int] = None,
         per_page: Optional[int] = None,
-    ) -> tuple[List[Pedido], int]:
+    ) -> Tuple[List[Pedido], int]:
         """
         Busca pedidos com múltiplos filtros
 

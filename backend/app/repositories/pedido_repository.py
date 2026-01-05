@@ -188,7 +188,7 @@ class PedidoRepository(BaseRepository):
         # Ordenação
         ordenar_direcao_lower = ordenar_direcao.lower() if ordenar_direcao else "asc"
         is_desc = ordenar_direcao_lower == "desc"
-        
+
         if filtrar_por_criacao:
             if is_desc:
                 query = query.order_by(Pedido.created_at.desc())
@@ -206,7 +206,7 @@ class PedidoRepository(BaseRepository):
                 query = query.order_by(Pedido.created_at.asc())
         elif ordenar_por == "valor":
             # Ordenar por valor (precisa converter string para float)
-            from sqlalchemy import func, cast, Float
+            from sqlalchemy import Float, cast, func
             if is_desc:
                 query = query.order_by(cast(Pedido.valor, Float).desc().nullslast())
             else:
@@ -236,7 +236,7 @@ class PedidoRepository(BaseRepository):
         """Busca pedidos atrasados (excluindo ocultos, concluídos e deletados)"""
         pedidos = self.model.query.filter(
             Pedido.status != "concluido",
-            Pedido.oculto == False,
+            ~Pedido.oculto,  # noqa: E712 - SQLAlchemy comparison
             Pedido.deleted_at.is_(None),
         ).all()
 
@@ -259,7 +259,7 @@ class PedidoRepository(BaseRepository):
 
     def obter_estatisticas(self) -> Dict:
         """Retorna estatísticas dos pedidos (excluindo deletados)"""
-        base_query = self.model.query.filter(Pedido.oculto == False, Pedido.deleted_at.is_(None))
+        base_query = self.model.query.filter(~Pedido.oculto, Pedido.deleted_at.is_(None))  # noqa: E712 - SQLAlchemy comparison
 
         return {
             "total": base_query.count(),
@@ -280,7 +280,7 @@ class PedidoRepository(BaseRepository):
         old_pedidos = self.model.query.filter(
             Pedido.status == "concluido",
             Pedido.updated_at < cutoff_date,
-            Pedido.oculto == False,
+            ~Pedido.oculto,  # noqa: E712 - SQLAlchemy comparison
         ).all()
 
         count = len(old_pedidos)
@@ -293,20 +293,20 @@ class PedidoRepository(BaseRepository):
         """Oculta todos os pedidos concluídos (independente da data)"""
         concluidos = self.model.query.filter(
             Pedido.status == "concluido",
-            Pedido.oculto == False,  # Usar == ao invés de is para comparação booleana
+            ~Pedido.oculto,  # noqa: E712 - SQLAlchemy comparison
             Pedido.deleted_at.is_(None),  # Não ocultar pedidos já deletados
         ).all()
 
         count = len(concluidos)
         print(f"[REPOSITORY] Encontrados {count} pedidos concluídos para ocultar")
-        
+
         if count > 0:
             # Atualizar todos de uma vez e fazer commit único
             for pedido in concluidos:
                 pedido.oculto = True
                 pedido.updated_at = datetime.utcnow()
                 print(f"[REPOSITORY] Marcando pedido #{pedido.id} como oculto")
-            
+
             try:
                 db.session.commit()
                 print(f"[REPOSITORY] Commit realizado com sucesso para {count} pedidos")

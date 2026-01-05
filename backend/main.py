@@ -130,6 +130,9 @@ def main():
     is_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
     log_debug("main starting", {"args": sys.argv, "WERKZEUG_RUN_MAIN": str(is_reloader)})
 
+    # Determinar ambiente (development ou production) - ANTES de usar
+    env = os.environ.get("FLASK_ENV", "development")
+
     # Se --help ou comandos CLI foram passados, usar Flask CLI
     if "--help" in sys.argv or any(arg.startswith("cli ") for arg in sys.argv):
         # create_app já foi importado no topo do arquivo
@@ -166,9 +169,6 @@ def main():
                     )
                     print("[INFO] Inicializacao cancelada.")
                     return
-
-    # Determinar ambiente (development ou production)
-    env = os.environ.get("FLASK_ENV", "development")
 
     # Verificar modo HTTPS
     use_https = "--https" in sys.argv or os.environ.get("USE_HTTPS", "").lower() == "true"

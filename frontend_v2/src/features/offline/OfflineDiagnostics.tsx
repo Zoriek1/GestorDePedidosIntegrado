@@ -162,10 +162,9 @@ export default function OfflineDiagnostics() {
   }
 
   const authBlockedCount =
-    queue?.filter((i) => i.status === 'FAILED' && i.blocked && (i.lastStatus === 401 || i.lastStatus === 403)).length ??
-    0;
+    (queue ?? []).filter((i) => i.status === 'FAILED' && i.blocked && (i.lastStatus === 401 || i.lastStatus === 403)).length;
   const validationBlockedCount =
-    queue?.filter(
+    (queue ?? []).filter(
       (i) =>
         i.status === 'FAILED' &&
         i.blocked &&
@@ -310,7 +309,7 @@ export default function OfflineDiagnostics() {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
           <Chip label={isOnline ? 'Online' : 'Offline'} color={isOnline ? 'success' : 'default'} />
           <Chip label={`Outbox: ${outboxCount} item(ns)`} color={outboxCount > 0 ? 'warning' : 'default'} />
-          <Chip label={`Dexie Cache: ${dexieCacheStats?.total ?? 0} entrada(s)`} color="default" />
+          <Chip label={`Dexie Cache: ${(dexieCacheStats?.total ?? 0)} entrada(s)`} color="default" />
           <Chip
             label={`Cap cache: ${MAX_CACHE_ENTRIES}`}
             color="default"
@@ -383,10 +382,10 @@ export default function OfflineDiagnostics() {
 
         {outboxStats && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
-            <Chip label={`PENDING: ${outboxStats.byStatus.PENDING}`} size="small" color="warning" />
-            <Chip label={`FAILED: ${outboxStats.byStatus.FAILED}`} size="small" color="error" />
-            <Chip label={`PROCESSING: ${outboxStats.byStatus.PROCESSING}`} size="small" color="warning" variant="outlined" />
-            <Chip label={`Blocked: ${outboxStats.blocked}`} size="small" variant="outlined" />
+            <Chip label={`PENDING: ${outboxStats.byStatus?.PENDING ?? 0}`} size="small" color="warning" />
+            <Chip label={`FAILED: ${outboxStats.byStatus?.FAILED ?? 0}`} size="small" color="error" />
+            <Chip label={`PROCESSING: ${outboxStats.byStatus?.PROCESSING ?? 0}`} size="small" color="warning" variant="outlined" />
+            <Chip label={`Blocked: ${outboxStats.blocked ?? 0}`} size="small" variant="outlined" />
           </Stack>
         )}
 
@@ -486,7 +485,7 @@ export default function OfflineDiagnostics() {
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" color="text.secondary">
               Por tag:{' '}
-              {Object.entries(dexieCacheStats.byTag)
+              {Object.entries(dexieCacheStats.byTag ?? {})
                 .map(([tag, count]) => `${tag}=${count}`)
                 .join(', ') || 'N/A'}
             </Typography>
@@ -499,7 +498,7 @@ export default function OfflineDiagnostics() {
 
         {cacheKeys && cacheKeys.length > 0 ? (
           <Box>
-            {cacheKeys.map((key) => (
+            {cacheKeys.map((key: string) => (
               <CacheEntryRow key={key} cacheKey={key} />
             ))}
           </Box>

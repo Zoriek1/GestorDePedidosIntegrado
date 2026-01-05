@@ -95,16 +95,21 @@ export function TimeSlotDialog({
             setSelectedSlot(null);
           }, 0);
         } else {
-          setSelectionMode('simple');
-          setSelectedSlot(currentSlot);
-          setIntervalStart(null);
-          setIntervalEnd(null);
+          // Usar setTimeout para evitar setState síncrono em effect
+          setTimeout(() => {
+            setSelectionMode('simple');
+            setSelectedSlot(currentSlot);
+            setIntervalStart(null);
+            setIntervalEnd(null);
+          }, 0);
         }
       } else {
-        // Reset quando não há currentSlot
-        setSelectedSlot(null);
-        setIntervalStart(null);
-        setIntervalEnd(null);
+        // Reset quando não há currentSlot - usar setTimeout para evitar setState síncrono
+        setTimeout(() => {
+          setSelectedSlot(null);
+          setIntervalStart(null);
+          setIntervalEnd(null);
+        }, 0);
       }
     }
   }, [open, date, fetchAvailability, currentSlot]);

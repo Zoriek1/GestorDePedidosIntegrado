@@ -15,24 +15,24 @@ def log_debug(msg, data):
     """Log de debug apenas em modo desenvolvimento"""
     env = os.environ.get("FLASK_ENV", "development")
     if env != "production":
-        try:
-            with open(
-                r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
-                "a",
-                encoding="utf-8",
-            ) as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "timestamp": int(time.time() * 1000),
-                            "location": "config.py",
-                            "message": msg,
-                            "data": data,
-                        }
-                    )
-                    + "\n"
+    try:
+        with open(
+            r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(
+                json.dumps(
+                    {
+                        "sessionId": "debug-session",
+                        "timestamp": int(time.time() * 1000),
+                        "location": "config.py",
+                        "message": msg,
+                        "data": data,
+                    }
                 )
+                + "\n"
+            )
         except Exception:
             # Silenciar erros de log em produção
             pass

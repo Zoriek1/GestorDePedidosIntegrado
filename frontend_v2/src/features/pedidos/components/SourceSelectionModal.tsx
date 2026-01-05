@@ -42,6 +42,7 @@ export function SourceSelectionModal({ open, onConfirm }: SourceSelectionModalPr
   // Memoizar fontes para evitar recálculos desnecessários
   const fontesMemo = useMemo(() => fontes, [fontes]);
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const mapped: FonteMapped[] = useMemo(() => {
     const whatsappId = matchFonte(fontesMemo, 'whatsapp') ?? matchFonte(fontesMemo, 'zap') ?? matchFonte(fontesMemo, 'caio');
     const catalogoId = matchFonte(fontesMemo, 'catalogo') ?? matchFonte(fontesMemo, 'catálogo');

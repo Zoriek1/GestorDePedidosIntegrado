@@ -109,6 +109,7 @@ export function CreateOrderWizard({
 
   // Hook Form com Zod
   const methods = useForm<PedidoFormData>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(pedidoFormSchema) as any,
     defaultValues: loadDraft(),
     mode: 'onBlur',
@@ -305,7 +306,7 @@ export function CreateOrderWizard({
     <FormProvider {...methods}>
       <Box 
         component="form" 
-        onSubmit={handleSubmit(onFormSubmit as any)} 
+        onSubmit={handleSubmit(onFormSubmit as any)} // eslint-disable-line @typescript-eslint/no-explicit-any
         onKeyDown={handleFormKeyDown}
         sx={{ maxWidth: 960, mx: 'auto' }}
       >

@@ -30,25 +30,11 @@ export interface ICepLookupService {
 }
 
 // ============================================================================
-// Implementação ViaCEP
+// Implementação ViaCEP (via proxy backend)
 // ============================================================================
 
-interface ViaCepResponse {
-  cep: string;
-  logradouro: string;
-  complemento: string;
-  bairro: string;
-  localidade: string;
-  uf: string;
-  ibge: string;
-  gia: string;
-  ddd: string;
-  siafi: string;
-  erro?: boolean;
-}
-
 export class ViaCepLookupService implements ICepLookupService {
-  private readonly baseUrl = 'https://viacep.com.br/ws';
+  private readonly baseUrl = '/api/cep'; // Endpoint interno (proxy backend)
   private readonly timeoutMs = 10000; // 10 segundos
 
   async lookup(cep: string): Promise<CepLookupResult | null> {
@@ -61,7 +47,8 @@ export class ViaCepLookupService implements ICepLookupService {
       return null;
     }
 
-    const url = `${this.baseUrl}/${cleanCep}/json/`;
+    // Usar endpoint interno (proxy backend) - same-origin, não precisa de CSP allowlist
+    const url = `${this.baseUrl}/${cleanCep}`;
     
     try {
       // Criar AbortController para timeout
@@ -80,6 +67,11 @@ export class ViaCepLookupService implements ICepLookupService {
 
       // Verificar status HTTP
       if (!response.ok) {
+        // 404 significa CEP não encontrado (resposta válida do backend)
+        if (response.status === 404) {
+          logger.info(`[ViaCepLookupService] CEP ${cleanCep} não encontrado`);
+          return null;
+        }
         logger.warn(`[ViaCepLookupService] Erro HTTP ${response.status} para CEP ${cleanCep}`);
         return null;
       }
@@ -92,11 +84,25 @@ export class ViaCepLookupService implements ICepLookupService {
       }
 
       // Parse JSON com tratamento de erro
-      let data: ViaCepResponse;
+      let data: {
+        cep?: string;
+        rua?: string;
+        bairro?: string;
+        cidade?: string;
+        uf?: string;
+        error?: string;
+        message?: string;
+      };
       try {
         data = await response.json();
       } catch (parseError) {
         logger.error(`[ViaCepLookupService] Erro ao parsear JSON para CEP ${cleanCep}:`, parseError);
+        return null;
+      }
+
+      // Verificar se há erro na resposta
+      if (data.error) {
+        logger.warn(`[ViaCepLookupService] Erro do backend para CEP ${cleanCep}: ${data.message || data.error}`);
         return null;
       }
 
@@ -106,25 +112,18 @@ export class ViaCepLookupService implements ICepLookupService {
         return null;
       }
 
-      // ViaCEP retorna { erro: true } quando CEP não existe
-      // IMPORTANTE: Verificar explicitamente se erro é true (não apenas truthy)
-      if (data.erro === true) {
-        logger.info(`[ViaCepLookupService] CEP ${cleanCep} não encontrado na base do ViaCEP`);
-        return null;
-      }
-
       // Validar campos obrigatórios
-      if (!data.localidade || !data.uf) {
+      if (!data.cidade || !data.uf) {
         logger.warn(`[ViaCepLookupService] Resposta incompleta para CEP ${cleanCep}:`, data);
         return null;
       }
 
-      // Retornar resultado formatado
+      // Retornar resultado formatado (backend já retorna no formato esperado)
       const result: CepLookupResult = {
         cep: data.cep || cleanCep,
-        rua: data.logradouro || '',
+        rua: data.rua || '',
         bairro: data.bairro || '',
-        cidade: data.localidade || '',
+        cidade: data.cidade || '',
         uf: data.uf || '',
       };
 

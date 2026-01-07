@@ -1,40 +1,70 @@
 ---
 alwaysApply: true
 ---
-# Project Context & Architecture
+# Goals
+- Maximize correctness + maintainability with the smallest possible change.
+- Prefer fewer files, fewer layers, fewer abstractions (unless they pay for themselves).
 
-## Architectural Pattern
-- Adopt a **Service-Oriented Architecture** (or Hexagonal/Clean Architecture if applicable).
-- **Business Logic:** Must be encapsulated within Service Classes, never exposed directly in Controllers or UI components.
-- **Data Access:** Must be abstracted behind Repository Interfaces.
+# Boundaries (Clean/Hex, lightweight)
+- Controllers/UI: orchestration only (parse/validate, call service, map response). No business rules.
+- Business rules live in domain/services and must run without I/O.
+- I/O (DB, HTTP, cache, FS, queues) stays in adapters.
 
-## Coding Standards (Java-like Rigor)
-1. **Interfaces First:**
-   - Every service or complex component must have a defined Interface.
-   - Example (TS): `interface IAuthService { login(dto: LoginDto): Promise<Session>; }`
-   - Example (Python): Use `from abc import ABC` or `typing.Protocol`.
+# Abstractions (Ports/Interfaces) — ONLY when needed
+Create an interface/port ONLY if any is true:
+1) 2+ implementations exist or are imminent.
+2) It wraps external I/O (DB/http/queue/cache/fs).
+3) It must be mocked across multiple test suites.
+Otherwise: keep concrete code and simple dependency injection.
 
-2. **Encapsulation:**
-   - Group related functions into Classes. Avoid floating global functions.
-   - Use `private` / `protected` modifiers rigorously to hide internal complexity.
-   - Use Data Transfer Objects (DTOs) for passing data between layers, not raw generic objects/maps.
+# Code shape
+- Prefer pure functions for stateless logic.
+- Use classes only for: dependencies, state, polymorphism, lifecycle.
+- Avoid generic Utils/Helpers/Common; name by responsibility.
 
-3. **Readability & Clean Code:**
-   - **SOLID:** Strictly enforce SOLID principles. If a class is doing too much, suggest splitting it.
-   - **Comments:** Code should be self-documenting through good naming. Only comment "Why", never "What".
-   - **Error Handling:** Use custom typed Exceptions (e.g., `UserNotFoundException`) rather than generic errors.
+# Data
+- DTOs only at boundaries (API/persistence/messaging). Inside: domain types.
+- Do not introduce mapping layers unless they remove real coupling.
 
-## Testing
-- Tests must mock the Interfaces, not the concrete classes.
+# Errors
+- Use domain errors for invariants; use typed boundary errors for I/O failures.
+- No “one error class per endpoint”. Group by domain concept.
 
-## Custom Commands for Refactoring
+# Readability
+- Naming: clear + concise (allow id/url/dto/db).
+- Comments: WHY only (rare). Prefer self-documenting code.
 
-- If I ask for **/refactor**:
-  1. Extract magic numbers/strings into constants/enums.
-  2. Create an Interface for the logic if one doesn't exist.
-  3. Wrap the logic in a Class with dependency injection.
-  4. Rename variables to be fully descriptive (no abbreviations).
-  5. Apply Guard Clauses.
+# Testing
+- Unit tests target business rules (no I/O).
+- Mock ports/adapters; use integration tests for repositories/adapters.
 
-- If I ask for **/solid**:
-  Analyze the current file and point out violations of SOLID principles, suggesting a refactor using Interfaces to fix it.
+# Output constraints (reduce noise)
+- Do NOT create docs/diagrams/README updates unless explicitly asked.
+- Do NOT add new files unless it reduces complexity or is required by architecture/tests.
+- Prefer editing existing files; keep diffs small; preserve behavior unless asked to change it.
+
+# Commands
+/refactor:
+1) Preserve behavior (add/adjust tests if needed).
+2) Remove duplication + dead code; simplify control flow (guard clauses).
+3) Extract constants/enums ONLY if reused or domain-significant.
+4) Introduce ports/interfaces ONLY if Abstractions rules trigger.
+5) Rename for clarity (concise); reduce coupling; keep file count minimal.
+
+/solid:
+- Identify SOLID issues that cause real pain (change frequency, coupling, test friction).
+- Propose the smallest refactor that fixes them; avoid “layering for its own sake”.
+
+# Response format (always)
+1) **Summary (1–2 lines):** what changed + why (no fluff).
+2) **Files:** list touched files; mark **NEW** only if created (and why).
+3) **Patch:** provide a unified diff (`diff`/`patch`) or exact code blocks per file.
+4) **Notes (max 5 bullets):** key design choices + tradeoffs + behavior-preservation statement.
+5) **Run:** copy-pastable commands to verify (lint/format/typecheck/tests). If none exist, say “No automated checks configured”.
+
+# Constraints for responses
+- Prefer editing existing files; keep diffs small.
+- Do not add docs/diagrams/README unless explicitly requested.
+- Do not create new files unless it clearly reduces complexity or is required for architecture/tests.
+- If assumptions are needed, state them in **Notes** (do not invent hidden context).
+

@@ -36,13 +36,14 @@ def add_security_headers(response):
 
     # Content Security Policy (CSP) - ajustar conforme necessário
     # Permitir recursos do mesmo origin e CDNs comuns
+    # ViaCEP agora é acessado via proxy backend (/api/cep/:cep), então não precisa de allowlist externa
     csp = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; "  # unsafe-inline/eval necessário para alguns bundlers
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https:; "
-        "connect-src 'self' https://gestaopedidos.planteumaflor.online; "
+        "connect-src 'self' https://gestaopedidos.planteumaflor.online; "  # ViaCEP via proxy backend (/api/cep/:cep) - same-origin
         "worker-src 'self' blob:; "
         "manifest-src 'self';"
     )

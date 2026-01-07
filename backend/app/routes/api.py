@@ -1738,6 +1738,126 @@ def health_check():
 
 
 # ============================================
+# ENDPOINT PROXY PARA VIACEP
+# ============================================
+@api_bp.route("/cep/<cep>", methods=["GET"])
+def buscar_cep(cep):
+    """
+    Proxy para busca de CEP via ViaCEP API
+    Permite que o frontend faça requisições same-origin, mantendo CSP restrita
+    
+    Args:
+        cep: CEP no formato 00000000 ou 00000-000
+        
+    Returns:
+        JSON com dados do endereço ou erro
+    """
+    import re
+    import requests
+    
+    try:
+        # Limpar CEP (remover caracteres não numéricos)
+        clean_cep = re.sub(r'\D', '', cep)
+        
+        # Validar formato (deve ter 8 dígitos)
+        if len(clean_cep) != 8:
+            return jsonify({
+                "error": "CEP inválido",
+                "message": "CEP deve ter 8 dígitos",
+                "cep_recebido": cep,
+                "cep_limpo": clean_cep
+            }), 400
+        
+        # Fazer requisição para ViaCEP
+        viacep_url = f"https://viacep.com.br/ws/{clean_cep}/json/"
+        
+        try:
+            response = requests.get(
+                viacep_url,
+                headers={
+                    'Accept': 'application/json',
+                    'User-Agent': 'PlanteUmaFlor-GestorPedidos/1.0'
+                },
+                timeout=10
+            )
+            
+            # Verificar status HTTP
+            if not response.ok:
+                return jsonify({
+                    "error": "Erro ao consultar ViaCEP",
+                    "status_code": response.status_code,
+                    "message": "Falha na comunicação com ViaCEP"
+                }), 502
+            
+            # Verificar Content-Type
+            content_type = response.headers.get('content-type', '')
+            if 'application/json' not in content_type:
+                return jsonify({
+                    "error": "Resposta inválida do ViaCEP",
+                    "content_type": content_type,
+                    "message": "ViaCEP retornou formato inesperado"
+                }), 502
+            
+            # Parse JSON
+            try:
+                data = response.json()
+            except ValueError as e:
+                return jsonify({
+                    "error": "Erro ao processar resposta do ViaCEP",
+                    "message": "Resposta não é JSON válido",
+                    "detalhes": str(e)
+                }), 502
+            
+            # Verificar se CEP não foi encontrado
+            if data.get('erro') is True:
+                return jsonify({
+                    "error": "CEP não encontrado",
+                    "message": "CEP não existe na base do ViaCEP",
+                    "cep": clean_cep
+                }), 404
+            
+            # Validar campos obrigatórios
+            if not data.get('localidade') or not data.get('uf'):
+                return jsonify({
+                    "error": "Resposta incompleta do ViaCEP",
+                    "message": "Dados do endereço incompletos",
+                    "data": data
+                }), 502
+            
+            # Retornar dados formatados (mesmo formato esperado pelo frontend)
+            return jsonify({
+                "cep": data.get('cep', clean_cep),
+                "rua": data.get('logradouro', ''),
+                "bairro": data.get('bairro', ''),
+                "cidade": data.get('localidade', ''),
+                "uf": data.get('uf', ''),
+                "complemento": data.get('complemento', ''),
+                "ibge": data.get('ibge', ''),
+                "ddd": data.get('ddd', '')
+            }), 200
+            
+        except requests.exceptions.Timeout:
+            return jsonify({
+                "error": "Timeout ao consultar ViaCEP",
+                "message": "A requisição para ViaCEP excedeu o tempo limite"
+            }), 504
+            
+        except requests.exceptions.RequestException as e:
+            return jsonify({
+                "error": "Erro de rede ao consultar ViaCEP",
+                "message": "Falha na comunicação com ViaCEP",
+                "detalhes": str(e)
+            }), 502
+            
+    except Exception as e:
+        return jsonify({
+            "error": "Erro interno ao buscar CEP",
+            "message": "Erro inesperado no servidor",
+            "detalhes": str(e)
+        }), 500
+
+
+# ============================================
 # ENDPOINTS DE FONTES DE PEDIDO
 # ============================================
 

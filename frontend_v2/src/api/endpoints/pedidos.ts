@@ -8,7 +8,7 @@ import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 import { queryFnWithCache } from '../../lib/offline/queryWithCache';
 import { enqueue } from '../../lib/offline/outbox';
-import { useOffline } from '../../lib/offline/OfflineProvider';
+import { useOffline } from '../../lib/offline/useOffline';
 import { useToast } from '../../components/system/useToast';
 
 // Types

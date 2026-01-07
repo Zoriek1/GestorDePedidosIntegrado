@@ -60,7 +60,7 @@ class Cliente(db.Model):
                     valor_str = str(pedido.valor).strip().replace("R$", "").strip()
                     if not valor_str:
                         continue
-                    
+
                     # Detectar formato brasileiro (tem vírgula)
                     if "," in valor_str:
                         # Formato BR: "65,00" ou "1.234,56"
@@ -77,7 +77,7 @@ class Cliente(db.Model):
                     else:
                         # String simples: "10"
                         valor_limpo = valor_str
-                    
+
                     total += float(valor_limpo)
                 except (ValueError, AttributeError, TypeError):
                     # Se não conseguir converter, pula

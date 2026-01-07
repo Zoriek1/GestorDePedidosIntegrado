@@ -8,8 +8,8 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from app import db
-from app.models import Cliente, EnderecoCliente, Pedido
 from app.middleware import requires_any_role, requires_role
+from app.models import Cliente, EnderecoCliente, Pedido
 
 clientes_bp = Blueprint("clientes", __name__, url_prefix="/api/clientes")
 
@@ -101,7 +101,7 @@ def listar_clientes():
         page = request.args.get("page", 1, type=int)
         per_page = request.args.get("per_page", 50, type=int)
         include_stats = request.args.get("stats", "false").lower() == "true"
-        
+
         # Filtros avançados
         min_pedidos = request.args.get("min_pedidos", type=int)
         max_pedidos = request.args.get("max_pedidos", type=int)
@@ -128,7 +128,7 @@ def listar_clientes():
 
         # Aplicar filtros avançados (após calcular estatísticas)
         from datetime import datetime
-        
+
         clientes_filtrados = []
         for cliente in todos_clientes:
             # Calcular estatísticas
@@ -165,11 +165,11 @@ def listar_clientes():
 
         # Contar total após filtros
         total = len(clientes_filtrados)
-        
+
         # Paginação
         if per_page > 0:
             offset = (page - 1) * per_page
-            clientes = clientes_filtrados[offset:offset + per_page]
+            clientes = clientes_filtrados[offset : offset + per_page]
         else:
             clientes = clientes_filtrados
 

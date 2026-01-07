@@ -150,8 +150,8 @@ class PedidoRepository(BaseRepository):
             query = query.filter(func.lower(func.trim(Pedido.status)) != "cancelado")
         elif status:
             # Suportar múltiplos status separados por vírgula
-            if ',' in status:
-                status_list = [s.strip() for s in status.split(',') if s.strip()]
+            if "," in status:
+                status_list = [s.strip() for s in status.split(",") if s.strip()]
                 if status_list:
                     query = query.filter(Pedido.status.in_(status_list))
             else:
@@ -207,6 +207,7 @@ class PedidoRepository(BaseRepository):
         elif ordenar_por == "valor":
             # Ordenar por valor (precisa converter string para float)
             from sqlalchemy import Float, cast, func
+
             if is_desc:
                 query = query.order_by(cast(Pedido.valor, Float).desc().nullslast())
             else:
@@ -259,7 +260,9 @@ class PedidoRepository(BaseRepository):
 
     def obter_estatisticas(self) -> Dict:
         """Retorna estatísticas dos pedidos (excluindo deletados)"""
-        base_query = self.model.query.filter(~Pedido.oculto, Pedido.deleted_at.is_(None))  # noqa: E712 - SQLAlchemy comparison
+        base_query = self.model.query.filter(
+            ~Pedido.oculto, Pedido.deleted_at.is_(None)
+        )  # noqa: E712 - SQLAlchemy comparison
 
         return {
             "total": base_query.count(),

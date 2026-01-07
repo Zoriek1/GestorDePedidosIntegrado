@@ -37,6 +37,7 @@ jobs:
       working-directory: ./backend
       run: |
         set -e
+        ruff check --fix .
         ruff check .
 
     - name: Check formatting with black

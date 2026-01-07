@@ -36,6 +36,7 @@ USERS = {
     },
 }
 
+
 # Compatibilidade retroativa: se usuário não tiver papel definido, assumir "admin"
 # Para usuários antigos que podem estar usando formato antigo
 def get_user_config(username):
@@ -43,15 +44,16 @@ def get_user_config(username):
     user_config = USERS.get(username)
     if user_config is None:
         return None
-    
+
     # Se for formato antigo (apenas string de senha), converter
     if isinstance(user_config, str):
         return {
             "password": user_config,
             "role": "admin",  # Default para admin em compatibilidade retroativa
         }
-    
+
     return user_config
+
 
 # Para maior segurança, você pode usar hash de senhas:
 # import bcrypt
@@ -75,11 +77,11 @@ def check_auth(username, password):
     expected_password = user_config["password"]
     if not expected_password:  # Senha vazia = usuário desabilitado
         return False, None
-    
+
     # Comparação simples (em produção, use hash)
     is_authenticated = password == expected_password
     role = user_config.get("role", "admin")  # Default para admin se não especificado
-    
+
     return is_authenticated, role if is_authenticated else None
 
     # Se estiver usando hash bcrypt:
@@ -212,188 +214,218 @@ PERMISSIONS = {
 def has_permission(role: str, permission: str) -> bool:
     """
     Verifica se um papel tem uma permissão específica
-    
+
     Args:
         role: Papel do usuário (admin, atendente, entregador)
         permission: Permissão a verificar (ex: "pedidos:create")
-    
+
     Returns:
         True se o papel tem a permissão, False caso contrário
     """
     if not role:
         return False
-    
+
     role_perms = PERMISSIONS.get(role, [])
-    
+
     # Admin tem todas as permissões
     if "*" in role_perms:
         return True
-    
+
     return permission in role_perms
 
 
 def requires_role(required_role: str):
     """
     Decorator para verificar se o usuário tem um papel específico
-    
+
     Args:
         required_role: Papel necessário (admin, atendente, entregador)
     """
+
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
             auth = request.authorization
-            
+
             if not auth:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": "Autenticação necessária",
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": "Autenticação necessária",
+                        }
+                    ),
                     401,
                 )
-            
+
             is_authenticated, role = check_auth(auth.username, auth.password)
             if not is_authenticated:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": "Credenciais inválidas",
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": "Credenciais inválidas",
+                        }
+                    ),
                     401,
                 )
-            
+
             if role != required_role:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": f"Esta operação requer papel '{required_role}'",
-                        "user_role": role,
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": f"Esta operação requer papel '{required_role}'",
+                            "user_role": role,
+                        }
+                    ),
                     403,
                 )
-            
+
             request.authenticated_user = auth.username
             request.user_role = role
-            
+
             return f(*args, **kwargs)
-        
+
         decorated._auth = f"role:{required_role}"
         return decorated
-    
+
     return decorator
 
 
 def requires_any_role(*allowed_roles: str):
     """
     Decorator para verificar se o usuário tem um dos papéis especificados
-    
+
     Args:
         *allowed_roles: Papéis permitidos (admin, atendente, entregador)
     """
+
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
             auth = request.authorization
-            
+
             if not auth:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": "Autenticação necessária",
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": "Autenticação necessária",
+                        }
+                    ),
                     401,
                 )
-            
+
             is_authenticated, role = check_auth(auth.username, auth.password)
             if not is_authenticated:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": "Credenciais inválidas",
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": "Credenciais inválidas",
+                        }
+                    ),
                     401,
                 )
-            
+
             if role not in allowed_roles:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": f"Esta operação requer um dos papéis: {', '.join(allowed_roles)}",
-                        "user_role": role,
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": f"Esta operação requer um dos papéis: {', '.join(allowed_roles)}",
+                            "user_role": role,
+                        }
+                    ),
                     403,
                 )
-            
+
             request.authenticated_user = auth.username
             request.user_role = role
-            
+
             return f(*args, **kwargs)
-        
+
         decorated._auth = f"roles:{','.join(allowed_roles)}"
         return decorated
-    
+
     return decorator
 
 
 def requires_permission(permission: str):
     """
     Decorator para verificar se o usuário tem uma permissão específica
-    
+
     Args:
         permission: Permissão necessária (ex: "pedidos:create")
     """
+
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
             auth = request.authorization
-            
+
             if not auth:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": "Autenticação necessária",
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": "Autenticação necessária",
+                        }
+                    ),
                     401,
                 )
-            
+
             is_authenticated, role = check_auth(auth.username, auth.password)
             if not is_authenticated:
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": "Credenciais inválidas",
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": "Credenciais inválidas",
+                        }
+                    ),
                     401,
                 )
-            
+
             if not has_permission(role, permission):
                 from flask import jsonify
+
                 return (
-                    jsonify({
-                        "error": "Acesso negado",
-                        "message": f"Permissão '{permission}' necessária",
-                        "user_role": role,
-                    }),
+                    jsonify(
+                        {
+                            "error": "Acesso negado",
+                            "message": f"Permissão '{permission}' necessária",
+                            "user_role": role,
+                        }
+                    ),
                     403,
                 )
-            
+
             request.authenticated_user = auth.username
             request.user_role = role
-            
+
             return f(*args, **kwargs)
-        
+
         decorated._auth = f"permission:{permission}"
         return decorated
-    
+
     return decorator
 
 

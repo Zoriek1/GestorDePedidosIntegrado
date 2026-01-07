@@ -95,15 +95,15 @@ class GerarComprovanteCommand:
             """
             if val is None or val == "":
                 return 0.0
-            
+
             # Se já é número, retornar diretamente
             if isinstance(val, (int, float)):
                 return float(val)
-            
+
             val_str = str(val).strip().replace("R$", "").strip()
             if not val_str:
                 return 0.0
-            
+
             # Detectar formato brasileiro (tem vírgula)
             if "," in val_str:
                 # Formato BR: "65,00" ou "1.234,56"
@@ -113,7 +113,7 @@ class GerarComprovanteCommand:
                     return float(clean)
                 except (ValueError, TypeError):
                     return 0.0
-            
+
             # Detectar formato americano ou número simples (tem ponto decimal ou não)
             if "." in val_str:
                 # Contar pontos - se tiver mais de 1, pode ser separador de milhar
@@ -132,7 +132,7 @@ class GerarComprovanteCommand:
                         return float(clean)
                     except (ValueError, TypeError):
                         return 0.0
-            
+
             # String simples sem formatação: "10", "65"
             try:
                 return float(val_str)

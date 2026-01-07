@@ -174,7 +174,9 @@ def deletar_pedido(pedido_id):
             return error_response("Pedido não encontrado", 404)
 
         if pedido.is_deleted:
-            print(f"[DELETE_PEDIDO] Pedido #{pedido_id} já foi deletado (deleted_at={pedido.deleted_at})")
+            print(
+                f"[DELETE_PEDIDO] Pedido #{pedido_id} já foi deletado (deleted_at={pedido.deleted_at})"
+            )
             return error_response("Pedido já foi deletado", 400)
 
         # Obter actor (usuário) se disponível
@@ -185,13 +187,17 @@ def deletar_pedido(pedido_id):
         pedido_atualizado = pedido_repo.soft_delete_pedido(pedido_id, actor=actor)
 
         if pedido_atualizado:
-            print(f"[SUCCESS] Pedido #{pedido_id} soft-deleted com sucesso (deleted_at={pedido_atualizado.deleted_at})")
+            print(
+                f"[SUCCESS] Pedido #{pedido_id} soft-deleted com sucesso (deleted_at={pedido_atualizado.deleted_at})"
+            )
             return success_response(
                 {"pedido": pedido_atualizado.to_dict()},
                 message="Pedido arquivado com sucesso (soft delete)",
             )
         else:
-            print(f"[DELETE_PEDIDO] Falha ao arquivar pedido #{pedido_id} - soft_delete_pedido retornou None")
+            print(
+                f"[DELETE_PEDIDO] Falha ao arquivar pedido #{pedido_id} - soft_delete_pedido retornou None"
+            )
             return error_response("Falha ao arquivar pedido", 500)
 
     except Exception as e:
@@ -704,6 +710,7 @@ def ocultar_concluidos():
 
         print(f"[OCULTAR_CONCLUIDOS] Erro ao ocultar pedidos concluídos: {str(e)}")
         import traceback
+
         traceback.print_exc()
         db.session.rollback()
         return error_response(f"Erro ao ocultar pedidos concluídos: {str(e)}", 500)

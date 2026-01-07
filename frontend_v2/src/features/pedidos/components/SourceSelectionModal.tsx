@@ -37,16 +37,15 @@ const matchFonte = (fontes: Array<{ id: number; nome: string }>, ...keywords: st
 
 export function SourceSelectionModal({ open, onConfirm }: SourceSelectionModalProps) {
   const { data, isLoading } = useFontesPedido(true);
-  const fontes = data?.fontes || [];
-
+  
   // Memoizar fontes para evitar recálculos desnecessários
-  const fontesMemo = useMemo(() => fontes, [fontes]);
+  const fontes = useMemo(() => data?.fontes || [], [data?.fontes]);
   
    
   const mapped: FonteMapped[] = useMemo(() => {
-    const whatsappId = matchFonte(fontesMemo, 'whatsapp') ?? matchFonte(fontesMemo, 'zap') ?? matchFonte(fontesMemo, 'caio');
-    const catalogoId = matchFonte(fontesMemo, 'catalogo') ?? matchFonte(fontesMemo, 'catálogo');
-    const siteId = matchFonte(fontesMemo, 'site');
+    const whatsappId = matchFonte(fontes, 'whatsapp') ?? matchFonte(fontes, 'zap') ?? matchFonte(fontes, 'caio');
+    const catalogoId = matchFonte(fontes, 'catalogo') ?? matchFonte(fontes, 'catálogo');
+    const siteId = matchFonte(fontes, 'site');
 
     return [
       {
@@ -68,7 +67,7 @@ export function SourceSelectionModal({ open, onConfirm }: SourceSelectionModalPr
         icon: <LanguageIcon color="info" />,
       },
     ];
-  }, [fontesMemo]);
+  }, [fontes]);
 
   const handleSelect = (id: number) => {
     if (id === -1) return;

@@ -161,6 +161,12 @@ export function getCepLookupService(): ICepLookupService {
 }
 
 // ============================================================================
+// Map de promises em andamento (para deduplicar requisições simultâneas)
+// ============================================================================
+
+const pendingLookups = new Map<string, Promise<CepLookupResult | null>>();
+
+// ============================================================================
 // React Hook para uso em componentes
 // ============================================================================
 
@@ -194,11 +200,46 @@ export function useCepLookup(service?: ICepLookupService): UseCepLookupResult {
       return null;
     }
 
+    // Verificar se já existe promise em andamento para este CEP
+    if (pendingLookups.has(cleanCep)) {
+      // Retornar promise existente (deduplicar)
+      const existingPromise = pendingLookups.get(cleanCep)!;
+      try {
+        const result = await existingPromise;
+        if (result) {
+          setResult(result);
+          setError(null);
+        } else {
+          setError('CEP não encontrado');
+          setResult(null);
+        }
+        return result;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar CEP';
+        setError(errorMessage);
+        setResult(null);
+        return null;
+      }
+    }
+
     setIsLoading(true);
     setError(null);
 
+    // Criar nova promise e armazenar no Map
+    const lookupPromise = (async () => {
+      try {
+        const lookupResult = await cepService.lookup(cleanCep);
+        return lookupResult;
+      } finally {
+        // Remover do Map após conclusão (sucesso ou erro)
+        pendingLookups.delete(cleanCep);
+      }
+    })();
+
+    pendingLookups.set(cleanCep, lookupPromise);
+
     try {
-      const lookupResult = await cepService.lookup(cleanCep);
+      const lookupResult = await lookupPromise;
       
       if (lookupResult) {
         setResult(lookupResult);

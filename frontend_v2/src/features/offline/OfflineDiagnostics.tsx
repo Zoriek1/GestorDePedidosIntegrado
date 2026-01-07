@@ -20,7 +20,7 @@ import {
   Tooltip,
   Divider,
 } from '@mui/material';
-import { useOffline } from '../../lib/offline/OfflineProvider';
+import { useOffline } from '../../lib/offline/useOffline';
 import { clearOutbox, getOutboxStats, getQueue, removeOutboxItem, retryOutboxItem } from '../../lib/offline/outbox';
 import { clearCache, getAllCacheKeys, getCacheStats, getCached, MAX_CACHE_ENTRIES } from '../../lib/offline/cache';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

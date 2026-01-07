@@ -20,7 +20,7 @@ import {
   Chip
 } from '@mui/material';
 import { useCreatePedido, useUpdatePedido } from '../../api/endpoints/pedidos';
-import { useOffline } from '../../lib/offline/OfflineProvider';
+import { useOffline } from '../../lib/offline/useOffline';
 import { getQueue, removeOutboxItem } from '../../lib/offline/outbox';
 import type { OutboxEntry } from '../../lib/offline/db';
 import { useQuery } from '@tanstack/react-query';

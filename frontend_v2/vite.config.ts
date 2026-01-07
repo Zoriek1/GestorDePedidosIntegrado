@@ -138,6 +138,11 @@ export default defineConfig(({ mode }) => {
               }
             },
             {
+              // ViaCEP proxy - sempre buscar da rede (não cachear)
+              urlPattern: /^\/api\/cep\/.*/,
+              handler: 'NetworkOnly'
+            },
+            {
               urlPattern: /^\/api\/.*/,
               handler: 'NetworkOnly'
             }

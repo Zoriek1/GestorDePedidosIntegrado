@@ -21,8 +21,8 @@ import {
   Divider,
 } from '@mui/material';
 import { useOffline } from '../../lib/offline/useOffline';
-import { clearOutbox, getOutboxStats, getQueue, removeOutboxItem, retryOutboxItem } from '../../lib/offline/outbox';
-import { clearCache, getAllCacheKeys, getCacheStats, getCached, MAX_CACHE_ENTRIES } from '../../lib/offline/cache';
+import { clearOutbox, getOutboxStats, getQueue, removeOutboxItem, retryOutboxItem, type OutboxStats } from '../../lib/offline/outbox';
+import { clearCache, getAllCacheKeys, getCacheStats, getCached, MAX_CACHE_ENTRIES, type CacheStats } from '../../lib/offline/cache';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '../../components/system/useConfirm';
 import { useToast } from '../../components/system/useToast';
@@ -105,27 +105,27 @@ export default function OfflineDiagnostics() {
   const queryClient = useQueryClient();
 
   // Hooks devem ser chamados incondicionalmente (regra do React)
-  const { data: queue, refetch: refetchQueue } = useQuery({
+  const { data: queue, refetch: refetchQueue } = useQuery<OutboxEntry[]>({
     queryKey: ['outbox-queue'],
     queryFn: getQueue,
     refetchInterval: DIAGNOSTICS_ENABLED ? 2000 : false,
     enabled: DIAGNOSTICS_ENABLED,
   });
 
-  const { data: outboxStats } = useQuery({
+  const { data: outboxStats } = useQuery<OutboxStats>({
     queryKey: ['outbox-stats'],
     queryFn: getOutboxStats,
     refetchInterval: DIAGNOSTICS_ENABLED ? 2000 : false,
     enabled: DIAGNOSTICS_ENABLED,
   });
 
-  const { data: cacheKeys } = useQuery({
+  const { data: cacheKeys } = useQuery<string[]>({
     queryKey: ['cache-keys'],
     queryFn: getAllCacheKeys,
     enabled: DIAGNOSTICS_ENABLED,
   });
 
-  const { data: dexieCacheStats } = useQuery({
+  const { data: dexieCacheStats } = useQuery<CacheStats>({
     queryKey: ['dexie-cache-stats'],
     queryFn: getCacheStats,
     enabled: DIAGNOSTICS_ENABLED,
@@ -309,7 +309,7 @@ export default function OfflineDiagnostics() {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
           <Chip label={isOnline ? 'Online' : 'Offline'} color={isOnline ? 'success' : 'default'} />
           <Chip label={`Outbox: ${outboxCount} item(ns)`} color={outboxCount > 0 ? 'warning' : 'default'} />
-          <Chip label={`Dexie Cache: ${(dexieCacheStats?.total ?? 0)} entrada(s)`} color="default" />
+          <Chip label={`Dexie Cache: ${dexieCacheStats?.total ?? 0} entrada(s)`} color="default" />
           <Chip
             label={`Cap cache: ${MAX_CACHE_ENTRIES}`}
             color="default"
@@ -382,14 +382,14 @@ export default function OfflineDiagnostics() {
 
         {outboxStats && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
-            <Chip label={`PENDING: ${outboxStats.byStatus?.PENDING ?? 0}`} size="small" color="warning" />
-            <Chip label={`FAILED: ${outboxStats.byStatus?.FAILED ?? 0}`} size="small" color="error" />
-            <Chip label={`PROCESSING: ${outboxStats.byStatus?.PROCESSING ?? 0}`} size="small" color="warning" variant="outlined" />
+            <Chip label={`PENDING: ${outboxStats.byStatus.PENDING ?? 0}`} size="small" color="warning" />
+            <Chip label={`FAILED: ${outboxStats.byStatus.FAILED ?? 0}`} size="small" color="error" />
+            <Chip label={`PROCESSING: ${outboxStats.byStatus.PROCESSING ?? 0}`} size="small" color="warning" variant="outlined" />
             <Chip label={`Blocked: ${outboxStats.blocked ?? 0}`} size="small" variant="outlined" />
           </Stack>
         )}
 
-        {queue && queue.length > 0 ? (
+        {queue && Array.isArray(queue) && queue.length > 0 ? (
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -485,7 +485,7 @@ export default function OfflineDiagnostics() {
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" color="text.secondary">
               Por tag:{' '}
-              {Object.entries(dexieCacheStats.byTag ?? {})
+              {Object.entries(dexieCacheStats.byTag)
                 .map(([tag, count]) => `${tag}=${count}`)
                 .join(', ') || 'N/A'}
             </Typography>
@@ -496,7 +496,7 @@ export default function OfflineDiagnostics() {
           </Box>
         )}
 
-        {cacheKeys && cacheKeys.length > 0 ? (
+        {cacheKeys && Array.isArray(cacheKeys) && cacheKeys.length > 0 ? (
           <Box>
             {cacheKeys.map((key: string) => (
               <CacheEntryRow key={key} cacheKey={key} />

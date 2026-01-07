@@ -38,7 +38,8 @@ export default defineConfig(({ mode }) => {
         '@/api': path.resolve(__dirname, './src/api'),
         '@/lib': path.resolve(__dirname, './src/lib'),
         '@/hooks': path.resolve(__dirname, './src/hooks'),
-      }
+      },
+      extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']
     },
     plugins: [
       react(),

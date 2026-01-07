@@ -26,7 +26,7 @@ export default function CustomersPage() {
   const { data, isLoading, error, refetch } = useCustomers(filters);
   const ordersQuery = useCustomerOrders(selectedCustomer?.id, 50);
 
-  const customers = data?.clientes || [];
+  const customers = useMemo(() => data?.clientes || [], [data?.clientes]);
   const kpis = useMemo(() => insights.computeKPIs(customers), [customers]);
   const vipThreshold = useMemo(() => insights.resolveVipThreshold(customers), [customers]);
 

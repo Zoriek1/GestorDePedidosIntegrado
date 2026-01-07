@@ -34,7 +34,6 @@ import {
   isPedidoAtrasado, 
   formatPhone, 
   getEnderecoCompleto,
-  formatCreatedAt,
 } from './OrderCardHelpers';
 import { useCalcularDistanciaPedido, useCalcularTaxaEntrega } from '../../../api/endpoints/pedidos';
 import { useToast } from '../../../components/system/useToast';

@@ -10,7 +10,7 @@ import { AuthProvider } from '../features/auth/authStore';
 import { ReactNode } from 'react';
 import { ToastProvider } from '../components/system/ToastProvider';
 import { ConfirmProvider } from '../components/system/ConfirmProvider';
-import { OfflineProvider } from '@/lib/offline/OfflineProvider';
+import { OfflineProvider } from '@/lib/offline/OfflineProvider.tsx';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import 'dayjs/locale/pt-br';

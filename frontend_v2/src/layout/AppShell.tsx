@@ -30,7 +30,7 @@ import {
 } from '@mui/icons-material';
 import { SettingsButton } from '../components/uiverse/SettingsButton/SettingsButton';
 import { useAuth } from '../features/auth/authStore';
-import { useOffline } from '@/lib/offline/useOffline.ts';
+import { useOffline } from '../lib/offline/useOffline';
 import { Chip } from '@mui/material';
 
 interface AppShellProps {

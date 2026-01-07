@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -149,12 +149,26 @@ export default function RoutePage() {
   }, [pedidos]);
 
   // Estado para ordem dos pedidos após drag-and-drop
-  const [pedidosOrdenados, setPedidosOrdenados] = useState<typeof pedidosFiltrados>([]);
+  // Usar chave baseada nos IDs para resetar quando pedidosFiltrados mudar estruturalmente
+  const pedidosFiltradosKey = useMemo(
+    () => pedidosFiltrados.map(p => p.id).join(','),
+    [pedidosFiltrados]
+  );
+  
+  const [pedidosOrdenados, setPedidosOrdenados] = useState<typeof pedidosFiltrados>(() => pedidosFiltrados);
+  const prevKeyRef = useRef(pedidosFiltradosKey);
 
-  // Sincronizar pedidosOrdenados quando pedidosFiltrados mudar
+  // Resetar ordem quando lista de pedidos mudar estruturalmente
+  // Usar requestAnimationFrame para evitar setState síncrono no render
   useEffect(() => {
-    setPedidosOrdenados([...pedidosFiltrados]);
-  }, [pedidosFiltrados]);
+    if (prevKeyRef.current !== pedidosFiltradosKey) {
+      prevKeyRef.current = pedidosFiltradosKey;
+      // Usar requestAnimationFrame para tornar assíncrono
+      requestAnimationFrame(() => {
+        setPedidosOrdenados([...pedidosFiltrados]);
+      });
+    }
+  }, [pedidosFiltradosKey, pedidosFiltrados]);
 
   // Sensores para drag-and-drop
   const sensors = useSensors(

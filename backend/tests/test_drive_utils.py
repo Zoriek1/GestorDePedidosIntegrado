@@ -37,8 +37,11 @@ class TestDriveUtils(unittest.TestCase):
         # Verificar que pelo menos uma chamada foi com o caminho correto
         call_args = [str(call[0][0]) for call in mock_splitdrive.call_args_list]
         self.assertTrue(
-            any("C:\\path\\to\\file.db" in arg or "C:/path/to/file.db" in arg.replace("\\", "/") for arg in call_args),
-            f"splitdrive não foi chamado com caminho esperado. Chamadas: {call_args}"
+            any(
+                "C:\\path\\to\\file.db" in arg or "C:/path/to/file.db" in arg.replace("\\", "/")
+                for arg in call_args
+            ),
+            f"splitdrive não foi chamado com caminho esperado. Chamadas: {call_args}",
         )
 
     @patch("scripts.backup.drive_utils.sys.platform", "linux")

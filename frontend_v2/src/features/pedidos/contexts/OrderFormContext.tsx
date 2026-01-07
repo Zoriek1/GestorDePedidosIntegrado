@@ -59,6 +59,7 @@ export function OrderFormProvider({ children }: { children: ReactNode }) {
   return <OrderFormContext.Provider value={value}>{children}</OrderFormContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useOrderFormContext(): OrderFormContextValue {
   const ctx = useContext(OrderFormContext);
   if (!ctx) {

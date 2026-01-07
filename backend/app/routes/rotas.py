@@ -7,6 +7,7 @@ import os
 from flask import Blueprint, request
 
 from app import db
+from app.middleware import requires_any_role
 from app.models import Pedido, RotaOtimizada
 from app.schemas.common import error_response, success_response
 from app.services.distancia import distancia_service
@@ -16,6 +17,7 @@ rotas_bp = Blueprint("rotas", __name__, url_prefix="/api/pedidos")
 
 
 @rotas_bp.route("/rota-otimizada", methods=["POST"])
+@requires_any_role("admin", "atendente", "entregador")
 def calcular_rota_otimizada():
     """
     Calcula rota otimizada para múltiplos pedidos
@@ -152,6 +154,7 @@ def calcular_rota_otimizada():
 
 
 @rotas_bp.route("/rota-otimizada/<int:rota_id>", methods=["GET"])
+@requires_any_role("admin", "atendente", "entregador")
 def obter_rota_otimizada(rota_id):
     """Obtém rota otimizada por ID"""
     try:

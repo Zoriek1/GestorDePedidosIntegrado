@@ -8,19 +8,37 @@ import { useConfirm } from '../../../components/system/useConfirm';
 import { useAuth } from '../../auth/authStore';
 import { usePedidoPrintService } from '../services/PedidoPrintService';
 
-interface OrderCardActionsProps {
-  pedido: Pedido;
+function hasPermission(role: string | null, permission: string): boolean {
+  if (!role) return false;
+  if (role === 'admin') return true;
+  if (role === 'atendente') {
+    return ['pedidos:create', 'pedidos:update', 'pedidos:view'].includes(permission);
+  }
+  if (role === 'entregador') {
+    return ['pedidos:view', 'pedidos:update_status'].includes(permission);
+  }
+  return false;
 }
 
-export function OrderCardActions({ pedido }: OrderCardActionsProps) {
+interface OrderCardActionsProps {
+  pedido: Pedido;
+  showRecalcButtons?: boolean;
+  compact?: boolean;
+}
+
+export function OrderCardActions({ pedido, showRecalcButtons = false, compact = false }: OrderCardActionsProps) {
   const navigate = useNavigate();
   const { success, error: showError } = useToast();
   const calcDistancia = useCalcularDistanciaPedido();
   const calcTaxa = useCalcularTaxaEntrega();
   const deletePedido = useDeletePedido();
   const confirm = useConfirm();
-  const { getCredentials } = useAuth();
+  const { getCredentials, getUserRole } = useAuth();
   const printService = usePedidoPrintService();
+  
+  const userRole = getUserRole();
+  const canEdit = hasPermission(userRole, 'pedidos:update');
+  const canDelete = userRole === 'admin';
 
   const isLoadingEntrega = calcDistancia.isPending || calcTaxa.isPending;
   const isDeleting = deletePedido.isPending;
@@ -43,14 +61,25 @@ export function OrderCardActions({ pedido }: OrderCardActionsProps) {
       .catch((err) => showError(err?.message || 'Erro ao imprimir'));
   };
 
-  const handleCalcularEntrega = async (e: React.MouseEvent) => {
+  const handleCalcularDistancia = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       await calcDistancia.mutateAsync({ id: pedido.id, forceRecalc: true });
+      success('Distância recalculada');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao calcular distância';
+      showError(errorMessage);
+    }
+  };
+
+  const handleCalcularTaxa = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
       await calcTaxa.mutateAsync({ id: pedido.id });
-      success('Entrega recalculada (distância e taxa)');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao calcular entrega');
+      success('Taxa recalculada');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao calcular taxa';
+      showError(errorMessage);
     }
   };
 
@@ -78,108 +107,107 @@ export function OrderCardActions({ pedido }: OrderCardActionsProps) {
     try {
       await deletePedido.mutateAsync(pedido.id);
       success('Pedido deletado');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao deletar pedido');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao deletar pedido';
+      showError(errorMessage);
     }
   };
 
+  // Modo compacto: apenas botões de recalcular (para caixa de entrega)
+  if (compact && showRecalcButtons) {
+    return (
+      <Stack direction="row" spacing={1}>
+        <Tooltip title="Recalcular distância">
+          <IconButton
+            size="small"
+            onClick={handleCalcularDistancia}
+            disabled={isLoadingEntrega}
+            color="primary"
+          >
+            <Calculate fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Recalcular taxa">
+          <IconButton
+            size="small"
+            onClick={handleCalcularTaxa}
+            disabled={isLoadingEntrega}
+            color="primary"
+          >
+            <Calculate fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    );
+  }
+
+  // Modo normal: barra de ações completa
   return (
     <Stack spacing={2}>
-      {/* Primeira linha: Ações de visualização e edição */}
-      <Stack 
-        direction="row" 
-        spacing={{ xs: 1.5, sm: 1 }} 
-        flexWrap="wrap"
-        justifyContent={{ xs: 'center', sm: 'flex-start' }}
-        sx={{ gap: { xs: 1, sm: 1 } }}
-      >
-        <Tooltip title="Ver detalhes">
-          <IconButton 
-            size="small" 
-            onClick={handleView} 
-            color="primary"
-            sx={{ 
-              minWidth: { xs: 44, sm: 40 },
-              minHeight: { xs: 44, sm: 40 },
-            }}
-          >
-            <Visibility fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Editar pedido">
-          <IconButton 
-            size="small" 
-            onClick={handleEdit} 
-            color="primary"
-            sx={{ 
-              minWidth: { xs: 44, sm: 40 },
-              minHeight: { xs: 44, sm: 40 },
-            }}
-          >
-            <Edit fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Imprimir pedido">
-          <IconButton 
-            size="small" 
-            onClick={handlePrint} 
-            color="primary"
-            sx={{ 
-              minWidth: { xs: 44, sm: 40 },
-              minHeight: { xs: 44, sm: 40 },
-            }}
-          >
-            <Print fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Stack>
-      
-      {/* Segunda linha: Ações críticas */}
+      {/* Botões principais: Imprimir, Ver, Editar */}
       <Stack 
         direction={{ xs: 'column', sm: 'row' }} 
-        spacing={{ xs: 1.5, sm: 1 }} 
+        spacing={1.5}
         flexWrap="wrap"
-        justifyContent={{ xs: 'center', sm: 'flex-start' }}
-        alignItems={{ xs: 'stretch', sm: 'center' }}
-        sx={{ gap: { xs: 1, sm: 1 } }}
       >
-        <Tooltip title="Recalcular distância e taxa de entrega">
-          <span>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<Calculate />}
-              onClick={handleCalcularEntrega}
-              disabled={isLoadingEntrega}
-              sx={{ 
-                width: { xs: '100%', sm: 160 },
-                minHeight: { xs: 44, sm: 36 },
-              }}
-            >
-              {isLoadingEntrega ? 'Calculando...' : 'Calcular entrega'}
-            </Button>
-          </span>
-        </Tooltip>
-        <Tooltip title="Deletar pedido permanentemente">
-          <span>
-            <IconButton
-              size="small"
-              onClick={handleDelete}
-              disabled={isDeleting}
-              color="error"
-              sx={{ 
-                minWidth: { xs: 44, sm: 40 },
-                minHeight: { xs: 44, sm: 40 },
-              }}
-            >
-              <Delete fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<Print />}
+          onClick={handlePrint}
+          fullWidth={false}
+          sx={{ 
+            minWidth: { xs: '100%', sm: 120 },
+            flex: { xs: '1 1 100%', sm: '0 1 auto' },
+          }}
+        >
+          Imprimir
+        </Button>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<Visibility />}
+          onClick={handleView}
+          fullWidth={false}
+          sx={{ 
+            minWidth: { xs: '100%', sm: 120 },
+            flex: { xs: '1 1 100%', sm: '0 1 auto' },
+          }}
+        >
+          Ver
+        </Button>
+        {canEdit && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Edit />}
+            onClick={handleEdit}
+            fullWidth={false}
+            sx={{ 
+              minWidth: { xs: '100%', sm: 120 },
+              flex: { xs: '1 1 100%', sm: '0 1 auto' },
+            }}
+          >
+            Editar
+          </Button>
+        )}
       </Stack>
+
+      {/* Botão secundário/perigoso: Deletar */}
+      {canDelete && (
+        <Button
+          variant="outlined"
+          color="error"
+          startIcon={<Delete />}
+          onClick={handleDelete}
+          disabled={isDeleting}
+          fullWidth
+        >
+          {isDeleting ? 'Deletando...' : 'Deletar'}
+        </Button>
+      )}
     </Stack>
   );
 }
 
 export default OrderCardActions;
-

@@ -20,7 +20,7 @@ export function StatusSelector({ pedidoId, status }: StatusSelectorProps) {
   const mutation = useUpdatePedidoStatus();
   const { error: showError, success } = useToast();
 
-  const handleChange = async (event: any) => {
+  const handleChange = async (event: { target: { value: string } }) => {
     const newStatus = event.target.value;
     setValue(newStatus);
     try {

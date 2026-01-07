@@ -20,9 +20,9 @@ import {
   Tooltip,
   Divider,
 } from '@mui/material';
-import { useOffline } from '../../lib/offline/OfflineProvider';
-import { clearOutbox, getOutboxStats, getQueue, removeOutboxItem, retryOutboxItem } from '../../lib/offline/outbox';
-import { clearCache, getAllCacheKeys, getCacheStats, getCached, MAX_CACHE_ENTRIES } from '../../lib/offline/cache';
+import { useOffline } from '../../lib/offline/useOffline';
+import { clearOutbox, getOutboxStats, getQueue, removeOutboxItem, retryOutboxItem, type OutboxStats } from '../../lib/offline/outbox';
+import { clearCache, getAllCacheKeys, getCacheStats, getCached, MAX_CACHE_ENTRIES, type CacheStats } from '../../lib/offline/cache';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '../../components/system/useConfirm';
 import { useToast } from '../../components/system/useToast';
@@ -104,6 +104,49 @@ export default function OfflineDiagnostics() {
   const { success, error, info } = useToast();
   const queryClient = useQueryClient();
 
+  // Hooks devem ser chamados incondicionalmente (regra do React)
+  const { data: queue, refetch: refetchQueue } = useQuery<OutboxEntry[]>({
+    queryKey: ['outbox-queue'],
+    queryFn: getQueue,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 2000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: outboxStats } = useQuery<OutboxStats>({
+    queryKey: ['outbox-stats'],
+    queryFn: getOutboxStats,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 2000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: cacheKeys } = useQuery<string[]>({
+    queryKey: ['cache-keys'],
+    queryFn: getAllCacheKeys,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: dexieCacheStats } = useQuery<CacheStats>({
+    queryKey: ['dexie-cache-stats'],
+    queryFn: getCacheStats,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: workboxCounts } = useQuery({
+    queryKey: ['workbox-cache-counts'],
+    queryFn: getWorkboxCacheCounts,
+    staleTime: 10000,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 10000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
+  const { data: storageEstimate } = useQuery({
+    queryKey: ['storage-estimate'],
+    queryFn: getStorageEstimate,
+    staleTime: 10000,
+    refetchInterval: DIAGNOSTICS_ENABLED ? 10000 : false,
+    enabled: DIAGNOSTICS_ENABLED,
+  });
+
   // Extra safety: even if route gating fails, hide diagnostics in prod unless flag is enabled
   if (!DIAGNOSTICS_ENABLED) {
     return (
@@ -118,47 +161,10 @@ export default function OfflineDiagnostics() {
     );
   }
 
-  const { data: queue, refetch: refetchQueue } = useQuery({
-    queryKey: ['outbox-queue'],
-    queryFn: getQueue,
-    refetchInterval: 2000,
-  });
-
-  const { data: outboxStats } = useQuery({
-    queryKey: ['outbox-stats'],
-    queryFn: getOutboxStats,
-    refetchInterval: 2000,
-  });
-
-  const { data: cacheKeys } = useQuery({
-    queryKey: ['cache-keys'],
-    queryFn: getAllCacheKeys,
-  });
-
-  const { data: dexieCacheStats } = useQuery({
-    queryKey: ['dexie-cache-stats'],
-    queryFn: getCacheStats,
-  });
-
-  const { data: workboxCounts } = useQuery({
-    queryKey: ['workbox-cache-counts'],
-    queryFn: getWorkboxCacheCounts,
-    staleTime: 10000,
-    refetchInterval: 10000,
-  });
-
-  const { data: storageEstimate } = useQuery({
-    queryKey: ['storage-estimate'],
-    queryFn: getStorageEstimate,
-    staleTime: 10000,
-    refetchInterval: 10000,
-  });
-
   const authBlockedCount =
-    queue?.filter((i) => i.status === 'FAILED' && i.blocked && (i.lastStatus === 401 || i.lastStatus === 403)).length ??
-    0;
+    (queue ?? []).filter((i) => i.status === 'FAILED' && i.blocked && (i.lastStatus === 401 || i.lastStatus === 403)).length;
   const validationBlockedCount =
-    queue?.filter(
+    (queue ?? []).filter(
       (i) =>
         i.status === 'FAILED' &&
         i.blocked &&
@@ -376,14 +382,14 @@ export default function OfflineDiagnostics() {
 
         {outboxStats && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
-            <Chip label={`PENDING: ${outboxStats.byStatus.PENDING}`} size="small" color="warning" />
-            <Chip label={`FAILED: ${outboxStats.byStatus.FAILED}`} size="small" color="error" />
-            <Chip label={`PROCESSING: ${outboxStats.byStatus.PROCESSING}`} size="small" color="warning" variant="outlined" />
-            <Chip label={`Blocked: ${outboxStats.blocked}`} size="small" variant="outlined" />
+            <Chip label={`PENDING: ${outboxStats.byStatus.PENDING ?? 0}`} size="small" color="warning" />
+            <Chip label={`FAILED: ${outboxStats.byStatus.FAILED ?? 0}`} size="small" color="error" />
+            <Chip label={`PROCESSING: ${outboxStats.byStatus.PROCESSING ?? 0}`} size="small" color="warning" variant="outlined" />
+            <Chip label={`Blocked: ${outboxStats.blocked ?? 0}`} size="small" variant="outlined" />
           </Stack>
         )}
 
-        {queue && queue.length > 0 ? (
+        {queue && Array.isArray(queue) && queue.length > 0 ? (
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -490,9 +496,9 @@ export default function OfflineDiagnostics() {
           </Box>
         )}
 
-        {cacheKeys && cacheKeys.length > 0 ? (
+        {cacheKeys && Array.isArray(cacheKeys) && cacheKeys.length > 0 ? (
           <Box>
-            {cacheKeys.map((key) => (
+            {cacheKeys.map((key: string) => (
               <CacheEntryRow key={key} cacheKey={key} />
             ))}
           </Box>

@@ -3,7 +3,7 @@
 Repository de Pedidos - Isolamento de acesso ao banco para Pedidos
 """
 from datetime import date, datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app import db
 from app.models import Pedido
@@ -101,8 +101,11 @@ class PedidoRepository(BaseRepository):
         excluir_ocultos: bool = True,
         excluir_deletados: bool = True,
         ordenar_por: str = "dia_entrega",
+        ordenar_direcao: str = "asc",
         filtrar_por_criacao: bool = False,
-    ) -> List[Pedido]:
+        page: Optional[int] = None,
+        per_page: Optional[int] = None,
+    ) -> Tuple[List[Pedido], int]:
         """
         Busca pedidos com múltiplos filtros
 
@@ -146,7 +149,13 @@ class PedidoRepository(BaseRepository):
 
             query = query.filter(func.lower(func.trim(Pedido.status)) != "cancelado")
         elif status:
-            query = query.filter_by(status=status)
+            # Suportar múltiplos status separados por vírgula
+            if "," in status:
+                status_list = [s.strip() for s in status.split(",") if s.strip()]
+                if status_list:
+                    query = query.filter(Pedido.status.in_(status_list))
+            else:
+                query = query.filter_by(status=status)
 
         if filtrar_por_criacao and data_inicio and data_fim:
             # Filtrar por created_at com intervalo exclusivo [início, fim_exclusivo)
@@ -177,14 +186,45 @@ class PedidoRepository(BaseRepository):
             )
 
         # Ordenação
-        if filtrar_por_criacao:
-            query = query.order_by(Pedido.created_at.desc())
-        elif ordenar_por == "dia_entrega":
-            query = query.order_by(Pedido.dia_entrega.asc())
-        elif ordenar_por == "created_at":
-            query = query.order_by(Pedido.created_at.desc())
+        ordenar_direcao_lower = ordenar_direcao.lower() if ordenar_direcao else "asc"
+        is_desc = ordenar_direcao_lower == "desc"
 
-        return query.all()
+        if filtrar_por_criacao:
+            if is_desc:
+                query = query.order_by(Pedido.created_at.desc())
+            else:
+                query = query.order_by(Pedido.created_at.asc())
+        elif ordenar_por == "dia_entrega":
+            if is_desc:
+                query = query.order_by(Pedido.dia_entrega.desc())
+            else:
+                query = query.order_by(Pedido.dia_entrega.asc())
+        elif ordenar_por == "created_at":
+            if is_desc:
+                query = query.order_by(Pedido.created_at.desc())
+            else:
+                query = query.order_by(Pedido.created_at.asc())
+        elif ordenar_por == "valor":
+            # Ordenar por valor (precisa converter string para float)
+            from sqlalchemy import Float, cast, func
+
+            if is_desc:
+                query = query.order_by(cast(Pedido.valor, Float).desc().nullslast())
+            else:
+                query = query.order_by(cast(Pedido.valor, Float).asc().nullslast())
+        elif ordenar_por == "cliente":
+            if is_desc:
+                query = query.order_by(Pedido.cliente.desc())
+            else:
+                query = query.order_by(Pedido.cliente.asc())
+
+        # Paginação
+        total = query.count()
+        if page is not None and per_page is not None:
+            offset = (page - 1) * per_page
+            query = query.offset(offset).limit(per_page)
+
+        return query.all(), total
 
     def atualizar_status(self, pedido_id: int, novo_status: str) -> Optional[Pedido]:
         """Atualiza status de um pedido"""
@@ -197,7 +237,7 @@ class PedidoRepository(BaseRepository):
         """Busca pedidos atrasados (excluindo ocultos, concluídos e deletados)"""
         pedidos = self.model.query.filter(
             Pedido.status != "concluido",
-            Pedido.oculto is False,
+            ~Pedido.oculto,  # noqa: E712 - SQLAlchemy comparison
             Pedido.deleted_at.is_(None),
         ).all()
 
@@ -220,7 +260,9 @@ class PedidoRepository(BaseRepository):
 
     def obter_estatisticas(self) -> Dict:
         """Retorna estatísticas dos pedidos (excluindo deletados)"""
-        base_query = self.model.query.filter(Pedido.oculto is False, Pedido.deleted_at.is_(None))
+        base_query = self.model.query.filter(
+            ~Pedido.oculto, Pedido.deleted_at.is_(None)
+        )  # noqa: E712 - SQLAlchemy comparison
 
         return {
             "total": base_query.count(),
@@ -241,7 +283,7 @@ class PedidoRepository(BaseRepository):
         old_pedidos = self.model.query.filter(
             Pedido.status == "concluido",
             Pedido.updated_at < cutoff_date,
-            Pedido.oculto is False,
+            ~Pedido.oculto,  # noqa: E712 - SQLAlchemy comparison
         ).all()
 
         count = len(old_pedidos)
@@ -254,13 +296,27 @@ class PedidoRepository(BaseRepository):
         """Oculta todos os pedidos concluídos (independente da data)"""
         concluidos = self.model.query.filter(
             Pedido.status == "concluido",
-            Pedido.oculto is False,
+            ~Pedido.oculto,  # noqa: E712 - SQLAlchemy comparison
             Pedido.deleted_at.is_(None),  # Não ocultar pedidos já deletados
         ).all()
 
         count = len(concluidos)
-        for pedido in concluidos:
-            self.update(pedido, oculto=True, updated_at=datetime.utcnow())
+        print(f"[REPOSITORY] Encontrados {count} pedidos concluídos para ocultar")
+
+        if count > 0:
+            # Atualizar todos de uma vez e fazer commit único
+            for pedido in concluidos:
+                pedido.oculto = True
+                pedido.updated_at = datetime.utcnow()
+                print(f"[REPOSITORY] Marcando pedido #{pedido.id} como oculto")
+
+            try:
+                db.session.commit()
+                print(f"[REPOSITORY] Commit realizado com sucesso para {count} pedidos")
+            except Exception as e:
+                print(f"[REPOSITORY] Erro ao fazer commit: {str(e)}")
+                db.session.rollback()
+                raise
 
         return count
 

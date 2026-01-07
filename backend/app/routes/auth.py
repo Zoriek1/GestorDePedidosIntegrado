@@ -25,9 +25,13 @@ def login():
         if not username or not password:
             return error_response("Usuário e senha são obrigatórios", 400)
 
-        if check_auth(username, password):
-            log_debug("Login success", {"username": username})
-            return success_response({"username": username}, message="Login realizado com sucesso")
+        is_authenticated, role = check_auth(username, password)
+        if is_authenticated:
+            log_debug("Login success", {"username": username, "role": role})
+            return success_response(
+                {"username": username, "role": role or "admin"},
+                message="Login realizado com sucesso",
+            )
         else:
             log_debug("Login failed", {"username": username})
             return error_response("Credenciais inválidas", 401)
@@ -74,8 +78,11 @@ def check_auth_status():
                     "password_len": len(getattr(auth, "password", "") or ""),
                 },
             )
-            if check_auth(auth.username, auth.password):
-                return success_response({"authenticated": True}, message="Autenticado")
+            is_authenticated, role = check_auth(auth.username, auth.password)
+            if is_authenticated:
+                return success_response(
+                    {"authenticated": True, "role": role or "admin"}, message="Autenticado"
+                )
 
         return success_response({"authenticated": False}, message="Não autenticado")
 

@@ -606,11 +606,67 @@ const FormManager = {
         this.buscandoCep = true;
         this.showCepStatus('Buscando...', 'loading');
 
-        try {
-            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-            const data = await response.json();
+        const url = `https://viacep.com.br/ws/${cep}/json/`;
+        const timeoutMs = 10000; // 10 segundos
 
-            if (data.erro) {
+        try {
+            // Criar AbortController para timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            // Verificar status HTTP
+            if (!response.ok) {
+                console.warn(`[FormManager] Erro HTTP ${response.status} ao buscar CEP ${cep}`);
+                this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+                return;
+            }
+
+            // Verificar Content-Type
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                console.warn(`[FormManager] Resposta não é JSON para CEP ${cep}. Content-Type: ${contentType}`);
+                this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+                return;
+            }
+
+            // Parse JSON com tratamento de erro
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                console.error(`[FormManager] Erro ao parsear JSON para CEP ${cep}:`, parseError);
+                this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+                return;
+            }
+
+            // Verificar se a resposta é válida
+            if (!data || typeof data !== 'object') {
+                console.warn(`[FormManager] Resposta inválida para CEP ${cep}:`, data);
+                this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+                return;
+            }
+
+            // ViaCEP retorna { erro: true } quando CEP não existe
+            // IMPORTANTE: Verificar explicitamente se erro é true (não apenas truthy)
+            if (data.erro === true) {
+                console.info(`[FormManager] CEP ${cep} não encontrado na base do ViaCEP`);
+                this.showCepStatus('CEP não encontrado', 'error');
+                return;
+            }
+
+            // Validar campos obrigatórios
+            if (!data.localidade || !data.uf) {
+                console.warn(`[FormManager] Resposta incompleta para CEP ${cep}:`, data);
                 this.showCepStatus('CEP não encontrado', 'error');
                 return;
             }
@@ -638,10 +694,23 @@ const FormManager = {
                 numeroInput.focus();
             }
 
-
         } catch (error) {
-            console.error('Erro ao buscar CEP:', error);
-            this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+            // Tratar diferentes tipos de erro
+            if (error instanceof Error) {
+                if (error.name === 'AbortError') {
+                    console.error(`[FormManager] Timeout ao buscar CEP ${cep}`);
+                    this.showCepStatus('Tempo esgotado ao buscar CEP. Tente novamente.', 'error');
+                } else if (error.message.includes('fetch') || error.message.includes('network')) {
+                    console.error(`[FormManager] Erro de rede ao buscar CEP ${cep}:`, error.message);
+                    this.showCepStatus('Erro de conexão. Verifique sua internet.', 'error');
+                } else {
+                    console.error(`[FormManager] Erro ao buscar CEP ${cep}:`, error.message);
+                    this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+                }
+            } else {
+                console.error(`[FormManager] Erro desconhecido ao buscar CEP ${cep}:`, error);
+                this.showCepStatus('Erro ao buscar CEP. Tente novamente.', 'error');
+            }
         } finally {
             this.buscandoCep = false;
         }

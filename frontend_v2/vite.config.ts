@@ -14,7 +14,9 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       secure: false, // allow self-signed HTTPS backend
       ws: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       configure: (proxy: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         proxy.on('proxyReq', (proxyReq: any, req: any) => {
           // Forward Authorization header explicitly (alguns proxies/ambientes podem omitir)
           if (req?.headers?.authorization) {
@@ -36,7 +38,8 @@ export default defineConfig(({ mode }) => {
         '@/api': path.resolve(__dirname, './src/api'),
         '@/lib': path.resolve(__dirname, './src/lib'),
         '@/hooks': path.resolve(__dirname, './src/hooks'),
-      }
+      },
+      extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']
     },
     plugins: [
       react(),
@@ -134,6 +137,11 @@ export default defineConfig(({ mode }) => {
                   maxAgeSeconds: 60 * 60 * 24
                 }
               }
+            },
+            {
+              // ViaCEP proxy - sempre buscar da rede (não cachear)
+              urlPattern: /^\/api\/cep\/.*/,
+              handler: 'NetworkOnly'
             },
             {
               urlPattern: /^\/api\/.*/,

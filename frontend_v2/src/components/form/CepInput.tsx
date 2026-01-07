@@ -4,7 +4,7 @@
  * Integração com MUI TextField e react-hook-form
  */
 
-import { forwardRef, useCallback } from 'react';
+import { forwardRef, useCallback, useRef } from 'react';
 import TextField, { TextFieldProps } from '@mui/material/TextField';
 import InputAdornment from '@mui/material/InputAdornment';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -51,6 +51,7 @@ function applyCepMask(value: string): string {
 export const CepInput = forwardRef<HTMLInputElement, CepInputProps>(
   function CepInput(props, ref) {
     const { value, onChange, isLoading, onComplete, ...textFieldProps } = props;
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const handleChange = useCallback(
       (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,10 +59,20 @@ export const CepInput = forwardRef<HTMLInputElement, CepInputProps>(
         const maskedValue = applyCepMask(rawValue);
         onChange(maskedValue);
 
+        // Limpar timeout anterior
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+
         // Verificar se o CEP está completo (8 dígitos)
         const digits = maskedValue.replace(/\D/g, '');
         if (digits.length === 8 && onComplete) {
-          onComplete(maskedValue);
+          // Debounce de 500ms antes de chamar onComplete
+          timeoutRef.current = setTimeout(() => {
+            onComplete(maskedValue);
+            timeoutRef.current = null;
+          }, 500);
         }
       },
       [onChange, onComplete]

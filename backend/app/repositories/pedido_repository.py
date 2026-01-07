@@ -2,11 +2,12 @@
 """
 Repository de Pedidos - Isolamento de acesso ao banco para Pedidos
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from app import db
 from app.models import Pedido
+from app.models.pedido import datetime_now_brazil
 from app.repositories.base_repository import BaseRepository
 
 
@@ -195,10 +196,11 @@ class PedidoRepository(BaseRepository):
             else:
                 query = query.order_by(Pedido.created_at.asc())
         elif ordenar_por == "dia_entrega":
+            # Ordenar por dia_entrega e depois por horario (para intervalos, usa horário inicial)
             if is_desc:
-                query = query.order_by(Pedido.dia_entrega.desc())
+                query = query.order_by(Pedido.dia_entrega.desc(), Pedido.horario.desc())
             else:
-                query = query.order_by(Pedido.dia_entrega.asc())
+                query = query.order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc())
         elif ordenar_por == "created_at":
             if is_desc:
                 query = query.order_by(Pedido.created_at.desc())
@@ -230,7 +232,7 @@ class PedidoRepository(BaseRepository):
         """Atualiza status de um pedido"""
         pedido = self.get_by_id(pedido_id)
         if pedido:
-            return self.update(pedido, status=novo_status, updated_at=datetime.utcnow())
+            return self.update(pedido, status=novo_status, updated_at=datetime_now_brazil())
         return None
 
     def buscar_atrasados(self) -> List[Pedido]:
@@ -277,9 +279,7 @@ class PedidoRepository(BaseRepository):
 
     def arquivar_antigos(self, dias: int = 1) -> int:
         """Arquiva (oculta) pedidos concluídos há mais de X dias"""
-        from datetime import timedelta
-
-        cutoff_date = datetime.utcnow() - timedelta(days=dias)
+        cutoff_date = datetime_now_brazil() - timedelta(days=dias)
         old_pedidos = self.model.query.filter(
             Pedido.status == "concluido",
             Pedido.updated_at < cutoff_date,
@@ -288,7 +288,7 @@ class PedidoRepository(BaseRepository):
 
         count = len(old_pedidos)
         for pedido in old_pedidos:
-            self.update(pedido, oculto=True, updated_at=datetime.utcnow())
+            self.update(pedido, oculto=True, updated_at=datetime_now_brazil())
 
         return count
 
@@ -307,7 +307,7 @@ class PedidoRepository(BaseRepository):
             # Atualizar todos de uma vez e fazer commit único
             for pedido in concluidos:
                 pedido.oculto = True
-                pedido.updated_at = datetime.utcnow()
+                pedido.updated_at = datetime_now_brazil()
                 print(f"[REPOSITORY] Marcando pedido #{pedido.id} como oculto")
 
             try:

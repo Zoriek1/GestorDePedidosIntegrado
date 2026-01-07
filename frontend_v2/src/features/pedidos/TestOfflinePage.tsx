@@ -32,7 +32,7 @@ export default function TestOfflinePage() {
   const createMutation = useCreatePedido();
   const updateMutation = useUpdatePedido();
 
-  const { data: queue } = useQuery({
+  const { data: queue } = useQuery<OutboxEntry[]>({
     queryKey: ['outbox-queue'],
     queryFn: getQueue,
     refetchInterval: 2000
@@ -156,7 +156,7 @@ export default function TestOfflinePage() {
         <Typography variant="h6" gutterBottom>
           Fila de Outbox
         </Typography>
-        {queue && queue.length > 0 ? (
+        {queue && Array.isArray(queue) && queue.length > 0 ? (
           <TableContainer>
             <Table>
               <TableHead>

@@ -31,7 +31,15 @@ class TestDriveUtils(unittest.TestCase):
         result = get_drive_letter(Path("C:\\path\\to\\file.db"))
 
         self.assertEqual(result, "C:")
-        mock_splitdrive.assert_called_once()
+        # Path pode normalizar o caminho, resultando em múltiplas chamadas
+        # Verificar que foi chamado pelo menos uma vez com o caminho esperado
+        self.assertGreaterEqual(mock_splitdrive.call_count, 1)
+        # Verificar que pelo menos uma chamada foi com o caminho correto
+        call_args = [str(call[0][0]) for call in mock_splitdrive.call_args_list]
+        self.assertTrue(
+            any("C:\\path\\to\\file.db" in arg or "C:/path/to/file.db" in arg.replace("\\", "/") for arg in call_args),
+            f"splitdrive não foi chamado com caminho esperado. Chamadas: {call_args}"
+        )
 
     @patch("scripts.backup.drive_utils.sys.platform", "linux")
     def test_get_drive_letter_linux_returns_none(self):

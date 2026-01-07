@@ -1,26 +1,27 @@
 # -*- coding: utf-8 -*-
 """
 Script para exportar vendas automaticamente para Google Sheets
-Roda diariamente às 19h via Task Scheduler
+Roda diariamente Ã s 19h via Task Scheduler
 
-Estrutura: 3 abas (WhatsApp, Catálogo, Site)
+Estrutura: 3 abas (WhatsApp, CatÃ¡logo, Site)
 - Esquerda: pedidos do dia (Valor, Cliente, Telefone, Data Entrega)
-- Direita: totais de cada dia do mês (com "DOMINGO" nos domingos)
+- Direita: totais de cada dia do mÃªs (com "DOMINGO" nos domingos)
 """
 import calendar
 import os
 import re
 import sys
+import time
 from datetime import date, datetime
 
-# Adiciona o diretório backend ao path
+# Adiciona o diretÃ³rio backend ao path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 try:
     import gspread
     from google.oauth2.service_account import Credentials  # noqa: E402
 except ImportError:
-    print("Instalando dependências...")
+    print("Instalando dependÃªncias...")
     os.system("pip install gspread google-auth")
     import gspread
     from google.oauth2.service_account import Credentials  # noqa: E402
@@ -29,30 +30,30 @@ from app import create_app  # noqa: E402
 from app.models.pedido import Pedido  # noqa: E402
 
 
-# Configurações
+# ConfiguraÃ§Ãµes
 # Calcular caminho do arquivo de credenciais
-# Prioridade: 1) Variável de ambiente, 2) user/config (novo), 3) config (legado)
+# Prioridade: 1) VariÃ¡vel de ambiente, 2) user/config (novo), 3) config (legado)
 def _resolve_credentials_path():
     """
     Resolve o caminho das credenciais Google com fallbacks.
     Prioridade:
-      1. GOOGLE_APPLICATION_CREDENTIALS (variável de ambiente padrão do Google)
+      1. GOOGLE_APPLICATION_CREDENTIALS (variÃ¡vel de ambiente padrÃ£o do Google)
       2. backend/user/config/google_credentials.json (caminho atual)
       3. backend/config/google_credentials.json (legado, compatibilidade)
     """
-    # 1. Variável de ambiente tem prioridade máxima
+    # 1. VariÃ¡vel de ambiente tem prioridade mÃ¡xima
     env_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if env_creds and os.path.exists(env_creds):
         return env_creds
 
-    # Calcular backend_dir baseado em __file__ (path absoluto, não CWD)
+    # Calcular backend_dir baseado em __file__ (path absoluto, nÃ£o CWD)
     try:
         script_file = os.path.abspath(__file__)
         script_dir = os.path.dirname(script_file)
         # Volta de scripts/export para backend
         backend_dir = os.path.dirname(os.path.dirname(script_dir))
     except (NameError, AttributeError):
-        # Se __file__ não estiver definido (importlib), procurar backend no sys.path
+        # Se __file__ nÃ£o estiver definido (importlib), procurar backend no sys.path
         backend_dir = None
         for path in sys.path:
             path_abs = os.path.abspath(path)
@@ -95,7 +96,7 @@ FONTES_ABAS = {
         "WhatsApp (Caio)",
         "WhatsApp (Paula)",
     ],
-    "Catálogo": ["Catálogo", "Catalogo", "catalogo", "catálogo"],
+    "CatÃ¡logo": ["CatÃ¡logo", "Catalogo", "catalogo", "catÃ¡logo"],
     "Site": ["Site", "site"],
 }
 
@@ -131,39 +132,87 @@ def get_google_client():
     if not os.path.exists(CREDENTIALS_PATH):
         # Mensagem clara indicando caminhos verificados
         raise FileNotFoundError(
-            f"Arquivo de credenciais Google não encontrado.\n"
+            f"Arquivo de credenciais Google nÃ£o encontrado.\n"
             f"Caminho esperado: {CREDENTIALS_PATH}\n\n"
-            f"Opções para resolver:\n"
+            f"OpÃ§Ãµes para resolver:\n"
             f"  1. Copie google_credentials.json para: backend/user/config/\n"
-            f"  2. Defina a variável de ambiente GOOGLE_APPLICATION_CREDENTIALS\n\n"
-            f"Siga as instruções em docs/CONFIGURAR_GOOGLE_SHEETS.md"
+            f"  2. Defina a variÃ¡vel de ambiente GOOGLE_APPLICATION_CREDENTIALS\n\n"
+            f"Siga as instruÃ§Ãµes em docs/CONFIGURAR_GOOGLE_SHEETS.md"
         )
 
     creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
-    return gspread.authorize(creds)
+    client = gspread.authorize(creds)
+    # Configurar timeout para requisiÃ§Ãµes do gspread (usa requests por baixo)
+    # gspread usa requests.Session internamente, mas nÃ£o expÃµe timeout diretamente
+    # O timeout serÃ¡ tratado na funÃ§Ã£o retry wrapper
+    return client
+
+
+def retry_google_operation(operation, max_retries=2, backoff_delays=None, timeout=None):
+    """
+    Wrapper para operaÃ§Ãµes do Google Sheets com retry e timeout
+
+    Args:
+        operation: FunÃ§Ã£o que executa a operaÃ§Ã£o (sem argumentos)
+        max_retries: NÃºmero mÃ¡ximo de tentativas
+        backoff_delays: Lista de delays entre tentativas (em segundos)
+        timeout: Timeout mÃ¡ximo por tentativa (em segundos) - nÃ£o usado diretamente aqui,
+                 mas pode ser implementado com threading se necessÃ¡rio
+
+    Returns:
+        Resultado da operaÃ§Ã£o
+    """
+    if backoff_delays is None:
+        backoff_delays = [1, 2]
+
+    last_exception = None
+
+    for attempt in range(max_retries + 1):  # 0, 1, 2 (3 tentativas no total)
+        try:
+            return operation()
+        except (
+            gspread.exceptions.APIError,
+            gspread.exceptions.SpreadsheetNotFound,
+            gspread.exceptions.WorksheetNotFound,
+        ) as e:
+            # Erros de API podem ser temporÃ¡rios (rate limit, timeout do servidor)
+            last_exception = e
+            if attempt < max_retries:
+                # Aguardar antes de tentar novamente (backoff exponencial)
+                time.sleep(backoff_delays[attempt])
+                continue
+            # Ãšltima tentativa falhou
+            raise
+        except Exception:
+            # Outros erros nÃ£o devem ser repetidos
+            raise
+
+    # Se chegou aqui, todas as tentativas falharam
+    if last_exception:
+        raise last_exception
 
 
 def get_or_create_spreadsheet(client, mes, ano):
-    """Busca planilha do mês (deve ser criada manualmente pelo usuário)"""
+    """Busca planilha do mÃªs (deve ser criada manualmente pelo usuÃ¡rio)"""
     nome_planilha = f"VENDAS_{MESES_PT[mes]}_{ano}"
 
     try:
         # Tenta abrir planilha existente
         spreadsheet = client.open(nome_planilha)
-        print(f"✓ Planilha encontrada: {nome_planilha}")
+        print(f"âœ“ Planilha encontrada: {nome_planilha}")
         return spreadsheet
     except gspread.SpreadsheetNotFound:
-        # Planilha não existe - instrui o usuário a criar
-        print(f"\n❌ ERRO: Planilha '{nome_planilha}' não encontrada!")
+        # Planilha nÃ£o existe - instrui o usuÃ¡rio a criar
+        print(f"\nâŒ ERRO: Planilha '{nome_planilha}' nÃ£o encontrada!")
         print("\nPara resolver:")
         print("1. Abra o Google Sheets (sheets.google.com)")
         print(f"2. Crie uma planilha chamada: {nome_planilha}")
-        print("3. Crie 3 abas: WhatsApp, Catálogo, Site")
+        print("3. Crie 3 abas: WhatsApp, CatÃ¡logo, Site")
         print("4. Compartilhe com a Service Account como Editor")
-        print("   (email está em backend/config/google_credentials.json)")
-        print("\nApós criar, execute novamente.")
+        print("   (email estÃ¡ em backend/config/google_credentials.json)")
+        print("\nApÃ³s criar, execute novamente.")
         raise Exception(
-            f"Planilha '{nome_planilha}' não existe. Crie manualmente no Google Sheets."
+            f"Planilha '{nome_planilha}' nÃ£o existe. Crie manualmente no Google Sheets."
         ) from None
 
 
@@ -180,7 +229,7 @@ def criar_planilha_na_pasta(client, nome_planilha, nome_pasta):
 
     if not folder_id:
         raise Exception(
-            f"Pasta '{nome_pasta}' não encontrada. Compartilhe a pasta com a Service Account."
+            f"Pasta '{nome_pasta}' nÃ£o encontrada. Compartilhe a pasta com a Service Account."
         )
 
     # Cria a planilha diretamente na pasta (supportsAllDrives para pastas compartilhadas)
@@ -197,11 +246,11 @@ def criar_planilha_na_pasta(client, nome_planilha, nome_pasta):
     )
 
     spreadsheet_id = file.get("id")
-    print(f"✓ Planilha criada na pasta (ID: {spreadsheet_id})")
+    print(f"âœ“ Planilha criada na pasta (ID: {spreadsheet_id})")
 
     # Transfere propriedade para o dono da pasta (sua conta pessoal)
     try:
-        # Busca o email do proprietário da pasta
+        # Busca o email do proprietÃ¡rio da pasta
         pasta_info = (
             drive_service.files()
             .get(fileId=folder_id, fields="owners", supportsAllDrives=True)
@@ -218,9 +267,9 @@ def criar_planilha_na_pasta(client, nome_planilha, nome_pasta):
                 transferOwnership=True,
                 supportsAllDrives=True,
             ).execute()
-            print(f"✓ Propriedade transferida para: {owner_email}")
+            print(f"âœ“ Propriedade transferida para: {owner_email}")
     except Exception as e:
-        print(f"⚠ Não foi possível transferir propriedade: {e}")
+        print(f"âš  NÃ£o foi possÃ­vel transferir propriedade: {e}")
 
     # Abre a planilha com gspread
     return client.open_by_key(spreadsheet_id)
@@ -243,33 +292,36 @@ def get_folder_id(drive_service, nome_pasta):
         folders = results.get("files", [])
         if folders:
             folder_id = folders[0]["id"]
-            print(f"✓ Pasta encontrada: {nome_pasta} (ID: {folder_id})")
+            print(f"âœ“ Pasta encontrada: {nome_pasta} (ID: {folder_id})")
             return folder_id
         else:
-            print(f"⚠ Pasta '{nome_pasta}' não encontrada")
+            print(f"âš  Pasta '{nome_pasta}' nÃ£o encontrada")
             return None
     except Exception as e:
-        print(f"⚠ Erro ao buscar pasta: {e}")
+        print(f"âš  Erro ao buscar pasta: {e}")
         return None
 
 
 def criar_abas_iniciais(spreadsheet, mes, ano):
     """Cria as 3 abas com estrutura inicial"""
-    # Pega número de dias do mês
+    # Pega nÃºmero de dias do mÃªs
     _, num_dias = calendar.monthrange(ano, mes)
 
     # Cria abas
-    for nome_aba in ["WhatsApp", "Catálogo", "Site"]:
+    for nome_aba in ["WhatsApp", "CatÃ¡logo", "Site"]:
         try:
             worksheet = spreadsheet.add_worksheet(title=nome_aba, rows=100, cols=10)
         except Exception:
             worksheet = spreadsheet.worksheet(nome_aba)
 
-        # Cabeçalhos
+        # CabeÃ§alhos (com retry)
         headers = ["Valor", "Cliente", "Telefone", "Data Venda", "", "Dia", "Total"]
-        worksheet.update("A1:G1", [headers])
+        retry_google_operation(
+            lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
+            max_retries=2,
+        )
 
-        # Coluna de dias do mês (F2:G32)
+        # Coluna de dias do mÃªs (F2:G32)
         dias_data = []
         for dia in range(1, num_dias + 1):
             data_dia = date(ano, mes, dia)
@@ -280,9 +332,13 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
             else:
                 dias_data.append([str(dia), "R$ 0,00"])
 
-        worksheet.update(f"F2:G{num_dias + 1}", dias_data)
+        # Atualizar dias com retry
+        retry_google_operation(
+            lambda ws=worksheet, nd=num_dias, dd=dias_data: ws.update(f"F2:G{nd + 1}", dd),
+            max_retries=2,
+        )
 
-    # Remove Sheet1 padrão
+    # Remove Sheet1 padrÃ£o
     try:
         default_sheet = spreadsheet.worksheet("Sheet1")
         spreadsheet.del_worksheet(default_sheet)
@@ -306,7 +362,7 @@ def identificar_aba(fonte_nome):
 
 
 def exportar_vendas():
-    """Função principal de exportação"""
+    """FunÃ§Ã£o principal de exportaÃ§Ã£o"""
     app = create_app()
 
     with app.app_context():
@@ -315,32 +371,34 @@ def exportar_vendas():
         ano = hoje.year
 
         print("=" * 50)
-        print(f"EXPORTAÇÃO DE VENDAS - {MESES_PT[mes]}/{ano}")
+        print(f"EXPORTAÃ‡ÃƒO DE VENDAS - {MESES_PT[mes]}/{ano}")
         print("=" * 50)
 
-        # 1. Conecta ao Google Sheets (verifica autenticação primeiro)
+        # 1. Conecta ao Google Sheets (verifica autenticaÃ§Ã£o primeiro)
         try:
             client = get_google_client()
-            print("✓ Autenticação Google OK")
+            print("âœ“ AutenticaÃ§Ã£o Google OK")
         except Exception as e:
-            print(f"✗ Erro ao conectar: {e}")
+            print(f"âœ— Erro ao conectar: {e}")
             return False
 
-        # 2. Verifica se a planilha existe ANTES de buscar pedidos
+        # 2. Verifica se a planilha existe ANTES de buscar pedidos (com retry)
         nome_planilha = f"VENDAS_{MESES_PT[mes]}_{ano}"
         try:
-            spreadsheet = client.open(nome_planilha)
-            print(f"✓ Planilha encontrada: {nome_planilha}")
+            spreadsheet = retry_google_operation(
+                lambda: client.open(nome_planilha), max_retries=2, backoff_delays=[1, 2]
+            )
+            print(f"âœ“ Planilha encontrada: {nome_planilha}")
         except gspread.SpreadsheetNotFound:
-            print(f"\n⚠ Planilha '{nome_planilha}' não encontrada.")
-            print("Exportação cancelada. A planilha deve existir no Google Sheets.")
-            return False  # Retorna False sem lançar exceção (graceful failure)
+            print(f"\nâš  Planilha '{nome_planilha}' nÃ£o encontrada.")
+            print("ExportaÃ§Ã£o cancelada. A planilha deve existir no Google Sheets.")
+            return False  # Retorna False sem lanÃ§ar exceÃ§Ã£o (graceful failure)
         except Exception as e:
-            print(f"✗ Erro ao acessar planilha: {e}")
+            print(f"âœ— Erro ao acessar planilha apÃ³s mÃºltiplas tentativas: {e}")
             return False
 
-        # 3. Só busca pedidos se a planilha existe
-        # Busca pedidos do mês atual
+        # 3. SÃ³ busca pedidos se a planilha existe
+        # Busca pedidos do mÃªs atual
         primeiro_dia = date(ano, mes, 1)
         _, ultimo = calendar.monthrange(ano, mes)
         ultimo_dia = date(ano, mes, ultimo)
@@ -354,10 +412,10 @@ def exportar_vendas():
             .all()
         )
 
-        print(f"Total de pedidos no mês: {len(pedidos)}")
+        print(f"Total de pedidos no mÃªs: {len(pedidos)}")
 
         # Organiza pedidos por aba e dia
-        dados_por_aba = {"WhatsApp": {}, "Catálogo": {}, "Site": {}}
+        dados_por_aba = {"WhatsApp": {}, "CatÃ¡logo": {}, "Site": {}}
 
         for pedido in pedidos:
             fonte = get_fonte_nome(pedido)
@@ -383,11 +441,11 @@ def exportar_vendas():
             )
 
         # Atualiza cada aba
-        for nome_aba in ["WhatsApp", "Catálogo", "Site"]:
+        for nome_aba in ["WhatsApp", "CatÃ¡logo", "Site"]:
             try:
                 worksheet = spreadsheet.worksheet(nome_aba)
             except Exception:
-                # Cria aba se não existir
+                # Cria aba se nÃ£o existir
                 worksheet = spreadsheet.add_worksheet(title=nome_aba, rows=100, cols=10)
                 headers = [
                     "Valor",
@@ -398,9 +456,13 @@ def exportar_vendas():
                     "Dia",
                     "Total",
                 ]
-                worksheet.update("A1:G1", [headers])
+                # Atualizar cabeÃ§alhos com retry
+                retry_google_operation(
+                    lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
+                    max_retries=2,
+                )
 
-            # Limpa dados antigos (mantém cabeçalho)
+            # Limpa dados antigos (mantÃ©m cabeÃ§alho)
             worksheet.batch_clear(["A2:D100"])
 
             # Prepara dados de pedidos (esquerda)
@@ -419,7 +481,14 @@ def exportar_vendas():
                     )
 
             if linhas_pedidos:
-                worksheet.update(f"A2:D{len(linhas_pedidos) + 1}", linhas_pedidos)
+                # Atualizar pedidos com retry
+                num_linhas = len(linhas_pedidos)
+                retry_google_operation(
+                    lambda ws=worksheet, nl=num_linhas, lp=linhas_pedidos: ws.update(
+                        f"A2:D{nl + 1}", lp
+                    ),
+                    max_retries=2,
+                )
 
             # Atualiza totais por dia (direita)
             _, num_dias = calendar.monthrange(ano, mes)
@@ -435,29 +504,33 @@ def exportar_vendas():
                     total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
                     totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace(".", ",")])
 
-            worksheet.update(f"F2:G{num_dias + 1}", totais_data)
+            # Atualizar totais com retry
+            retry_google_operation(
+                lambda ws=worksheet, nd=num_dias, td=totais_data: ws.update(f"F2:G{nd + 1}", td),
+                max_retries=2,
+            )
 
             total_aba = sum(p["valor"] for dia_pedidos in pedidos_aba.values() for p in dia_pedidos)
             print(
                 f"  {nome_aba}: {sum(len(v) for v in pedidos_aba.values())} pedidos - R$ {total_aba:.2f}"
             )
 
-        print("\n✓ Exportação concluída!")
+        print("\nâœ“ ExportaÃ§Ã£o concluÃ­da!")
         print(f"  Planilha: {spreadsheet.url}")
 
         return True
 
 
 def teste_conexao():
-    """Testa conexão com Google Sheets"""
-    print("Testando conexão com Google Sheets...")
+    """Testa conexÃ£o com Google Sheets"""
+    print("Testando conexÃ£o com Google Sheets...")
     try:
         get_google_client()
-        print("✓ Conexão OK!")
+        print("âœ“ ConexÃ£o OK!")
         print(f"  Email da conta: Verificar em {CREDENTIALS_PATH}")
         return True
     except Exception as e:
-        print(f"✗ Erro: {e}")
+        print(f"âœ— Erro: {e}")
         return False
 
 
@@ -465,7 +538,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Exportar vendas para Google Sheets")
-    parser.add_argument("--teste", action="store_true", help="Testar conexão")
+    parser.add_argument("--teste", action="store_true", help="Testar conexÃ£o")
 
     args = parser.parse_args()
 

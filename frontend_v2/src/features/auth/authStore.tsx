@@ -4,6 +4,7 @@
  */
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createApiRequest } from '../../api/http';
 
 const STORAGE_KEY = 'plante_uma_flor_auth';
 const SESSION_KEY = 'plante_uma_flor_auth_session';
@@ -189,7 +190,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveCredentials(username, password, remember);
 
       // Validate credentials using GET /api/auth/check with Authorization header
-      const { createApiRequest } = await import('../../api/http');
       const tempAuthHeader = () => {
         // Create auth header temporarily for validation
         try {

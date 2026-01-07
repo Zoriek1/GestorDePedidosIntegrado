@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -13,6 +13,11 @@ import {
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import dayjs from 'dayjs';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { DragIndicator } from '@mui/icons-material';
 import { usePedidos, useCalcularDistanciasLote } from '../../api/endpoints/pedidos';
 import { useCalcularRotaOtimizada, useRotaOtimizada, type RotaOtimizada } from '../../api/endpoints/rotas';
 import { Loading } from '../../components/common/Loading';
@@ -27,6 +32,53 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
+
+// Componente SortableItem para cada pedido na lista
+interface SortableItemProps {
+  id: number;
+  children: React.ReactNode;
+}
+
+function SortableItem({ id, children }: SortableItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Paper variant="outlined" sx={{ p: 1.5, position: 'relative' }}>
+        {children}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            cursor: 'grab',
+            color: 'text.secondary',
+            '&:active': {
+              cursor: 'grabbing',
+            },
+          }}
+          {...attributes}
+          {...listeners}
+        >
+          <DragIndicator fontSize="small" />
+        </Box>
+      </Paper>
+    </div>
+  );
+}
 
 // Função para criar ícone customizado por status
 function createStatusIcon(status: string): L.Icon {
@@ -87,11 +139,89 @@ export default function RoutePage() {
     return base;
   }, [data?.pedidos, selectedIds]);
 
+  // Filtro de visibilidade: apenas pedidos tipo 'Entrega' com dia_entrega == hoje
+  const pedidosFiltrados = useMemo(() => {
+    const hoje = dayjs().startOf('day').format('YYYY-MM-DD');
+    return pedidos.filter(p => 
+      p.tipo_pedido === 'Entrega' && 
+      p.dia_entrega === hoje
+    );
+  }, [pedidos]);
+
+  // Estado para ordem dos pedidos após drag-and-drop
+  // Usar chave baseada nos IDs para resetar quando pedidosFiltrados mudar estruturalmente
+  const pedidosFiltradosKey = useMemo(
+    () => pedidosFiltrados.map(p => p.id).join(','),
+    [pedidosFiltrados]
+  );
+  
+  const [pedidosOrdenados, setPedidosOrdenados] = useState<typeof pedidosFiltrados>(() => pedidosFiltrados);
+  const prevKeyRef = useRef(pedidosFiltradosKey);
+
+  // Resetar ordem quando lista de pedidos mudar estruturalmente
+  // Usar requestAnimationFrame para evitar setState síncrono no render
+  useEffect(() => {
+    if (prevKeyRef.current !== pedidosFiltradosKey) {
+      prevKeyRef.current = pedidosFiltradosKey;
+      // Usar requestAnimationFrame para tornar assíncrono
+      requestAnimationFrame(() => {
+        setPedidosOrdenados([...pedidosFiltrados]);
+      });
+    }
+  }, [pedidosFiltradosKey, pedidosFiltrados]);
+
+  // Sensores para drag-and-drop
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handler para fim do drag
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setPedidosOrdenados((items) => {
+      const oldIndex = items.findIndex((item) => item.id === active.id);
+      const newIndex = items.findIndex((item) => item.id === over.id);
+      
+      const newItems = [...items];
+      const [removed] = newItems.splice(oldIndex, 1);
+      newItems.splice(newIndex, 0, removed);
+      return newItems;
+    });
+  };
+
   const rotaData: RotaOtimizada | undefined = useMemo(() => {
     if (calcRota.data) return calcRota.data;
     if (rotaQuery.data) return rotaQuery.data;
     return undefined;
   }, [calcRota.data, rotaQuery.data]);
+
+  // Função para gerar URL do Google Maps
+  // Nota: waypoints do backend vêm como [lon, lat] para GraphHopper
+  // Google Maps precisa de [lat, lon], então invertemos
+  const gerarGoogleMapsUrl = (rotaData: RotaOtimizada): string | null => {
+    if (!rotaData?.origem || !rotaData?.waypoints || rotaData.waypoints.length === 0) {
+      return null;
+    }
+    
+    const origem = `${rotaData.origem.lat},${rotaData.origem.lon}`;
+    // Waypoints vêm como [lon, lat] do backend, inverter para Google Maps [lat, lon]
+    const waypoints = rotaData.waypoints
+      .map(wp => `${wp[1]},${wp[0]}`) // Inverter: wp[1] é lat, wp[0] é lon
+      .join('/');
+    
+    // Formato: /dir/origem/waypoint1/waypoint2/.../origem (retorno)
+    return `https://www.google.com/maps/dir/${origem}/${waypoints}/${origem}`;
+  };
+
+  const googleMapsUrl = useMemo(() => {
+    if (!rotaData) return null;
+    return gerarGoogleMapsUrl(rotaData);
+  }, [rotaData]);
 
   useEffect(() => {
     if (selectedIds.length > 0) {
@@ -103,7 +233,7 @@ export default function RoutePage() {
   }, [selectedIds.length]);
 
   const handleCalcularDistancias = async () => {
-    const ids = pedidos.filter((p) => p.tipo_pedido === 'Entrega').map((p) => p.id);
+    const ids = pedidosOrdenados.map((p) => p.id);
     if (ids.length === 0) {
       info('Nenhum pedido elegível para cálculo de distância');
       return;
@@ -118,7 +248,7 @@ export default function RoutePage() {
   };
 
   const handleOtimizarRota = async () => {
-    const ids = pedidos.filter((p) => p.tipo_pedido === 'Entrega').map((p) => p.id);
+    const ids = pedidosOrdenados.map((p) => p.id);
     if (ids.length < 2) {
       info('Selecione pelo menos 2 entregas para otimizar');
       return;
@@ -136,10 +266,10 @@ export default function RoutePage() {
     if (rotaData?.origem) {
       return [rotaData.origem.lat, rotaData.origem.lon] as [number, number];
     }
-    const firstWithCoords = pedidos.find((p) => p.coords_lat && p.coords_lon);
+    const firstWithCoords = pedidosOrdenados.find((p) => p.coords_lat && p.coords_lon);
     if (firstWithCoords) return [firstWithCoords.coords_lat!, firstWithCoords.coords_lon!] as [number, number];
     return [-23.5489, -46.6388] as [number, number]; // fallback
-  }, [rotaData, pedidos]);
+  }, [rotaData, pedidosOrdenados]);
 
   return (
     <Box>
@@ -168,7 +298,7 @@ export default function RoutePage() {
             variant="contained"
             size="small"
             onClick={handleOtimizarRota}
-            disabled={calcRota.isPending || pedidos.length < 2}
+            disabled={calcRota.isPending || pedidosOrdenados.length < 2}
           >
             {calcRota.isPending ? 'Otimizado...' : 'Otimizar rota'}
           </Button>
@@ -178,7 +308,16 @@ export default function RoutePage() {
               size="small"
               onClick={() => window.open(rotaData.graphhopper_maps_url as string, '_blank')}
             >
-              Abrir no mapa externo
+              Abrir no GraphHopper
+            </Button>
+          )}
+          {googleMapsUrl && (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => window.open(googleMapsUrl, '_blank')}
+            >
+              Abrir no Google Maps
             </Button>
           )}
         </Stack>
@@ -205,8 +344,8 @@ export default function RoutePage() {
                 )}
                 
                 {/* Marcadores dos pedidos com coordenadas calculadas */}
-                {pedidos
-                  .filter((p) => p.coords_lat && p.coords_lon && p.tipo_pedido === 'Entrega')
+                {pedidosOrdenados
+                  .filter((p) => p.coords_lat && p.coords_lon)
                   .map((pedido) => (
                     <Marker
                       key={`pedido-${pedido.id}`}
@@ -248,7 +387,7 @@ export default function RoutePage() {
                 {/* Waypoints da rota otimizada */}
                 {rotaData?.waypoints?.map((wp, idx) => {
                   // Verificar se já existe um marcador de pedido nesta posição
-                  const pedidoNoWaypoint = pedidos.find(
+                  const pedidoNoWaypoint = pedidosOrdenados.find(
                     (p) => p.coords_lat && p.coords_lon && 
                     Math.abs(p.coords_lat - wp[0]) < 0.0001 && 
                     Math.abs(p.coords_lon - wp[1]) < 0.0001
@@ -282,36 +421,48 @@ export default function RoutePage() {
 
           <Grid size={{ xs: 12, md: 5 }}>
             <Paper sx={{ p: 2 }}>
-              <Stack spacing={1.5}>
-                {pedidos.map((pedido) => (
-                  <Paper key={pedido.id} variant="outlined" sx={{ p: 1.5 }}>
-                    <Stack spacing={0.5}>
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        #{pedido.id} · {pedido.destinatario || pedido.cliente}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
-                      </Typography>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Chip label={pedido.status} size="small" />
-                        {pedido.distancia_km && (
-                          <Chip label={`${pedido.distancia_km.toFixed(1)} km`} size="small" color="info" />
-                        )}
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">
-                        Data/Hora: {pedido.dia_entrega} {pedido.horario}
-                      </Typography>
+              {pedidosOrdenados.length === 0 ? (
+                <Box p={2}>
+                  <Typography variant="body2" color="text.secondary">
+                    Nenhum pedido de entrega para hoje.
+                  </Typography>
+                </Box>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={pedidosOrdenados.map(p => p.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <Stack spacing={1.5}>
+                      {pedidosOrdenados.map((pedido) => (
+                        <SortableItem key={pedido.id} id={pedido.id}>
+                          <Stack spacing={0.5}>
+                            <Typography variant="subtitle1" fontWeight="bold">
+                              #{pedido.id} · {pedido.destinatario || pedido.cliente}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
+                            </Typography>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Chip label={pedido.status} size="small" />
+                              {pedido.distancia_km && (
+                                <Chip label={`${pedido.distancia_km.toFixed(1)} km`} size="small" color="info" />
+                              )}
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              Data/Hora: {pedido.dia_entrega} {pedido.horario}
+                            </Typography>
+                          </Stack>
+                        </SortableItem>
+                      ))}
                     </Stack>
-                  </Paper>
-                ))}
-                {pedidos.length === 0 && (
-                  <Box p={2}>
-                    <Typography variant="body2" color="text.secondary">
-                      Nenhum pedido encontrado para roteirização.
-                    </Typography>
-                  </Box>
-                )}
-              </Stack>
+                  </SortableContext>
+                </DndContext>
+              )}
             </Paper>
           </Grid>
         </Grid>

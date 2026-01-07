@@ -34,7 +34,6 @@ import {
   isPedidoAtrasado, 
   formatPhone, 
   getEnderecoCompleto,
-  formatCreatedAt,
 } from './OrderCardHelpers';
 import { useCalcularDistanciaPedido, useCalcularTaxaEntrega } from '../../../api/endpoints/pedidos';
 import { useToast } from '../../../components/system/useToast';
@@ -140,7 +139,7 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
           
           <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} flexWrap="wrap">
             <Typography variant="body2" color="text.secondary">
-              {pedido.created_at ? formatCreatedAt(pedido.created_at) : formatDateBR(pedido.dia_entrega)} às {pedido.horario}
+              {formatDateBR(pedido.dia_entrega)} às {pedido.horario}
             </Typography>
             {pedido.fonte_pedido_nome && (
               <Chip 

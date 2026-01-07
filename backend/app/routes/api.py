@@ -11,6 +11,7 @@ from flask import Blueprint, jsonify, request
 from app import db
 from app.middleware import requires_edit_auth
 from app.models import Cliente, FontePedido, Pedido
+from app.models.pedido import datetime_now_brazil
 from app.utils.backup_helper import (
     get_backup_stats,
     get_last_backup_time,
@@ -518,7 +519,7 @@ def atualizar_status(pedido_id):
             )
 
         pedido.status = novo_status
-        pedido.updated_at = datetime.utcnow()
+        pedido.updated_at = datetime_now_brazil()
 
         db.session.commit()
 
@@ -1740,6 +1741,12 @@ def health_check():
 # ============================================
 # ENDPOINT PROXY PARA VIACEP
 # ============================================
+
+# Cache em memória para CEPs (TTL de 24 horas)
+_cep_cache: dict[str, tuple[dict, datetime]] = {}
+CEP_CACHE_TTL_HOURS = 24
+
+
 @api_bp.route("/cep/<cep>", methods=["GET"])
 def buscar_cep(cep):
     """
@@ -1774,126 +1781,182 @@ def buscar_cep(cep):
                 400,
             )
 
-        # Fazer requisição para ViaCEP
+        # Verificar cache antes de fazer requisição
+        now = datetime.now()
+        if clean_cep in _cep_cache:
+            cached_data, cached_time = _cep_cache[clean_cep]
+            # Verificar se cache ainda é válido (TTL de 24 horas)
+            time_diff = now - cached_time
+            if time_diff.total_seconds() < CEP_CACHE_TTL_HOURS * 3600:
+                # Retornar do cache
+                return jsonify(cached_data), 200
+            else:
+                # Cache expirado, remover
+                del _cep_cache[clean_cep]
+
+        # Fazer requisição para ViaCEP com retry e backoff exponencial
         viacep_url = f"https://viacep.com.br/ws/{clean_cep}/json/"
 
-        try:
-            response = requests.get(
-                viacep_url,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "PlanteUmaFlor-GestorPedidos/1.0",
-                },
-                timeout=10,
-            )
+        max_retries = 2
+        backoff_delays = [1, 2]  # 1s, 2s
+        response = None
+        last_exception = None
 
-            # Verificar status HTTP
-            if not response.ok:
-                return (
-                    jsonify(
-                        {
-                            "error": "Erro ao consultar ViaCEP",
-                            "status_code": response.status_code,
-                            "message": "Falha na comunicação com ViaCEP",
-                        }
-                    ),
-                    502,
-                )
-
-            # Verificar Content-Type
-            content_type = response.headers.get("content-type", "")
-            if "application/json" not in content_type:
-                return (
-                    jsonify(
-                        {
-                            "error": "Resposta inválida do ViaCEP",
-                            "content_type": content_type,
-                            "message": "ViaCEP retornou formato inesperado",
-                        }
-                    ),
-                    502,
-                )
-
-            # Parse JSON
+        for attempt in range(max_retries + 1):  # 0, 1, 2 (3 tentativas no total)
             try:
-                data = response.json()
-            except ValueError as e:
+                response = requests.get(
+                    viacep_url,
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": "PlanteUmaFlor-GestorPedidos/1.0",
+                    },
+                    timeout=8,  # Timeout reduzido para 8s
+                )
+                # Se chegou aqui, requisição foi bem-sucedida
+                break
+            except requests.exceptions.Timeout as e:
+                last_exception = e
+                if attempt < max_retries:
+                    # Aguardar antes de tentar novamente (backoff exponencial)
+                    import time
+
+                    time.sleep(backoff_delays[attempt])
+                    continue
+                # Última tentativa falhou
+                raise
+            except requests.exceptions.RequestException as e:
+                last_exception = e
+                if attempt < max_retries:
+                    # Aguardar antes de tentar novamente (backoff exponencial)
+                    import time
+
+                    time.sleep(backoff_delays[attempt])
+                    continue
+                # Última tentativa falhou
+                raise
+
+        # Se não houve resposta após todas as tentativas, tratar erro
+        if response is None:
+            if isinstance(last_exception, requests.exceptions.Timeout):
                 return (
                     jsonify(
                         {
-                            "error": "Erro ao processar resposta do ViaCEP",
-                            "message": "Resposta não é JSON válido",
-                            "detalhes": str(e),
+                            "error": "Timeout ao consultar ViaCEP",
+                            "message": "A requisição para ViaCEP excedeu o tempo limite após múltiplas tentativas",
+                        }
+                    ),
+                    504,
+                )
+            else:
+                return (
+                    jsonify(
+                        {
+                            "error": "Erro de rede ao consultar ViaCEP",
+                            "message": "Falha na comunicação com ViaCEP após múltiplas tentativas",
+                            "detalhes": str(last_exception),
                         }
                     ),
                     502,
                 )
 
-            # Verificar se CEP não foi encontrado
-            if data.get("erro") is True:
-                return (
-                    jsonify(
-                        {
-                            "error": "CEP não encontrado",
-                            "message": "CEP não existe na base do ViaCEP",
-                            "cep": clean_cep,
-                        }
-                    ),
-                    404,
-                )
-
-            # Validar campos obrigatórios
-            if not data.get("localidade") or not data.get("uf"):
-                return (
-                    jsonify(
-                        {
-                            "error": "Resposta incompleta do ViaCEP",
-                            "message": "Dados do endereço incompletos",
-                            "data": data,
-                        }
-                    ),
-                    502,
-                )
-
-            # Retornar dados formatados (mesmo formato esperado pelo frontend)
+        # Verificar status HTTP
+        if not response.ok:
             return (
                 jsonify(
                     {
-                        "cep": data.get("cep", clean_cep),
-                        "rua": data.get("logradouro", ""),
-                        "bairro": data.get("bairro", ""),
-                        "cidade": data.get("localidade", ""),
-                        "uf": data.get("uf", ""),
-                        "complemento": data.get("complemento", ""),
-                        "ibge": data.get("ibge", ""),
-                        "ddd": data.get("ddd", ""),
-                    }
-                ),
-                200,
-            )
-
-        except requests.exceptions.Timeout:
-            return (
-                jsonify(
-                    {
-                        "error": "Timeout ao consultar ViaCEP",
-                        "message": "A requisição para ViaCEP excedeu o tempo limite",
-                    }
-                ),
-                504,
-            )
-
-        except requests.exceptions.RequestException as e:
-            return (
-                jsonify(
-                    {
-                        "error": "Erro de rede ao consultar ViaCEP",
+                        "error": "Erro ao consultar ViaCEP",
+                        "status_code": response.status_code,
                         "message": "Falha na comunicação com ViaCEP",
+                    }
+                ),
+                502,
+            )
+
+        # Verificar Content-Type
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            return (
+                jsonify(
+                    {
+                        "error": "Resposta inválida do ViaCEP",
+                        "content_type": content_type,
+                        "message": "ViaCEP retornou formato inesperado",
+                    }
+                ),
+                502,
+            )
+
+        # Parse JSON
+        try:
+            data = response.json()
+        except ValueError as e:
+            return (
+                jsonify(
+                    {
+                        "error": "Erro ao processar resposta do ViaCEP",
+                        "message": "Resposta não é JSON válido",
                         "detalhes": str(e),
                     }
                 ),
                 502,
             )
+
+        # Verificar se CEP não foi encontrado
+        if data.get("erro") is True:
+            return (
+                jsonify(
+                    {
+                        "error": "CEP não encontrado",
+                        "message": "CEP não existe na base do ViaCEP",
+                        "cep": clean_cep,
+                    }
+                ),
+                404,
+            )
+
+        # Validar campos obrigatórios
+        if not data.get("localidade") or not data.get("uf"):
+            return (
+                jsonify(
+                    {
+                        "error": "Resposta incompleta do ViaCEP",
+                        "message": "Dados do endereço incompletos",
+                        "data": data,
+                    }
+                ),
+                502,
+            )
+
+        # Preparar dados formatados (mesmo formato esperado pelo frontend)
+        result_data = {
+            "cep": data.get("cep", clean_cep),
+            "rua": data.get("logradouro", ""),
+            "bairro": data.get("bairro", ""),
+            "cidade": data.get("localidade", ""),
+            "uf": data.get("uf", ""),
+            "complemento": data.get("complemento", ""),
+            "ibge": data.get("ibge", ""),
+            "ddd": data.get("ddd", ""),
+        }
+
+        # Salvar no cache
+        _cep_cache[clean_cep] = (result_data, datetime.now())
+
+        # Retornar dados formatados
+        return jsonify(result_data), 200
+
+    except (ValueError, KeyError) as e:
+        # Erro no processamento da resposta (já tratado acima, mas manter para segurança)
+        return (
+            jsonify(
+                {
+                    "error": "Erro ao processar resposta do ViaCEP",
+                    "message": "Resposta inválida do ViaCEP",
+                    "detalhes": str(e),
+                }
+            ),
+            502,
+        )
 
     except Exception as e:
         return (

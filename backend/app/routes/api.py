@@ -1819,6 +1819,7 @@ def buscar_cep(cep):
                 if attempt < max_retries:
                     # Aguardar antes de tentar novamente (backoff exponencial)
                     import time
+
                     time.sleep(backoff_delays[attempt])
                     continue
                 # Última tentativa falhou
@@ -1828,6 +1829,7 @@ def buscar_cep(cep):
                 if attempt < max_retries:
                     # Aguardar antes de tentar novamente (backoff exponencial)
                     import time
+
                     time.sleep(backoff_delays[attempt])
                     continue
                 # Última tentativa falhou

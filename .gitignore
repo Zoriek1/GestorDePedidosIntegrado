@@ -42,6 +42,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Exceção: não ignorar lib do frontend_v2
+!frontend_v2/src/lib/
 parts/
 sdist/
 var/

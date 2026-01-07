@@ -651,7 +651,6 @@ def get_pedidos_por_data():
 def marcar_impresso(pedido_id):
     """Marca pedido como impresso"""
     try:
-
         from app import db
 
         pedido = pedido_repo.get_by_id(pedido_id)

@@ -1,7 +1,3 @@
-/**
- * App Shell - Responsive layout wrapper
- */
-
 import React, { ReactNode, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -18,6 +14,7 @@ import {
   Badge,
   Divider,
   Stack,
+  Chip,
 } from '@mui/material';
 import {
   LocalFlorist,
@@ -28,14 +25,15 @@ import {
   Menu as MenuIcon,
   NotificationsNone,
 } from '@mui/icons-material';
+
 import { SettingsButton } from '../components/uiverse/SettingsButton/SettingsButton';
 import { useAuth } from '../features/auth/authStore';
 import { useOffline } from '../lib/offline/useOffline';
-import { Chip } from '@mui/material';
 
 interface AppShellProps {
   children: ReactNode;
 }
+
 
 export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();

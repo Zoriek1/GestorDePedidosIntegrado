@@ -5,7 +5,21 @@ Model completo com todos os campos do formulário de 4 steps
 """
 from datetime import datetime, timedelta
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    # Fallback para Python < 3.9
+    from backports.zoneinfo import ZoneInfo
+
 from app import db
+
+# Timezone do Brasil (São Paulo - GMT-3)
+TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
+
+
+def datetime_now_brazil():
+    """Retorna datetime atual com timezone do Brasil (GMT-3)"""
+    return datetime.now(TIMEZONE_BRASIL)
 
 
 class Pedido(db.Model):
@@ -105,11 +119,11 @@ class Pedido(db.Model):
     coords_lon = db.Column(db.Float, nullable=True, comment="Longitude do endereço")
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, comment="Data de criação")
+    created_at = db.Column(db.DateTime, default=datetime_now_brazil, comment="Data de criação")
     updated_at = db.Column(
         db.DateTime,
         nullable=True,
-        onupdate=datetime.utcnow,
+        onupdate=datetime_now_brazil,
         comment="Última atualização",
     )
 
@@ -224,19 +238,19 @@ class Pedido(db.Model):
     def soft_delete(self):
         """Marca pedido como deletado (soft delete)"""
         if not self.is_deleted:
-            self.deleted_at = datetime.utcnow()
-            self.updated_at = datetime.utcnow()
+            self.deleted_at = datetime_now_brazil()
+            self.updated_at = datetime_now_brazil()
 
     def restore(self):
         """Restaura pedido deletado (reverte soft delete)"""
         if self.is_deleted:
             self.deleted_at = None
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime_now_brazil()
 
     @staticmethod
     def cleanup_old_pedidos(days=1):
         """Arquiva (oculta) pedidos concluídos há mais de X dias - NÃO deleta do banco"""
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime_now_brazil() - timedelta(days=days)
         old_pedidos = Pedido.query.filter(
             Pedido.status == "concluido",
             Pedido.updated_at < cutoff_date,
@@ -247,7 +261,7 @@ class Pedido(db.Model):
         count = len(old_pedidos)
         for pedido in old_pedidos:
             pedido.oculto = True
-            pedido.updated_at = datetime.utcnow()
+            pedido.updated_at = datetime_now_brazil()
 
         db.session.commit()
         return count

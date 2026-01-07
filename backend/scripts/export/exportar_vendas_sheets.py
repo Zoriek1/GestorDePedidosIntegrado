@@ -11,6 +11,7 @@ import calendar
 import os
 import re
 import sys
+import time
 from datetime import date, datetime
 
 # Adiciona o diretório backend ao path
@@ -140,7 +141,52 @@ def get_google_client():
         )
 
     creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
-    return gspread.authorize(creds)
+    client = gspread.authorize(creds)
+    # Configurar timeout para requisições do gspread (usa requests por baixo)
+    # gspread usa requests.Session internamente, mas não expõe timeout diretamente
+    # O timeout será tratado na função retry wrapper
+    return client
+
+
+def retry_google_operation(operation, max_retries=2, backoff_delays=None, timeout=None):
+    """
+    Wrapper para operações do Google Sheets com retry e timeout
+
+    Args:
+        operation: Função que executa a operação (sem argumentos)
+        max_retries: Número máximo de tentativas
+        backoff_delays: Lista de delays entre tentativas (em segundos)
+        timeout: Timeout máximo por tentativa (em segundos) - não usado diretamente aqui,
+                 mas pode ser implementado com threading se necessário
+
+    Returns:
+        Resultado da operação
+    """
+    if backoff_delays is None:
+        backoff_delays = [1, 2]
+
+    last_exception = None
+
+    for attempt in range(max_retries + 1):  # 0, 1, 2 (3 tentativas no total)
+        try:
+            return operation()
+        except (gspread.exceptions.APIError, gspread.exceptions.SpreadsheetNotFound,
+                gspread.exceptions.WorksheetNotFound) as e:
+            # Erros de API podem ser temporários (rate limit, timeout do servidor)
+            last_exception = e
+            if attempt < max_retries:
+                # Aguardar antes de tentar novamente (backoff exponencial)
+                time.sleep(backoff_delays[attempt])
+                continue
+            # Última tentativa falhou
+            raise
+        except Exception:
+            # Outros erros não devem ser repetidos
+            raise
+
+    # Se chegou aqui, todas as tentativas falharam
+    if last_exception:
+        raise last_exception
 
 
 def get_or_create_spreadsheet(client, mes, ano):
@@ -265,9 +311,12 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
         except Exception:
             worksheet = spreadsheet.worksheet(nome_aba)
 
-        # Cabeçalhos
+        # Cabeçalhos (com retry)
         headers = ["Valor", "Cliente", "Telefone", "Data Venda", "", "Dia", "Total"]
-        worksheet.update("A1:G1", [headers])
+        retry_google_operation(
+            lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
+            max_retries=2,
+        )
 
         # Coluna de dias do mês (F2:G32)
         dias_data = []
@@ -280,7 +329,11 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
             else:
                 dias_data.append([str(dia), "R$ 0,00"])
 
-        worksheet.update(f"F2:G{num_dias + 1}", dias_data)
+        # Atualizar dias com retry
+        retry_google_operation(
+            lambda ws=worksheet, nd=num_dias, dd=dias_data: ws.update(f"F2:G{nd + 1}", dd),
+            max_retries=2,
+        )
 
     # Remove Sheet1 padrão
     try:
@@ -326,17 +379,21 @@ def exportar_vendas():
             print(f"✗ Erro ao conectar: {e}")
             return False
 
-        # 2. Verifica se a planilha existe ANTES de buscar pedidos
+        # 2. Verifica se a planilha existe ANTES de buscar pedidos (com retry)
         nome_planilha = f"VENDAS_{MESES_PT[mes]}_{ano}"
         try:
-            spreadsheet = client.open(nome_planilha)
+            spreadsheet = retry_google_operation(
+                lambda: client.open(nome_planilha),
+                max_retries=2,
+                backoff_delays=[1, 2]
+            )
             print(f"✓ Planilha encontrada: {nome_planilha}")
         except gspread.SpreadsheetNotFound:
             print(f"\n⚠ Planilha '{nome_planilha}' não encontrada.")
             print("Exportação cancelada. A planilha deve existir no Google Sheets.")
             return False  # Retorna False sem lançar exceção (graceful failure)
         except Exception as e:
-            print(f"✗ Erro ao acessar planilha: {e}")
+            print(f"✗ Erro ao acessar planilha após múltiplas tentativas: {e}")
             return False
 
         # 3. Só busca pedidos se a planilha existe
@@ -398,7 +455,11 @@ def exportar_vendas():
                     "Dia",
                     "Total",
                 ]
-                worksheet.update("A1:G1", [headers])
+                # Atualizar cabeçalhos com retry
+                retry_google_operation(
+                    lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
+                    max_retries=2,
+                )
 
             # Limpa dados antigos (mantém cabeçalho)
             worksheet.batch_clear(["A2:D100"])
@@ -419,7 +480,12 @@ def exportar_vendas():
                     )
 
             if linhas_pedidos:
-                worksheet.update(f"A2:D{len(linhas_pedidos) + 1}", linhas_pedidos)
+                # Atualizar pedidos com retry
+                num_linhas = len(linhas_pedidos)
+                retry_google_operation(
+                    lambda ws=worksheet, nl=num_linhas, lp=linhas_pedidos: ws.update(f"A2:D{nl + 1}", lp),
+                    max_retries=2,
+                )
 
             # Atualiza totais por dia (direita)
             _, num_dias = calendar.monthrange(ano, mes)
@@ -435,7 +501,11 @@ def exportar_vendas():
                     total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
                     totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace(".", ",")])
 
-            worksheet.update(f"F2:G{num_dias + 1}", totais_data)
+            # Atualizar totais com retry
+            retry_google_operation(
+                lambda ws=worksheet, nd=num_dias, td=totais_data: ws.update(f"F2:G{nd + 1}", td),
+                max_retries=2,
+            )
 
             total_aba = sum(p["valor"] for dia_pedidos in pedidos_aba.values() for p in dia_pedidos)
             print(

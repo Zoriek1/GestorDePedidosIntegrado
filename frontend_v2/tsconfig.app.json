@@ -38,5 +38,5 @@
       "@/hooks/*": ["src/hooks/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "src/types/**/*"]
 }

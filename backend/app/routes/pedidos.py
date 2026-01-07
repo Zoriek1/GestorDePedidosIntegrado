@@ -12,6 +12,7 @@ from flask import Blueprint, request
 # Command Pattern Imports
 from app.commands.gerar_comprovante_command import GerarComprovanteCommand
 from app.middleware import requires_any_role, requires_edit_auth, requires_role
+from app.models.pedido import datetime_now_brazil
 from app.repositories.pedido_repository import PedidoRepository
 from app.schemas.common import error_response, success_response
 from app.schemas.pedido_schema import (
@@ -569,7 +570,7 @@ def atualizar_pedido(pedido_id):
         if "status" in data:
             pedido.status = data["status"]
 
-        pedido.updated_at = datetime.utcnow()
+        pedido.updated_at = datetime_now_brazil()
 
         db.session.commit()
 
@@ -650,7 +651,6 @@ def get_pedidos_por_data():
 def marcar_impresso(pedido_id):
     """Marca pedido como impresso"""
     try:
-        from datetime import datetime
 
         from app import db
 
@@ -659,7 +659,7 @@ def marcar_impresso(pedido_id):
             return error_response("Pedido não encontrado", 404)
 
         pedido.impresso = True
-        pedido.updated_at = datetime.utcnow()
+        pedido.updated_at = datetime_now_brazil()
         db.session.commit()
 
         return success_response(

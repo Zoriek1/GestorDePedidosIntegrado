@@ -34,7 +34,6 @@ import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
 import { OrdersKPIGrid } from './components/OrdersKPIGrid';
 import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
-import { OrdersSorting } from './components/OrdersSorting';
 import { OrdersPagination } from './components/OrdersPagination';
 
 export default function OrdersPage() {
@@ -507,17 +506,6 @@ export default function OrdersPage() {
             setFilters((prev) => ({ ...prev, status: status || undefined }));
           }}
           onDateRangeChange={(start, end) => setFilters((prev) => ({ ...prev, data_inicio: start, data_fim: end }))}
-        />
-      </Paper>
-
-      {/* Ordenação */}
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <OrdersSorting
-          sortBy={filters.sort_by || 'dia_entrega'}
-          sortOrder={filters.sort_order || 'asc'}
-          onChange={(sortBy, sortOrder) => {
-            setFilters((prev) => ({ ...prev, sort_by: sortBy, sort_order: sortOrder, page: 1 }));
-          }}
         />
       </Paper>
 

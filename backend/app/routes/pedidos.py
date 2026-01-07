@@ -3,6 +3,7 @@
 Rotas de Pedidos - Blueprint para endpoints de pedidos
 """
 import importlib.util
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from flask import Blueprint, request
 
 # Command Pattern Imports
 from app.commands.gerar_comprovante_command import GerarComprovanteCommand
-from app.middleware import requires_edit_auth
+from app.middleware import requires_any_role, requires_edit_auth, requires_role
 from app.repositories.pedido_repository import PedidoRepository
 from app.schemas.common import error_response, success_response
 from app.schemas.pedido_schema import (
@@ -42,6 +43,12 @@ def listar_pedidos():
         search = request.args.get("search")
         filtrar_por_criacao = request.args.get("filtrar_por_criacao", "").lower() == "true"
 
+        # Ordenação e paginação
+        sort_by = request.args.get("sort_by", "dia_entrega")
+        sort_order = request.args.get("sort_order", "asc")
+        page = request.args.get("page", type=int)
+        per_page = request.args.get("per_page", type=int)
+
         # Converter datas se fornecidas
         data_inicio_obj = None
         data_fim_obj = None
@@ -67,19 +74,33 @@ def listar_pedidos():
         # Vendas devem mostrar TODOS os pedidos do mês, incluindo ocultos.
         excluir_ocultos = not filtrar_por_criacao  # False quando filtrar_por_criacao=True
 
-        pedidos = pedido_repo.buscar_com_filtros(
+        pedidos, total = pedido_repo.buscar_com_filtros(
             status=status,
             data_inicio=data_inicio_obj,
             data_fim=data_fim_obj,
             search=search,
             excluir_ocultos=excluir_ocultos,
             filtrar_por_criacao=filtrar_por_criacao,
+            ordenar_por=sort_by,
+            ordenar_direcao=sort_order,
+            page=page,
+            per_page=per_page,
         )
 
         # Serializar pedidos
         pedidos_data = [p.to_dict() for p in pedidos]
 
-        return success_response({"pedidos": pedidos_data, "total": len(pedidos_data)})
+        response_data = {
+            "pedidos": pedidos_data,
+            "total": total,
+        }
+
+        if page is not None and per_page is not None:
+            response_data["page"] = page
+            response_data["per_page"] = per_page
+            response_data["total_pages"] = (total + per_page - 1) // per_page if per_page > 0 else 1
+
+        return success_response(response_data)
     except Exception as e:
         return error_response(f"Erro ao listar pedidos: {str(e)}", 500)
 
@@ -98,7 +119,7 @@ def obter_pedido(pedido_id):
 
 
 @pedidos_bp.route("/<int:pedido_id>/status", methods=["PUT", "POST"])
-@requires_edit_auth
+@requires_any_role("admin", "atendente", "entregador")
 def atualizar_status(pedido_id):
     """Atualiza status de um pedido"""
     try:
@@ -120,7 +141,7 @@ def atualizar_status(pedido_id):
 
 
 @pedidos_bp.route("/<int:pedido_id>", methods=["DELETE"])
-@requires_edit_auth
+@requires_role("admin")
 def deletar_pedido(pedido_id):
     """Deleta pedido"""
 
@@ -145,27 +166,38 @@ def deletar_pedido(pedido_id):
 
     # Se chegou aqui, backup foi criado com sucesso
     try:
+        print(f"[DELETE_PEDIDO] Iniciando soft delete do pedido #{pedido_id}")
         # Soft delete (P0.3) - não remove fisicamente
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
+            print(f"[DELETE_PEDIDO] Pedido #{pedido_id} não encontrado")
             return error_response("Pedido não encontrado", 404)
 
         if pedido.is_deleted:
+            print(
+                f"[DELETE_PEDIDO] Pedido #{pedido_id} já foi deletado (deleted_at={pedido.deleted_at})"
+            )
             return error_response("Pedido já foi deletado", 400)
 
         # Obter actor (usuário) se disponível
         actor = "system"  # TODO: extrair de autenticação se disponível
 
         # Executar soft delete via repository (já registra auditoria)
+        print(f"[DELETE_PEDIDO] Chamando soft_delete_pedido para pedido #{pedido_id}")
         pedido_atualizado = pedido_repo.soft_delete_pedido(pedido_id, actor=actor)
 
         if pedido_atualizado:
-            print(f"[SUCCESS] Pedido #{pedido_id} soft-deleted com sucesso")
+            print(
+                f"[SUCCESS] Pedido #{pedido_id} soft-deleted com sucesso (deleted_at={pedido_atualizado.deleted_at})"
+            )
             return success_response(
                 {"pedido": pedido_atualizado.to_dict()},
                 message="Pedido arquivado com sucesso (soft delete)",
             )
         else:
+            print(
+                f"[DELETE_PEDIDO] Falha ao arquivar pedido #{pedido_id} - soft_delete_pedido retornou None"
+            )
             return error_response("Falha ao arquivar pedido", 500)
 
     except Exception as e:
@@ -181,7 +213,7 @@ def deletar_pedido(pedido_id):
 
 
 @pedidos_bp.route("/exportar-planilha", methods=["POST"])
-@requires_edit_auth
+@requires_any_role("admin", "atendente")
 def exportar_planilha():
     """
     Exporta vendas para Google Sheets
@@ -233,7 +265,7 @@ def exportar_planilha():
 
 
 @pedidos_bp.route("", methods=["POST"])
-@requires_edit_auth
+@requires_any_role("admin", "atendente")
 def criar_pedido():
     """
     Cria novo pedido via API (usado pelo PWA)
@@ -253,7 +285,9 @@ def criar_pedido():
 
         # Extração de dados (preservar lógica exata)
         cliente = data.get("cliente", "").strip()
-        telefone_cliente = data.get("telefone_cliente", data.get("telefone", "")).strip()
+        telefone_cliente_raw = data.get("telefone_cliente", data.get("telefone", "")).strip()
+        # Remover formatação do telefone (máscara deve existir apenas no frontend)
+        telefone_cliente = re.sub(r"[^\d]", "", telefone_cliente_raw)
         destinatario = data.get("destinatario", "").strip()
         tipo_pedido = data.get("tipo_pedido", "Entrega")
         fonte_pedido_id = data.get("fonte_pedido_id")
@@ -456,7 +490,7 @@ def criar_pedido():
 
 
 @pedidos_bp.route("/<int:pedido_id>", methods=["PUT"])
-@requires_edit_auth
+@requires_any_role("admin", "atendente")
 def atualizar_pedido(pedido_id):
     """
     Atualiza dados completos do pedido
@@ -478,7 +512,8 @@ def atualizar_pedido(pedido_id):
         if "cliente" in data:
             pedido.cliente = data["cliente"]
         if "telefone_cliente" in data:
-            pedido.telefone_cliente = data["telefone_cliente"]
+            telefone_raw = data["telefone_cliente"].strip()
+            pedido.telefone_cliente = re.sub(r"[^\d]", "", telefone_raw)
         if "destinatario" in data:
             pedido.destinatario = data["destinatario"]
         if "tipo_pedido" in data:
@@ -611,7 +646,7 @@ def get_pedidos_por_data():
 
 
 @pedidos_bp.route("/<int:pedido_id>/marcar-impresso", methods=["POST", "PUT", "OPTIONS"])
-@requires_edit_auth
+@requires_any_role("admin", "atendente")
 def marcar_impresso(pedido_id):
     """Marca pedido como impresso"""
     try:
@@ -658,11 +693,13 @@ def obter_comprovante(pedido_id):
 
 
 @pedidos_bp.route("/ocultar-concluidos", methods=["POST"])
-@requires_edit_auth
+@requires_role("admin")
 def ocultar_concluidos():
     """Oculta todos os pedidos concluídos do painel"""
     try:
+        print("[OCULTAR_CONCLUIDOS] Iniciando ocultação de pedidos concluídos...")
         count = pedido_repo.ocultar_concluidos()
+        print(f"[OCULTAR_CONCLUIDOS] {count} pedido(s) concluído(s) ocultado(s) com sucesso")
 
         return success_response(
             {"count": count},
@@ -671,12 +708,16 @@ def ocultar_concluidos():
     except Exception as e:
         from app import db
 
+        print(f"[OCULTAR_CONCLUIDOS] Erro ao ocultar pedidos concluídos: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
         db.session.rollback()
         return error_response(f"Erro ao ocultar pedidos concluídos: {str(e)}", 500)
 
 
 @pedidos_bp.route("/<int:pedido_id>/restore", methods=["POST"])
-@requires_edit_auth
+@requires_role("admin")
 def restaurar_pedido(pedido_id):
     """Restaura pedido soft-deleted (P0.3)"""
     try:

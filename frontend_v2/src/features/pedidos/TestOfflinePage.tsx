@@ -20,8 +20,9 @@ import {
   Chip
 } from '@mui/material';
 import { useCreatePedido, useUpdatePedido } from '../../api/endpoints/pedidos';
-import { useOffline } from '../../lib/offline/OfflineProvider';
+import { useOffline } from '../../lib/offline/useOffline';
 import { getQueue, removeOutboxItem } from '../../lib/offline/outbox';
+import type { OutboxEntry } from '../../lib/offline/db';
 import { useQuery } from '@tanstack/react-query';
 import { formatDateTimeBR } from '../../lib/format/date';
 
@@ -31,7 +32,7 @@ export default function TestOfflinePage() {
   const createMutation = useCreatePedido();
   const updateMutation = useUpdatePedido();
 
-  const { data: queue } = useQuery({
+  const { data: queue } = useQuery<OutboxEntry[]>({
     queryKey: ['outbox-queue'],
     queryFn: getQueue,
     refetchInterval: 2000
@@ -49,7 +50,7 @@ export default function TestOfflinePage() {
         horario: '14:00',
         quantidade: 1
       });
-    } catch (error) {
+    } catch {
       // Error is expected when offline (OFFLINE_ENQUEUED)
     }
   };
@@ -64,7 +65,7 @@ export default function TestOfflinePage() {
         id: parseInt(orderId),
         produto: 'Buquê Atualizado - ' + new Date().toLocaleTimeString()
       });
-    } catch (error) {
+    } catch {
       // Error is expected when offline (OFFLINE_ENQUEUED)
     }
   };
@@ -155,7 +156,7 @@ export default function TestOfflinePage() {
         <Typography variant="h6" gutterBottom>
           Fila de Outbox
         </Typography>
-        {queue && queue.length > 0 ? (
+        {queue && Array.isArray(queue) && queue.length > 0 ? (
           <TableContainer>
             <Table>
               <TableHead>
@@ -169,7 +170,7 @@ export default function TestOfflinePage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {queue.map((item) => (
+                {queue.map((item: OutboxEntry) => (
                   <TableRow key={item.id}>
                     <TableCell>{item.id}</TableCell>
                     <TableCell>

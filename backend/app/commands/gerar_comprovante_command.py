@@ -84,22 +84,68 @@ class GerarComprovanteCommand:
         def fmt(val):
             return str(val) if val is not None and val != "" else "-"
 
+        def parse_valor_to_float(val):
+            """
+            Parse valor de qualquer formato para float
+            Suporta:
+            - Números: 10.00, 65
+            - Formato BR: "R$ 65,00", "65,00", "1.234,56"
+            - Formato US: "10.00", "65.5"
+            - String simples: "10", "65"
+            """
+            if val is None or val == "":
+                return 0.0
+
+            # Se já é número, retornar diretamente
+            if isinstance(val, (int, float)):
+                return float(val)
+
+            val_str = str(val).strip().replace("R$", "").strip()
+            if not val_str:
+                return 0.0
+
+            # Detectar formato brasileiro (tem vírgula)
+            if "," in val_str:
+                # Formato BR: "65,00" ou "1.234,56"
+                # Remover pontos (separadores de milhar) e substituir vírgula por ponto
+                clean = val_str.replace(".", "").replace(",", ".")
+                try:
+                    return float(clean)
+                except (ValueError, TypeError):
+                    return 0.0
+
+            # Detectar formato americano ou número simples (tem ponto decimal ou não)
+            if "." in val_str:
+                # Contar pontos - se tiver mais de 1, pode ser separador de milhar
+                dot_count = val_str.count(".")
+                if dot_count == 1:
+                    # Um ponto = decimal americano: "10.00"
+                    try:
+                        return float(val_str)
+                    except (ValueError, TypeError):
+                        return 0.0
+                else:
+                    # Múltiplos pontos = separadores de milhar: "1.234.567"
+                    # Remover todos os pontos
+                    clean = val_str.replace(".", "")
+                    try:
+                        return float(clean)
+                    except (ValueError, TypeError):
+                        return 0.0
+
+            # String simples sem formatação: "10", "65"
+            try:
+                return float(val_str)
+            except (ValueError, TypeError):
+                return 0.0
+
         def fmt_brl(val):
             if val is None or val == "":
                 return "-"
             try:
-                # Tenta converter string "R$ 100,00" ou float
-                if isinstance(val, (int, float)):
-                    num = val
-                else:
-                    clean = (
-                        str(val)
-                        .replace("R$", "")
-                        .replace(" ", "")
-                        .replace(".", "")
-                        .replace(",", ".")
-                    )
-                    num = float(clean)
+                # Usar função unificada de parsing
+                num = parse_valor_to_float(val)
+                # Formatar como R$ X.XXX,XX
                 return f"R$ {num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             except (ValueError, TypeError):
                 return str(val)

@@ -20,12 +20,41 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
 
 // Ajuste padrão para ícones do Leaflet (evita erro de assets)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete (L.Icon.Default as any).prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
+
+// Função para criar ícone customizado por status
+function createStatusIcon(status: string): L.Icon {
+  let color = 'blue'; // padrão
+  
+  if (status === 'agendado') {
+    color = 'blue';
+  } else if (status === 'em_producao') {
+    color = 'orange';
+  } else if (status === 'pronto_entrega' || status === 'pronto_retirada') {
+    color = 'green';
+  } else if (status === 'em_rota') {
+    color = 'purple';
+  } else if (status === 'atrasado') {
+    color = 'red';
+  } else if (status === 'concluido') {
+    color = 'gray';
+  }
+
+  return L.icon({
+    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  });
+}
 
 export default function RoutePage() {
   const [onlyAgendados, setOnlyAgendados] = useState(false);
@@ -66,7 +95,10 @@ export default function RoutePage() {
 
   useEffect(() => {
     if (selectedIds.length > 0) {
-      setOnlyAgendados(false);
+      // Usar setTimeout para evitar setState síncrono em effect
+      setTimeout(() => {
+        setOnlyAgendados(false);
+      }, 0);
     }
   }, [selectedIds.length]);
 
@@ -79,8 +111,9 @@ export default function RoutePage() {
     try {
       await calcLote.mutateAsync({ pedidoIds: ids, forceRecalc: true });
       success('Distâncias recalculadas');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao calcular distâncias');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao calcular distâncias';
+      showError(errorMessage);
     }
   };
 
@@ -93,8 +126,9 @@ export default function RoutePage() {
     try {
       await calcRota.mutateAsync({ pedidoIds: ids });
       success('Rota otimizada');
-    } catch (err: any) {
-      showError(err?.message || 'Erro ao otimizar rota');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao otimizar rota';
+      showError(errorMessage);
     }
   };
 
@@ -160,18 +194,82 @@ export default function RoutePage() {
             <Paper sx={{ height: 480, overflow: 'hidden' }}>
               <MapContainer center={mapCenter} zoom={12} style={{ height: '100%', width: '100%' }}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                
+                {/* Origem (Floricultura) */}
                 {rotaData?.origem && (
                   <Marker position={[rotaData.origem.lat, rotaData.origem.lon]}>
-                    <Popup>Origem (Floricultura)</Popup>
+                    <Popup>
+                      <strong>Origem (Floricultura)</strong>
+                    </Popup>
                   </Marker>
                 )}
-                {rotaData?.waypoints?.map((wp, idx) => (
-                  <Marker key={`${wp[0]}-${wp[1]}-${idx}`} position={[wp[0], wp[1]]}>
-                    <Popup>Pedido #{rotaData.sequencia_pedidos?.[idx] ?? ''}</Popup>
-                  </Marker>
-                ))}
+                
+                {/* Marcadores dos pedidos com coordenadas calculadas */}
+                {pedidos
+                  .filter((p) => p.coords_lat && p.coords_lon && p.tipo_pedido === 'Entrega')
+                  .map((pedido) => (
+                    <Marker
+                      key={`pedido-${pedido.id}`}
+                      position={[pedido.coords_lat!, pedido.coords_lon!]}
+                      icon={createStatusIcon(pedido.status)}
+                    >
+                      <Popup>
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                            Pedido #{pedido.id}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>Cliente:</strong> {pedido.cliente}
+                          </Typography>
+                          {pedido.destinatario && (
+                            <Typography variant="body2">
+                              <strong>Destinatário:</strong> {pedido.destinatario}
+                            </Typography>
+                          )}
+                          <Typography variant="body2">
+                            <strong>Endereço:</strong> {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>Data/Hora:</strong> {pedido.dia_entrega} {pedido.horario}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>Status:</strong> {pedido.status}
+                          </Typography>
+                          {pedido.distancia_km && (
+                            <Typography variant="body2">
+                              <strong>Distância:</strong> {pedido.distancia_km.toFixed(2)} km
+                            </Typography>
+                          )}
+                        </Box>
+                      </Popup>
+                    </Marker>
+                  ))}
+                
+                {/* Waypoints da rota otimizada */}
+                {rotaData?.waypoints?.map((wp, idx) => {
+                  // Verificar se já existe um marcador de pedido nesta posição
+                  const pedidoNoWaypoint = pedidos.find(
+                    (p) => p.coords_lat && p.coords_lon && 
+                    Math.abs(p.coords_lat - wp[0]) < 0.0001 && 
+                    Math.abs(p.coords_lon - wp[1]) < 0.0001
+                  );
+                  
+                  // Só mostrar waypoint se não houver pedido já marcado
+                  if (pedidoNoWaypoint) return null;
+                  
+                  return (
+                    <Marker key={`waypoint-${idx}`} position={[wp[0], wp[1]]}>
+                      <Popup>Waypoint {idx + 1} - Pedido #{rotaData.sequencia_pedidos?.[idx] ?? ''}</Popup>
+                    </Marker>
+                  );
+                })}
+                
+                {/* Linha da rota otimizada */}
                 {rotaData?.waypoints && rotaData.waypoints.length > 1 && (
-                  <Polyline positions={rotaData.waypoints.map((wp) => [wp[0], wp[1]])} pathOptions={{ color: 'green' }} />
+                  <Polyline 
+                    positions={rotaData.waypoints.map((wp) => [wp[0], wp[1]])} 
+                    pathOptions={{ color: 'green', weight: 3, opacity: 0.7 }} 
+                  />
                 )}
               </MapContainer>
             </Paper>

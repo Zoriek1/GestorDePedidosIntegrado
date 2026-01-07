@@ -5,6 +5,8 @@ import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { SalesKPIGrid } from './components/SalesKPIGrid';
 import { SalesTable } from './components/SalesTable';
+import { SalesPeriodFilter } from './components/SalesPeriodFilter';
+import { SalesChart } from './components/SalesChart';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { 
   calcularValorBrutoPedido, 
@@ -21,15 +23,15 @@ export default function SalesPage() {
   // Calcular primeiro e último dia do mês atual (inclusive)
   // Backend vai adicionar 1 dia ao último dia para tornar fim_exclusivo
   const now = dayjs();
-  const primeiroDiaMes = now.startOf('month').format('YYYY-MM-DD');
-  const ultimoDiaMes = now.endOf('month').format('YYYY-MM-DD'); // Último dia do mês (inclusive)
+  const [startDate, setStartDate] = useState(now.startOf('month').format('YYYY-MM-DD'));
+  const [endDate, setEndDate] = useState(now.endOf('month').format('YYYY-MM-DD'));
 
   const [searchValue, setSearchValue] = useState('');
   const debouncedSearch = useDebouncedValue(searchValue, 400);
 
   const { data, isLoading, error, refetch } = usePedidos({
-    data_inicio: primeiroDiaMes,
-    data_fim: ultimoDiaMes, // Último dia do mês (inclusive) - backend adiciona 1 dia para tornar exclusivo
+    data_inicio: startDate,
+    data_fim: endDate, // Último dia do mês (inclusive) - backend adiciona 1 dia para tornar exclusivo
     search: debouncedSearch || undefined,
     filtrar_por_criacao: true, // Filtrar por created_at
   });
@@ -37,15 +39,9 @@ export default function SalesPage() {
   // Filtrar cancelados no frontend (defensivo) e alertar se backend retornou cancelados
   const vendas = useMemo(() => {
     const pedidos = data?.pedidos || [];
-    const cancelados = pedidos.filter((p) => p.status?.toLowerCase().trim() === 'cancelado');
-    
-    // Alertar se backend retornou cancelados (indica bug no filtro server-side)
-    if (cancelados.length > 0) {
-      console.warn(
-        `[VENDAS] Backend retornou ${cancelados.length} pedido(s) cancelado(s). ` +
-        `Isso indica um bug no filtro server-side. IDs: ${cancelados.map(p => p.id).join(', ')}`
-      );
-    }
+    // Backend retornou cancelados (indica bug no filtro server-side) - silenciado em produção
+    // const cancelados = pedidos.filter((p) => p.status?.toLowerCase().trim() === 'cancelado');
+    // if (cancelados.length > 0) { ... }
     
     return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
   }, [data?.pedidos]);
@@ -77,8 +73,15 @@ export default function SalesPage() {
     };
   }, [vendas]);
 
-  // Formatar mês atual em português
-  const mesAtualFormatado = now.format('MMMM [de] YYYY');
+  // Formatar período em português
+  const periodoFormatado = useMemo(() => {
+    const start = dayjs(startDate);
+    const end = dayjs(endDate);
+    if (start.month() === end.month() && start.year() === end.year()) {
+      return start.format('MMMM [de] YYYY');
+    }
+    return `${start.format('DD/MM/YYYY')} - ${end.format('DD/MM/YYYY')}`;
+  }, [startDate, endDate]);
 
   return (
     <Box>
@@ -90,7 +93,7 @@ export default function SalesPage() {
         mb={2}
       >
         <Typography variant="h4" component="h1">
-          Vendas - {mesAtualFormatado}
+          Vendas - {periodoFormatado}
         </Typography>
         <TextField
           size="small"
@@ -100,6 +103,17 @@ export default function SalesPage() {
         />
       </Stack>
 
+      <Box sx={{ mb: 3 }}>
+        <SalesPeriodFilter
+          startDate={startDate}
+          endDate={endDate}
+          onChange={(start, end) => {
+            setStartDate(start);
+            setEndDate(end);
+          }}
+        />
+      </Box>
+
       {isLoading ? (
         <Loading variant="skeleton" count={3} />
       ) : error ? (
@@ -107,6 +121,7 @@ export default function SalesPage() {
       ) : (
         <>
           <SalesKPIGrid kpis={kpis} />
+          <SalesChart vendas={vendas} startDate={startDate} endDate={endDate} />
           <SalesTable vendas={vendas} />
         </>
       )}

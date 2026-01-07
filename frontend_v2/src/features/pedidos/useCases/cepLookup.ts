@@ -4,6 +4,8 @@
  * Implementado com DI (Interface + Classe)
  */
 
+import { logger } from '../../../lib/logger';
+
 // ============================================================================
 // Interface (Contrato)
 // ============================================================================
@@ -28,25 +30,12 @@ export interface ICepLookupService {
 }
 
 // ============================================================================
-// Implementação ViaCEP
+// Implementação ViaCEP (via proxy backend)
 // ============================================================================
 
-interface ViaCepResponse {
-  cep: string;
-  logradouro: string;
-  complemento: string;
-  bairro: string;
-  localidade: string;
-  uf: string;
-  ibge: string;
-  gia: string;
-  ddd: string;
-  siafi: string;
-  erro?: boolean;
-}
-
 export class ViaCepLookupService implements ICepLookupService {
-  private readonly baseUrl = 'https://viacep.com.br/ws';
+  private readonly baseUrl = '/api/cep'; // Endpoint interno (proxy backend)
+  private readonly timeoutMs = 10000; // 10 segundos
 
   async lookup(cep: string): Promise<CepLookupResult | null> {
     // Remove caracteres não numéricos
@@ -54,38 +43,105 @@ export class ViaCepLookupService implements ICepLookupService {
 
     // Valida formato
     if (cleanCep.length !== 8) {
+      logger.warn(`[ViaCepLookupService] CEP inválido: ${cep} (limpo: ${cleanCep})`);
       return null;
     }
 
+    // Usar endpoint interno (proxy backend) - same-origin, não precisa de CSP allowlist
+    const url = `${this.baseUrl}/${cleanCep}`;
+    
     try {
-      const response = await fetch(`${this.baseUrl}/${cleanCep}/json/`, {
+      // Criar AbortController para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
+      // Verificar status HTTP
       if (!response.ok) {
-        console.warn(`[ViaCepLookupService] Erro HTTP: ${response.status}`);
+        // 404 significa CEP não encontrado (resposta válida do backend)
+        if (response.status === 404) {
+          logger.info(`[ViaCepLookupService] CEP ${cleanCep} não encontrado`);
+          return null;
+        }
+        logger.warn(`[ViaCepLookupService] Erro HTTP ${response.status} para CEP ${cleanCep}`);
         return null;
       }
 
-      const data: ViaCepResponse = await response.json();
-
-      // ViaCEP retorna { erro: true } quando CEP não existe
-      if (data.erro) {
+      // Verificar Content-Type
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn(`[ViaCepLookupService] Resposta não é JSON para CEP ${cleanCep}. Content-Type: ${contentType}`);
         return null;
       }
 
-      return {
-        cep: data.cep,
-        rua: data.logradouro || '',
+      // Parse JSON com tratamento de erro
+      let data: {
+        cep?: string;
+        rua?: string;
+        bairro?: string;
+        cidade?: string;
+        uf?: string;
+        error?: string;
+        message?: string;
+      };
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        logger.error(`[ViaCepLookupService] Erro ao parsear JSON para CEP ${cleanCep}:`, parseError);
+        return null;
+      }
+
+      // Verificar se há erro na resposta
+      if (data.error) {
+        logger.warn(`[ViaCepLookupService] Erro do backend para CEP ${cleanCep}: ${data.message || data.error}`);
+        return null;
+      }
+
+      // Verificar se a resposta é válida
+      if (!data || typeof data !== 'object') {
+        logger.warn(`[ViaCepLookupService] Resposta inválida para CEP ${cleanCep}:`, data);
+        return null;
+      }
+
+      // Validar campos obrigatórios
+      if (!data.cidade || !data.uf) {
+        logger.warn(`[ViaCepLookupService] Resposta incompleta para CEP ${cleanCep}:`, data);
+        return null;
+      }
+
+      // Retornar resultado formatado (backend já retorna no formato esperado)
+      const result: CepLookupResult = {
+        cep: data.cep || cleanCep,
+        rua: data.rua || '',
         bairro: data.bairro || '',
-        cidade: data.localidade || '',
+        cidade: data.cidade || '',
         uf: data.uf || '',
       };
+
+      logger.debug(`[ViaCepLookupService] CEP ${cleanCep} encontrado:`, result);
+      return result;
     } catch (error) {
-      console.error('[ViaCepLookupService] Erro ao buscar CEP:', error);
+      // Tratar diferentes tipos de erro
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          logger.error(`[ViaCepLookupService] Timeout ao buscar CEP ${cleanCep}`);
+        } else if (error.message.includes('fetch')) {
+          logger.error(`[ViaCepLookupService] Erro de rede ao buscar CEP ${cleanCep}:`, error.message);
+        } else {
+          logger.error(`[ViaCepLookupService] Erro ao buscar CEP ${cleanCep}:`, error.message);
+        }
+      } else {
+        logger.error(`[ViaCepLookupService] Erro desconhecido ao buscar CEP ${cleanCep}:`, error);
+      }
       return null;
     }
   }

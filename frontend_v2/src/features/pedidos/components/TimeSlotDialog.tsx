@@ -18,6 +18,7 @@ import {
   Alert,
   ToggleButton,
   ToggleButtonGroup,
+  TextField,
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -74,6 +75,8 @@ export function TimeSlotDialog({
   const [selectedSlot, setSelectedSlot] = useState<string | null>(currentSlot || null);
   const [intervalStart, setIntervalStart] = useState<string | null>(null);
   const [intervalEnd, setIntervalEnd] = useState<string | null>(null);
+  const [manualTime, setManualTime] = useState<string>('');
+  const [showManualInput, setShowManualInput] = useState(false);
 
   // Buscar disponibilidade quando abrir ou data mudar
   useEffect(() => {
@@ -84,21 +87,29 @@ export function TimeSlotDialog({
       if (currentSlot) {
         if (currentSlot.includes(' - ')) {
           const [start, end] = currentSlot.split(' - ').map(s => s.trim());
-          setSelectionMode('interval');
-          setIntervalStart(start);
-          setIntervalEnd(end);
-          setSelectedSlot(null);
+          // Usar setTimeout para evitar setState síncrono em effect
+          setTimeout(() => {
+            setSelectionMode('interval');
+            setIntervalStart(start);
+            setIntervalEnd(end);
+            setSelectedSlot(null);
+          }, 0);
         } else {
-          setSelectionMode('simple');
-          setSelectedSlot(currentSlot);
-          setIntervalStart(null);
-          setIntervalEnd(null);
+          // Usar setTimeout para evitar setState síncrono em effect
+          setTimeout(() => {
+            setSelectionMode('simple');
+            setSelectedSlot(currentSlot);
+            setIntervalStart(null);
+            setIntervalEnd(null);
+          }, 0);
         }
       } else {
-        // Reset quando não há currentSlot
-        setSelectedSlot(null);
-        setIntervalStart(null);
-        setIntervalEnd(null);
+        // Reset quando não há currentSlot - usar setTimeout para evitar setState síncrono
+        setTimeout(() => {
+          setSelectedSlot(null);
+          setIntervalStart(null);
+          setIntervalEnd(null);
+        }, 0);
       }
     }
   }, [open, date, fetchAvailability, currentSlot]);
@@ -155,7 +166,28 @@ export function TimeSlotDialog({
   const handleConfirm = () => {
     let finalValue: string | null = null;
     
-    if (selectionMode === 'simple') {
+    // Se há entrada manual, usar ela
+    if (showManualInput && manualTime.trim()) {
+      const timeRegex = /^(\d{1,2}):(\d{2})(?: - (\d{1,2}):(\d{2}))?$/;
+      if (timeRegex.test(manualTime.trim())) {
+        finalValue = manualTime.trim();
+      } else {
+        // Tentar formatar
+        const parts = manualTime.trim().split(/[-\s]+/);
+        if (parts.length === 1) {
+          const [h, m] = parts[0].split(':');
+          if (h && m) {
+            finalValue = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+          }
+        } else if (parts.length === 2) {
+          const [h1, m1] = parts[0].split(':');
+          const [h2, m2] = parts[1].split(':');
+          if (h1 && m1 && h2 && m2) {
+            finalValue = `${h1.padStart(2, '0')}:${m1.padStart(2, '0')} - ${h2.padStart(2, '0')}:${m2.padStart(2, '0')}`;
+          }
+        }
+      }
+    } else if (selectionMode === 'simple') {
       finalValue = selectedSlot;
     } else {
       if (intervalStart && intervalEnd) {
@@ -184,6 +216,11 @@ export function TimeSlotDialog({
   };
 
   const canConfirm = (): boolean => {
+    if (showManualInput && manualTime.trim()) {
+      // Validar formato manual
+      const timeRegex = /^(\d{1,2}):(\d{2})(?: - (\d{1,2}):(\d{2}))?$/;
+      return timeRegex.test(manualTime.trim());
+    }
     if (selectionMode === 'simple') {
       return selectedSlot !== null;
     } else {
@@ -287,19 +324,54 @@ export function TimeSlotDialog({
           </Alert>
         )}
 
-        {/* Grid de horários */}
-        {!isLoading && availability && (
-          <Grid container spacing={2}>
-            {availability.slots.map((slot) => (
-              <Grid size={{ xs: 4, sm: 3 }} key={slot.slot}>
-                <SlotButton
-                  slot={slot}
-                  isSelected={isSlotSelected(slot)}
-                  onClick={() => handleSelectSlot(slot)}
-                />
+        {/* Opção de entrada manual */}
+        <Box sx={{ mb: 2 }}>
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => {
+              setShowManualInput(!showManualInput);
+              if (!showManualInput) {
+                setSelectedSlot(null);
+                setIntervalStart(null);
+                setIntervalEnd(null);
+              } else {
+                setManualTime('');
+              }
+            }}
+            sx={{ textTransform: 'none' }}
+          >
+            {showManualInput ? 'Usar horários da grade' : 'Digitar horário manualmente'}
+          </Button>
+        </Box>
+
+        {showManualInput ? (
+          <TextField
+            fullWidth
+            label="Horário"
+            placeholder="HH:MM ou HH:MM - HH:MM"
+            value={manualTime}
+            onChange={(e) => setManualTime(e.target.value)}
+            helperText="Digite o horário no formato HH:MM ou um intervalo HH:MM - HH:MM"
+            sx={{ mb: 2 }}
+          />
+        ) : (
+          <>
+            {/* Grid de horários */}
+            {!isLoading && availability && (
+              <Grid container spacing={2}>
+                {availability.slots.map((slot) => (
+                  <Grid size={{ xs: 4, sm: 3 }} key={slot.slot}>
+                    <SlotButton
+                      slot={slot}
+                      isSelected={isSlotSelected(slot)}
+                      onClick={() => handleSelectSlot(slot)}
+                    />
+                  </Grid>
+                ))}
               </Grid>
-            ))}
-          </Grid>
+            )}
+          </>
         )}
       </DialogContent>
 
@@ -447,8 +519,8 @@ function SlotButton({ slot, isSelected, onClick }: SlotButtonProps) {
           {slot.slot}
         </Typography>
       </Box>
-      <Typography variant="caption" display="block" sx={{ opacity: 0.8 }}>
-        {slot.count}/{slot.maxCount}
+      <Typography variant="caption" display="block" sx={{ opacity: 0.8, mt: 0.5 }}>
+        {slot.count} pedido{slot.count !== 1 ? 's' : ''} / {slot.maxCount} max
       </Typography>
     </Box>
   );

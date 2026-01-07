@@ -31,7 +31,7 @@ export function calcularValorEfetivo(
 ): number {
   // valor já é o total cobrado (inclui entrega), não subtrair taxa_entrega
   // taxa_entrega é apenas informativo
-  const valorTotal = parseFloat(valor || '0');
+  const valorTotal = parseValorToNumber(valor);
   
   // Se não há status de pagamento, assumir não pago (0%)
   if (!statusPagamento) return 0;
@@ -70,12 +70,65 @@ export function calcularValorEfetivoPedido(pedido: Pedido): number {
 }
 
 /**
+ * Parse valor de qualquer formato para número
+ * Suporta:
+ * - Números: 10.00, 65
+ * - Formato BR: "R$ 65,00", "65,00", "1.234,56"
+ * - Formato US: "10.00", "65.5"
+ * - String simples: "10", "65"
+ */
+function parseValorToNumber(valor: string | number | undefined): number {
+  if (!valor) return 0;
+  
+  // Se já é número, retornar diretamente
+  if (typeof valor === 'number') {
+    return isNaN(valor) ? 0 : valor;
+  }
+  
+  const valorStr = String(valor).trim();
+  if (!valorStr || valorStr === '') return 0;
+  
+  // Remover R$ e espaços
+  let cleaned = valorStr.replace(/R\$\s?/gi, '').trim();
+  
+  // Detectar formato brasileiro (tem vírgula)
+  if (cleaned.includes(',')) {
+    // Formato BR: "65,00" ou "1.234,56"
+    // Remover pontos (separadores de milhar) e substituir vírgula por ponto
+    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  
+  // Detectar formato americano ou número simples (tem ponto decimal ou não)
+  if (cleaned.includes('.')) {
+    // Contar pontos - se tiver mais de 1, pode ser separador de milhar
+    const dotCount = (cleaned.match(/\./g) || []).length;
+    if (dotCount === 1) {
+      // Um ponto = decimal americano: "10.00"
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    } else {
+      // Múltiplos pontos = separadores de milhar: "1.234.567"
+      // Remover todos os pontos
+      cleaned = cleaned.replace(/\./g, '');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+  }
+  
+  // String simples sem formatação: "10", "65"
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
  * Calcula valor bruto do pedido (sem considerar status de pagamento)
  * @param pedido - Objeto Pedido completo
  * @returns Valor bruto
  */
 export function calcularValorBrutoPedido(pedido: Pedido): number {
-  return parseFloat(pedido.valor || '0');
+  return parseValorToNumber(pedido.valor);
 }
 
 /**

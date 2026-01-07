@@ -97,6 +97,7 @@ export function ConfirmProvider({ children }: ConfirmProviderProps) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useConfirm(): (options: ConfirmOptions) => Promise<boolean> {
   const context = useContext(ConfirmContext);
   if (context === undefined) {

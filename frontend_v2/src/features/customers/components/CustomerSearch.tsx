@@ -51,6 +51,7 @@ export function CustomerSearch({
   const showResults = debouncedQuery.length >= 2 && customers.length > 0;
 
   // Virtualizer for large lists
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: customers.length,
     getScrollElement: () => parentRef.current,

@@ -52,7 +52,10 @@ export default function CreateOrderPage() {
     const resetToken = (location.state as { orderReset?: number } | undefined)?.orderReset;
     if (resetToken && resetToken !== lastResetRef.current) {
       lastResetRef.current = resetToken;
-      resetFlow();
+      // Usar setTimeout para evitar setState síncrono em effect
+      setTimeout(() => {
+        resetFlow();
+      }, 0);
     }
   }, [location.state, resetFlow]);
 

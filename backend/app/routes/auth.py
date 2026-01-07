@@ -29,8 +29,8 @@ def login():
         if is_authenticated:
             log_debug("Login success", {"username": username, "role": role})
             return success_response(
-                {"username": username, "role": role or "admin"}, 
-                message="Login realizado com sucesso"
+                {"username": username, "role": role or "admin"},
+                message="Login realizado com sucesso",
             )
         else:
             log_debug("Login failed", {"username": username})
@@ -81,8 +81,7 @@ def check_auth_status():
             is_authenticated, role = check_auth(auth.username, auth.password)
             if is_authenticated:
                 return success_response(
-                    {"authenticated": True, "role": role or "admin"}, 
-                    message="Autenticado"
+                    {"authenticated": True, "role": role or "admin"}, message="Autenticado"
                 )
 
         return success_response({"authenticated": False}, message="Não autenticado")

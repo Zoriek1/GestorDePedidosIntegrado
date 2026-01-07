@@ -7,8 +7,8 @@ import os
 from flask import Blueprint, request
 
 from app import db
-from app.models import Pedido, RotaOtimizada
 from app.middleware import requires_any_role
+from app.models import Pedido, RotaOtimizada
 from app.schemas.common import error_response, success_response
 from app.services.distancia import distancia_service
 from app.services.graphhopper import graphhopper_service

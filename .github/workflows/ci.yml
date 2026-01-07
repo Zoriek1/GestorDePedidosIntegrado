@@ -77,7 +77,7 @@ jobs:
       working-directory: ./frontend_v2
       run: |
         set -e
-        npm run type-check
+        npx tsc --noEmit
 
     - name: Lint
       working-directory: ./frontend_v2

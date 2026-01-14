@@ -22,13 +22,10 @@ class GraphHopperService:
 
     def __init__(self):
         self.api_key = os.environ.get("GRAPHHOPPER_API_KEY", "")
-        if not self.api_key:
-            print("[AVISO] GRAPHHOPPER_API_KEY não configurada no .env")
-            print("[INFO] Rotas otimizadas usarão cálculo local (sem API externa)")
-            print("[INFO] Para melhor precisão, configure GRAPHHOPPER_API_KEY no arquivo .env")
-        else:
-            if self.DEBUG:
-                print("[DEBUG] GraphHopper API key configurada")
+        # Variável é opcional - não mostrar avisos desnecessários
+        # O sistema funciona sem ela (usa fallback)
+        if self.api_key and self.DEBUG:
+            print("[DEBUG] GraphHopper API key configurada")
 
     def calcular_rota(
         self,
@@ -53,7 +50,8 @@ class GraphHopperService:
         # Se não tiver API key, retornar None imediatamente (não tentar usar API)
         if not self.api_key:
             if self.DEBUG:
-                print("[DEBUG] GraphHopper: API key não configurada, pulando...")
+                # GRAPHHOPPER_API_KEY é opcional - usar fallback silenciosamente
+                pass
             return None
 
         # GraphHopper usa formato: point=lat,lon

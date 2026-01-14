@@ -565,14 +565,29 @@ def atualizar_pedido(pedido_id):
             pedido.pagamento = data["pagamento"]
         if "observacoes" in data:
             pedido.observacoes = data["observacoes"]
+        # Status anterior para hook (ANTES de atualizar)
+        status_anterior = pedido.status
+        status_pagamento_anterior = pedido.status_pagamento
+
         if "status_pagamento" in data:
             pedido.status_pagamento = data["status_pagamento"]
+
         if "status" in data:
             pedido.status = data["status"]
 
         pedido.updated_at = datetime_now_brazil()
 
         db.session.commit()
+
+        # Hook: Verificar se mudou para Purchase (status_pagamento = Pago ou Parcial)
+        # Não verificar status="concluido" porque pode agendar pedido para ano que vem
+        try:
+            from app.utils.meta_capi_helper import create_outbox_if_purchase
+
+            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            # Não falhar a atualização se houver erro na outbox
+            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
 
         return success_response(
             {"pedido": pedido.to_dict()}, message="Pedido atualizado com sucesso"
@@ -746,6 +761,146 @@ def restaurar_pedido(pedido_id):
 
         db.session.rollback()
         return error_response(f"Erro ao restaurar pedido: {str(e)}", 500)
+
+
+@pedidos_bp.route("/<int:pedido_id>/meta-outbox", methods=["GET"])
+@requires_any_role("admin", "atendente")
+def verificar_outbox_pedido(pedido_id):
+    """Verifica se existe registro na outbox Meta CAPI para um pedido"""
+    try:
+        from app.models.meta_capi_outbox import MetaCapiOutbox
+
+        entry = MetaCapiOutbox.query.filter_by(order_id=pedido_id).first()
+        if entry:
+            return success_response(
+                {
+                    "exists": True,
+                    "outbox": entry.to_dict(),
+                },
+                message="Outbox encontrada",
+            )
+        else:
+            return success_response(
+                {"exists": False},
+                message="Nenhuma outbox encontrada para este pedido",
+            )
+    except Exception as e:
+        return error_response(f"Erro ao verificar outbox: {str(e)}", 500)
+
+
+@pedidos_bp.route("/meta-outbox/stats", methods=["GET"])
+@requires_any_role("admin", "atendente")
+def estatisticas_outbox():
+    """Retorna estatísticas da outbox Meta CAPI"""
+    try:
+        from app.models.meta_capi_outbox import MetaCapiOutbox
+
+        total = MetaCapiOutbox.query.count()
+        pending = MetaCapiOutbox.query.filter_by(status="pending").count()
+        sent = MetaCapiOutbox.query.filter_by(status="sent").count()
+        failed = MetaCapiOutbox.query.filter_by(status="failed").count()
+
+        return success_response(
+            {
+                "total": total,
+                "pending": pending,
+                "sent": sent,
+                "failed": failed,
+            },
+            message="Estatísticas da outbox",
+        )
+    except Exception as e:
+        return error_response(f"Erro ao obter estatísticas: {str(e)}", 500)
+
+
+@pedidos_bp.route("/meta-outbox/criar-faltantes", methods=["POST"])
+@requires_any_role("admin")
+def criar_outbox_faltantes():
+    """
+    Cria outboxes faltantes para pedidos pagos que ainda não têm outbox (backfill)
+    
+    Body opcional:
+    {
+        "limit": 100,  // Limite de pedidos para processar (opcional)
+        "dry_run": false  // Se true, apenas mostra o que seria criado (opcional)
+    }
+    """
+    try:
+        from app.models.pedido import Pedido
+        from app.models.meta_capi_outbox import MetaCapiOutbox
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from sqlalchemy import func
+
+        data = request.get_json() or {}
+        limit = data.get("limit")
+        dry_run = data.get("dry_run", False)
+
+        if dry_run:
+            # Modo dry-run: apenas contar
+            query = (
+                Pedido.query.filter(
+                    func.upper(Pedido.status_pagamento).in_(["PAGO", "PARCIAL"]),
+                    Pedido.deleted_at.is_(None),
+                )
+                .outerjoin(MetaCapiOutbox, Pedido.id == MetaCapiOutbox.order_id)
+                .filter(MetaCapiOutbox.id.is_(None))
+            )
+            if limit:
+                query = query.limit(limit)
+            total_encontrados = query.count()
+
+            return success_response(
+                {
+                    "dry_run": True,
+                    "total_encontrados": total_encontrados,
+                    "criados": 0,
+                    "message": f"Encontrados {total_encontrados} pedidos sem outbox (dry-run)",
+                },
+                message="Dry-run: nenhuma outbox foi criada",
+            )
+
+        # Modo real: criar outboxes
+        query = (
+            Pedido.query.filter(
+                func.upper(Pedido.status_pagamento).in_(["PAGO", "PARCIAL"]),
+                Pedido.deleted_at.is_(None),
+            )
+            .outerjoin(MetaCapiOutbox, Pedido.id == MetaCapiOutbox.order_id)
+            .filter(MetaCapiOutbox.id.is_(None))
+            .order_by(Pedido.updated_at.desc())
+        )
+
+        if limit:
+            query = query.limit(limit)
+
+        pedidos_sem_outbox = query.all()
+
+        outbox_repo = MetaCapiOutboxRepository()
+        criados = 0
+        erros = 0
+        erros_detalhes = []
+
+        for pedido in pedidos_sem_outbox:
+            try:
+                outbox = outbox_repo.create_from_pedido(pedido)
+                if outbox:
+                    criados += 1
+            except Exception as e:
+                erros += 1
+                erros_detalhes.append(f"Pedido #{pedido.id}: {str(e)}")
+
+        return success_response(
+            {
+                "total_encontrados": len(pedidos_sem_outbox),
+                "criados": criados,
+                "erros": erros,
+                "erros_detalhes": erros_detalhes if erros > 0 else None,
+            },
+            message=f"Processados {len(pedidos_sem_outbox)} pedidos: {criados} outboxes criadas, {erros} erros",
+        )
+
+    except Exception as e:
+        return error_response(f"Erro ao criar outboxes faltantes: {str(e)}", 500)
 
 
 @pedidos_bp.route("/deleted", methods=["GET"])

@@ -18,6 +18,9 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # Normalize line endings to LF
+        lfs: false
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
@@ -32,6 +35,15 @@ jobs:
         set -e
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: Debug versions
+      working-directory: ./backend
+      run: |
+        echo "Python version: $(python --version)"
+        echo "Black version: $(black --version)"
+        echo "Git commit: $(git rev-parse HEAD)"
+        echo "Line endings check:"
+        git ls-files --eol backend/app/routes/pedidos.py backend/scripts/export/exportar_vendas_sheets.py backend/app/routes/api.py || true
 
     - name: Lint with ruff
       working-directory: ./backend

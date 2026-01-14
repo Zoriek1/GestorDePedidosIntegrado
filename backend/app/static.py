@@ -96,18 +96,25 @@ def register_static_routes(app):
             Response: Arquivo solicitado ou index.html como fallback
         """
         # CRÍTICO: Verificar request.path ANTES de processar qualquer coisa
-        # Se a requisição é para API ou docs, NÃO processar - deixar Flask retornar 404
+        # Se a requisição é para API, docs, ou Meta Gateway, NÃO processar - deixar Flask retornar 404
         # Os blueprints são registrados ANTES desta rota, então se a rota existe,
         # o blueprint já processou. Se não existe, Flask retornará 404.
         request_path = request.path
 
-        if request_path.startswith("/api/") or request_path.startswith("/docs/"):
+        # Excluir rotas do backend (API, docs, Meta Gateway)
+        if (request_path.startswith("/api/") or 
+            request_path.startswith("/docs/") or 
+            request_path.startswith("/capig/") or 
+            request_path.startswith("/meta-gateway/")):
             # Se chegou aqui, significa que nenhum blueprint processou esta rota
             # Abortar para retornar 404 (rota não encontrada)
             abort(404)
 
         # Também verificar o path do parâmetro (defensivo)
-        if path.startswith("api/") or path.startswith("docs/"):
+        if (path.startswith("api/") or 
+            path.startswith("docs/") or 
+            path.startswith("capig/") or 
+            path.startswith("meta-gateway/")):
             abort(404)
 
         try:

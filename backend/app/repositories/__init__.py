@@ -5,6 +5,12 @@ Camada de abstração para operações de banco de dados
 """
 from app.repositories.base_repository import BaseRepository
 from app.repositories.cliente_repository import ClienteRepository
+from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 from app.repositories.pedido_repository import PedidoRepository
 
-__all__ = ["BaseRepository", "PedidoRepository", "ClienteRepository"]
+__all__ = [
+    "BaseRepository",
+    "PedidoRepository",
+    "ClienteRepository",
+    "MetaCapiOutboxRepository",
+]

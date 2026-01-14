@@ -100,6 +100,17 @@ class BaseConfig:
     OPENROUTE_API_KEY = os.environ.get("OPENROUTE_API_KEY") or ""
     ENDERECO_FLORICULTURA = os.environ.get("ENDERECO_FLORICULTURA") or ""
 
+    # Meta Conversions API
+    META_PIXEL_ID = os.environ.get("META_PIXEL_ID") or ""
+    META_CAPI_ACCESS_TOKEN = os.environ.get("META_CAPI_ACCESS_TOKEN") or ""
+    META_CAPI_API_VERSION = os.environ.get("META_CAPI_API_VERSION", "v21.0")
+    META_TEST_EVENT_CODE = os.environ.get("META_TEST_EVENT_CODE") or ""
+    # Conversions API Gateway (opcional - melhora visualização e métricas)
+    META_CAPI_USE_GATEWAY = os.environ.get("META_CAPI_USE_GATEWAY", "false").lower() == "true"
+    META_CAPI_GATEWAY_DOMAIN = os.environ.get("META_CAPI_GATEWAY_DOMAIN") or "gestaopedidos.planteumaflor.online"
+    # Endpoint completo do Gateway (opcional - se fornecido, usa este ao invés de construir)
+    META_CAPI_GATEWAY_ENDPOINT = os.environ.get("META_CAPI_GATEWAY_ENDPOINT") or ""
+
     # Segurança e Middleware
     ENABLE_AUTH = os.environ.get("ENABLE_AUTH", "true").lower() == "true"
     ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"

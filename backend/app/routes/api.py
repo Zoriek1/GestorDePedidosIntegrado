@@ -372,8 +372,8 @@ def listar_pedidos():
                 )
             )
 
-        # Ordenar por data de entrega e horário (mais recentes primeiro)
-        query = query.order_by(Pedido.dia_entrega.desc(), Pedido.horario.desc())
+        # Ordenar por data de entrega e horário (mais próximos primeiro: hoje antes de amanhã, mais cedo antes de mais tarde)
+        query = query.order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc())
 
         # Aplicar limite
         if limit:

@@ -40,8 +40,7 @@ class TaxaEntregaService:
                     config = json.load(f)
                     return config
             else:
-                print(f"[AVISO] Arquivo de configuração não encontrado: {self.config_path}")
-                print("[INFO] Usando configuração padrão")
+                # Arquivo não encontrado - usar configuração padrão silenciosamente
                 return self._config_padrao()
         except Exception as e:
             print(f"[ERRO] Erro ao carregar configuração: {e}")

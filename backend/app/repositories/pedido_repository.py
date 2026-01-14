@@ -229,11 +229,34 @@ class PedidoRepository(BaseRepository):
         return query.all(), total
 
     def atualizar_status(self, pedido_id: int, novo_status: str) -> Optional[Pedido]:
-        """Atualiza status de um pedido"""
+        """
+        Atualiza status de um pedido
+
+        Hook: Se pedido mudar para Purchase (status_pagamento = Pago ou Parcial),
+        cria registro na outbox Meta CAPI.
+        """
         pedido = self.get_by_id(pedido_id)
-        if pedido:
-            return self.update(pedido, status=novo_status, updated_at=datetime_now_brazil())
-        return None
+        if not pedido:
+            return None
+
+        # Status anterior (ANTES de atualizar)
+        status_anterior = pedido.status
+        status_pagamento_anterior = pedido.status_pagamento
+
+        # Atualizar status
+        pedido_atualizado = self.update(pedido, status=novo_status, updated_at=datetime_now_brazil())
+
+        # Hook: Verificar se mudou para Purchase (status_pagamento = Realizado ou Parcial)
+        # Não verificar status="concluido" porque pode agendar pedido para ano que vem
+        try:
+            from app.utils.meta_capi_helper import create_outbox_if_purchase
+
+            create_outbox_if_purchase(pedido_atualizado, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            # Não falhar a atualização de status se houver erro na outbox
+            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+
+        return pedido_atualizado
 
     def buscar_atrasados(self) -> List[Pedido]:
         """Busca pedidos atrasados (excluindo ocultos, concluídos e deletados)"""

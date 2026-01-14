@@ -231,6 +231,12 @@ def criar_pedido():
         )
         print(f"[DEBUG] Dados recebidos: {list(data.keys())}")
 
+        # Capturar fbc e fbp se enviados (Meta Pixel parameters)
+        # fbc: Facebook Click ID (vem do parâmetro fbclid na URL)
+        # fbp: Facebook Browser ID (vem do cookie _fbp criado pelo Pixel)
+        fbc = data.get("fbc", "").strip() if data.get("fbc") else None
+        fbp = data.get("fbp", "").strip() if data.get("fbp") else None
+
         # Criar instância do pedido
         pedido = Pedido(
             # Step 1
@@ -259,6 +265,9 @@ def criar_pedido():
             pagamento=pagamento if pagamento else None,
             observacoes=observacoes if observacoes else None,
             status_pagamento=status_pagamento if status_pagamento else None,
+            # Meta Pixel parameters (melhora qualidade de correspondência de eventos)
+            fbc=fbc,
+            fbp=fbp,
             # Controle
             status="agendado",
             quantidade=quantidade,

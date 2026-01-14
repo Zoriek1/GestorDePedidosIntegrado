@@ -17,6 +17,12 @@ import FontesPage from '../features/fontes/FontesPage';
 import RoutePage from '../features/rotas/RoutePage';
 import EditOrderPage from '../features/pedidos/EditOrderPage';
 
+// Componente vazio para rotas do backend que não devem ser processadas pelo React Router
+// Essas rotas são processadas pelo backend Flask
+function BackendRoute() {
+  return null;
+}
+
 // Layout route that wraps protected routes with AppShell
 function Layout() {
   return (
@@ -33,6 +39,16 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  // Rotas do Meta Gateway - devem ser processadas pelo backend, não pelo React Router
+  // Essas rotas são ignoradas pelo React Router para que o backend Flask as processe
+  {
+    path: '/capig/*',
+    element: <BackendRoute />,
+  },
+  {
+    path: '/meta-gateway/*',
+    element: <BackendRoute />,
   },
   {
     element: <Layout />,

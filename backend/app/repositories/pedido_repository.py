@@ -197,9 +197,12 @@ class PedidoRepository(BaseRepository):
                 query = query.order_by(Pedido.created_at.asc())
         elif ordenar_por == "dia_entrega":
             # Ordenar por dia_entrega e depois por horario (para intervalos, usa horário inicial)
+            # Para "mais próximos primeiro": usar ASC (hoje antes de amanhã, mais cedo antes de mais tarde)
+            # Para "mais distantes primeiro": usar DESC (amanhã antes de hoje, mais tarde antes de mais cedo)
             if is_desc:
                 query = query.order_by(Pedido.dia_entrega.desc(), Pedido.horario.desc())
             else:
+                # ASC: mais próximos primeiro (hoje antes de amanhã, mais cedo antes de mais tarde)
                 query = query.order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc())
         elif ordenar_por == "created_at":
             if is_desc:

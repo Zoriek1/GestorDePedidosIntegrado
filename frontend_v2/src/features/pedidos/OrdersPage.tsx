@@ -44,7 +44,7 @@ export default function OrdersPage() {
     status: '',
     search: '',
     sort_by: 'dia_entrega',
-    sort_order: 'asc',
+    sort_order: 'asc', // Mais próximos primeiro (asc = datas mais próximas primeiro: hoje antes de amanhã)
     page: 1,
     per_page: 20,
   });

@@ -45,8 +45,9 @@ def listar_pedidos():
         filtrar_por_criacao = request.args.get("filtrar_por_criacao", "").lower() == "true"
 
         # Ordenação e paginação
+        # Padrão: ordenar por dia_entrega ASC (mais próximos primeiro: hoje antes de amanhã)
         sort_by = request.args.get("sort_by", "dia_entrega")
-        sort_order = request.args.get("sort_order", "asc")
+        sort_order = request.args.get("sort_order", "asc" if sort_by == "dia_entrega" else "asc")
         page = request.args.get("page", type=int)
         per_page = request.args.get("per_page", type=int)
 

@@ -247,7 +247,9 @@ class PedidoRepository(BaseRepository):
         status_pagamento_anterior = pedido.status_pagamento
 
         # Atualizar status
-        pedido_atualizado = self.update(pedido, status=novo_status, updated_at=datetime_now_brazil())
+        pedido_atualizado = self.update(
+            pedido, status=novo_status, updated_at=datetime_now_brazil()
+        )
 
         # Hook: Verificar se mudou para Purchase (status_pagamento = Realizado ou Parcial)
         # Não verificar status="concluido" porque pode agendar pedido para ano que vem

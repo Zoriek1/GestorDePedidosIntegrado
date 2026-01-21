@@ -3,7 +3,6 @@
 Utilitários para manipulação de valores monetários BRL
 Separação explícita da lógica de LTV para uso em outras funcionalidades
 """
-import re
 
 
 def parse_brl_money(valor_str: str) -> float:

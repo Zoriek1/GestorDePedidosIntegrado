@@ -67,7 +67,7 @@ def create_app(config=None):
         app.register_blueprint(rotas_bp)
         app.register_blueprint(auth_bp)
         app.register_blueprint(backup_admin_bp)
-        
+
         # Registrar Meta Gateway (deve vir antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)
 

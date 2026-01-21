@@ -6,7 +6,6 @@ e cria os registros faltantes
 """
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # Adicionar diretório raiz ao path
 backend_dir = Path(__file__).parent.parent.parent
@@ -18,11 +17,12 @@ from dotenv import load_dotenv
 env_path = backend_dir / ".env"
 load_dotenv(env_path)
 
-from app import create_app, db
-from app.models.pedido import Pedido
-from app.models.meta_capi_outbox import MetaCapiOutbox
-from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 from sqlalchemy import func
+
+from app import create_app
+from app.models.meta_capi_outbox import MetaCapiOutbox
+from app.models.pedido import Pedido
+from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 
 app = create_app()
 
@@ -55,9 +55,7 @@ def criar_outbox_faltantes(limit=None, dry_run=False):
                 func.upper(Pedido.status_pagamento).in_(["PAGO", "PARCIAL"]),
                 Pedido.deleted_at.is_(None),  # Excluir soft-deleted
             )
-            .outerjoin(
-                MetaCapiOutbox, Pedido.id == MetaCapiOutbox.order_id
-            )  # LEFT JOIN com outbox
+            .outerjoin(MetaCapiOutbox, Pedido.id == MetaCapiOutbox.order_id)  # LEFT JOIN com outbox
             .filter(MetaCapiOutbox.id.is_(None))  # Apenas pedidos SEM outbox
             .order_by(Pedido.updated_at.desc())
         )
@@ -111,10 +109,12 @@ def criar_outbox_faltantes(limit=None, dry_run=False):
                         print(f"  [OK] Outbox criada: #{outbox.id}")
                     else:
                         # Já existe (race condition?)
-                        print(f"  [AVISO] Outbox já existe (pode ter sido criada por outro processo)")
+                        print(
+                            "  [AVISO] Outbox já existe (pode ter sido criada por outro processo)"
+                        )
                 else:
                     stats["criados"] += 1
-                    print(f"  [DRY-RUN] Seria criada outbox")
+                    print("  [DRY-RUN] Seria criada outbox")
 
             except Exception as e:
                 stats["erros"] += 1
@@ -142,9 +142,7 @@ def criar_outbox_faltantes(limit=None, dry_run=False):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Criar outboxes faltantes para pedidos pagos"
-    )
+    parser = argparse.ArgumentParser(description="Criar outboxes faltantes para pedidos pagos")
     parser.add_argument(
         "--limit",
         type=int,
@@ -161,7 +159,7 @@ if __name__ == "__main__":
 
     try:
         stats = criar_outbox_faltantes(limit=args.limit, dry_run=args.dry_run)
-        
+
         if stats["erros"] > 0:
             sys.exit(1)
         else:
@@ -172,5 +170,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\n[ERRO] Erro fatal: {str(e)}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

@@ -102,19 +102,23 @@ def register_static_routes(app):
         request_path = request.path
 
         # Excluir rotas do backend (API, docs, Meta Gateway)
-        if (request_path.startswith("/api/") or 
-            request_path.startswith("/docs/") or 
-            request_path.startswith("/capig/") or 
-            request_path.startswith("/meta-gateway/")):
+        if (
+            request_path.startswith("/api/")
+            or request_path.startswith("/docs/")
+            or request_path.startswith("/capig/")
+            or request_path.startswith("/meta-gateway/")
+        ):
             # Se chegou aqui, significa que nenhum blueprint processou esta rota
             # Abortar para retornar 404 (rota não encontrada)
             abort(404)
 
         # Também verificar o path do parâmetro (defensivo)
-        if (path.startswith("api/") or 
-            path.startswith("docs/") or 
-            path.startswith("capig/") or 
-            path.startswith("meta-gateway/")):
+        if (
+            path.startswith("api/")
+            or path.startswith("docs/")
+            or path.startswith("capig/")
+            or path.startswith("meta-gateway/")
+        ):
             abort(404)
 
         try:

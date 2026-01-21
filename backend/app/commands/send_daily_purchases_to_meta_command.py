@@ -124,7 +124,7 @@ class SendDailyPurchasesToMetaCommand:
         # Usar updated_at (quando status_pagamento mudou) como referência
         # SQLite é case-insensitive por padrão, mas vamos usar func.upper() para garantir
         from sqlalchemy import func
-        
+
         pedidos = (
             Pedido.query.filter(
                 func.upper(Pedido.status_pagamento).in_(["PAGO", "PARCIAL"]),
@@ -196,7 +196,7 @@ class SendDailyPurchasesToMetaCommand:
                     "user_data": payload.get("user_data", {}),
                     "custom_data": payload["custom_data"],
                 }
-                events.append(event)
+                events.append(self.service.sanitize_event_payload(event))
                 outbox_map[entry.event_id] = entry
             except Exception as e:
                 error_msg = f"Erro ao parsear payload de outbox #{entry.id}: {str(e)}"
@@ -211,6 +211,30 @@ class SendDailyPurchasesToMetaCommand:
         if not events:
             print("[META_CAPI] Nenhum evento válido para enviar no lote")
             return
+
+        # Diagnóstico rápido de event_time (evitar timestamps futuros)
+        try:
+            import time
+
+            now_ts = int(time.time())
+            max_future = now_ts + (7 * 24 * 60 * 60)
+            min_past = now_ts - (7 * 24 * 60 * 60)
+            event_times = [e.get("event_time") for e in events if e.get("event_time")]
+            if event_times:
+                max_event_time = max(event_times)
+                min_event_time = min(event_times)
+                out_of_range = [t for t in event_times if t > max_future or t < min_past]
+                if out_of_range:
+                    print(
+                        "[META_CAPI] AVISO: event_time fora da janela de 7 dias",
+                        {
+                            "min_event_time": min_event_time,
+                            "max_event_time": max_event_time,
+                            "out_of_range_count": len(out_of_range),
+                        },
+                    )
+        except Exception:
+            pass
 
         # Enviar para Meta
         print(f"[META_CAPI] Enviando {len(events)} eventos para Meta...")
@@ -238,15 +262,21 @@ class SendDailyPurchasesToMetaCommand:
         else:
             # Erro
             error_type, is_retryable = self.service.classify_error(response, status_code)
-            
+
             # Capturar mensagem detalhada da Meta
-            error_detail = response.get("error", {})
-            if isinstance(error_detail, dict):
-                error_msg = error_detail.get("message", response.get("_error", "Erro desconhecido"))
-                error_code = error_detail.get("code", "")
-                error_subcode = error_detail.get("error_subcode", "")
-                error_type_meta = error_detail.get("type", "")
-                
+            error_detail = response.get("details", response.get("error", {}))
+            meta_error = None
+            if isinstance(error_detail, dict) and "error" in error_detail:
+                meta_error = error_detail.get("error")
+            else:
+                meta_error = error_detail
+
+            if isinstance(meta_error, dict):
+                error_msg = meta_error.get("message", response.get("_error", "Erro desconhecido"))
+                error_code = meta_error.get("code", "")
+                error_subcode = meta_error.get("error_subcode", "")
+                error_type_meta = meta_error.get("type", "")
+
                 if error_code:
                     error_msg = f"[{error_code}] {error_msg}"
                 if error_subcode:
@@ -254,23 +284,42 @@ class SendDailyPurchasesToMetaCommand:
                 if error_type_meta:
                     error_msg += f" (type: {error_type_meta})"
             else:
-                error_msg = response.get("_error") or str(error_detail) or "Erro desconhecido"
+                error_msg = response.get("_error") or str(meta_error) or "Erro desconhecido"
 
             print(f"[META_CAPI] Erro {status_code}: {error_msg}")
             print(f"[META_CAPI] Tipo: {error_type}, Retryable: {is_retryable}")
-            
+
             # Se for 400, mostrar mais detalhes (sem expor dados sensíveis)
             if status_code == 400:
                 # Mostrar apenas estrutura do erro, não dados completos
+                details = response.get("details", {})
+                meta_error_detail = None
+                if isinstance(details, dict):
+                    meta_error_detail = details.get("error")
+
                 error_summary = {
                     "status_code": status_code,
-                    "error_code": error_detail.get("code") if isinstance(error_detail, dict) else None,
-                    "error_subcode": error_detail.get("error_subcode") if isinstance(error_detail, dict) else None,
-                    "error_type": error_detail.get("type") if isinstance(error_detail, dict) else None,
+                    "error_code": meta_error_detail.get("code")
+                    if isinstance(meta_error_detail, dict)
+                    else None,
+                    "error_subcode": meta_error_detail.get("error_subcode")
+                    if isinstance(meta_error_detail, dict)
+                    else None,
+                    "error_type": meta_error_detail.get("type")
+                    if isinstance(meta_error_detail, dict)
+                    else None,
+                    "error_user_title": meta_error_detail.get("error_user_title")
+                    if isinstance(meta_error_detail, dict)
+                    else None,
+                    "error_user_msg": meta_error_detail.get("error_user_msg")
+                    if isinstance(meta_error_detail, dict)
+                    else None,
                     "message": error_msg,
                 }
-                print(f"[META_CAPI] Detalhes do erro 400: {json.dumps(error_summary, indent=2, ensure_ascii=False)}")
-                
+                print(
+                    f"[META_CAPI] Detalhes do erro 400: {json.dumps(error_summary, indent=2, ensure_ascii=False)}"
+                )
+
                 # Log adicional para debug (apenas estrutura, sem dados sensíveis)
                 if Config.DEBUG:
                     # Mostrar apenas estrutura dos eventos (sem dados sensíveis)
@@ -284,7 +333,9 @@ class SendDailyPurchasesToMetaCommand:
                             "has_custom_data": bool(event.get("custom_data")),
                         }
                         events_summary.append(event_summary)
-                    print(f"[META_CAPI] Estrutura dos eventos enviados: {json.dumps(events_summary, indent=2, ensure_ascii=False)}")
+                    print(
+                        f"[META_CAPI] Estrutura dos eventos enviados: {json.dumps(events_summary, indent=2, ensure_ascii=False)}"
+                    )
 
             # Marcar todos como failed
             for entry in batch:

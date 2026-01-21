@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 env_path = backend_dir / ".env"
 load_dotenv(env_path)
 
-from app import create_app, db
+from app import create_app
 from app.models.meta_capi_outbox import MetaCapiOutbox
 from app.models.pedido import Pedido
 
@@ -68,9 +68,7 @@ def verificar_outbox(order_id=None):
         # Listar últimos 10 registros
         print("[INFO] ULTIMOS 10 REGISTROS:")
         print("-" * 60)
-        recent = (
-            MetaCapiOutbox.query.order_by(MetaCapiOutbox.created_at.desc()).limit(10).all()
-        )
+        recent = MetaCapiOutbox.query.order_by(MetaCapiOutbox.created_at.desc()).limit(10).all()
 
         if not recent:
             print("   Nenhum registro encontrado")
@@ -122,7 +120,9 @@ def verificar_outbox(order_id=None):
                 pedido = Pedido.query.get(entry.order_id)
                 cliente = pedido.cliente if pedido else "N/A"
                 error_preview = (
-                    entry.last_error[:50] + "..." if entry.last_error and len(entry.last_error) > 50 else entry.last_error or "N/A"
+                    entry.last_error[:50] + "..."
+                    if entry.last_error and len(entry.last_error) > 50
+                    else entry.last_error or "N/A"
                 )
                 print(
                     f"   Pedido #{entry.order_id} ({cliente}) | Tentativas: {entry.attempts} | "

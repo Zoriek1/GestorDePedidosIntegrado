@@ -9,8 +9,7 @@ from typing import Dict, List, Optional
 
 from app import db
 from app.models.meta_capi_outbox import MetaCapiOutbox
-from app.models.pedido import Pedido
-from app.models.pedido import datetime_now_brazil
+from app.models.pedido import Pedido, datetime_now_brazil
 from app.repositories.base_repository import BaseRepository
 from app.services.meta_capi import MetaConversionsApiService
 

@@ -3,7 +3,6 @@
 Migration: Criar tabela meta_capi_outbox
 Cria tabela para outbox de eventos Meta Conversions API
 """
-import os
 import sys
 from pathlib import Path
 

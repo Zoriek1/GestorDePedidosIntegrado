@@ -4,7 +4,6 @@ Migration: Adicionar campos fbc e fbp na tabela pedidos
 Esses campos armazenam Facebook Click ID e Facebook Browser ID para melhorar
 a qualidade de correspondência de eventos na Meta Conversions API.
 """
-import os
 import sys
 from pathlib import Path
 
@@ -27,9 +26,7 @@ def add_fbc_fbp_columns():
         # Adicionar coluna fbc se não existir
         if "fbc" not in existing_columns:
             try:
-                db.session.execute(
-                    db.text("ALTER TABLE pedidos ADD COLUMN fbc VARCHAR(255) NULL")
-                )
+                db.session.execute(db.text("ALTER TABLE pedidos ADD COLUMN fbc VARCHAR(255) NULL"))
                 db.session.commit()
                 print("[OK] Coluna 'fbc' adicionada")
             except Exception as e:
@@ -41,9 +38,7 @@ def add_fbc_fbp_columns():
         # Adicionar coluna fbp se não existir
         if "fbp" not in existing_columns:
             try:
-                db.session.execute(
-                    db.text("ALTER TABLE pedidos ADD COLUMN fbp VARCHAR(255) NULL")
-                )
+                db.session.execute(db.text("ALTER TABLE pedidos ADD COLUMN fbp VARCHAR(255) NULL"))
                 db.session.commit()
                 print("[OK] Coluna 'fbp' adicionada")
             except Exception as e:

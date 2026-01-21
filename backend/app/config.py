@@ -107,7 +107,9 @@ class BaseConfig:
     META_TEST_EVENT_CODE = os.environ.get("META_TEST_EVENT_CODE") or ""
     # Conversions API Gateway (opcional - melhora visualização e métricas)
     META_CAPI_USE_GATEWAY = os.environ.get("META_CAPI_USE_GATEWAY", "false").lower() == "true"
-    META_CAPI_GATEWAY_DOMAIN = os.environ.get("META_CAPI_GATEWAY_DOMAIN") or "gestaopedidos.planteumaflor.online"
+    META_CAPI_GATEWAY_DOMAIN = (
+        os.environ.get("META_CAPI_GATEWAY_DOMAIN") or "gestaopedidos.planteumaflor.online"
+    )
     # Endpoint completo do Gateway (opcional - se fornecido, usa este ao invés de construir)
     META_CAPI_GATEWAY_ENDPOINT = os.environ.get("META_CAPI_GATEWAY_ENDPOINT") or ""
 

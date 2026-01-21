@@ -819,7 +819,7 @@ def estatisticas_outbox():
 def criar_outbox_faltantes():
     """
     Cria outboxes faltantes para pedidos pagos que ainda não têm outbox (backfill)
-    
+
     Body opcional:
     {
         "limit": 100,  // Limite de pedidos para processar (opcional)
@@ -827,10 +827,11 @@ def criar_outbox_faltantes():
     }
     """
     try:
-        from app.models.pedido import Pedido
-        from app.models.meta_capi_outbox import MetaCapiOutbox
-        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
         from sqlalchemy import func
+
+        from app.models.meta_capi_outbox import MetaCapiOutbox
+        from app.models.pedido import Pedido
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 
         data = request.get_json() or {}
         limit = data.get("limit")

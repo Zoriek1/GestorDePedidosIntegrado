@@ -3,7 +3,6 @@
 Modelo de Outbox para Meta Conversions API
 Garante entrega de eventos Purchase para Meta com retry e idempotência
 """
-from datetime import datetime
 
 from app import db
 from app.models.pedido import datetime_now_brazil

@@ -25,7 +25,7 @@ def create_outbox_if_purchase(
     # Não verificar status="concluido" porque pode agendar pedido para ano que vem
     if not pedido.status_pagamento:
         return False
-    
+
     status_pagamento_upper = pedido.status_pagamento.upper().strip()
     if status_pagamento_upper not in ["PAGO", "PARCIAL"]:
         return False

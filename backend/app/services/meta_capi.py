@@ -25,10 +25,13 @@ class MetaConversionsApiService:
         self.access_token = os.environ.get("META_CAPI_ACCESS_TOKEN", "")
         self.api_version = os.environ.get("META_CAPI_API_VERSION", "v21.0")
         self.test_event_code = os.environ.get("META_TEST_EVENT_CODE", "")
-        
+        self.debug_enabled = os.environ.get("META_CAPI_DEBUG", "false").lower() == "true"
+
         # Conversions API Gateway (opcional - melhora visualização e métricas)
         self.use_gateway = os.environ.get("META_CAPI_USE_GATEWAY", "false").lower() == "true"
-        self.gateway_domain = os.environ.get("META_CAPI_GATEWAY_DOMAIN") or "gestaopedidos.planteumaflor.online"
+        self.gateway_domain = (
+            os.environ.get("META_CAPI_GATEWAY_DOMAIN") or "gestaopedidos.planteumaflor.online"
+        )
         self.gateway_endpoint = os.environ.get("META_CAPI_GATEWAY_ENDPOINT") or ""
 
         # URL base da API
@@ -44,6 +47,35 @@ class MetaConversionsApiService:
         else:
             # Integração direta com Meta
             self.base_url = f"https://graph.facebook.com/{self.api_version}/{self.pixel_id}/events"
+
+        # Validação básica da URL base
+        if self.use_gateway and self.gateway_endpoint:
+            if self.gateway_domain and self.gateway_domain not in self.gateway_endpoint:
+                self._debug_log(
+                    "[META_CAPI] AVISO: META_CAPI_GATEWAY_ENDPOINT nao contem o dominio esperado.",
+                    {
+                        "gateway_domain": self.gateway_domain,
+                        "gateway_endpoint": self.gateway_endpoint,
+                    },
+                )
+
+        self._debug_log(
+            "[META_CAPI] Configuracao inicializada.",
+            {
+                "use_gateway": self.use_gateway,
+                "gateway_domain": self.gateway_domain,
+                "gateway_endpoint": bool(self.gateway_endpoint),
+                "base_url": self.base_url,
+            },
+        )
+
+    def _debug_log(self, message: str, data: Optional[Dict] = None) -> None:
+        if not self.debug_enabled:
+            return
+        if data:
+            print(f"{message} {data}")
+        else:
+            print(message)
 
     def normalize_phone_br_e164(self, telefone: str) -> str:
         """
@@ -117,6 +149,43 @@ class MetaConversionsApiService:
             str: Hash SHA-256 em hexadecimal
         """
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    def normalize_generic(self, value: str) -> str:
+        """
+        Normaliza string genérica para hashing (lowercase, sem acentos, sem pontuação)
+        """
+        if not value:
+            return ""
+
+        normalized = value.strip().lower()
+        normalized = unicodedata.normalize("NFKD", normalized)
+        normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+        normalized = re.sub(r"[^\w]", "", normalized)
+        return normalized
+
+    def maybe_hash(self, value: str, normalize_fn=None) -> str:
+        """
+        Aplica hash se valor não estiver em formato SHA-256 hex.
+        """
+        if not value:
+            return ""
+        candidate = value.strip()
+        if re.fullmatch(r"[a-fA-F0-9]{64}", candidate):
+            return candidate.lower()
+        normalized = normalize_fn(candidate) if normalize_fn else candidate
+        if not normalized:
+            return ""
+        return self.hash_sha256(normalized)
+
+    def is_valid_fbc(self, value: str) -> bool:
+        if not value:
+            return False
+        return bool(re.fullmatch(r"fb\.1\.\d+\.[A-Za-z0-9_-]+", value.strip()))
+
+    def is_valid_fbp(self, value: str) -> bool:
+        if not value:
+            return False
+        return bool(re.fullmatch(r"fb\.1\.\d+\.\d+", value.strip()))
 
     def parse_brl_money(self, valor_str: str) -> float:
         """
@@ -196,41 +265,21 @@ class MetaConversionsApiService:
             (pedido.updated_at if pedido.updated_at else pedido.created_at).timestamp()
         )
 
-        # Montar custom_data com localização
+        # Montar custom_data (apenas campos suportados)
         custom_data = {
             "value": valor_total,
             "currency": "BRL",
             "order_id": str(pedido.id),
         }
 
-        # Adicionar campos de localização se disponíveis
-        # Cidade
-        if pedido.cidade:
-            custom_data["city"] = pedido.cidade.strip()
-
-        # Estado (padrão GO para Goiás, ou extrair do endereço se disponível)
-        # Como todos os pedidos são de Goiânia/GO, usar "GO" como padrão
-        custom_data["state"] = "GO"
-
-        # CEP (normalizar: remover hífen e espaços)
-        if pedido.cep:
-            cep_normalized = re.sub(r"[^\d]", "", pedido.cep)
-            if cep_normalized:
-                custom_data["zip_code"] = cep_normalized
-
-        # Coordenadas (latitude e longitude) - se disponíveis
-        if pedido.coords_lat and pedido.coords_lon:
-            custom_data["latitude"] = float(pedido.coords_lat)
-            custom_data["longitude"] = float(pedido.coords_lon)
-
-        # Validar event_time (Meta aceita até ~7 dias no futuro e ~7 dias no passado)
+        # Validar event_time (Meta não aceita timestamps no futuro)
         import time
+
         now_timestamp = int(time.time())
-        max_future = now_timestamp + (7 * 24 * 60 * 60)  # 7 dias no futuro
         max_past = now_timestamp - (7 * 24 * 60 * 60)  # 7 dias no passado
-        
-        if event_time > max_future:
-            # Se evento está muito no futuro, usar timestamp atual
+
+        if event_time > now_timestamp:
+            # Se evento está no futuro, usar timestamp atual
             event_time = now_timestamp
         elif event_time < max_past:
             # Se evento está muito no passado, usar timestamp atual
@@ -240,20 +289,23 @@ class MetaConversionsApiService:
         if valor_total <= 0:
             valor_total = 0.01  # Valor mínimo para não falhar
 
-        # Validar coordenadas se presentes
-        if "latitude" in custom_data:
-            lat = custom_data["latitude"]
-            lon = custom_data["longitude"]
-            if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-                # Remover coordenadas inválidas
-                custom_data.pop("latitude", None)
-                custom_data.pop("longitude", None)
+        # Dados de localização para user_data (apenas hashes)
+        user_location = {}
+        if pedido.cidade:
+            city_hash = self.maybe_hash(pedido.cidade, normalize_fn=self.normalize_generic)
+            if city_hash:
+                user_location["ct"] = city_hash
 
-        # Validar CEP (deve ter 8 dígitos)
-        if "zip_code" in custom_data:
-            zip_code = custom_data["zip_code"]
-            if len(zip_code) != 8 or not zip_code.isdigit():
-                custom_data.pop("zip_code", None)
+        state_hash = self.maybe_hash("GO", normalize_fn=self.normalize_generic)
+        if state_hash:
+            user_location["st"] = state_hash
+
+        if pedido.cep:
+            cep_normalized = re.sub(r"[^\d]", "", pedido.cep)
+            if cep_normalized and len(cep_normalized) == 8:
+                zip_hash = self.maybe_hash(cep_normalized)
+                if zip_hash:
+                    user_location["zp"] = zip_hash
 
         # Montar payload
         event = {
@@ -271,19 +323,21 @@ class MetaConversionsApiService:
             event["user_data"]["ph"] = [phone_hash]
         if fn_hash:
             event["user_data"]["fn"] = [fn_hash]
-        
-        # País fixo (Brasil) - todos os pedidos são de Goiânia/GO
-        event["user_data"]["country"] = "BR"
-        
+
+        # País fixo (Brasil) - enviar hash conforme especificação CAPI
+        country_hash = self.maybe_hash("br", normalize_fn=self.normalize_generic)
+        if country_hash:
+            event["user_data"]["country"] = country_hash
+
         # Adicionar fbc e fbp se disponíveis (melhora qualidade de correspondência de eventos)
         # fbc: Facebook Click ID (vem do parâmetro fbclid na URL quando usuário clica em anúncio)
         # fbp: Facebook Browser ID (vem do cookie _fbp criado pelo Pixel do Facebook)
         # IMPORTANTE: Esses valores são case-sensitive e não devem ser normalizados
-        if hasattr(pedido, "fbc") and pedido.fbc:
+        if hasattr(pedido, "fbc") and pedido.fbc and self.is_valid_fbc(pedido.fbc):
             event["user_data"]["fbc"] = pedido.fbc
-        if hasattr(pedido, "fbp") and pedido.fbp:
+        if hasattr(pedido, "fbp") and pedido.fbp and self.is_valid_fbp(pedido.fbp):
             event["user_data"]["fbp"] = pedido.fbp
-        
+
         # Se user_data estiver vazio (sem ph e fn), usar hash do order_id como fallback
         # Isso garante que sempre teremos pelo menos um campo além de country
         if not phone_hash and not fn_hash:
@@ -291,7 +345,87 @@ class MetaConversionsApiService:
             external_id_hash = self.hash_sha256(str(pedido.id))
             event["user_data"]["external_id"] = [external_id_hash]
 
+        # Adicionar dados de localização (se disponíveis) após garantir user_data
+        if user_location:
+            event["user_data"].update(user_location)
+
         return event
+
+    def sanitize_event_payload(self, event: Dict) -> Dict:
+        """
+        Normaliza payload vindo da outbox para evitar parâmetros inválidos.
+        """
+        sanitized = {
+            "event_name": event.get("event_name"),
+            "event_time": event.get("event_time"),
+            "event_id": event.get("event_id"),
+            "action_source": event.get("action_source"),
+            "user_data": dict(event.get("user_data") or {}),
+            "custom_data": dict(event.get("custom_data") or {}),
+        }
+
+        # Normalizar e validar event_time (segundos Unix, dentro de 7 dias)
+        import time
+
+        now_timestamp = int(time.time())
+        max_past = now_timestamp - (7 * 24 * 60 * 60)
+        event_time = sanitized.get("event_time")
+        try:
+            if isinstance(event_time, str) and event_time.isdigit():
+                event_time = int(event_time)
+            elif isinstance(event_time, (int, float)):
+                event_time = int(event_time)
+            else:
+                event_time = now_timestamp
+
+            # Se estiver em milissegundos, normalizar para segundos
+            if event_time > 10_000_000_000:
+                event_time = int(event_time / 1000)
+
+            if event_time > now_timestamp or event_time < max_past:
+                event_time = now_timestamp
+        except Exception:
+            event_time = now_timestamp
+
+        sanitized["event_time"] = event_time
+
+        # Remover chaves de localização inválidas do custom_data
+        city = sanitized["custom_data"].pop("city", None)
+        state = sanitized["custom_data"].pop("state", None)
+        zip_code = sanitized["custom_data"].pop("zip_code", None)
+        sanitized["custom_data"].pop("latitude", None)
+        sanitized["custom_data"].pop("longitude", None)
+
+        # Normalizar country se veio em texto
+        if "country" in sanitized["user_data"]:
+            country_value = sanitized["user_data"]["country"]
+            country_hash = self.maybe_hash(str(country_value), normalize_fn=self.normalize_generic)
+            if country_hash:
+                sanitized["user_data"]["country"] = country_hash
+
+        # Mapear localização para user_data (hash)
+        if city:
+            city_hash = self.maybe_hash(str(city), normalize_fn=self.normalize_generic)
+            if city_hash:
+                sanitized["user_data"]["ct"] = city_hash
+        if state:
+            state_hash = self.maybe_hash(str(state), normalize_fn=self.normalize_generic)
+            if state_hash:
+                sanitized["user_data"]["st"] = state_hash
+        if zip_code:
+            zip_digits = re.sub(r"[^\d]", "", str(zip_code))
+            if len(zip_digits) == 8:
+                zip_hash = self.maybe_hash(zip_digits)
+                if zip_hash:
+                    sanitized["user_data"]["zp"] = zip_hash
+
+        # Validar fbc/fbp se presentes
+        if "fbc" in sanitized["user_data"] and not self.is_valid_fbc(sanitized["user_data"]["fbc"]):
+            sanitized["user_data"].pop("fbc", None)
+        if "fbp" in sanitized["user_data"] and not self.is_valid_fbp(sanitized["user_data"]["fbp"]):
+            sanitized["user_data"].pop("fbp", None)
+
+        return sanitized
 
     def send_events(self, events: List[Dict]) -> Dict:
         """
@@ -338,6 +472,20 @@ class MetaConversionsApiService:
             # Integração direta: access_token vai no query param
             params = {"access_token": self.access_token}
 
+        self._debug_log(
+            "[META_CAPI] Enviando eventos.",
+            {
+                "base_url": self.base_url,
+                "use_gateway": self.use_gateway,
+                "headers": {
+                    "Content-Type": headers.get("Content-Type"),
+                    "Authorization": "Bearer ***" if headers.get("Authorization") else None,
+                },
+                "params": {"access_token": "***"} if params else {},
+                "events_count": len(events),
+            },
+        )
+
         try:
             # Enviar requisição
             response = requests.post(
@@ -351,6 +499,11 @@ class MetaConversionsApiService:
             # Adicionar status_code para classificação de erros
             result["_status_code"] = response.status_code
 
+            self._debug_log(
+                "[META_CAPI] Resposta recebida.",
+                {"status_code": response.status_code, "body_keys": list(result.keys())},
+            )
+
             return result
 
         except requests.exceptions.RequestException as e:
@@ -363,9 +516,14 @@ class MetaConversionsApiService:
             if hasattr(e, "response") and e.response is not None:
                 try:
                     error_response = e.response.json()
-                    # Capturar mensagem detalhada da Meta
-                    if "error" in error_response:
+                    # Capturar mensagem detalhada da Meta (direta ou via Gateway)
+                    meta_error = None
+                    if "details" in error_response and isinstance(error_response["details"], dict):
+                        meta_error = error_response["details"].get("error")
+                    if not meta_error and "error" in error_response:
                         meta_error = error_response["error"]
+
+                    if isinstance(meta_error, dict):
                         error_msg = meta_error.get("message", error_msg)
                         # Adicionar código de erro se disponível
                         if "code" in meta_error:
@@ -375,11 +533,18 @@ class MetaConversionsApiService:
                         # Adicionar tipo de erro se disponível
                         if "type" in meta_error:
                             error_msg += f" (type: {meta_error['type']})"
+                    elif isinstance(meta_error, str):
+                        error_msg = meta_error
                 except Exception:
                     error_response = {"error": {"message": error_msg}}
 
             error_response["_status_code"] = status_code
             error_response["_error"] = error_msg
+
+            self._debug_log(
+                "[META_CAPI] Erro na requisicao.",
+                {"status_code": status_code, "error": error_msg},
+            )
 
             return error_response
 
@@ -413,7 +578,7 @@ class MetaConversionsApiService:
         error_msg = str(response.get("_error", "")).lower()
         if "deve estar configurado" in error_msg or "não configurado" in error_msg:
             return ("permanent", False)
-        
+
         # Retryable: timeout, 5xx, 429 (rate limit)
         if status_code == 429:  # Rate limit
             return ("retryable", True)
@@ -433,7 +598,13 @@ class MetaConversionsApiService:
             return ("permanent", False)
         if status_code == 400:  # Bad Request (payload inválido)
             # Verificar se é erro de validação
-            error_msg = str(response.get("error", {}).get("message", "")).lower()
+            error_field = response.get("error")
+            if isinstance(error_field, dict):
+                error_msg = str(error_field.get("message", "")).lower()
+            elif isinstance(error_field, str):
+                error_msg = error_field.lower()
+            else:
+                error_msg = ""
             if "validation" in error_msg or "invalid" in error_msg:
                 return ("permanent", False)
             # Pode ser retryable em alguns casos

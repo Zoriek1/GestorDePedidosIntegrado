@@ -16,7 +16,7 @@ env_path = backend_dir / ".env"
 if env_path.exists():
     load_dotenv(env_path, override=True)
 else:
-    print(f"[AVISO] Arquivo .env não encontrado em: {env_path}")
+    print(f"[AVISO] Arquivo .env nao encontrado em: {env_path}")
 
 from app import create_app
 from app.services.meta_capi import MetaConversionsApiService
@@ -25,12 +25,12 @@ app = create_app()
 
 with app.app_context():
     print("=" * 60)
-    print("VERIFICAÇÃO DE CONFIGURAÇÃO META CAPI")
+    print("VERIFICACAO DE CONFIGURACAO META CAPI")
     print("=" * 60)
     print()
-    
+
     service = MetaConversionsApiService()
-    
+
     # Verificar cada variável
     configs = {
         "META_PIXEL_ID": service.pixel_id,
@@ -41,77 +41,79 @@ with app.app_context():
         "META_CAPI_GATEWAY_DOMAIN": service.gateway_domain,
         "META_CAPI_GATEWAY_ENDPOINT": service.gateway_endpoint,
     }
-    
-    print("📋 Configurações encontradas:")
+
+    print("CONFIGURACOES ENCONTRADAS:")
     print("-" * 60)
-    
+
     all_ok = True
-    
+
     for key, value in configs.items():
         if key == "META_PIXEL_ID":
             if value:
                 # Mostrar apenas últimos 4 dígitos por segurança
                 masked = "***" + value[-4:] if len(value) > 4 else "***"
-                print(f"✅ {key}: {masked}")
+                print(f"[OK] {key}: {masked}")
             else:
-                print(f"❌ {key}: NÃO CONFIGURADO")
+                print(f"[ERRO] {key}: NAO CONFIGURADO")
                 all_ok = False
         elif key == "META_CAPI_ACCESS_TOKEN":
             if value:
                 # Mostrar apenas primeiros e últimos caracteres por segurança
                 masked = value[:4] + "..." + value[-4:] if len(value) > 8 else "***"
-                print(f"✅ {key}: {masked}")
+                print(f"[OK] {key}: {masked}")
             else:
-                print(f"❌ {key}: NÃO CONFIGURADO")
+                print(f"[ERRO] {key}: NAO CONFIGURADO")
                 all_ok = False
         elif key == "META_CAPI_API_VERSION":
-            print(f"ℹ️  {key}: {value} (padrão: v21.0)")
+            print(f"[INFO] {key}: {value} (padrao: v21.0)")
         elif key == "META_TEST_EVENT_CODE":
             if value:
-                print(f"ℹ️  {key}: *** (modo teste ativo)")
+                print(f"[INFO] {key}: *** (modo teste ativo)")
             else:
-                print(f"ℹ️  {key}: Não configurado (modo produção)")
+                print(f"[INFO] {key}: Nao configurado (modo producao)")
         elif key == "META_CAPI_USE_GATEWAY":
             if value:
-                print(f"✅ {key}: Ativado (usando Gateway)")
+                print(f"[OK] {key}: Ativado (usando Gateway)")
             else:
-                print(f"ℹ️  {key}: Desativado (integração direta)")
+                print(f"[INFO] {key}: Desativado (integracao direta)")
         elif key == "META_CAPI_GATEWAY_DOMAIN":
-            print(f"ℹ️  {key}: {value}")
+            print(f"[INFO] {key}: {value}")
         elif key == "META_CAPI_GATEWAY_ENDPOINT":
             if value:
-                print(f"ℹ️  {key}: {value[:50]}... (endpoint customizado)")
+                print(f"[INFO] {key}: {value[:50]}... (endpoint customizado)")
             else:
-                print(f"ℹ️  {key}: Não configurado (usará endpoint padrão)")
-    
+                print(f"[INFO] {key}: Nao configurado (usara endpoint padrao)")
+
     print()
     print("=" * 60)
-    
+
     if all_ok:
-        print("✅ Todas as configurações obrigatórias estão presentes!")
+        print("[OK] Todas as configuracoes obrigatorias estao presentes!")
         print()
         if service.use_gateway:
-            print("🌐 Gateway ativado - eventos serão enviados via Gateway")
+            print("[GATEWAY] Ativado - eventos serao enviados via Gateway")
             if service.gateway_endpoint:
                 endpoint = service.gateway_endpoint
             else:
-                endpoint = f"https://{service.gateway_domain}/meta-gateway/{service.pixel_id}/events"
+                endpoint = (
+                    f"https://{service.gateway_domain}/meta-gateway/{service.pixel_id}/events"
+                )
             print(f"   Endpoint: {endpoint}")
         else:
-            print("🔗 Integração direta - eventos serão enviados diretamente para Meta")
+            print("[DIRETO] Integracao direta - eventos serao enviados diretamente para Meta")
             endpoint = f"https://graph.facebook.com/{service.api_version}/{service.pixel_id}/events"
             print(f"   Endpoint: {endpoint}")
         print()
-        print("📝 Próximos passos:")
+        print("PROXIMOS PASSOS:")
         print("   1. Execute: python backend/scripts/meta/send_daily_purchases_to_meta.py")
         print("   2. Verifique: python backend/scripts/meta/verificar_outbox.py")
     else:
-        print("❌ Configurações obrigatórias faltando!")
+        print("[ERRO] Configuracoes obrigatorias faltando!")
         print()
-        print("📝 Adicione no arquivo backend/.env:")
+        print("Adicione no arquivo backend/.env:")
         if not service.pixel_id:
             print("   META_PIXEL_ID=seu_pixel_id_aqui")
         if not service.access_token:
             print("   META_CAPI_ACCESS_TOKEN=seu_access_token_aqui")
         print()
-        print("💡 Dica: Reinicie o servidor após adicionar as variáveis")
+        print("Dica: Reinicie o servidor apos adicionar as variaveis")

@@ -5,6 +5,14 @@ import type { ApiResponse } from '../../api/http';
 const MAX_ATTEMPTS = 3;
 let flushInProgress = false;
 
+function notifyOutboxChanged() {
+  try {
+    window.dispatchEvent(new CustomEvent('puf_outbox_changed'));
+  } catch {
+    // noop
+  }
+}
+
 export async function enqueue(type: OutboxEntry['type'], payload: unknown): Promise<number> {
   // Ensure payload is an object for spread
   const payloadObj = typeof payload === 'object' && payload !== null 
@@ -20,6 +28,7 @@ export async function enqueue(type: OutboxEntry['type'], payload: unknown): Prom
     blocked: false,
   };
   const id = await db.outbox.add(entry);
+  notifyOutboxChanged();
   return id as number;
 }
 
@@ -65,7 +74,7 @@ export async function flush(
   getAuthHeader: () => Record<string, string>
 ): Promise<FlushResult> {
   if (flushInProgress) {
-    return {
+    const result = {
       success: 0,
       failed: 0,
       blockedAuth: 0,
@@ -73,12 +82,13 @@ export async function flush(
       skippedBlocked: 0,
       skippedNotPending: 0,
     };
+    return result;
   }
   flushInProgress = true;
 
   try {
     if (!navigator.onLine) {
-      return {
+      const result = {
         success: 0,
         failed: 0,
         blockedAuth: 0,
@@ -86,6 +96,7 @@ export async function flush(
         skippedBlocked: 0,
         skippedNotPending: 0,
       };
+      return result;
     }
 
   // Reset any stuck PROCESSING items from previous runs (best-effort)
@@ -115,7 +126,7 @@ export async function flush(
 
   // If we already have auth-blocked items, do NOT process anything until re-login.
   if (existingBlockedAuth > 0) {
-    return {
+      const result = {
       success: 0,
       failed: 0,
       blockedAuth: existingBlockedAuth,
@@ -123,6 +134,7 @@ export async function flush(
       skippedBlocked: 0,
       skippedNotPending: queue.length,
     };
+      return result;
   }
 
   const apiRequest = createApiRequest(getAuthHeader);
@@ -249,7 +261,7 @@ export async function flush(
     }
   }
 
-  return {
+  const result = {
     success,
     failed,
     blockedAuth,
@@ -257,17 +269,21 @@ export async function flush(
     skippedBlocked,
     skippedNotPending,
   };
+  return result;
   } finally {
     flushInProgress = false;
+    notifyOutboxChanged();
   }
 }
 
 export async function clearOutbox(): Promise<void> {
   await db.outbox.clear();
+  notifyOutboxChanged();
 }
 
 export async function removeOutboxItem(id: number): Promise<void> {
   await db.outbox.delete(id);
+  notifyOutboxChanged();
 }
 
 export async function retryOutboxItem(id: number): Promise<void> {
@@ -278,5 +294,6 @@ export async function retryOutboxItem(id: number): Promise<void> {
     lastStatus: undefined,
     attempts: 0,
   });
+  notifyOutboxChanged();
 }
 

@@ -39,7 +39,9 @@ def log(level: str, msg: str):
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--dest", required=True, help="Pasta de destino no Google Drive")
-    p.add_argument("--hours", type=int, default=48, help="Copiar apenas backups das últimas N horas")
+    p.add_argument(
+        "--hours", type=int, default=48, help="Copiar apenas backups das últimas N horas"
+    )
     args = p.parse_args()
 
     log("INFO", f"Start | user={getpass.getuser()} | cwd={os.getcwd()} | python={sys.executable}")
@@ -54,7 +56,10 @@ def main() -> int:
         dest_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         log("ERROR", f"Não foi possível criar/acessar destino: {dest_dir} | erro={e}")
-        log("ERROR", "Isso costuma acontecer por permissão/Drive virtual. Rode este script no SEU usuário.")
+        log(
+            "ERROR",
+            "Isso costuma acontecer por permissão/Drive virtual. Rode este script no SEU usuário.",
+        )
         return 1
 
     # Teste de permissão real (escrita)
@@ -64,7 +69,10 @@ def main() -> int:
         probe.unlink(missing_ok=True)
     except Exception as e:
         log("ERROR", f"Sem permissão de escrita no destino: {dest_dir} | erro={e}")
-        log("ERROR", "Rode este script no seu usuário (não SYSTEM) e confirme o caminho do Google Drive.")
+        log(
+            "ERROR",
+            "Rode este script no seu usuário (não SYSTEM) e confirme o caminho do Google Drive.",
+        )
         return 1
 
     cutoff = datetime.now() - timedelta(hours=args.hours)

@@ -53,11 +53,15 @@ def main():
             if sent_failed > 0 and sent_success == 0:
                 if failed_permanent > 0:
                     # Há erros permanentes - falha crítica
-                    print(f"\n[ERRO] Todos os envios falharam ({failed_permanent} permanente(s), {failed_retryable} retryable(s))")
+                    print(
+                        f"\n[ERRO] Todos os envios falharam ({failed_permanent} permanente(s), {failed_retryable} retryable(s))"
+                    )
                     sys.exit(1)
                 elif failed_retryable > 0:
                     # Todos são retryable - sucesso parcial (será retentado)
-                    print(f"\n[AVISO] Todos os envios falharam temporariamente ({failed_retryable} retryable(s))")
+                    print(
+                        f"\n[AVISO] Todos os envios falharam temporariamente ({failed_retryable} retryable(s))"
+                    )
                     print("[INFO] Os eventos serão retentados na próxima execução")
                     sys.exit(0)
                 else:
@@ -71,7 +75,9 @@ def main():
             else:
                 # Sucesso (ou falhas parciais aceitáveis)
                 if sent_success > 0:
-                    print(f"\n[SUCCESS] Processamento concluído ({sent_success} enviado(s), {sent_failed} falha(s))")
+                    print(
+                        f"\n[SUCCESS] Processamento concluído ({sent_success} enviado(s), {sent_failed} falha(s))"
+                    )
                 else:
                     print("\n[SUCCESS] Processamento concluído (nenhum evento para enviar)")
                 sys.exit(0)

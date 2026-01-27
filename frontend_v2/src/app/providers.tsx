@@ -19,7 +19,7 @@ import 'dayjs/locale/pt-br';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
       retry: 1,
       staleTime: 30000,
     },

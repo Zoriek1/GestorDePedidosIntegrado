@@ -6,10 +6,10 @@ Verifica:
 2. Envio de outboxes (agendador de tarefas)
 3. Backups recentes do sistema
 """
-import sys
 import subprocess
+import sys
+from datetime import datetime
 from pathlib import Path
-from datetime import datetime, date, timedelta
 
 try:
     from zoneinfo import ZoneInfo
@@ -28,12 +28,16 @@ load_dotenv(env_path, override=True)
 
 from sqlalchemy import func
 
-from app import create_app, db
+from app import create_app
+from app.config import Config
 from app.models.meta_capi_outbox import MetaCapiOutbox
 from app.models.pedido import Pedido
-from app.utils.backup_helper import get_backup_stats, get_last_backup_time, has_recent_backup
-from app.utils.backup_helper import BackupManager
-from app.config import Config
+from app.utils.backup_helper import (
+    BackupManager,
+    get_backup_stats,
+    get_last_backup_time,
+    has_recent_backup,
+)
 
 # Timezone do Brasil
 TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
@@ -52,10 +56,14 @@ def verificar_agendador_tarefas():
     try:
         # Verificar se tarefa existe
         result = subprocess.run(
-            ["powershell", "-Command", f"Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction SilentlyContinue"],
+            [
+                "powershell",
+                "-Command",
+                f"Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction SilentlyContinue",
+            ],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         if result.returncode != 0 or not result.stdout.strip():
@@ -66,19 +74,23 @@ def verificar_agendador_tarefas():
 
         # Obter informações da tarefa
         info_result = subprocess.run(
-            ["powershell", "-Command", f"Get-ScheduledTaskInfo -TaskName '{TASK_NAME}' | ConvertTo-Json"],
+            [
+                "powershell",
+                "-Command",
+                f"Get-ScheduledTaskInfo -TaskName '{TASK_NAME}' | ConvertTo-Json",
+            ],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         if info_result.returncode == 0:
             print(f"[OK] Tarefa '{TASK_NAME}' encontrada")
             # Parse básico do JSON (simplificado)
             if "LastRunTime" in info_result.stdout:
-                print(f"[INFO] Última execução: Verifique no Agendador de Tarefas")
+                print("[INFO] Última execução: Verifique no Agendador de Tarefas")
             if "LastTaskResult" in info_result.stdout:
-                print(f"[INFO] Último resultado: Verifique no Agendador de Tarefas")
+                print("[INFO] Último resultado: Verifique no Agendador de Tarefas")
         else:
             print(f"[OK] Tarefa '{TASK_NAME}' encontrada")
             print("[INFO] Execute 'Get-ScheduledTaskInfo -TaskName' para mais detalhes")
@@ -146,7 +158,9 @@ def verificar_outboxes_do_dia():
         print(f"[AVISO] Pedidos pagos hoje SEM outbox: {len(pedidos_sem_outbox)}")
         print("[INFO] Estes pedidos deveriam ter outbox criada:")
         for pedido in pedidos_sem_outbox[:10]:  # Mostrar até 10
-            print(f"  - Pedido #{pedido.id} | Status: {pedido.status_pagamento} | Atualizado: {pedido.updated_at}")
+            print(
+                f"  - Pedido #{pedido.id} | Status: {pedido.status_pagamento} | Atualizado: {pedido.updated_at}"
+            )
         if len(pedidos_sem_outbox) > 10:
             print(f"  ... e mais {len(pedidos_sem_outbox) - 10} pedidos")
         print()
@@ -207,7 +221,8 @@ def verificar_outboxes_do_dia():
         print("[INFO] Primeiras 5 falhadas retryable:")
         for outbox in outboxes_failed_retryable[:5]:
             error_preview = (
-                outbox.last_error[:50] + "..." if outbox.last_error and len(outbox.last_error) > 50
+                outbox.last_error[:50] + "..."
+                if outbox.last_error and len(outbox.last_error) > 50
                 else outbox.last_error or "N/A"
             )
             print(
@@ -251,9 +266,9 @@ def verificar_backups():
         stats = get_backup_stats()
         print(f"[INFO] Total de backups: {stats['count']}")
         print(f"[INFO] Tamanho total: {stats['total_size_mb']:.2f} MB")
-        if stats['oldest']:
+        if stats["oldest"]:
             print(f"[INFO] Backup mais antigo: {stats['oldest'].strftime('%Y-%m-%d %H:%M:%S')}")
-        if stats['newest']:
+        if stats["newest"]:
             print(f"[INFO] Backup mais recente: {stats['newest'].strftime('%Y-%m-%d %H:%M:%S')}")
         print()
 
@@ -261,15 +276,15 @@ def verificar_backups():
         last_backup = get_last_backup_time()
         if last_backup:
             backup_path, mod_time, size_mb = last_backup
-            print(f"[INFO] Último backup:")
+            print("[INFO] Último backup:")
             print(f"  Arquivo: {backup_path.name}")
             print(f"  Data/hora: {mod_time.strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"  Tamanho: {size_mb:.2f} MB")
-            
+
             # Verificar se é recente (últimas 24h)
             agora = datetime.now(TIMEZONE_BRASIL)
             horas_atras = (agora - mod_time.replace(tzinfo=TIMEZONE_BRASIL)).total_seconds() / 3600
-            
+
             if horas_atras <= 24:
                 print(f"[OK] Backup recente (há {horas_atras:.1f} horas)")
             else:
@@ -284,10 +299,10 @@ def verificar_backups():
         backend_dir = Path(__file__).parent.parent.parent
         instance_dir = backend_dir / "instance"
         backup_dir = instance_dir / "backups"
-        
+
         backup_mgr = BackupManager(db_path=db_path, backup_dir=backup_dir)
         backups = backup_mgr.list_backups()
-        
+
         if backups:
             print("[INFO] Últimos 5 backups:")
             for i, (backup_path, size_mb, mod_time) in enumerate(backups[:5], 1):
@@ -304,12 +319,16 @@ def verificar_backups():
         print("[INFO] Verificando tarefa de backup agendada...")
         try:
             backup_task_result = subprocess.run(
-                ["powershell", "-Command", "Get-ScheduledTask | Where-Object {$_.TaskName -like '*Backup*'} | Select-Object -First 1 -ExpandProperty TaskName"],
+                [
+                    "powershell",
+                    "-Command",
+                    "Get-ScheduledTask | Where-Object {$_.TaskName -like '*Backup*'} | Select-Object -First 1 -ExpandProperty TaskName",
+                ],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
-            
+
             if backup_task_result.returncode == 0 and backup_task_result.stdout.strip():
                 task_name = backup_task_result.stdout.strip()
                 print(f"[OK] Tarefa de backup encontrada: {task_name}")
@@ -318,12 +337,13 @@ def verificar_backups():
                 print("[INFO] Execute: backend\\scripts\\backup\\install_backup_task.ps1")
         except Exception as e:
             print(f"[AVISO] Erro ao verificar tarefa de backup: {e}")
-        
+
         print()
 
     except Exception as e:
         print(f"[ERRO] Erro ao verificar backups: {e}")
         import traceback
+
         traceback.print_exc()
         print()
 
@@ -373,10 +393,14 @@ def main():
             print("[AVISO] Nenhuma outbox enviada hoje")
 
         if outbox_stats["outboxes_pendentes"] > 0:
-            print(f"[INFO] {outbox_stats['outboxes_pendentes']} outboxes pendentes aguardando envio")
+            print(
+                f"[INFO] {outbox_stats['outboxes_pendentes']} outboxes pendentes aguardando envio"
+            )
 
         if outbox_stats["outboxes_failed_retryable"] > 0:
-            print(f"[INFO] {outbox_stats['outboxes_failed_retryable']} outboxes falhadas retryable serão retentadas")
+            print(
+                f"[INFO] {outbox_stats['outboxes_failed_retryable']} outboxes falhadas retryable serão retentadas"
+            )
 
         # Backups
         has_recent = has_recent_backup(hours=24)

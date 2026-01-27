@@ -110,7 +110,7 @@ export function usePedidos(filters: PedidosFilters = {}) {
     }, { tag: 'pedidos' }),
     placeholderData: (previousData) => previousData, // Maintains previous data when filters change
     staleTime: 5000, // 5 seconds
-    refetchInterval: 15000, // 15 seconds
+    refetchInterval: 20000, // 20 seconds
     refetchOnWindowFocus: true
   });
 }

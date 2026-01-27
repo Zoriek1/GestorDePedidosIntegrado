@@ -89,8 +89,27 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
       info('Você está offline');
     };
 
+    const handleOutboxChanged = () => {
+      // Update count when queue changes
+      setTimeout(() => {
+        updateOutboxCount().catch(() => {
+          // Silently handle errors
+        });
+      }, 0);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        updateOutboxCount().catch(() => {
+          // Silently handle errors
+        });
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('puf_outbox_changed', handleOutboxChanged as EventListener);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Call handleFlush asynchronously to avoid setState in effect
     if (navigator.onLine) {
@@ -105,14 +124,10 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timeoutId);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('puf_outbox_changed', handleOutboxChanged as EventListener);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [handleFlush, updateOutboxCount, info]);
-
-  // Poll outbox count every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(updateOutboxCount, 5000);
-    return () => clearInterval(interval);
-  }, [updateOutboxCount]);
 
   return (
     <OfflineContext.Provider value={{ isOnline, outboxCount, flush: handleFlush }}>

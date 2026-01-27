@@ -218,7 +218,7 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
     const horarioEntrega = pedido.horario;
     const total = pedido.valor ? formatBRL(pedido.valor) : 'R$ 0,00';
     
-    let mensagem = `Olá, ${nome}. Seu pedido #${pedido.id} (entrega ${dataEntrega} ${horarioEntrega}) está com pagamento ${paymentStatus}. Total: ${total}.`;
+    const mensagem = `Olá, ${nome}. Seu pedido #${pedido.id} (entrega ${dataEntrega} ${horarioEntrega}) está com pagamento ${paymentStatus}. Total: ${total}.`;
     
     // Adicionar link/chave Pix se existir (aqui você pode adicionar lógica para buscar isso)
     // Por enquanto, deixamos sem

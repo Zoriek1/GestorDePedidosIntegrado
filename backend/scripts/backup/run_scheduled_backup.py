@@ -60,7 +60,9 @@ def should_run_backup_now(now: datetime) -> bool:
     return True
 
 
-def get_recent_backup_timestamp(backup_dir: Path, now: datetime, minutes_threshold: int) -> datetime | None:
+def get_recent_backup_timestamp(
+    backup_dir: Path, now: datetime, minutes_threshold: int
+) -> datetime | None:
     if not backup_dir.exists():
         return None
 
@@ -153,18 +155,28 @@ def main() -> int:
 
     try:
         if not args.force and not should_run_backup_now(now):
-            weekday_name = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"][now.weekday()]
-            log("INFO", f"Fora da janela ({weekday_name} {now.hour:02d}:{now.minute:02d}) - ignorado")
+            weekday_name = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"][
+                now.weekday()
+            ]
+            log(
+                "INFO",
+                f"Fora da janela ({weekday_name} {now.hour:02d}:{now.minute:02d}) - ignorado",
+            )
             return 0
 
         backup_dir = BACKEND_DIR / "instance" / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         if not args.once:
-            recent = get_recent_backup_timestamp(backup_dir, now=now, minutes_threshold=args.minutes)
+            recent = get_recent_backup_timestamp(
+                backup_dir, now=now, minutes_threshold=args.minutes
+            )
             if recent:
                 age_minutes = (now - recent).total_seconds() / 60
-                log("INFO", f"Backup recente (há {age_minutes:.1f} min) - idempotência ativa, ignorado")
+                log(
+                    "INFO",
+                    f"Backup recente (há {age_minutes:.1f} min) - idempotência ativa, ignorado",
+                )
                 return 0
 
         if args.dry_run:
@@ -172,7 +184,9 @@ def main() -> int:
             return 0
 
         log("INFO", f"Iniciando backup (reason={args.reason}, compress={not args.no_compress})")
-        backup_path = create_backup(reason=args.reason, compress=(not args.no_compress), silent=False)
+        backup_path = create_backup(
+            reason=args.reason, compress=(not args.no_compress), silent=False
+        )
 
         if not backup_path:
             log("ERROR", "Falha ao criar backup (create_backup retornou None)")
@@ -192,6 +206,7 @@ def main() -> int:
 
     finally:
         release_lock(lock_path)
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

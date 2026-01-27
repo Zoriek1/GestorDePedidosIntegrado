@@ -43,17 +43,37 @@ def main():
                     print(f"  - {error}")
 
             # Exit code baseado no resultado
-            if result.get("sent_failed", 0) > 0 and result.get("sent_success", 0) == 0:
-                # Falhou tudo
-                print("\n[ERRO] Todos os envios falharam")
-                sys.exit(1)
-            elif result.get("errors") and len(result["errors"]) > 5:
+            sent_success = result.get("sent_success", 0)
+            sent_failed = result.get("sent_failed", 0)
+            failed_permanent = result.get("failed_permanent", 0)
+            failed_retryable = result.get("failed_retryable", 0)
+            errors = result.get("errors", [])
+
+            # Se todos falharam, verificar se são retryable
+            if sent_failed > 0 and sent_success == 0:
+                if failed_permanent > 0:
+                    # Há erros permanentes - falha crítica
+                    print(f"\n[ERRO] Todos os envios falharam ({failed_permanent} permanente(s), {failed_retryable} retryable(s))")
+                    sys.exit(1)
+                elif failed_retryable > 0:
+                    # Todos são retryable - sucesso parcial (será retentado)
+                    print(f"\n[AVISO] Todos os envios falharam temporariamente ({failed_retryable} retryable(s))")
+                    print("[INFO] Os eventos serão retentados na próxima execução")
+                    sys.exit(0)
+                else:
+                    # Não há classificação - assumir erro
+                    print("\n[ERRO] Todos os envios falharam (tipo desconhecido)")
+                    sys.exit(1)
+            elif errors and len(errors) > 5:
                 # Muitos erros
-                print("\n[ERRO] Muitos erros encontrados")
+                print(f"\n[ERRO] Muitos erros encontrados ({len(errors)})")
                 sys.exit(1)
             else:
                 # Sucesso (ou falhas parciais aceitáveis)
-                print("\n[SUCCESS] Processamento concluído")
+                if sent_success > 0:
+                    print(f"\n[SUCCESS] Processamento concluído ({sent_success} enviado(s), {sent_failed} falha(s))")
+                else:
+                    print("\n[SUCCESS] Processamento concluído (nenhum evento para enviar)")
                 sys.exit(0)
 
         except Exception as e:

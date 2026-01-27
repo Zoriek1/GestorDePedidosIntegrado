@@ -48,6 +48,7 @@ export interface Pedido {
   coords_lon?: number;
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string | null;
 }
 
 export interface PedidosResponse {

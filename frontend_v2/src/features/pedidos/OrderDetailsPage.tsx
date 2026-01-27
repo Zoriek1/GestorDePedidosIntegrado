@@ -22,6 +22,8 @@ import { useConfirm } from '../../components/system/useConfirm';
 import { useAuth } from '../auth/authStore';
 import { usePedidoPrintService } from './services/PedidoPrintService';
 import { getStatusColor, getStatusLabel } from './useCases/orderMapping';
+import { buildEncaminharMensagem } from './components/OrderCardHelpers';
+import { copyToClipboard } from '../../lib/utils/clipboard';
 import PersonIcon from '@mui/icons-material/Person';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
@@ -97,6 +99,16 @@ export default function OrderDetailsPage() {
     }
   };
 
+  const handleEncaminhar = async () => {
+    const texto = buildEncaminharMensagem(pedido);
+    const copied = await copyToClipboard(texto);
+    if (copied) {
+      success('Encaminhamento copiado!');
+    } else {
+      showError('Erro ao copiar encaminhamento');
+    }
+  };
+
   const statusLabel = getStatusLabel(pedido.status);
   const statusColor = getStatusColor(pedido.status);
   const valorTotal = pedido.valor ? formatBRL(pedido.valor) : 'R$ 0,00';
@@ -129,6 +141,9 @@ export default function OrderDetailsPage() {
           </Button>
           <Button variant="outlined" onClick={() => navigate(`/pedidos/${pedido.id}/editar`)}>
             Editar
+          </Button>
+          <Button variant="outlined" onClick={handleEncaminhar}>
+            Encaminhar
           </Button>
           <Button variant="contained" color="primary" onClick={handlePrint}>
             Imprimir

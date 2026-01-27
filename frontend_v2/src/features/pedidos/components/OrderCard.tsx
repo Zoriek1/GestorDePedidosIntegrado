@@ -15,6 +15,9 @@ import {
   Tooltip,
   Paper,
   Button,
+  IconButton,
+  Menu,
+  MenuItem,
 } from '@mui/material';
 import {
   Person,
@@ -23,20 +26,33 @@ import {
   LocalShipping,
   Store,
   Calculate,
+  MoreVert,
+  WhatsApp,
+  PlayArrow,
+  LocalShipping as LocalShippingIcon,
 } from '@mui/icons-material';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import { formatDateBR } from '../../../lib/format/date';
 import { formatBRL } from '../../../lib/format/currency';
-import { getStatusColor, getStatusLabel } from '../useCases/orderMapping';
-import { OrderCardActions } from './OrderCardActions';
+import { getStatusColor, getStatusLabel, getPaymentStatusColor, getPaymentStatusLabel } from '../useCases/orderMapping';
 import { StatusSelector } from './StatusSelector';
 import { 
   isPedidoAtrasado, 
   formatPhone, 
   getEnderecoCompleto,
+  buildEncaminharMensagem,
 } from './OrderCardHelpers';
-import { useCalcularDistanciaPedido, useCalcularTaxaEntrega } from '../../../api/endpoints/pedidos';
+import { useCalcularDistanciaPedido, useCalcularTaxaEntrega, useUpdatePedido } from '../../../api/endpoints/pedidos';
 import { useToast } from '../../../components/system/useToast';
+import { CopyOnClick } from '../../../components/common/CopyOnClick';
+import { copyToClipboard } from '../../../lib/utils/clipboard';
+import { useAuth } from '../../auth/authStore';
+import { usePedidoPrintService } from '../services/PedidoPrintService';
+import { useConfirm } from '../../../components/system/useConfirm';
+import { useDeletePedido } from '../../../api/endpoints/pedidos';
+import dayjs from 'dayjs';
 
 interface OrderCardProps {
   pedido: Pedido;
@@ -47,13 +63,27 @@ interface OrderCardProps {
 }
 
 export function OrderCard({ pedido, onClick, selectable = false, selected = false, onToggleSelect }: OrderCardProps) {
+  const navigate = useNavigate();
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const statusColor = getStatusColor(pedido.status);
   const statusLabel = getStatusLabel(pedido.status);
   const isAtrasado = isPedidoAtrasado(pedido);
   const enderecoCompleto = getEnderecoCompleto(pedido);
   const calcDistancia = useCalcularDistanciaPedido();
   const calcTaxa = useCalcularTaxaEntrega();
+  const updatePedido = useUpdatePedido();
+  const deletePedido = useDeletePedido();
   const { success, error: showError } = useToast();
+  const { getUserRole, getCredentials } = useAuth();
+  const printService = usePedidoPrintService();
+  const confirm = useConfirm();
+
+  const userRole = getUserRole();
+  const canEdit = userRole === 'admin' || userRole === 'atendente';
+  const canDelete = userRole === 'admin';
+
+  const paymentStatus = getPaymentStatusLabel(pedido.status_pagamento);
+  const paymentStatusColor = getPaymentStatusColor(pedido.status_pagamento);
 
   const handleCalcularDistancia = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -76,6 +106,201 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
       showError(errorMessage);
     }
   };
+
+  const handleMenuOpen = (e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    setMenuAnchor(e.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchor(null);
+  };
+
+  const handleCopyMensagem = async () => {
+    handleMenuClose();
+    if (pedido.mensagem) {
+      const copied = await copyToClipboard(pedido.mensagem);
+      if (copied) {
+        success('Mensagem copiada!');
+      } else {
+        showError('Erro ao copiar mensagem');
+      }
+    }
+  };
+
+  const handleCopyEncaminhar = async () => {
+    handleMenuClose();
+    const texto = buildEncaminharMensagem(pedido);
+    const copied = await copyToClipboard(texto);
+    if (copied) {
+      success('Encaminhamento copiado!');
+    } else {
+      showError('Erro ao copiar encaminhamento');
+    }
+  };
+
+  const handleView = () => {
+    handleMenuClose();
+    navigate(`/pedidos/${pedido.id}`);
+  };
+
+  const handleEdit = () => {
+    handleMenuClose();
+    navigate(`/pedidos/${pedido.id}/editar`);
+  };
+
+  const handlePrint = async () => {
+    handleMenuClose();
+    try {
+      await printService.print(pedido.id);
+      success('Impressão iniciada');
+    } catch (err) {
+      showError(err?.message || 'Erro ao imprimir');
+    }
+  };
+
+  const handleMarcarComoPago = async () => {
+    handleMenuClose();
+    try {
+      await updatePedido.mutateAsync({
+        id: pedido.id,
+        status_pagamento: 'Pago',
+      });
+      success('Pagamento marcado como pago');
+    } catch (err) {
+      showError(err?.message || 'Erro ao atualizar pagamento');
+    }
+  };
+
+  const handleDelete = async () => {
+    handleMenuClose();
+    const confirmed = await confirm({
+      title: 'Deletar pedido',
+      description: 'Esta ação é permanente. Confirme para prosseguir.',
+      confirmColor: 'error',
+      confirmText: 'Deletar',
+    });
+    if (!confirmed) return;
+
+    const creds = getCredentials();
+    const input = window.prompt('Digite sua senha para confirmar a exclusão:');
+    if (!input) {
+      showError('Exclusão cancelada: senha não informada');
+      return;
+    }
+    if (!creds || input !== creds.password) {
+      showError('Senha incorreta');
+      return;
+    }
+
+    try {
+      await deletePedido.mutateAsync(pedido.id);
+      success('Pedido deletado');
+    } catch (err) {
+      showError(err?.message || 'Erro ao deletar pedido');
+    }
+  };
+
+  const handleCobrar = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const telefone = pedido.telefone_cliente.replace(/\D/g, '');
+    // Formatar telefone: se tem 11 dígitos (celular BR), adiciona 55; se tem 10 (fixo), adiciona 55
+    let telefoneFormatado = telefone;
+    if (telefone.length === 11 || telefone.length === 10) {
+      telefoneFormatado = `55${telefone}`;
+    } else if (telefone.length > 11) {
+      // Já tem código do país
+      telefoneFormatado = telefone;
+    }
+    
+    const nome = pedido.destinatario || pedido.cliente;
+    const dataEntrega = dayjs(pedido.dia_entrega).format('DD/MM');
+    const horarioEntrega = pedido.horario;
+    const total = pedido.valor ? formatBRL(pedido.valor) : 'R$ 0,00';
+    
+    let mensagem = `Olá, ${nome}. Seu pedido #${pedido.id} (entrega ${dataEntrega} ${horarioEntrega}) está com pagamento ${paymentStatus}. Total: ${total}.`;
+    
+    // Adicionar link/chave Pix se existir (aqui você pode adicionar lógica para buscar isso)
+    // Por enquanto, deixamos sem
+    
+    const url = `https://wa.me/${telefoneFormatado}?text=${encodeURIComponent(mensagem)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleCalcularTaxaCTA = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleCalcularTaxa(e);
+  };
+
+  const handleIniciarProducao = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await updatePedido.mutateAsync({
+        id: pedido.id,
+        status: pedido.status === 'agendado' ? 'em_producao' : 'em_rota',
+      });
+      success(pedido.status === 'agendado' ? 'Produção iniciada' : 'Pedido saiu para entrega');
+    } catch (err) {
+      showError(err?.message || 'Erro ao atualizar status');
+    }
+  };
+
+  // Chips de pendência (máx 3)
+  const pendenciaChips: Array<{ label: string; color: 'error' | 'warning' | 'info' }> = [];
+  
+  if (isAtrasado) {
+    pendenciaChips.push({ label: 'Atrasado', color: 'error' });
+  }
+  
+  if (pendenciaChips.length < 3 && paymentStatus === 'Pendente') {
+    pendenciaChips.push({ label: 'Pagamento pendente', color: 'warning' });
+  }
+  
+  if (pendenciaChips.length < 3 && pedido.tipo_pedido === 'Entrega' && !pedido.taxa_entrega) {
+    pendenciaChips.push({ label: 'Sem taxa', color: 'info' });
+  }
+  
+  if (pendenciaChips.length < 3 && pedido.tipo_pedido === 'Entrega' && !pedido.distancia_km) {
+    pendenciaChips.push({ label: 'Sem distância', color: 'info' });
+  }
+  
+  if (pendenciaChips.length < 3 && pedido.tipo_pedido === 'Entrega' && (!pedido.rua || !pedido.cidade)) {
+    pendenciaChips.push({ label: 'Endereço incompleto', color: 'warning' });
+  }
+
+  // CTA contextual
+  const getContextualCTA = () => {
+    if (paymentStatus === 'Pendente') {
+      return {
+        label: 'Cobrar',
+        icon: <WhatsApp />,
+        onClick: handleCobrar,
+        color: 'success' as const,
+      };
+    }
+    
+    if (pedido.tipo_pedido === 'Entrega' && (!pedido.taxa_entrega || !pedido.distancia_km)) {
+      return {
+        label: 'Calcular taxa',
+        icon: <Calculate />,
+        onClick: handleCalcularTaxaCTA,
+        color: 'primary' as const,
+      };
+    }
+    
+    if (paymentStatus === 'Pago' && (pedido.status === 'agendado' || pedido.status === 'pronto_entrega')) {
+      return {
+        label: pedido.status === 'agendado' ? 'Iniciar produção' : 'Saiu p/ entrega',
+        icon: pedido.status === 'agendado' ? <PlayArrow /> : <LocalShippingIcon />,
+        onClick: handleIniciarProducao,
+        color: 'primary' as const,
+      };
+    }
+    
+    return null;
+  };
+
+  const contextualCTA = getContextualCTA();
 
   return (
     <Card
@@ -116,7 +341,7 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
                 />
               </Stack>
             </Box>
-            <Box>
+            <Box display="flex" alignItems="center" gap={1}>
               {selectable && (
                 <Tooltip title={pedido.tipo_pedido === 'Entrega' ? 'Selecionar para rota' : 'Apenas entregas podem ser roteirizadas'}>
                   <span>
@@ -134,6 +359,39 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
                   </span>
                 </Tooltip>
               )}
+              <IconButton
+                size="small"
+                onClick={handleMenuOpen}
+                sx={{ ml: 'auto' }}
+              >
+                <MoreVert />
+              </IconButton>
+              <Menu
+                anchorEl={menuAnchor}
+                open={Boolean(menuAnchor)}
+                onClose={handleMenuClose}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MenuItem onClick={handleCopyMensagem} disabled={!pedido.mensagem}>
+                  Copiar mensagem
+                </MenuItem>
+                <MenuItem onClick={handleCopyEncaminhar}>
+                  Encaminhar (copiar)
+                </MenuItem>
+                <MenuItem onClick={handleView}>Ver</MenuItem>
+                {canEdit && <MenuItem onClick={handleEdit}>Editar</MenuItem>}
+                <MenuItem onClick={handlePrint}>Imprimir</MenuItem>
+                {paymentStatus === 'Pendente' && (
+                  <MenuItem onClick={handleMarcarComoPago}>
+                    Marcar como pago
+                  </MenuItem>
+                )}
+                {canDelete && (
+                  <MenuItem onClick={handleDelete} sx={{ color: 'error.main' }}>
+                    Deletar
+                  </MenuItem>
+                )}
+              </Menu>
             </Box>
           </Stack>
           
@@ -150,6 +408,34 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
             )}
           </Stack>
         </Box>
+
+        {/* Badge de Pagamento (OBRIGATÓRIO) */}
+        <Box mb={2}>
+          <Chip
+            label={paymentStatus}
+            color={paymentStatusColor}
+            size="medium"
+            sx={{ 
+              fontSize: '0.875rem',
+              fontWeight: 'bold',
+              height: '32px',
+            }}
+          />
+        </Box>
+
+        {/* Chips de Pendência (máx 3) */}
+        {pendenciaChips.length > 0 && (
+          <Stack direction="row" spacing={1} mb={2} flexWrap="wrap">
+            {pendenciaChips.map((chip, index) => (
+              <Chip
+                key={index}
+                label={chip.label}
+                color={chip.color}
+                size="small"
+              />
+            ))}
+          </Stack>
+        )}
 
         <Divider sx={{ my: 2 }} />
 
@@ -182,6 +468,30 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
           <Typography variant="body1" fontWeight="medium">
             {pedido.produto}
           </Typography>
+        </Box>
+
+        {/* Mensagem/Cartinha Clicável */}
+        <Box mb={2}>
+          {pedido.mensagem ? (
+            <CopyOnClick textToCopy={pedido.mensagem}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  p: 1,
+                  borderRadius: 1,
+                }}
+              >
+                {pedido.mensagem}
+              </Typography>
+            </CopyOnClick>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Sem mensagem
+            </Typography>
+          )}
         </Box>
 
         {/* 4. Tipo de Logística */}
@@ -270,8 +580,20 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
           <StatusSelector pedidoId={pedido.id} status={pedido.status} />
         </Box>
 
-        {/* 8. Barra de Ações */}
-        <OrderCardActions pedido={pedido} />
+        {/* CTA Contextual */}
+        {contextualCTA && (
+          <Box mb={2}>
+            <Button
+              variant="contained"
+              color={contextualCTA.color}
+              startIcon={contextualCTA.icon}
+              onClick={contextualCTA.onClick}
+              fullWidth
+            >
+              {contextualCTA.label}
+            </Button>
+          </Box>
+        )}
       </CardContent>
     </Card>
   );

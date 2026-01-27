@@ -251,9 +251,9 @@ export function StepPagamento() {
               name="status_pagamento"
               control={control}
               render={({ field }) => (
-                <FormControl fullWidth error={!!errors.status_pagamento}>
+                <FormControl fullWidth required error={!!errors.status_pagamento}>
                   <InputLabel>Status do Pagamento</InputLabel>
-                  <Select {...field} label="Status do Pagamento">
+                  <Select {...field} label="Status do Pagamento" required>
                     {STATUS_PAGAMENTO.map((status) => (
                       <MenuItem key={status} value={status}>
                         {status}

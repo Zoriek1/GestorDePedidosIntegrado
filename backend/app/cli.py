@@ -177,9 +177,16 @@ def ssl_command(action, hostname):
 @cli.command("cache")
 @click.argument("action", type=click.Choice(["update"]))
 def cache_command(action):
-    """Gerencia cache do service worker"""
-    if action == "update":
-        update_service_worker_cache()
+    """
+    (LEGADO) Gerenciamento de cache do service worker.
+
+    O frontend atual (React/Vite PWA em frontend_v2) já faz versionamento por hash e autoUpdate.
+    Este comando existia apenas para o service worker do frontend legado (diretório frontend/),
+    que foi removido.
+    """
+    raise click.ClickException(
+        "Comando legado removido: o frontend atual (frontend_v2) não usa este workflow."
+    )
 
 
 @cli.command("check")
@@ -364,34 +371,6 @@ def check_ssl_status():
     else:
         click.echo("[AVISO] Certificados SSL não encontrados")
         click.echo("Execute: flask cli ssl generate")
-
-
-def update_service_worker_cache():
-    """Atualiza versão do cache do service worker"""
-    frontend_dir = Path(__file__).parent.parent.parent / "frontend"
-    sw_file = frontend_dir / "sw.js"
-
-    if not sw_file.exists():
-        click.echo("[ERRO] sw.js não encontrado!", err=True)
-        return
-
-    # Ler arquivo
-    content = sw_file.read_text(encoding="utf-8")
-
-    # Encontrar e incrementar versão do cache
-    import re
-
-    pattern = r"cacheName\s*=\s*['\"]plante-uma-flor-v(\d+)['\"]"
-    match = re.search(pattern, content)
-
-    if match:
-        current_version = int(match.group(1))
-        new_version = current_version + 1
-        new_content = re.sub(pattern, f"cacheName = 'plante-uma-flor-v{new_version}'", content)
-        sw_file.write_text(new_content, encoding="utf-8")
-        click.echo(f"[OK] Cache atualizado: v{current_version} -> v{new_version}")
-    else:
-        click.echo("[AVISO] Não foi possível encontrar versão do cache no sw.js")
 
 
 # Registrar comandos no Flask CLI

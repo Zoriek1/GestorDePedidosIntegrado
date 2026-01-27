@@ -184,6 +184,7 @@ class Pedido(db.Model):
             "coords_lon": self.coords_lon,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else "",
+            "deleted_at": self.deleted_at.strftime("%Y-%m-%d %H:%M:%S") if self.deleted_at else None,
         }
 
     def total_pago(self) -> float:

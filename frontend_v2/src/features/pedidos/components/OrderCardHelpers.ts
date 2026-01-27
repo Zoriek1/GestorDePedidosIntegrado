@@ -4,6 +4,8 @@
 
 import dayjs from 'dayjs';
 import type { Pedido } from '../../../api/endpoints/pedidos';
+import { formatDateBR } from '../../../lib/format/date';
+import { formatBRL } from '../../../lib/format/currency';
 
 /**
  * Check if a pedido is late (atrasado)
@@ -85,4 +87,92 @@ export function formatCreatedAt(createdAt: string | undefined): string {
   } catch {
     return createdAt;
   }
+}
+
+function addLine(lines: string[], line: string | undefined) {
+  if (!line) return;
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  lines.push(trimmed);
+}
+
+function addBlankLine(lines: string[]) {
+  if (lines.length === 0) return;
+  if (lines[lines.length - 1] === '') return;
+  lines.push('');
+}
+
+function buildMapsLinkFromAddress(address: string): string {
+  const query = encodeURIComponent(address);
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+}
+
+function buildWhatsAppLink(phone: string | undefined): string | undefined {
+  if (!phone) return undefined;
+  const digits = phone.replace(/\D/g, '');
+  if (!digits) return undefined;
+
+  // BR: se vier 10/11 dígitos, prefixa 55; se já vier com DDI, mantém
+  const withCountry =
+    digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+
+  return `https://wa.me/${withCountry}`;
+}
+
+/**
+ * Monta mensagem operacional para encaminhar ao entregador.
+ * - NÃO é a "mensagem do cartão" (pedido.mensagem)
+ * - Inclui apenas campos relevantes e existentes
+ */
+export function buildEncaminharMensagem(pedido: Pedido): string {
+  const lines: string[] = [];
+
+  // Header (curto)
+  addLine(lines, `Pedido #${pedido.id}`);
+  addLine(lines, `${pedido.tipo_pedido} • ${formatDateBR(pedido.dia_entrega)} ${pedido.horario || ''}`.trim());
+
+  // Contato (separado para ficar "clicável" em apps)
+  addBlankLine(lines);
+  addLine(lines, `Cliente: ${pedido.cliente}`);
+  const telefoneFmt = pedido.telefone_cliente ? formatPhone(pedido.telefone_cliente) : '';
+  if (telefoneFmt) addLine(lines, `Tel: ${telefoneFmt}`);
+  const waLink = buildWhatsAppLink(pedido.telefone_cliente);
+  if (waLink) addLine(lines, `WhatsApp: ${waLink}`);
+
+  // Destinatário + item
+  addBlankLine(lines);
+  addLine(lines, `Para: ${pedido.destinatario}`);
+  const qty = pedido.quantidade && pedido.quantidade > 1 ? ` x${pedido.quantidade}` : '';
+  const cor = pedido.flores_cor?.trim() ? ` (${pedido.flores_cor.trim()})` : '';
+  addLine(lines, `Item: ${pedido.produto}${qty}${cor}`);
+
+  // Logística
+  addBlankLine(lines);
+  if (pedido.tipo_pedido === 'Entrega') {
+    const endereco = getEnderecoCompleto(pedido);
+    addLine(lines, 'Endereço:');
+    addLine(lines, endereco);
+    if (pedido.obs_entrega?.trim()) {
+      addLine(lines, `Obs entrega: ${pedido.obs_entrega.trim()}`);
+    }
+    addLine(lines, `Mapa: ${buildMapsLinkFromAddress(endereco)}`);
+  } else {
+    addLine(lines, 'Retirada na loja');
+  }
+
+  // Cobrança (somente se tiver algo a cobrar)
+  const precisaCobrar = pedido.status_pagamento === 'Pendente' || pedido.status_pagamento === 'Parcial';
+  if (precisaCobrar && pedido.valor) {
+    addBlankLine(lines);
+    addLine(lines, `Pagamento: ${pedido.status_pagamento}`);
+    addLine(lines, `Cobrar: ${formatBRL(pedido.valor)}`);
+  }
+
+  // Observações gerais (opcional)
+  if (pedido.observacoes?.trim()) {
+    addBlankLine(lines);
+    addLine(lines, `Obs: ${pedido.observacoes.trim()}`);
+  }
+
+  return lines.join('\n');
 }

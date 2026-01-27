@@ -59,6 +59,8 @@ class SendDailyPurchasesToMetaCommand:
             "failed_retryable_processed": 0,
             "sent_success": 0,
             "sent_failed": 0,
+            "failed_permanent": 0,
+            "failed_retryable": 0,
             "errors": [],
         }
 
@@ -345,5 +347,9 @@ class SendDailyPurchasesToMetaCommand:
                         entry.id, error_msg, status_code, error_type, new_attempts
                     )
                     stats["sent_failed"] += 1
+                    if is_retryable:
+                        stats["failed_retryable"] += 1
+                    else:
+                        stats["failed_permanent"] += 1
 
             stats["errors"].append(f"Batch failed: {error_msg}")

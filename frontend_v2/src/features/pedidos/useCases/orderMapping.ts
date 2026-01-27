@@ -41,3 +41,32 @@ export function getStatusLabel(status: string): string {
   return statusLabels[status] || status;
 }
 
+/**
+ * Get color for payment status
+ * @param status - Payment status string (Pago, Pendente, Parcial)
+ * @returns MUI Chip color
+ */
+export function getPaymentStatusColor(status: string | undefined): StatusColor {
+  if (!status) return 'warning'; // Default to 'Pendente' color
+  
+  switch (status) {
+    case 'Pago':
+      return 'success';
+    case 'Pendente':
+      return 'warning';
+    case 'Parcial':
+      return 'info';
+    default:
+      return 'default';
+  }
+}
+
+/**
+ * Get label for payment status
+ * @param status - Payment status string
+ * @returns Human-readable label (defaults to 'Pendente' if undefined/null)
+ */
+export function getPaymentStatusLabel(status: string | undefined): string {
+  return status || 'Pendente';
+}
+

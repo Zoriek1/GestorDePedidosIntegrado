@@ -22,6 +22,8 @@ def app():
     """Cria aplicação Flask para testes"""
     # Criar banco de dados temporário
     db_fd, db_path = tempfile.mkstemp()
+    prev_fk_env = os.environ.get("SQLITE_FOREIGN_KEYS")
+    os.environ["SQLITE_FOREIGN_KEYS"] = "OFF"
 
     # Configurar app para testes
     app = create_app(
@@ -36,10 +38,20 @@ def app():
     with app.app_context():
         db.create_all()
         yield app
-        # Fechar todas as conexões antes de dropar
+        # Fechar sessão antes de dropar
         db.session.close()
-        db.engine.dispose()
+        # SQLite com foreign_keys=ON pode falhar ao dropar tabelas em teardown
+        # Desativar FK para garantir limpeza determinística no ambiente de teste
+        with db.engine.connect() as conn:
+            conn.execute(db.text("PRAGMA foreign_keys=OFF"))
+            conn.commit()
         db.drop_all()
+        db.engine.dispose()
+
+    if prev_fk_env is None:
+        os.environ.pop("SQLITE_FOREIGN_KEYS", None)
+    else:
+        os.environ["SQLITE_FOREIGN_KEYS"] = prev_fk_env
 
     os.close(db_fd)
     # Tentar deletar o arquivo, ignorar erro se ainda estiver em uso

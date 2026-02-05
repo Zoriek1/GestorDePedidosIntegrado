@@ -6,14 +6,24 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Typography, Breadcrumbs, Link, Container, Paper, Box } from '@mui/material';
+import { Typography, Breadcrumbs, Link, Container, Paper, Box, Alert, Collapse, IconButton } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import BoltIcon from '@mui/icons-material/Bolt';
+import CloseIcon from '@mui/icons-material/Close';
 import { CreateOrderWizard } from './CreateOrderWizard';
 import { OrderFormProvider } from './contexts/OrderFormContext';
 import { useCreatePedido, CreatePedidoPayload } from '../../api/endpoints/pedidos';
 import { useToast } from '../../components/system/useToast';
 import { SourceSelectionModal } from './components/SourceSelectionModal';
+import type { PedidoFormData } from './schemas';
+
+// Tipo para os dados passados via location.state (Quick Entry)
+interface QuickEntryLocationState {
+  prefillData?: Partial<PedidoFormData>;
+  quickEntryWarnings?: string[];
+  orderReset?: number;
+}
 
 const ORDER_DRAFT_STORAGE_KEY = 'puf_pedido_draft_v2';
 const ORDER_STEP_STORAGE_KEY = 'puf_pedido_step_v2';
@@ -24,11 +34,24 @@ export default function CreateOrderPage() {
   const { success, error: showError } = useToast();
   const createPedido = useCreatePedido();
   
+  // Extrair dados de Quick Entry do location.state
+  const locationState = location.state as QuickEntryLocationState | undefined;
+  const prefillData = locationState?.prefillData;
+  const quickEntryWarnings = locationState?.quickEntryWarnings || [];
+  
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [fonteSelecionada, setFonteSelecionada] = useState<number | undefined>(undefined);
-  const [modalOpen, setModalOpen] = useState(true);
+  const [fonteSelecionada, setFonteSelecionada] = useState<number | undefined>(() => {
+    // Se tem prefillData com fonte, usar direto
+    return prefillData?.fonte_pedido_id;
+  });
+  const [modalOpen, setModalOpen] = useState(() => {
+    // Se tem prefillData, não abrir modal
+    return !prefillData?.fonte_pedido_id;
+  });
   const [wizardKey, setWizardKey] = useState<number>(() => Date.now());
+  const [showQuickEntryWarnings, setShowQuickEntryWarnings] = useState(quickEntryWarnings.length > 0);
   const lastResetRef = useRef<number | null>(null);
+  const prefillAppliedRef = useRef(false);
 
   const clearLocalDraft = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -46,18 +69,38 @@ export default function CreateOrderPage() {
     setFonteSelecionada(undefined);
     setModalOpen(true);
     setWizardKey(Date.now());
+    setShowQuickEntryWarnings(false);
   }, [clearLocalDraft]);
 
+  // Efeito para processar prefillData na montagem
   useEffect(() => {
-    const resetToken = (location.state as { orderReset?: number } | undefined)?.orderReset;
+    if (prefillData && prefillData.fonte_pedido_id && !prefillAppliedRef.current) {
+      prefillAppliedRef.current = true;
+      console.log('=== Quick Entry Prefill ===');
+      console.log('Prefill data:', prefillData);
+      console.log('Warnings:', quickEntryWarnings);
+      
+      // Configurar estado para mostrar wizard direto
+      setFonteSelecionada(prefillData.fonte_pedido_id);
+      setModalOpen(false);
+      
+      // Limpar draft anterior para não misturar dados
+      clearLocalDraft();
+    }
+  }, [prefillData, quickEntryWarnings, clearLocalDraft]);
+
+  useEffect(() => {
+    const resetToken = locationState?.orderReset;
     if (resetToken && resetToken !== lastResetRef.current) {
       lastResetRef.current = resetToken;
-      // Usar setTimeout para evitar setState síncrono em effect
-      setTimeout(() => {
-        resetFlow();
-      }, 0);
+      // Se tem prefillData, não resetar o flow completo
+      if (!prefillData) {
+        setTimeout(() => {
+          resetFlow();
+        }, 0);
+      }
     }
-  }, [location.state, resetFlow]);
+  }, [locationState?.orderReset, resetFlow, prefillData]);
 
   const handleSubmit = useCallback(async (data: Record<string, unknown>) => {
     setSubmitError(null);
@@ -87,8 +130,14 @@ export default function CreateOrderPage() {
   }, []);
 
   const initialData = useMemo(() => {
+    // Se tem prefillData, usar ele como base (já inclui fonte_pedido_id)
+    if (prefillData) {
+      console.log('Using prefillData as initialData:', prefillData);
+      return prefillData;
+    }
+    // Caso contrário, apenas fonte selecionada
     return fonteSelecionada ? { fonte_pedido_id: fonteSelecionada } : undefined;
-  }, [fonteSelecionada]);
+  }, [fonteSelecionada, prefillData]);
 
   const handleClearError = useCallback(() => {
     setSubmitError(null);
@@ -136,9 +185,41 @@ export default function CreateOrderPage() {
           </Breadcrumbs>
 
           {/* Título */}
-          <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 3 }}>
-            Novo Pedido
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+            <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0 }}>
+              Novo Pedido
+            </Typography>
+            {prefillData && (
+              <BoltIcon color="warning" titleAccess="Entrada Rápida" />
+            )}
+          </Box>
+
+          {/* Aviso de Quick Entry Warnings */}
+          <Collapse in={showQuickEntryWarnings && quickEntryWarnings.length > 0}>
+            <Alert 
+              severity="warning" 
+              sx={{ mb: 2 }}
+              action={
+                <IconButton
+                  size="small"
+                  onClick={() => setShowQuickEntryWarnings(false)}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              }
+            >
+              <Typography variant="body2" fontWeight="bold" sx={{ mb: 0.5 }}>
+                Alguns campos não foram preenchidos automaticamente:
+              </Typography>
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                {quickEntryWarnings.map((warn, idx) => (
+                  <li key={idx}>
+                    <Typography variant="caption">{warn}</Typography>
+                  </li>
+                ))}
+              </ul>
+            </Alert>
+          </Collapse>
 
           {/* Wizard Inteligente */}
           {wizardReady ? (

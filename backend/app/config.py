@@ -118,6 +118,12 @@ class BaseConfig:
     ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
     ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
 
+    # Nuvemshop (OAuth + Webhooks)
+    NUVEMSHOP_APP_ID = os.environ.get("NUVEMSHOP_APP_ID") or ""
+    NUVEMSHOP_CLIENT_SECRET = os.environ.get("NUVEMSHOP_CLIENT_SECRET") or ""
+    NUVEMSHOP_USER_AGENT = os.environ.get("NUVEMSHOP_USER_AGENT") or ""
+    NUVEMSHOP_PUBLIC_BASE_URL = os.environ.get("NUVEMSHOP_PUBLIC_BASE_URL") or ""
+
     # Ambiente
     FLASK_ENV = os.environ.get("FLASK_ENV") or os.environ.get("ENVIRONMENT") or "development"
     APP_ENV = os.environ.get("APP_ENV") or os.environ.get("ENVIRONMENT") or "development"

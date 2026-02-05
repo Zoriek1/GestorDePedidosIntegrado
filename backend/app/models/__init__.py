@@ -7,7 +7,11 @@ from app.models.cliente import Cliente
 from app.models.endereco_cliente import EnderecoCliente
 from app.models.fonte_pedido import FontePedido
 from app.models.meta_capi_outbox import MetaCapiOutbox
+from app.models.nuvemshop_store import NuvemshopStore
+from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
 from app.models.pedido import Pedido
+from app.models.pedido_external_ref import PedidoExternalRef
+from app.models.pedido_manual_override import PedidoManualOverride
 from app.models.rota_otimizada import RotaOtimizada
 
 __all__ = [
@@ -18,4 +22,8 @@ __all__ = [
     "FontePedido",
     "AuditLog",
     "MetaCapiOutbox",
+    "NuvemshopStore",
+    "NuvemshopWebhookDelivery",
+    "PedidoExternalRef",
+    "PedidoManualOverride",
 ]

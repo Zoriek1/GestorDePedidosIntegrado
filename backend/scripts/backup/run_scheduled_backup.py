@@ -35,7 +35,8 @@ if str(BACKEND_DIR) not in sys.path:
 from app.utils.backup_helper import create_backup  # noqa: E402
 
 
-def should_run_backup_now(now: datetime) -> bool:
+def should_run_backup_now(now: datetime | None = None) -> bool:
+    now = now or datetime.now()
     weekday = now.weekday()  # 0=Segunda, 6=Domingo
     hour = now.hour
     minute = now.minute
@@ -61,8 +62,9 @@ def should_run_backup_now(now: datetime) -> bool:
 
 
 def get_recent_backup_timestamp(
-    backup_dir: Path, now: datetime, minutes_threshold: int
+    backup_dir: Path, minutes_threshold: int, now: datetime | None = None
 ) -> datetime | None:
+    now = now or datetime.now()
     if not backup_dir.exists():
         return None
 

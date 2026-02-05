@@ -69,23 +69,18 @@ def categorize_backup_slot(dt: datetime) -> BackupSlot:
         BackupSlot correspondente
     """
     now = datetime.now()
+    delta_days = (now.date() - dt.date()).days
 
     # Se backup é muito antigo (mais de 1 mês), sempre MONTHLY
-    if (now - dt).days > 30:
+    if delta_days > 30:
         return BackupSlot.MONTHLY
 
     # Se backup é de hoje, HOURLY
     if dt.date() == now.date():
         return BackupSlot.HOURLY
 
-    # Se backup é desta semana, DAILY
-    # Usar ISO week (segunda-feira = início da semana)
-    dt_week = dt.isocalendar()[1]
-    dt_year = dt.isocalendar()[0]
-    now_week = now.isocalendar()[1]
-    now_year = now.isocalendar()[0]
-
-    if dt_week == now_week and dt_year == now_year:
+    # Se backup é recente (até 6 dias atrás), DAILY
+    if 0 <= delta_days <= 6:
         return BackupSlot.DAILY
 
     # Se backup é deste mês mas não desta semana, WEEKLY

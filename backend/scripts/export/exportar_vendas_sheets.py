@@ -12,9 +12,16 @@ import os
 import re
 import sys
 import time
-from datetime import date, datetime
+from datetime import date
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 from sqlalchemy import func
+
+TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
 
 # Adiciona o diretÃ³rio backend ao path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -90,15 +97,25 @@ SCOPES = [
 ]
 
 # Abas canônicas (nomes esperados no Google Sheets)
+# Nuvemshop = subclasse de Site (vendas online); mesma aba "Site"
 ABA_WHATSAPP = "WhatsApp"
 ABA_CATALOGO = "Catálogo"
 ABA_SITE = "Site"
 
-# Aliases (inclui casos comuns de mojibake)
+# Aliases (inclui casos comuns de mojibake; Nuvemshop/Tiendanube → Site)
 ABA_ALIASES = {
     ABA_WHATSAPP: [ABA_WHATSAPP, "Whatsapp", "whatsapp", "WhatsApp (Caio)", "WhatsApp (Paula)"],
     ABA_CATALOGO: [ABA_CATALOGO, "Catalogo", "catalogo", "CatÃ¡logo", "catÃ¡logo"],
-    ABA_SITE: [ABA_SITE, "site", "SITE"],
+    ABA_SITE: [
+        ABA_SITE,
+        "site",
+        "SITE",
+        "Nuvemshop",
+        "nuvemshop",
+        "NuvemShop",
+        "Tiendanube",
+        "tiendanube",
+    ],
 }
 
 MESES_PT = {
@@ -353,6 +370,18 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
         pass
 
 
+def _created_at_date_brazil(dt):
+    """
+    Retorna a data (ano/mês/dia) do datetime no fuso Brasil.
+    Assim o mês da exportação é sempre pelo horário de Brasília, não UTC.
+    """
+    if not dt:
+        return None
+    if getattr(dt, "tzinfo", None):
+        return dt.astimezone(TIMEZONE_BRASIL).date()
+    return dt.date()
+
+
 def get_fonte_nome(pedido):
     """Retorna o nome da fonte do pedido"""
     if pedido.fonte_pedido_rel:
@@ -395,7 +424,8 @@ def identificar_aba(fonte_nome):
         return ABA_WHATSAPP
     if "catalogo" in n or "catalog" in n:
         return ABA_CATALOGO
-    if n == "site" or n.endswith("site"):
+    # Site + Nuvemshop/Tiendanube (Nuvemshop = subclasse de Site, mesma aba)
+    if n == "site" or n.endswith("site") or n == "nuvemshop" or n == "tiendanube":
         return ABA_SITE
 
     # Fallback: bater em aliases normalizados (casos raros)
@@ -472,22 +502,35 @@ def exportar_vendas():
             print(f"âœ— Erro ao acessar planilha apÃ³s mÃºltiplas tentativas: {e}")
             return False
 
-        # 3. SÃ³ busca pedidos se a planilha existe
-        # Busca pedidos do mÃªs atual
+        # 3. Só busca pedidos se a planilha existe
+        # Busca pedidos do mês atual (por data do created_at, evita problema de timezone)
         primeiro_dia = date(ano, mes, 1)
         _, ultimo = calendar.monthrange(ano, mes)
         ultimo_dia = date(ano, mes, ultimo)
 
+        # Query por intervalo (SQLite pode armazenar UTC; filtro definitivo é em Python pelo mês Brasil)
         pedidos = (
             Pedido.query.filter(
                 Pedido.deleted_at.is_(None),  # alinhar com API (soft delete)
-                Pedido.created_at >= datetime.combine(primeiro_dia, datetime.min.time()),
-                Pedido.created_at <= datetime.combine(ultimo_dia, datetime.max.time()),
+                func.date(Pedido.created_at) >= primeiro_dia,
+                func.date(Pedido.created_at) <= ultimo_dia,
                 func.lower(func.trim(Pedido.status)) != "cancelado",  # alinhar com tela de vendas
             )
             .order_by(Pedido.created_at)
             .all()
         )
+
+        # Filtro por mês no fuso Brasil (evita vendas de jan aparecerem em fev por causa de UTC)
+        pedidos = [
+            p
+            for p in pedidos
+            if _created_at_date_brazil(p.created_at)
+            and (
+                _created_at_date_brazil(p.created_at).year,
+                _created_at_date_brazil(p.created_at).month,
+            )
+            == (ano, mes)
+        ]
 
         print(f"Total de pedidos no mÃªs: {len(pedidos)}")
 
@@ -497,23 +540,35 @@ def exportar_vendas():
         for pedido in pedidos:
             fonte = get_fonte_nome(pedido)
             aba = identificar_aba(fonte)
-
+            # Nuvemshop = subclasse de Site: se fonte não mapeou mas plataforma é Nuvemshop, vai para Site
+            if not aba and getattr(pedido, "plataforma", None) == "Nuvemshop":
+                aba = ABA_SITE
             if not aba:
                 continue
 
-            dia = pedido.created_at.day
+            # Dia no fuso Brasil (mesmo critério do filtro por mês)
+            data_br = _created_at_date_brazil(pedido.created_at)
+            dia = data_br.day if data_br else None
+            if dia is None:
+                continue
 
             if dia not in dados_por_aba[aba]:
                 dados_por_aba[aba][dia] = []
+
+            # Data/hora da venda no fuso Brasil para exibição
+            dt_br = (
+                pedido.created_at.astimezone(TIMEZONE_BRASIL)
+                if getattr(pedido.created_at, "tzinfo", None)
+                else pedido.created_at
+            )
+            data_venda_str = dt_br.strftime("%d/%m/%Y %H:%M") if pedido.created_at else ""
 
             dados_por_aba[aba][dia].append(
                 {
                     "valor": parse_valor(pedido.valor),
                     "cliente": pedido.cliente or "",
                     "telefone": pedido.telefone_cliente or "",
-                    "data_venda": pedido.created_at.strftime("%d/%m/%Y %H:%M")
-                    if pedido.created_at
-                    else "",
+                    "data_venda": data_venda_str,
                 }
             )
 

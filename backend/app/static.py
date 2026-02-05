@@ -43,7 +43,8 @@ def add_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https:; "
-        "connect-src 'self' https://gestaopedidos.planteumaflor.online; "  # ViaCEP via proxy backend (/api/cep/:cep) - same-origin
+        # Workbox/Service Worker faz fetch da CSS do Google Fonts em runtime (connect-src)
+        "connect-src 'self' https://gestaopedidos.planteumaflor.online https://fonts.googleapis.com https://fonts.gstatic.com; "
         "worker-src 'self' blob:; "
         "manifest-src 'self';"
     )

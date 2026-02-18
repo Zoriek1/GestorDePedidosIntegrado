@@ -118,6 +118,12 @@ class Pedido(db.Model):
     coords_lat = db.Column(db.Float, nullable=True, comment="Latitude do endereço")
     coords_lon = db.Column(db.Float, nullable=True, comment="Longitude do endereço")
 
+    # Meta Pixel parameters (para melhorar qualidade de correspondência de eventos)
+    # fbc: Facebook Click ID (vem do parâmetro fbclid na URL)
+    # fbp: Facebook Browser ID (vem do cookie _fbp criado pelo Pixel)
+    fbc = db.Column(db.String(255), nullable=True, comment="Facebook Click ID (fbclid)")
+    fbp = db.Column(db.String(255), nullable=True, comment="Facebook Browser ID (cookie _fbp)")
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, comment="Data de criação")
     updated_at = db.Column(
@@ -178,7 +184,32 @@ class Pedido(db.Model):
             "coords_lon": self.coords_lon,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else "",
+            "deleted_at": self.deleted_at.strftime("%Y-%m-%d %H:%M:%S")
+            if self.deleted_at
+            else None,
         }
+
+    def total_pago(self) -> float:
+        """
+        Retorna valor final do pedido em float
+
+        Usa parse_brl_money() no campo valor.
+        Considera regras de negócio: frete, desconto, taxa (se aplicável).
+        Por enquanto, retorna apenas o valor do pedido.
+
+        Returns:
+            float: Valor final do pedido, ou 0.0 se valor inválido
+        """
+        from app.utils.money import parse_brl_money
+
+        if not self.valor:
+            return 0.0
+
+        valor_base = parse_brl_money(self.valor)
+
+        # TODO: Adicionar lógica de frete, desconto, taxa se necessário
+        # Por enquanto, retorna apenas o valor base
+        return round(valor_base, 2)
 
     def is_overdue(self):
         """Verifica se o pedido está atrasado"""

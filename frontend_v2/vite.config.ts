@@ -68,7 +68,21 @@ export default defineConfig(({ mode }) => {
           ]
         },
         workbox: {
+          // Forçar atualização imediata quando nova versão for detectada
+          skipWaiting: true,
+          clientsClaim: true,
+          // Excluir rotas do Meta Gateway - devem ir direto para o backend, sem interceptação
+          navigateFallbackDenylist: [/^\/capig/, /^\/meta-gateway/],
           runtimeCaching: [
+            // Rotas do Meta Gateway - sempre buscar da rede, nunca cachear
+            {
+              urlPattern: /^\/capig\/.*/,
+              handler: 'NetworkOnly'
+            },
+            {
+              urlPattern: /^\/meta-gateway\/.*/,
+              handler: 'NetworkOnly'
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',

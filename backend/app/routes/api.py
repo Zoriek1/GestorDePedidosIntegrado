@@ -231,6 +231,12 @@ def criar_pedido():
         )
         print(f"[DEBUG] Dados recebidos: {list(data.keys())}")
 
+        # Capturar fbc e fbp se enviados (Meta Pixel parameters)
+        # fbc: Facebook Click ID (vem do parâmetro fbclid na URL)
+        # fbp: Facebook Browser ID (vem do cookie _fbp criado pelo Pixel)
+        fbc = data.get("fbc", "").strip() if data.get("fbc") else None
+        fbp = data.get("fbp", "").strip() if data.get("fbp") else None
+
         # Criar instância do pedido
         pedido = Pedido(
             # Step 1
@@ -259,6 +265,9 @@ def criar_pedido():
             pagamento=pagamento if pagamento else None,
             observacoes=observacoes if observacoes else None,
             status_pagamento=status_pagamento if status_pagamento else None,
+            # Meta Pixel parameters (melhora qualidade de correspondência de eventos)
+            fbc=fbc,
+            fbp=fbp,
             # Controle
             status="agendado",
             quantidade=quantidade,
@@ -347,8 +356,8 @@ def listar_pedidos():
         limit = request.args.get("limit", type=int)
         search = request.args.get("search", "").strip()
 
-        # Query base - excluir pedidos ocultos/arquivados (comportamento antigo)
-        query = Pedido.query.filter(Pedido.oculto.is_(False))
+        # Query base - excluir pedidos ocultos/arquivados e soft-deleted (comportamento antigo)
+        query = Pedido.query.filter(Pedido.oculto.is_(False)).filter(Pedido.deleted_at.is_(None))
 
         # Aplicar filtros
         if status:
@@ -363,8 +372,8 @@ def listar_pedidos():
                 )
             )
 
-        # Ordenar por data de entrega e horário (mais recentes primeiro)
-        query = query.order_by(Pedido.dia_entrega.desc(), Pedido.horario.desc())
+        # Ordenar por data de entrega e horário (mais próximos primeiro: hoje antes de amanhã, mais cedo antes de mais tarde)
+        query = query.order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc())
 
         # Aplicar limite
         if limit:

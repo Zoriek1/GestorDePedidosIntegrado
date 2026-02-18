@@ -153,7 +153,7 @@ export const pedidoFormSchema = z.object({
 
   pagamento: z.string().max(50).optional(),
 
-  status_pagamento: z.enum(STATUS_PAGAMENTO).optional(),
+  status_pagamento: z.enum(STATUS_PAGAMENTO).default('Pendente'),
 
   observacoes: z.string().max(1000).optional(),
 
@@ -355,7 +355,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     })(),
     taxa_entrega: parseCurrencyToFloat(formData.taxa_entrega),
     pagamento: formData.pagamento?.trim() || undefined,
-    status_pagamento: formData.status_pagamento || undefined,
+    status_pagamento: formData.status_pagamento || 'Pendente',
     observacoes: observacoesFinal,
     quantidade: formData.quantidade ?? 1,
     fonte_pedido_id: formData.fonte_pedido_id || undefined,

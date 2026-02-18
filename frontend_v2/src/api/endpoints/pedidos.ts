@@ -48,6 +48,7 @@ export interface Pedido {
   coords_lon?: number;
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string | null;
 }
 
 export interface PedidosResponse {
@@ -109,7 +110,7 @@ export function usePedidos(filters: PedidosFilters = {}) {
     }, { tag: 'pedidos' }),
     placeholderData: (previousData) => previousData, // Maintains previous data when filters change
     staleTime: 5000, // 5 seconds
-    refetchInterval: 15000, // 15 seconds
+    refetchInterval: 20000, // 20 seconds
     refetchOnWindowFocus: true
   });
 }

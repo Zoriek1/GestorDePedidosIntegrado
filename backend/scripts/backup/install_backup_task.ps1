@@ -19,20 +19,97 @@ $projectRoot = Split-Path -Parent $backendDir
 $taskName = "GestorPedidos_BackupHorario"
 
 # Caminho do Python (preferir venv se existir)
-$pythonPath = "python"
+$pythonPath = $null
+
+# Opcao 1: Venv local (melhor opcao)
 if (Test-Path "$backendDir\venv\Scripts\python.exe") {
-    $pythonPath = "$backendDir\venv\Scripts\python.exe"
+    $pythonPath = (Resolve-Path "$backendDir\venv\Scripts\python.exe").Path
+    Write-Host "[INFO] Usando Python do venv: $pythonPath" -ForegroundColor Green
 } else {
-    # Tentar encontrar Python no PATH
-    $pythonInPath = Get-Command python -ErrorAction SilentlyContinue
-    if ($pythonInPath) {
-        $pythonPath = $pythonInPath.Source
+    # Opcao 2: Python Launcher (py.exe) - funciona como SYSTEM
+    $pyLauncher = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        $pythonPath = $pyLauncher.Source
+        Write-Host "[INFO] Usando Python Launcher: $pythonPath" -ForegroundColor Green
     } else {
-        Write-Host "[ERRO] Python não encontrado no PATH!" -ForegroundColor Red
-        Write-Host "Instale Python ou ative o ambiente virtual (venv)" -ForegroundColor Yellow
-        pause
-        exit 1
+        # Opcao 3: Procurar Python real no registro (nao stub da Store)
+        $pythonFound = $false
+        
+        # Verificar Python instalado via registry
+        $regPaths = @(
+            "HKLM:\SOFTWARE\Python\PythonCore",
+            "HKCU:\SOFTWARE\Python\PythonCore"
+        )
+        
+        foreach ($regPath in $regPaths) {
+            if (Test-Path $regPath) {
+                $versions = Get-ChildItem $regPath -ErrorAction SilentlyContinue
+                foreach ($version in $versions) {
+                    $installPath = Get-ItemProperty "$($version.PSPath)\InstallPath" -ErrorAction SilentlyContinue
+                    if ($installPath -and $installPath.ExecutablePath -and (Test-Path $installPath.ExecutablePath)) {
+                        # Verificar se nao e stub da Store
+                        if ($installPath.ExecutablePath -notlike "*WindowsApps*") {
+                            $pythonPath = $installPath.ExecutablePath
+                            $pythonFound = $true
+                            Write-Host "[INFO] Python encontrado via registro: $pythonPath" -ForegroundColor Green
+                            break
+                        }
+                    }
+                }
+                if ($pythonFound) { break }
+            }
+        }
+        
+        # Opcao 4: Tentar encontrar no Program Files
+        if (-not $pythonPath) {
+            $possiblePaths = @(
+                "C:\Program Files\Python*",
+                "C:\Python*",
+                "$env:LOCALAPPDATA\Programs\Python\Python*"
+            )
+            
+            foreach ($pattern in $possiblePaths) {
+                $found = Get-ChildItem $pattern -ErrorAction SilentlyContinue -Directory | 
+                    ForEach-Object { 
+                        $exe = Join-Path $_.FullName "python.exe"
+                        if (Test-Path $exe) { $exe }
+                    } | Select-Object -First 1
+                
+                if ($found -and (Test-Path $found)) {
+                    $pythonPath = (Resolve-Path $found).Path
+                    Write-Host "[INFO] Python encontrado em: $pythonPath" -ForegroundColor Green
+                    break
+                }
+            }
+        }
+        
+        # Se ainda nao encontrou, tentar pegar do PATH (pode ser stub)
+        if (-not $pythonPath) {
+            $pythonInPath = Get-Command python -ErrorAction SilentlyContinue
+            if ($pythonInPath -and $pythonInPath.Source -notlike "*WindowsApps*") {
+                $pythonPath = (Resolve-Path $pythonInPath.Source).Path
+                Write-Host "[INFO] Usando Python do PATH: $pythonPath" -ForegroundColor Yellow
+            }
+        }
+        
+        if (-not $pythonPath) {
+            Write-Host "[ERRO] Python nao encontrado!" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "Opcoes:" -ForegroundColor Yellow
+            Write-Host "  1. Criar venv: python -m venv backend\venv" -ForegroundColor White
+            Write-Host "  2. Instalar Python Launcher (py.exe) - ja vem com Python" -ForegroundColor White
+            Write-Host "  3. Adicionar Python ao PATH do sistema" -ForegroundColor White
+            Write-Host ""
+            pause
+            exit 1
+        }
     }
+}
+
+# Garantir caminho absoluto completo
+$pythonPath = (Resolve-Path $pythonPath -ErrorAction SilentlyContinue).Path
+if (-not $pythonPath) {
+    $pythonPath = (Get-Item $pythonPath).FullName
 }
 
 # Caminho do script Python
@@ -45,13 +122,18 @@ if (-not (Test-Path $scriptPath)) {
     exit 1
 }
 
+# Garantir caminhos absolutos
+$scriptPathAbs = (Resolve-Path $scriptPath).Path
+$backendDirAbs = (Resolve-Path $backendDir).Path
+
 Write-Host "===========================================" -ForegroundColor Cyan
-Write-Host "  INSTALAR TAREFA DE BACKUP AUTOMÁTICO" -ForegroundColor Cyan
+Write-Host "  INSTALAR TAREFA DE BACKUP AUTOMATICO" -ForegroundColor Cyan
 Write-Host "===========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Tarefa: $taskName" -ForegroundColor Yellow
-Write-Host "Script: $scriptPath" -ForegroundColor Yellow
+Write-Host "Script: $scriptPathAbs" -ForegroundColor Yellow
 Write-Host "Python: $pythonPath" -ForegroundColor Yellow
+Write-Host "WorkingDirectory: $backendDirAbs" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Janelas de execução:" -ForegroundColor Yellow
 Write-Host "  - Segunda a Sexta: 07:00 até 18:00 (a cada 1 hora)" -ForegroundColor White
@@ -67,7 +149,14 @@ if ($existingTask) {
 }
 
 # Criar ação (executar Python script)
-$action = New-ScheduledTaskAction -Execute $pythonPath -Argument "`"$scriptPath`"" -WorkingDirectory $backendDir
+# Usar caminhos absolutos e garantir que estao entre aspas corretas
+# Se usando py.exe, precisa passar versao do Python
+if ($pythonPath -like "*py.exe") {
+    $action = New-ScheduledTaskAction -Execute $pythonPath -Argument "`"$scriptPathAbs`"" -WorkingDirectory $backendDirAbs
+} else {
+    # Usar caminho completo do Python
+    $action = New-ScheduledTaskAction -Execute $pythonPath -Argument "`"$scriptPathAbs`"" -WorkingDirectory $backendDirAbs
+}
 
 # Criar triggers - uma abordagem mais simples: criar triggers individuais para cada hora
 # O script Python já tem lógica de janela e idempotência, então podemos criar triggers simples

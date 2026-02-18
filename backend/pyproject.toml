@@ -16,6 +16,8 @@ ignore = [
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]  # unused imports
+"scripts/**/*.py" = ["E402"]  # scripts modificam sys.path antes de importar
+"tests/**/*.py" = ["E402"]  # testes podem modificar sys.path
 
 [tool.black]
 line-length = 100

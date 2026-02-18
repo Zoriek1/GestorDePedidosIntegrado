@@ -248,3 +248,17 @@ MIT License
 **Plante Uma Flor** © 2024 - Sistema de Gestão de Pedidos PWA
 
 **Última atualização**: 2026-01-04
+
+---
+
+## 🧹 Evitar erros “bobos” no CI (recomendado)
+
+Para parar de perder tempo com formatação/lint:
+
+- **Auto-fix (local)**: rode `scripts/fix.ps1` (corrige ruff/black + eslint)
+- **Checagem igual ao CI (local)**: rode `scripts/check.ps1`
+- **Hook automático no commit (Python)**:
+  - Instale: `pip install -r backend/requirements-dev.txt`
+  - Ative: `pre-commit install`
+
+> Dica: depois de instalar o hook, formatação de Python vira “automática” no `git commit`.

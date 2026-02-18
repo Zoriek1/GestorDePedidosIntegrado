@@ -24,8 +24,34 @@ def register_error_handlers(app):
         Para aplicações SPA (Single Page Application), todas as rotas
         não encontradas devem servir o index.html para que o roteamento
         do frontend funcione corretamente.
+
+        EXCEÇÃO: Rotas do backend (API, docs, Meta Gateway) devem retornar
+        404 JSON ao invés de index.html.
         """
-        frontend_dir = Path(__file__).parent.parent.parent / "frontend"
+        from flask import jsonify, request
+
+        request_path = request.path
+
+        # Se for rota do backend, retornar 404 JSON
+        if (
+            request_path.startswith("/api/")
+            or request_path.startswith("/docs/")
+            or request_path.startswith("/capig/")
+            or request_path.startswith("/meta-gateway/")
+        ):
+            return (
+                jsonify(
+                    {
+                        "error": "Not Found",
+                        "message": f"Rota não encontrada: {request_path}",
+                        "path": request_path,
+                    }
+                ),
+                404,
+            )
+
+        # Para outras rotas, servir index.html (SPA routing)
+        frontend_dir = Path(__file__).parent.parent.parent / "frontend_v2" / "dist"
         return send_from_directory(str(frontend_dir), "index.html")
 
     @app.errorhandler(500)

@@ -113,6 +113,7 @@ export default function RoutePage() {
   const [searchParams] = useSearchParams();
   const idsParam = searchParams.get('ids');
   const rotaIdParam = searchParams.get('rota_id');
+  const hoje = dayjs().startOf('day').format('YYYY-MM-DD');
 
   const selectedIds = useMemo(
     () => (idsParam ? idsParam.split(',').map((id) => Number(id)).filter(Number.isFinite) : []),
@@ -125,6 +126,8 @@ export default function RoutePage() {
 
   const { data, isLoading, error, refetch } = usePedidos({
     status: onlyAgendados ? 'agendado' : undefined,
+    data_inicio: hoje,
+    data_fim: hoje,
   });
   const calcLote = useCalcularDistanciasLote();
   const calcRota = useCalcularRotaOtimizada();
@@ -141,12 +144,11 @@ export default function RoutePage() {
 
   // Filtro de visibilidade: apenas pedidos tipo 'Entrega' com dia_entrega == hoje
   const pedidosFiltrados = useMemo(() => {
-    const hoje = dayjs().startOf('day').format('YYYY-MM-DD');
     return pedidos.filter(p => 
       p.tipo_pedido === 'Entrega' && 
       p.dia_entrega === hoje
     );
-  }, [pedidos]);
+  }, [pedidos, hoje]);
 
   // Estado para ordem dos pedidos após drag-and-drop
   // Usar chave baseada nos IDs para resetar quando pedidosFiltrados mudar estruturalmente

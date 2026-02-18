@@ -62,7 +62,7 @@ export function useStats() {
     }, { tag: 'stats' }),
     placeholderData: (previousData) => previousData,
     staleTime: 30000, // 30 seconds
-    refetchInterval: 8000, // 8 seconds
+    refetchInterval: 20000, // 20 seconds
     refetchOnWindowFocus: true,
   });
 }

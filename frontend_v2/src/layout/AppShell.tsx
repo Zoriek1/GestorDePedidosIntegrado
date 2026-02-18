@@ -221,6 +221,19 @@ export function AppShell({ children }: AppShellProps) {
                 size="small"
                 sx={{ display: { xs: 'none', sm: 'flex' } }}
               />
+              {/* Status Online/Offline (mobile compacto) */}
+              <Tooltip title={isOnline ? 'Online' : 'Offline'}>
+                <IconButton
+                  color="inherit"
+                  sx={{
+                    display: { xs: 'flex', sm: 'none' },
+                    minWidth: 44,
+                    minHeight: 44,
+                  }}
+                >
+                  {isOnline ? <CloudDone /> : <CloudOff />}
+                </IconButton>
+              </Tooltip>
               
               {/* Notificações */}
               <Tooltip title={outboxCount > 0 ? `${outboxCount} item(ns) pendente(s) de sincronização` : 'Sem pendências'}>

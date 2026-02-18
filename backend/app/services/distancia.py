@@ -33,11 +33,9 @@ class DistanciaService:
         self.endereco_floricultura = os.environ.get("ENDERECO_FLORICULTURA", "")
         self._coords_floricultura = None
 
-        if not self.api_key:
-            print("[AVISO] OPENROUTE_API_KEY não configurada no .env")
-        if not self.endereco_floricultura:
-            print("[AVISO] ENDERECO_FLORICULTURA não configurado no .env")
-        else:
+        # Variáveis são opcionais - não mostrar avisos desnecessários
+        # Apenas log em modo DEBUG se configurado
+        if self.endereco_floricultura and self.DEBUG:
             print(f"[DEBUG] Endereço floricultura: {self.endereco_floricultura}")
 
     def validar_endereco(self, endereco):
@@ -903,8 +901,8 @@ class DistanciaService:
             print("[DEBUG] Tentativa 2: OpenRouteService...")
 
         if not self.api_key:
-            if self.DEBUG:
-                print("[DEBUG] ✗ OPENROUTE_API_KEY não configurada, pulando OpenRouteService")
+            # OPENROUTE_API_KEY é opcional - usar fallback silenciosamente
+            pass
         else:
             try:
                 headers = {

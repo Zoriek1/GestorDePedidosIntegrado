@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
 import { useStats } from '../../api/endpoints/stats';
@@ -39,12 +40,13 @@ import { OrdersPagination } from './components/OrdersPagination';
 export default function OrdersPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
   
   const [filters, setFilters] = useState<PedidosFilters>({
     status: '',
     search: '',
     sort_by: 'dia_entrega',
-    sort_order: 'asc',
+    sort_order: 'asc', // Mais próximos primeiro (asc = datas mais próximas primeiro: hoje antes de amanhã)
     page: 1,
     per_page: 20,
   });
@@ -79,13 +81,6 @@ export default function OrdersPage() {
     queryClient.invalidateQueries({ queryKey: ['pedidos'], exact: false });
     queryClient.invalidateQueries({ queryKey: ['stats'], exact: false });
   };
-
-  // Auto refresh a cada 30s (paridade com legado)
-  useEffect(() => {
-    const interval = setInterval(() => handleRefresh(), 30000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleOrderClick = () => {
     // TODO: Navigate to order details
@@ -334,7 +329,7 @@ export default function OrdersPage() {
                 </MenuItem>
                 <MenuItem 
                   onClick={() => {
-                    window.location.href = '/fontes-pedido';
+                    navigate('/fontes-pedido');
                     handleFilterMenuClose();
                   }}
                 >
@@ -392,7 +387,7 @@ export default function OrdersPage() {
                   variant="outlined" 
                   size="small" 
                   startIcon={<Folder />} 
-                  onClick={() => (window.location.href = '/fontes-pedido')}
+                  onClick={() => navigate('/fontes-pedido')}
                 >
                   Fontes
                 </Button>

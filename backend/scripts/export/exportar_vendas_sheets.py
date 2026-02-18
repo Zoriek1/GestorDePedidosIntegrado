@@ -3,7 +3,7 @@
 Script para exportar vendas automaticamente para Google Sheets
 Roda diariamente Ã s 19h via Task Scheduler
 
-Estrutura: 3 abas (WhatsApp, CatÃ¡logo, Site)
+Estrutura: 3 abas (WhatsApp, Catálogo, Site)
 - Esquerda: pedidos do dia (Valor, Cliente, Telefone, Data Entrega)
 - Direita: totais de cada dia do mÃªs (com "DOMINGO" nos domingos)
 """
@@ -13,6 +13,8 @@ import re
 import sys
 import time
 from datetime import date, datetime
+
+from sqlalchemy import func
 
 # Adiciona o diretÃ³rio backend ao path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -87,17 +89,16 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# Mapeamento de fontes para abas
-FONTES_ABAS = {
-    "WhatsApp": [
-        "WhatsApp",
-        "whatsapp",
-        "Whatsapp",
-        "WhatsApp (Caio)",
-        "WhatsApp (Paula)",
-    ],
-    "CatÃ¡logo": ["CatÃ¡logo", "Catalogo", "catalogo", "catÃ¡logo"],
-    "Site": ["Site", "site"],
+# Abas canônicas (nomes esperados no Google Sheets)
+ABA_WHATSAPP = "WhatsApp"
+ABA_CATALOGO = "Catálogo"
+ABA_SITE = "Site"
+
+# Aliases (inclui casos comuns de mojibake)
+ABA_ALIASES = {
+    ABA_WHATSAPP: [ABA_WHATSAPP, "Whatsapp", "whatsapp", "WhatsApp (Caio)", "WhatsApp (Paula)"],
+    ABA_CATALOGO: [ABA_CATALOGO, "Catalogo", "catalogo", "CatÃ¡logo", "catÃ¡logo"],
+    ABA_SITE: [ABA_SITE, "site", "SITE"],
 }
 
 MESES_PT = {
@@ -120,9 +121,15 @@ def parse_valor(valor_str):
     """Converte string de valor para float"""
     if not valor_str:
         return 0.0
-    valor_limpo = re.sub(r"[R$\s]", "", str(valor_str)).replace(",", ".")
+    raw = str(valor_str).strip()
+    # Remover "R$" e espaços
+    cleaned = re.sub(r"R\$\s?", "", raw, flags=re.IGNORECASE).strip()
+
+    # Formato BR: "1.234,56" / "65,00" -> remover pontos de milhar e trocar vírgula por ponto
+    if "," in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
     try:
-        return float(valor_limpo)
+        return float(cleaned)
     except (ValueError, TypeError):
         return 0.0
 
@@ -207,7 +214,7 @@ def get_or_create_spreadsheet(client, mes, ano):
         print("\nPara resolver:")
         print("1. Abra o Google Sheets (sheets.google.com)")
         print(f"2. Crie uma planilha chamada: {nome_planilha}")
-        print("3. Crie 3 abas: WhatsApp, CatÃ¡logo, Site")
+        print("3. Crie 3 abas: WhatsApp, Catálogo, Site")
         print("4. Compartilhe com a Service Account como Editor")
         print("   (email estÃ¡ em backend/config/google_credentials.json)")
         print("\nApÃ³s criar, execute novamente.")
@@ -308,7 +315,7 @@ def criar_abas_iniciais(spreadsheet, mes, ano):
     _, num_dias = calendar.monthrange(ano, mes)
 
     # Cria abas
-    for nome_aba in ["WhatsApp", "CatÃ¡logo", "Site"]:
+    for nome_aba in [ABA_WHATSAPP, ABA_CATALOGO, ABA_SITE]:
         try:
             worksheet = spreadsheet.add_worksheet(title=nome_aba, rows=100, cols=10)
         except Exception:
@@ -355,10 +362,78 @@ def get_fonte_nome(pedido):
 
 def identificar_aba(fonte_nome):
     """Identifica qual aba o pedido pertence"""
-    for aba, variantes in FONTES_ABAS.items():
-        if fonte_nome in variantes:
-            return aba
+
+    def _repair_mojibake(value: str) -> str:
+        if not value:
+            return value
+        if "Ã" not in value and "Â" not in value:
+            return value
+        try:
+            return value.encode("latin1").decode("utf-8")
+        except Exception:
+            return value
+
+    def _normalize(value: str) -> str:
+        if not value:
+            return ""
+        value = _repair_mojibake(str(value)).strip().lower()
+        try:
+            import unicodedata
+
+            value = unicodedata.normalize("NFKD", value)
+            value = "".join([c for c in value if not unicodedata.combining(c)])
+        except Exception:
+            pass
+        return re.sub(r"[^a-z0-9]+", "", value)
+
+    n = _normalize(fonte_nome)
+    if not n:
+        return None
+
+    # Regras robustas: não depender de acento/case/exato
+    if "whatsapp" in n or n.startswith("zap"):
+        return ABA_WHATSAPP
+    if "catalogo" in n or "catalog" in n:
+        return ABA_CATALOGO
+    if n == "site" or n.endswith("site"):
+        return ABA_SITE
+
+    # Fallback: bater em aliases normalizados (casos raros)
+    for canonical, aliases in ABA_ALIASES.items():
+        if n in {_normalize(a) for a in aliases}:
+            return canonical
     return None
+
+
+def _get_or_rename_worksheet(spreadsheet, canonical_title: str):
+    """
+    Obtém worksheet por nome canônico.
+    Se existir apenas uma variante (ex: 'CatÃ¡logo'), renomeia para o canônico.
+    """
+    try:
+        return spreadsheet.worksheet(canonical_title)
+    except Exception:
+        pass
+
+    for alias in ABA_ALIASES.get(canonical_title, []):
+        if alias == canonical_title:
+            continue
+        try:
+            ws = spreadsheet.worksheet(alias)
+            try:
+                ws.update_title(canonical_title)
+            except Exception:
+                # Se não foi possível renomear (permissão/drive), cria a aba canônica
+                # para evitar que a exportação "vá parar" numa aba com nome corrompido.
+                try:
+                    return spreadsheet.add_worksheet(title=canonical_title, rows=100, cols=10)
+                except Exception:
+                    return ws
+            return ws
+        except Exception:
+            continue
+
+    return spreadsheet.add_worksheet(title=canonical_title, rows=100, cols=10)
 
 
 def exportar_vendas():
@@ -405,8 +480,10 @@ def exportar_vendas():
 
         pedidos = (
             Pedido.query.filter(
+                Pedido.deleted_at.is_(None),  # alinhar com API (soft delete)
                 Pedido.created_at >= datetime.combine(primeiro_dia, datetime.min.time()),
                 Pedido.created_at <= datetime.combine(ultimo_dia, datetime.max.time()),
+                func.lower(func.trim(Pedido.status)) != "cancelado",  # alinhar com tela de vendas
             )
             .order_by(Pedido.created_at)
             .all()
@@ -415,7 +492,7 @@ def exportar_vendas():
         print(f"Total de pedidos no mÃªs: {len(pedidos)}")
 
         # Organiza pedidos por aba e dia
-        dados_por_aba = {"WhatsApp": {}, "CatÃ¡logo": {}, "Site": {}}
+        dados_por_aba = {ABA_WHATSAPP: {}, ABA_CATALOGO: {}, ABA_SITE: {}}
 
         for pedido in pedidos:
             fonte = get_fonte_nome(pedido)
@@ -441,32 +518,29 @@ def exportar_vendas():
             )
 
         # Atualiza cada aba
-        for nome_aba in ["WhatsApp", "CatÃ¡logo", "Site"]:
-            try:
-                worksheet = spreadsheet.worksheet(nome_aba)
-            except Exception:
-                # Cria aba se nÃ£o existir
-                worksheet = spreadsheet.add_worksheet(title=nome_aba, rows=100, cols=10)
-                headers = [
-                    "Valor",
-                    "Cliente",
-                    "Telefone",
-                    "Data Venda",
-                    "",
-                    "Dia",
-                    "Total",
-                ]
-                # Atualizar cabeÃ§alhos com retry
-                retry_google_operation(
-                    lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
-                    max_retries=2,
-                )
+        for nome_aba in [ABA_WHATSAPP, ABA_CATALOGO, ABA_SITE]:
+            worksheet = _get_or_rename_worksheet(spreadsheet, nome_aba)
+
+            # Garantir cabeçalho (idempotente)
+            headers = [
+                "Valor",
+                "Cliente",
+                "Telefone",
+                "Data Venda",
+                "",
+                "Dia",
+                "Total",
+            ]
+            retry_google_operation(
+                lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
+                max_retries=2,
+            )
 
             # Limpa dados antigos (mantÃ©m cabeÃ§alho)
             worksheet.batch_clear(["A2:D100"])
 
             # Prepara dados de pedidos (esquerda)
-            pedidos_aba = dados_por_aba[nome_aba]
+            pedidos_aba = dados_por_aba.get(nome_aba, {})
             linhas_pedidos = []
 
             for dia in sorted(pedidos_aba.keys()):

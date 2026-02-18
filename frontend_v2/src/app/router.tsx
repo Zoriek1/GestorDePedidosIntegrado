@@ -3,19 +3,28 @@
  */
 
 import { createBrowserRouter, RouterProvider, Outlet, Navigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import { RequireAuth } from '../features/auth/RequireAuth';
 import { AppShell } from '../layout/AppShell';
 import LoginPage from '../features/auth/LoginPage';
 import OrdersPage from '../features/pedidos/OrdersPage';
-import CustomersPage from '../features/customers/CustomersPage';
-import SalesPage from '../features/sales/SalesPage';
 import CreateOrderPage from '../features/pedidos/CreateOrderPage';
 import OrderDetailsPage from '../features/pedidos/OrderDetailsPage';
-import TestOfflinePage from '../features/pedidos/TestOfflinePage';
-import OfflineDiagnostics from '../features/offline/OfflineDiagnostics';
 import FontesPage from '../features/fontes/FontesPage';
-import RoutePage from '../features/rotas/RoutePage';
 import EditOrderPage from '../features/pedidos/EditOrderPage';
+import { Loading } from '../components/common/Loading';
+
+const CustomersPage = lazy(() => import('../features/customers/CustomersPage'));
+const SalesPage = lazy(() => import('../features/sales/SalesPage'));
+const RoutePage = lazy(() => import('../features/rotas/RoutePage'));
+const TestOfflinePage = lazy(() => import('../features/pedidos/TestOfflinePage'));
+const OfflineDiagnostics = lazy(() => import('../features/offline/OfflineDiagnostics'));
+
+// Componente vazio para rotas do backend que não devem ser processadas pelo React Router
+// Essas rotas são processadas pelo backend Flask
+function BackendRoute() {
+  return null;
+}
 
 // Layout route that wraps protected routes with AppShell
 function Layout() {
@@ -34,6 +43,16 @@ const router = createBrowserRouter([
     path: '/login',
     element: <LoginPage />,
   },
+  // Rotas do Meta Gateway - devem ser processadas pelo backend, não pelo React Router
+  // Essas rotas são ignoradas pelo React Router para que o backend Flask as processe
+  {
+    path: '/capig/*',
+    element: <BackendRoute />,
+  },
+  {
+    path: '/meta-gateway/*',
+    element: <BackendRoute />,
+  },
   {
     element: <Layout />,
     children: [
@@ -49,7 +68,9 @@ const router = createBrowserRouter([
         path: '/clientes',
         element: (
           <RequireAuth>
-            <CustomersPage />
+            <Suspense fallback={<Loading />}>
+              <CustomersPage />
+            </Suspense>
           </RequireAuth>
         ),
       },
@@ -57,7 +78,9 @@ const router = createBrowserRouter([
         path: '/vendas',
         element: (
           <RequireAuth>
-            <SalesPage />
+            <Suspense fallback={<Loading />}>
+              <SalesPage />
+            </Suspense>
           </RequireAuth>
         ),
       },
@@ -97,7 +120,9 @@ const router = createBrowserRouter([
         path: '/rota-entrega',
         element: (
           <RequireAuth>
-            <RoutePage />
+            <Suspense fallback={<Loading />}>
+              <RoutePage />
+            </Suspense>
           </RequireAuth>
         ),
       },
@@ -105,7 +130,13 @@ const router = createBrowserRouter([
         path: '/test-offline',
         element: (
           <RequireAuth>
-            {enableOfflineDiagnostics ? <TestOfflinePage /> : <Navigate to="/" replace />}
+            {enableOfflineDiagnostics ? (
+              <Suspense fallback={<Loading />}>
+                <TestOfflinePage />
+              </Suspense>
+            ) : (
+              <Navigate to="/" replace />
+            )}
           </RequireAuth>
         ),
       },
@@ -113,7 +144,13 @@ const router = createBrowserRouter([
         path: '/offline-diagnostics',
         element: (
           <RequireAuth>
-            {enableOfflineDiagnostics ? <OfflineDiagnostics /> : <Navigate to="/" replace />}
+            {enableOfflineDiagnostics ? (
+              <Suspense fallback={<Loading />}>
+                <OfflineDiagnostics />
+              </Suspense>
+            ) : (
+              <Navigate to="/" replace />
+            )}
           </RequireAuth>
         ),
       },

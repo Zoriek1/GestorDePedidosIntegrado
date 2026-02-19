@@ -1,0 +1,47 @@
+{
+    "faixas": [
+        {
+            "ate_km": 3,
+            "de_km": 0,
+            "taxa": 15
+        },
+        {
+            "ate_km": 7,
+            "de_km": 3,
+            "taxa": 15
+        },
+        {
+            "ate_km": 10,
+            "de_km": 7,
+            "taxa": 20
+        },
+        {
+            "ate_km": 14,
+            "de_km": 10,
+            "taxa": 25
+        },
+        {
+            "ate_km": 19,
+            "de_km": 14,
+            "descricao": "",
+            "taxa": 35
+        },
+        {
+            "ate_km": 25,
+            "de_km": 19,
+            "descricao": "",
+            "taxa": 40
+        },
+        {
+            "ate_km": 30,
+            "de_km": 25,
+            "descricao": "",
+            "taxa": 45
+        }
+    ],
+    "taxa_base": 0,
+    "taxa_maxima": 50,
+    "taxa_minima": 5,
+    "tipo": "faixas",
+    "valor_por_km": 0
+}

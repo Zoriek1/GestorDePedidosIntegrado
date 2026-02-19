@@ -72,18 +72,14 @@ export default function CreateOrderPage() {
     setShowQuickEntryWarnings(false);
   }, [clearLocalDraft]);
 
-  // Efeito para processar prefillData na montagem
+  // Efeito para processar prefillData na montagem (sem setState)
   useEffect(() => {
     if (prefillData && prefillData.fonte_pedido_id && !prefillAppliedRef.current) {
       prefillAppliedRef.current = true;
       console.log('=== Quick Entry Prefill ===');
       console.log('Prefill data:', prefillData);
       console.log('Warnings:', quickEntryWarnings);
-      
-      // Configurar estado para mostrar wizard direto
-      setFonteSelecionada(prefillData.fonte_pedido_id);
-      setModalOpen(false);
-      
+
       // Limpar draft anterior para não misturar dados
       clearLocalDraft();
     }

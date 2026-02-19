@@ -118,6 +118,11 @@ class BaseConfig:
     ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
     ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
 
+    # Push Notifications (VAPID / Web Push)
+    VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY") or ""
+    VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY") or ""
+    VAPID_CLAIMS_EMAIL = os.environ.get("VAPID_CLAIMS_EMAIL") or "mailto:contato@planteumaflor.com.br"
+
     # Nuvemshop (OAuth + Webhooks)
     NUVEMSHOP_APP_ID = os.environ.get("NUVEMSHOP_APP_ID") or ""
     NUVEMSHOP_CLIENT_SECRET = os.environ.get("NUVEMSHOP_CLIENT_SECRET") or ""

@@ -477,6 +477,31 @@ def criar_pedido():
             except Exception:
                 pass  # Não falhar se houver erro
 
+        # Enviar push notification em background (não bloqueia a resposta)
+        try:
+            from flask import current_app
+
+            from app.services.notification_service import (
+                format_delivery_datetime,
+                send_push_to_all_async,
+            )
+
+            # Formatar data/hora de entrega
+            entrega_info = format_delivery_datetime(pedido.dia_entrega, pedido.horario)
+            if entrega_info:
+                body = f"#{pedido.id} - {destinatario} | {produto} | Entrega: {entrega_info}"
+            else:
+                body = f"#{pedido.id} - {destinatario} | {produto}"
+            
+            send_push_to_all_async(
+                app=current_app._get_current_object(),
+                title="Novo Pedido!",
+                body=body,
+                url="/",
+            )
+        except Exception:
+            pass  # Best-effort: não falhar criação do pedido
+
         return success_response(
             {"pedido_id": pedido.id, "pedido": pedido.to_dict()},
             message="Pedido criado com sucesso",

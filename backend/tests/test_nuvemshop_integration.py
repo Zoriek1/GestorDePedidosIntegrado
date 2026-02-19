@@ -376,7 +376,6 @@ def test_manual_override_protection(session):
     pedido = Pedido.query.first()
     assert pedido is not None
     assert pedido.status_pagamento == "Pendente"
-    original_dia_entrega = pedido.dia_entrega
 
     # Simular edição manual: criar override
     PedidoManualOverride.set_override(
@@ -460,3 +459,279 @@ def test_external_ref_tracks_agendamento_source(session):
     assert ref.agendamento_source == "fallback"  # Data não veio explícita
     assert ref.needs_review is True  # Precisa revisão
     assert ref.schedule_pending is True
+
+
+def test_pending_order_uses_total_not_paid():
+    """
+    Pedido pendente (não pago) deve usar 'total' como valor,
+    não 'total_paid_by_customer' que seria 0.
+    """
+    order = {
+        "id": 200,
+        "number": 200,
+        "token": "tok",
+        "contact_name": "Ana",
+        "contact_phone": "+5562999990000",
+        "created_at": "2025-06-01T10:00:00+0000",
+        "currency": "BRL",
+        "total": "150.00",
+        "total_paid_by_customer": "0.00",
+        "payment_status": "pending",
+        "shipping_option": "Entrega Agendada",
+        "shipping_address": {
+            "name": "Pedro",
+            "address": "Rua B",
+            "number": "20",
+            "locality": "Setor Sul",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Arranjo Floral", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+
+    # Valor deve ser R$ 150,00 (total), não R$ 0,00 (total_paid_by_customer)
+    assert "150" in pedido_data["valor"]
+    assert pedido_data["valor"] != "R$ 0,00"
+    assert pedido_data["status_pagamento"] == "Pendente"
+
+
+def test_pending_order_zero_paid_falls_back_to_total():
+    """
+    Quando total_paid_by_customer é exatamente "0", deve usar total.
+    """
+    order = {
+        "id": 201,
+        "number": 201,
+        "token": "tok2",
+        "contact_name": "Joana",
+        "contact_phone": "+5562999991111",
+        "created_at": "2025-06-01T12:00:00+0000",
+        "currency": "BRL",
+        "total": "89.90",
+        "total_paid_by_customer": "0",
+        "payment_status": "pending",
+        "shipping_option": "Entrega Normal",
+        "shipping_address": {
+            "name": "Carlos",
+            "address": "Rua C",
+            "number": "30",
+            "locality": "Centro",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Buque Simples", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert "89" in pedido_data["valor"]
+
+
+def test_paid_order_uses_total_paid():
+    """
+    Pedido pago deve usar total_paid_by_customer quando > 0.
+    """
+    order = {
+        "id": 202,
+        "number": 202,
+        "token": "tok3",
+        "contact_name": "Lucia",
+        "contact_phone": "+5562999992222",
+        "created_at": "2025-06-01T14:00:00+0000",
+        "currency": "BRL",
+        "total": "200.00",
+        "total_paid_by_customer": "180.00",  # Desconto aplicado
+        "payment_status": "paid",
+        "shipping_option": "Entrega Normal",
+        "shipping_address": {
+            "name": "Roberto",
+            "address": "Rua D",
+            "number": "40",
+            "locality": "Setor Oeste",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Arranjo Premium", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    # Deve usar total_paid_by_customer (180), não total (200)
+    assert "180" in pedido_data["valor"]
+
+
+def test_update_fills_empty_fields(session):
+    """
+    Webhook order/paid preenche campos que estavam vazios na criação
+    (destinatario, valor, produto, telefone).
+    """
+    store = NuvemshopStore(store_id="600", access_token="token", active=True)
+    session.add(store)
+    session.commit()
+
+    # --- Criação: pedido pendente com dados incompletos ---
+    delivery_1 = NuvemshopWebhookDelivery(
+        store_id="600",
+        event="order/created",
+        resource_id="700",
+        raw_body="{}",
+        headers_json="{}",
+    )
+    session.add(delivery_1)
+    session.commit()
+
+    order_created = {
+        "id": 700,
+        "number": 70,
+        "token": "tok70",
+        "contact_name": "",
+        "contact_phone": "",
+        "created_at": "2025-06-01T10:00:00+0000",
+        "currency": "BRL",
+        "total": "0.00",
+        "total_paid_by_customer": "0.00",
+        "payment_status": "pending",
+        "storefront": "store",
+        "shipping_option": "Entrega Agendada (Huapps) - Tarde",
+        "shipping_address": {},  # Sem endereço ainda
+        "products": [],  # Sem produtos
+    }
+
+    importer = NuvemshopOrderImporter(store, user_agent="TestApp")
+    importer.client.get_order = lambda _: order_created
+    assert importer.process_delivery(delivery_1) is True
+
+    pedido = Pedido.query.first()
+    assert pedido is not None
+    assert pedido.destinatario == "Nao informado"
+    assert pedido.telefone_cliente == "0000000000"
+    assert pedido.produto == "Produto Nuvemshop"
+
+    # --- Update: pedido pago com dados completos ---
+    delivery_2 = NuvemshopWebhookDelivery(
+        store_id="600",
+        event="order/paid",
+        resource_id="700",
+        raw_body="{}",
+        headers_json="{}",
+    )
+    session.add(delivery_2)
+    session.commit()
+
+    order_paid = {
+        "id": 700,
+        "number": 70,
+        "token": "tok70",
+        "contact_name": "Comprador Fulano",
+        "contact_phone": "+5562999995555",
+        "created_at": "2025-06-01T10:00:00+0000",
+        "currency": "BRL",
+        "total": "150.00",
+        "total_paid_by_customer": "150.00",
+        "payment_status": "paid",
+        "storefront": "store",
+        "shipping_option": "Entrega Agendada (Huapps) - Tarde",
+        "shipping_address": {
+            "name": "Destinatario Real",
+            "address": "Rua das Flores",
+            "number": "100",
+            "locality": "Jardim Goias",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Buque Rosas Vermelhas", "quantity": 1}],
+    }
+
+    importer.client.get_order = lambda _: order_paid
+    assert importer.process_delivery(delivery_2) is True
+
+    session.refresh(pedido)
+    # Campos críticos devem ter sido preenchidos
+    assert pedido.destinatario == "Destinatario Real"
+    assert pedido.cliente == "Comprador Fulano"
+    assert "150" in (pedido.valor or "")
+    assert pedido.produto == "Buque Rosas Vermelhas"
+    assert pedido.telefone_cliente == "62999995555"
+    assert pedido.status_pagamento == "Pago"
+
+
+def test_update_does_not_overwrite_good_data(session):
+    """
+    Webhook order/updated não sobrescreve campos que já têm dados bons.
+    """
+    store = NuvemshopStore(store_id="601", access_token="token", active=True)
+    session.add(store)
+    session.commit()
+
+    delivery_1 = NuvemshopWebhookDelivery(
+        store_id="601",
+        event="order/created",
+        resource_id="701",
+        raw_body="{}",
+        headers_json="{}",
+    )
+    session.add(delivery_1)
+    session.commit()
+
+    order_full = {
+        "id": 701,
+        "number": 71,
+        "token": "tok71",
+        "contact_name": "Comprador OK",
+        "contact_phone": "+5562999998888",
+        "created_at": "2025-06-01T10:00:00+0000",
+        "currency": "BRL",
+        "total": "200.00",
+        "total_paid_by_customer": "200.00",
+        "payment_status": "paid",
+        "storefront": "store",
+        "shipping_option": "Entrega Normal",
+        "custom_fields": [{"name": "Data", "value": "10/06/2025"}],
+        "shipping_address": {
+            "name": "Destinatario OK",
+            "address": "Rua Boa",
+            "number": "50",
+            "locality": "Centro",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Produto Bom", "quantity": 1}],
+    }
+
+    importer = NuvemshopOrderImporter(store, user_agent="TestApp")
+    importer.client.get_order = lambda _: order_full
+    assert importer.process_delivery(delivery_1) is True
+
+    pedido = Pedido.query.first()
+    assert pedido.destinatario == "Destinatario OK"
+    assert pedido.valor is not None and "200" in pedido.valor
+
+    # Simular segundo webhook com dados diferentes
+    delivery_2 = NuvemshopWebhookDelivery(
+        store_id="601",
+        event="order/updated",
+        resource_id="701",
+        raw_body="{}",
+        headers_json="{}",
+    )
+    session.add(delivery_2)
+    session.commit()
+
+    order_updated = order_full.copy()
+    # Esses campos não devem sobrescrever dados bons
+    order_updated["shipping_address"] = {
+        "name": "Outro Destinatario",
+        "address": "Rua Nova",
+        "number": "99",
+        "locality": "Outro Bairro",
+        "city": "Goiania",
+        "zipcode": "74999-000",
+    }
+
+    importer.client.get_order = lambda _: order_updated
+    assert importer.process_delivery(delivery_2) is True
+
+    session.refresh(pedido)
+    # Destinatario e valor já estavam bons, não devem mudar
+    assert pedido.destinatario == "Destinatario OK"
+    assert "200" in (pedido.valor or "")

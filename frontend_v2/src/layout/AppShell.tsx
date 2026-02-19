@@ -15,7 +15,6 @@ import {
   Divider,
   Stack,
   Chip,
-  Fab,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
@@ -31,10 +30,11 @@ import {
   Add as AddIcon,
   Bolt as BoltIcon,
   AddShoppingCart as AddShoppingCartIcon,
+  Settings,
 } from '@mui/icons-material';
 
-import { SettingsButton } from '../components/uiverse/SettingsButton/SettingsButton';
 import { useAuth } from '../features/auth/authStore';
+import { NotificationManager } from '../features/notifications/NotificationManager';
 import { useOffline } from '../lib/offline/useOffline';
 import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
 
@@ -163,6 +163,10 @@ export function AppShell({ children }: AppShellProps) {
                 </>
               )}
               <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
+              <MenuItem onClick={() => handleNavigate('/configuracoes')}>
+                <Settings sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
+                Configurações
+              </MenuItem>
             </Menu>
           </Box>
 
@@ -227,6 +231,11 @@ export function AppShell({ children }: AppShellProps) {
             <Button color="inherit" onClick={() => handleNavigate('/rota-entrega')} sx={{ textTransform: 'none' }}>
               Rota
             </Button>
+            <Tooltip title="Configurações">
+              <IconButton color="inherit" onClick={() => handleNavigate('/configuracoes')}>
+                <Settings />
+              </IconButton>
+            </Tooltip>
           </Box>
 
           {/* Seção Direita: Notificações + Avatar */}
@@ -361,6 +370,9 @@ export function AppShell({ children }: AppShellProps) {
           />
         </SpeedDial>
       )}
+
+      {/* Push Notification Manager (invisível, registra subscription) */}
+      {authenticated && <NotificationManager />}
 
       {/* Modal de Entrada Rápida */}
       <QuickEntryModal open={quickEntryOpen} onClose={handleQuickEntryClose} />

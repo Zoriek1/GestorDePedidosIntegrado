@@ -80,7 +80,7 @@ export interface PedidosFilters {
 /**
  * Get orders with filters
  */
-export function usePedidos(filters: PedidosFilters = {}) {
+export function usePedidos(filters: PedidosFilters = {}, options?: { enabled?: boolean }) {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
   const queryKey: readonly unknown[] = ['pedidos', filters];
@@ -109,6 +109,7 @@ export function usePedidos(filters: PedidosFilters = {}) {
       return response.data;
     }, { tag: 'pedidos' }),
     placeholderData: (previousData) => previousData, // Maintains previous data when filters change
+    enabled: options?.enabled ?? true,
     staleTime: 5000, // 5 seconds
     refetchInterval: 20000, // 20 seconds
     refetchOnWindowFocus: true

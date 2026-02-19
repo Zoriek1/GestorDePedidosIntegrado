@@ -53,9 +53,11 @@ def create_app(config=None):
         from app.routes.api import api_bp
         from app.routes.auth import auth_bp
         from app.routes.clientes import clientes_bp
+        from app.routes.config import config_bp
         from app.routes.develop.backup import backup_admin_bp
         from app.routes.integrations.nuvemshop import nuvemshop_bp
         from app.routes.meta_gateway import meta_gateway_bp
+        from app.routes.notifications import notifications_bp
         from app.routes.pedidos import pedidos_bp
         from app.routes.rotas import rotas_bp
 
@@ -67,8 +69,10 @@ def create_app(config=None):
         app.register_blueprint(pedidos_bp)
         app.register_blueprint(rotas_bp)
         app.register_blueprint(auth_bp)
+        app.register_blueprint(config_bp)
         app.register_blueprint(backup_admin_bp)
         app.register_blueprint(nuvemshop_bp)
+        app.register_blueprint(notifications_bp)
 
         # Registrar Meta Gateway (deve vir antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)
@@ -101,6 +105,14 @@ def create_app(config=None):
 
     # 9. Registrar comandos CLI
     register_cli_commands(app)
+
+    # 10. Fila: após cálculo de distância, calcular taxa em background
+    try:
+        from app.services.fila_taxa_entrega import start_worker
+
+        start_worker(app)
+    except Exception as e:
+        print(f"[AVISO] Fila de taxa de entrega não iniciada: {e}")
 
     return app
 

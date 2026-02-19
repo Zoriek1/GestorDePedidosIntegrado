@@ -3,6 +3,7 @@ import {
   Box,
   Card,
   CardContent,
+  Chip,
   Stack,
   Typography,
   TextField,
@@ -102,13 +103,38 @@ export default function NuvemshopPage() {
               <Card key={item.pedido_id} variant="outlined">
                 <CardContent>
                   <Stack spacing={2}>
-                    <Stack>
-                      <Typography variant="subtitle1" fontWeight={700}>
-                        Pedido #{item.pedido_id} - {item.cliente}
-                      </Typography>
+                    <Stack spacing={0.5}>
+                      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                        <Typography variant="subtitle1" fontWeight={700}>
+                          Pedido #{item.pedido_id} - {item.cliente}
+                        </Typography>
+                        {item.status_pagamento && (
+                          <Chip
+                            label={item.status_pagamento}
+                            size="small"
+                            color={item.status_pagamento === 'Pago' ? 'success' : 'warning'}
+                            variant="outlined"
+                          />
+                        )}
+                        {item.valor && (
+                          <Typography variant="subtitle2" color="primary" fontWeight={600}>
+                            {item.valor}
+                          </Typography>
+                        )}
+                      </Stack>
                       <Typography variant="body2" color="text.secondary">
-                        Destinatario: {item.destinatario}
+                        Destinatario: {item.destinatario || '(nao informado)'}
                       </Typography>
+                      {item.produto && (
+                        <Typography variant="body2" color="text.secondary">
+                          Produto: {item.produto}
+                        </Typography>
+                      )}
+                      {item.endereco && (
+                        <Typography variant="body2" color="text.secondary">
+                          Endereco: {item.endereco}
+                        </Typography>
+                      )}
                       {item.observacoes && (
                         <Typography variant="caption" color="text.secondary">
                           {item.observacoes}

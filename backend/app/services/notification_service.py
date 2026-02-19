@@ -26,17 +26,17 @@ def _get_vapid_claims() -> dict:
 def format_delivery_datetime(dia_entrega, horario: Optional[str] = None) -> str:
     """
     Formata data e hora de entrega para exibição em notificações.
-    
+
     Args:
         dia_entrega: Objeto date ou string no formato YYYY-MM-DD
         horario: String com horário (ex: "14:00" ou "14:00 - 18:00")
-    
+
     Returns:
         String formatada: "DD/MM/YYYY às HH:MM" ou "DD/MM/YYYY - HH:MM - HH:MM" ou apenas "DD/MM/YYYY"
     """
     if not dia_entrega:
         return ""
-    
+
     # Converter para date se for string
     if isinstance(dia_entrega, str):
         try:
@@ -44,15 +44,15 @@ def format_delivery_datetime(dia_entrega, horario: Optional[str] = None) -> str:
             dia_entrega = datetime.strptime(dia_entrega, "%Y-%m-%d").date()
         except (ValueError, AttributeError):
             return ""
-    
+
     # Formatar data como DD/MM/YYYY
     data_formatada = dia_entrega.strftime("%d/%m/%Y")
-    
+
     if not horario or not horario.strip():
         return data_formatada
-    
+
     horario_limpo = horario.strip()
-    
+
     # Se tem intervalo de horário (ex: "14:00 - 18:00")
     if " - " in horario_limpo:
         partes = horario_limpo.split(" - ")
@@ -60,7 +60,7 @@ def format_delivery_datetime(dia_entrega, horario: Optional[str] = None) -> str:
             inicio = partes[0].strip()
             fim = partes[1].strip()
             return f"{data_formatada} - {inicio} às {fim}"
-    
+
     # Horário único
     return f"{data_formatada} às {horario_limpo}"
 

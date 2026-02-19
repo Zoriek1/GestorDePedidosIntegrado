@@ -19,9 +19,7 @@ from app.schemas.common import error_response, success_response
 
 logger = logging.getLogger(__name__)
 
-notifications_bp = Blueprint(
-    "notifications", __name__, url_prefix="/api/notifications"
-)
+notifications_bp = Blueprint("notifications", __name__, url_prefix="/api/notifications")
 
 
 @notifications_bp.route("/vapid-public-key", methods=["GET"])
@@ -29,9 +27,7 @@ def get_vapid_public_key():
     """Retorna a chave pública VAPID para o frontend se inscrever."""
     key = Config.VAPID_PUBLIC_KEY
     if not key:
-        return error_response(
-            "VAPID_PUBLIC_KEY não configurada no servidor", 500
-        )
+        return error_response("VAPID_PUBLIC_KEY não configurada no servidor", 500)
     return success_response({"publicKey": key})
 
 
@@ -57,9 +53,7 @@ def subscribe():
     auth = (keys.get("auth") or "").strip()
 
     if not endpoint or not p256dh or not auth:
-        return error_response(
-            "Campos obrigatórios: endpoint, keys.p256dh, keys.auth", 400
-        )
+        return error_response("Campos obrigatórios: endpoint, keys.p256dh, keys.auth", 400)
 
     # Upsert: atualiza se o endpoint já existe, senão cria.
     existing = PushSubscription.query.filter_by(endpoint=endpoint).first()

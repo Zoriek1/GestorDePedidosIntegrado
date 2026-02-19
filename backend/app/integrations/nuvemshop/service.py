@@ -32,7 +32,7 @@ class NuvemshopTokenService:
         code: str,
         app_id: str,
         client_secret: str,
-        redirect_uri: str | None = None,
+        redirect_uri: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Troca o `code` por `access_token` via endpoint da Nuvemshop/Tiendanube.

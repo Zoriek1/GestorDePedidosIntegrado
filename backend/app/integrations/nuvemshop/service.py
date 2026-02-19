@@ -235,26 +235,26 @@ class NuvemshopOrderImporter:
             .order_by(PedidoExternalRef.id.desc())
             .first()
         )
-        
+
         if external_ref:
             return external_ref
-        
+
         # Se não encontrou, tentar detectar pedido duplicado por telefone + data próxima
         # Isso ajuda quando um pedido foi criado manualmente no painel antes de ser importado
         telefone = self._extract_phone_from_order(order)
         if not telefone or telefone == "0000000000":
             return None
-        
+
         # Buscar pedidos criados nos últimos 10 minutos com mesmo telefone
         from datetime import timedelta
-        
+
         created_at = self._parse_order_created_at(order)
         if not created_at:
             return None
-        
+
         time_window_start = created_at - timedelta(minutes=10)
         time_window_end = created_at + timedelta(minutes=10)
-        
+
         # Buscar pedidos sem external_ref que foram criados no mesmo período
         pedidos_duplicados = (
             Pedido.query.filter(
@@ -270,7 +270,7 @@ class NuvemshopOrderImporter:
             .limit(1)
             .all()
         )
-        
+
         if pedidos_duplicados:
             pedido_duplicado = pedidos_duplicados[0]
             logger.info(
@@ -292,36 +292,35 @@ class NuvemshopOrderImporter:
             db.session.add(external_ref)
             db.session.commit()
             return external_ref
-        
+
         return None
-    
+
     def _extract_phone_from_order(self, order: Dict[str, Any]) -> Optional[str]:
         """Extrai telefone normalizado do pedido da Nuvemshop."""
         from app.integrations.nuvemshop.mapper import _normalize_phone, _safe_str
-        
+
         customer = order.get("customer") or {}
         shipping_address = order.get("shipping_address") or {}
-        
+
         telefone = (
             _safe_str(order.get("contact_phone"))
             or _safe_str(customer.get("phone"))
             or _safe_str(order.get("billing_phone"))
             or _safe_str(shipping_address.get("phone"))
         )
-        
+
         if telefone:
             return _normalize_phone(telefone)
         return None
-    
+
     def _parse_order_created_at(self, order: Dict[str, Any]):
         """Parse da data de criação do pedido."""
-        from datetime import datetime
         from app.integrations.nuvemshop.mapper import _parse_datetime
-        
+
         created_at_str = order.get("created_at")
         if not created_at_str:
             return None
-        
+
         return _parse_datetime(created_at_str)
 
     def _create_pedido(self, pedido_data: Dict[str, Any], fonte_id: int) -> Pedido:
@@ -556,7 +555,7 @@ class NuvemshopOrderImporter:
         """
         Agenda uma tarefa para buscar novamente o pedido da API após delay,
         para capturar custom fields que podem chegar com alguns segundos de atraso.
-        
+
         Args:
             order_id: ID do pedido na Nuvemshop
             pedido_id: ID do pedido interno
@@ -571,15 +570,15 @@ class NuvemshopOrderImporter:
                     if not order:
                         logger.debug(f"[Retry] Pedido {order_id} não encontrado na API")
                         return
-                    
+
                     # Verificar se há custom fields agora
                     custom_fields = order.get("custom_fields") or order.get("order_custom_fields") or []
                     has_custom_fields = bool(custom_fields and len(custom_fields) > 0)
-                    
+
                     if not has_custom_fields:
                         logger.debug(f"[Retry] Pedido {order_id} ainda sem custom fields após {delay_seconds}s")
                         return
-                    
+
                     # Buscar external_ref e pedido
                     external_ref = PedidoExternalRef.query.filter_by(
                         provider="nuvemshop",
@@ -587,11 +586,11 @@ class NuvemshopOrderImporter:
                         external_order_id=str(order_id),
                         pedido_id=pedido_id,
                     ).first()
-                    
+
                     if not external_ref:
                         logger.debug(f"[Retry] ExternalRef não encontrado para pedido {pedido_id}")
                         return
-                    
+
                     # Mapear novamente e atualizar
                     (
                         pedido_data,
@@ -599,20 +598,20 @@ class NuvemshopOrderImporter:
                         shipping_option_text,
                         agendamento_source,
                     ) = map_nuvemshop_order_to_pedido_data(order)
-                    
+
                     pedido_data["endereco"] = self._compose_endereco(pedido_data)
                     pedido_data.pop("complemento", None)
-                    
+
                     # Atualizar pedido com custom fields
                     self._update_existing_pedido(
                         external_ref, pedido_data, schedule_pending, agendamento_source
                     )
-                    
+
                     logger.info(f"[Retry] Pedido {pedido_id} atualizado com custom fields após {delay_seconds}s")
-                    
+
             except Exception as exc:
                 logger.warning(f"[Retry] Erro ao buscar custom fields para pedido {pedido_id}: {exc}")
-        
+
         # Agendar tarefa em thread separada após delay
         timer = threading.Timer(delay_seconds, _retry_worker)
         timer.daemon = True
@@ -631,14 +630,14 @@ class NuvemshopOrderImporter:
 
             dest = pedido.destinatario or pedido.cliente or "Novo pedido"
             produto = pedido.produto or "Produto Nuvemshop"
-            
+
             # Formatar data/hora de entrega
             entrega_info = format_delivery_datetime(pedido.dia_entrega, pedido.horario)
             if entrega_info:
                 body = f"#{pedido.id} - {dest} | {produto} | Entrega: {entrega_info}"
             else:
                 body = f"#{pedido.id} - {dest} | {produto}"
-            
+
             send_push_to_all_async(
                 app=current_app._get_current_object(),
                 title="Novo Pedido Nuvemshop!",

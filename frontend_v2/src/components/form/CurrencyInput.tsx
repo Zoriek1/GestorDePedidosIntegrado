@@ -114,6 +114,7 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
       <TextField
         {...textFieldProps}
         value={value ?? ''}
+        onChange={onChange}
         ref={ref}
         slotProps={{
           input: {

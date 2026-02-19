@@ -492,7 +492,7 @@ def criar_pedido():
                 body = f"#{pedido.id} - {destinatario} | {produto} | Entrega: {entrega_info}"
             else:
                 body = f"#{pedido.id} - {destinatario} | {produto}"
-            
+
             send_push_to_all_async(
                 app=current_app._get_current_object(),
                 title="Novo Pedido!",

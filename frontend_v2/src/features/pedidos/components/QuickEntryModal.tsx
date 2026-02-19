@@ -26,10 +26,8 @@ import {
 import BoltIcon from '@mui/icons-material/Bolt';
 import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import WarningIcon from '@mui/icons-material/Warning';
 import CloseIcon from '@mui/icons-material/Close';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
@@ -61,11 +59,6 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
   const [text, setText] = useState('');
   const [fonteSelecionada, setFonteSelecionada] = useState<number | null>(null);
   const [showHelp, setShowHelp] = useState(false);
-  const [parseResult, setParseResult] = useState<{
-    extractedFields: string[];
-    warnings: string[];
-  } | null>(null);
-  
   // Memoizar fontes
   const fontes = useMemo(() => data?.fontes || [], [data?.fontes]);
   
@@ -116,10 +109,7 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
     
     // Processar texto
     const result = parseQuickEntry(text, fonteSelecionada);
-    setParseResult({
-      extractedFields: result.extractedFields,
-      warnings: result.warnings,
-    });
+    // resultado utilizado para UI / logs futuros
     
     // Navegar para página de criação com dados pré-preenchidos
     navigate('/pedidos/novo', {
@@ -133,7 +123,6 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
     // Limpar e fechar
     setText('');
     setFonteSelecionada(null);
-    setParseResult(null);
     onClose();
     
     // Feedback
@@ -148,7 +137,6 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
   const handleClose = useCallback(() => {
     setText('');
     setFonteSelecionada(null);
-    setParseResult(null);
     setShowHelp(false);
     onClose();
   }, [onClose]);

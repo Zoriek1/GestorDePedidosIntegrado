@@ -4,7 +4,7 @@
  * Compatível com react-hook-form via Controller
  */
 
-import { forwardRef } from 'react';
+import { forwardRef, useMemo } from 'react';
 import { NumericFormat, NumericFormatProps } from 'react-number-format';
 import TextField, { TextFieldProps } from '@mui/material/TextField';
 
@@ -22,16 +22,41 @@ interface CustomNumericFormatProps {
   name: string;
   prefix?: string;
   allowNegative?: boolean;
+  numericValue?: string;
+}
+
+/**
+ * Converte valor formatado (R$ 1.000,00) para numérico (1000.00)
+ */
+function parseFormattedToNumeric(value: string | number | undefined): string {
+  if (!value) return '';
+  if (typeof value === 'number') return value.toString();
+  
+  // Remove prefixo R$ e espaços
+  const cleaned = value.replace(/R\$\s*/g, '').trim();
+  if (!cleaned) return '';
+  
+  // Se tem vírgula, tratar como formato BR (1.000,00)
+  if (cleaned.includes(',')) {
+    // Remove pontos (separadores de milhar) e substitui vírgula por ponto
+    const normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    return normalized;
+  }
+  
+  // Se não tem vírgula, pode ser número puro ou formato incorreto
+  // Remove pontos e trata como número inteiro
+  return cleaned.replace(/\./g, '');
 }
 
 const NumericFormatCustom = forwardRef<NumericFormatProps, CustomNumericFormatProps>(
   function NumericFormatCustom(props, ref) {
-    const { onChange, prefix = 'R$ ', allowNegative = false, ...other } = props;
+    const { onChange, prefix = 'R$ ', allowNegative = false, numericValue, ...other } = props;
 
     return (
       <NumericFormat
         {...other}
         getInputRef={ref}
+        value={numericValue}
         onValueChange={(values) => {
           onChange({
             target: {
@@ -80,11 +105,15 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
       ...textFieldProps
     } = props;
 
+    // Converte o valor formatado para numérico para o NumericFormat
+    const numericValue = useMemo(() => {
+      return parseFormattedToNumeric(value);
+    }, [value]);
+
     return (
       <TextField
         {...textFieldProps}
         value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
         ref={ref}
         slotProps={{
           input: {
@@ -92,6 +121,7 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
             inputProps: {
               prefix,
               allowNegative,
+              numericValue,
             },
           },
         }}

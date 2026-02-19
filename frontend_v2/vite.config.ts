@@ -68,6 +68,8 @@ export default defineConfig(({ mode }) => {
           ]
         },
         workbox: {
+          // Importar push notification handler no Service Worker
+          importScripts: ['/push-sw.js'],
           // Forçar atualização imediata quando nova versão for detectada
           skipWaiting: true,
           clientsClaim: true,

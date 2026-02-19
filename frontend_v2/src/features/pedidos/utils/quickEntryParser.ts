@@ -272,6 +272,35 @@ function extractCorFromProduto(produto: string): string | null {
 }
 
 /**
+ * Lista de cidades/estados conhecidos para filtrar do bairro
+ */
+const CIDADES_ESTADOS_CONHECIDOS = [
+  'goiania', 'goiânia', 'goias', 'goiás', 'go', 'gyn',
+  'sao paulo', 'são paulo', 'sp',
+  'rio de janeiro', 'rj',
+  'belo horizonte', 'bh', 'mg',
+  'brasilia', 'brasília', 'df',
+  'curitiba', 'pr',
+  'porto alegre', 'rs',
+  'salvador', 'ba',
+  'fortaleza', 'ce',
+  'recife', 'pe',
+  'manaus', 'am',
+];
+
+/**
+ * Verifica se um texto contém cidade/estado conhecido
+ */
+function contemCidadeEstado(texto: string): boolean {
+  const textoLower = texto.toLowerCase().trim();
+  return CIDADES_ESTADOS_CONHECIDOS.some(cidade => {
+    // Verifica se a cidade está no texto (como palavra completa ou parte)
+    const regex = new RegExp(`\\b${cidade.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    return regex.test(textoLower);
+  });
+}
+
+/**
  * Tenta separar endereço em componentes
  */
 function parseEndereco(endereco: string): { 
@@ -314,12 +343,33 @@ function parseEndereco(endereco: string): {
       result.cidade = ultimaParte.replace(/\s*-\s*\w{2}$/, '').trim(); // Remove estado (ex: "- SP")
     }
     
-    // Penúltima parte pode ser bairro
+    // Penúltima parte pode ser bairro, mas não deve conter cidade/estado
     if (partes.length >= 3) {
       const penultima = partes[partes.length - 2];
       if (!penultima.match(/\d{5}/) && !penultima.match(/^\d+$/)) {
-        result.bairro = penultima.trim();
+        // Se a penúltima parte contém cidade/estado, não usar como bairro
+        // Tentar usar a antepenúltima parte se existir
+        if (contemCidadeEstado(penultima)) {
+          if (partes.length >= 4) {
+            const antepenultima = partes[partes.length - 3];
+            if (!antepenultima.match(/\d{5}/) && !antepenultima.match(/^\d+$/) && !contemCidadeEstado(antepenultima)) {
+              result.bairro = antepenultima.trim();
+            }
+          }
+          // Se penúltima é cidade, atualizar cidade também
+          if (!result.cidade || contemCidadeEstado(penultima)) {
+            result.cidade = penultima.replace(/\s*-\s*\w{2}$/, '').trim();
+          }
+        } else {
+          // Penúltima não contém cidade/estado, usar como bairro
+          result.bairro = penultima.trim();
+        }
       }
+    }
+    
+    // Validação final: garantir que bairro não contém cidade/estado
+    if (result.bairro && contemCidadeEstado(result.bairro)) {
+      result.bairro = undefined; // Remover bairro inválido
     }
   }
   
@@ -344,8 +394,84 @@ function isGoomerFormat(text: string): boolean {
 }
 
 /**
- * Extrai dados do formato Goomer Delivery (Catálogo).
- * Exemplo: "*1x Buquê de Girassóis R$ 165,00*", "*Pedido para retirada*", "*Nome*", "(64) 99265-1886", etc.
+ * Parseia endereço estruturado do formato Goomer Delivery.
+ * Formato típico:
+ *   Praça X, 37 - Complemento
+ *   Bairro, Cidade/UF
+ *   74093320
+ *   Referência
+ */
+function parseGoomerDeliveryAddress(lines: string[]): {
+  endereco: string;
+  rua?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  cep?: string;
+  obs_entrega?: string;
+} {
+  const result: ReturnType<typeof parseGoomerDeliveryAddress> = {
+    endereco: lines.join(', '),
+  };
+
+  const usedIndices = new Set<number>();
+
+  // CEP: linha com 8 dígitos (XXXXX-XXX ou XXXXXXXX)
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\d{5}-?\d{3}$/.test(lines[i].trim())) {
+      const digits = lines[i].trim().replace(/\D/g, '');
+      result.cep = digits.slice(0, 5) + '-' + digits.slice(5);
+      usedIndices.add(i);
+      break;
+    }
+  }
+
+  // Bairro, Cidade/UF (ex: "Setor Sul, Goiânia/GO")
+  for (let i = 0; i < lines.length; i++) {
+    if (usedIndices.has(i)) continue;
+    const m = lines[i].match(/^(.+?),\s*(.+?)\/([A-Z]{2})$/);
+    if (m) {
+      result.bairro = m[1].trim();
+      result.cidade = m[2].trim();
+      usedIndices.add(i);
+      break;
+    }
+  }
+
+  // Primeira linha não usada = rua + número [+ complemento]
+  for (let i = 0; i < lines.length; i++) {
+    if (usedIndices.has(i)) continue;
+    const streetLine = lines[i];
+    const m = streetLine.match(/^(.+?),\s*(\d+)\s*(?:-\s*(.+))?$/);
+    if (m) {
+      result.rua = m[1].trim();
+      result.numero = m[2];
+      if (m[3]) result.complemento = m[3].trim();
+    } else {
+      result.rua = streetLine.trim();
+    }
+    usedIndices.add(i);
+    break;
+  }
+
+  // Linhas restantes = observações de entrega (ponto de referência etc.)
+  const remaining: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!usedIndices.has(i)) remaining.push(lines[i]);
+  }
+  if (remaining.length > 0) {
+    result.obs_entrega = remaining.join('\n');
+  }
+
+  return result;
+}
+
+/**
+ * Extrai dados de pedidos Goomer (Delivery e Catálogo).
+ *
+ * Goomer Delivery: "*Pedido Goomer Delivery*" — tem agendamento, endereço, nome/telefone no rodapé.
+ * Goomer Catálogo: "*Pedido para retirada/entrega*" — nome logo após o tipo, sem agendamento.
  */
 function parseGoomerEntry(text: string): {
   formData: Partial<PedidoFormData>;
@@ -354,7 +480,6 @@ function parseGoomerEntry(text: string): {
 } {
   const formData: Partial<PedidoFormData> = {
     cliente_modo: 'novo',
-    tipo_pedido: 'Retirada',
     status_pagamento: 'Pendente',
     quantidade: 1,
   };
@@ -362,7 +487,10 @@ function parseGoomerEntry(text: string): {
   const extractedFields: string[] = [];
   const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  // Produto: primeira linha *Nx Nome do produto R$ X,XX*
+  // Sub-formato: Delivery vs Catálogo
+  const isDeliveryFormat = /\*Pedido Goomer Delivery\*/i.test(norm);
+
+  // ---- Produto principal: *Nx Produto R$ X,XX*
   const produtoMatch = norm.match(/\*\s*\d+x\s+(.+?)\s+R\$\s*[\d.,]+\s*\*/);
   if (produtoMatch && produtoMatch[1]) {
     formData.produto = produtoMatch[1].trim();
@@ -376,7 +504,32 @@ function parseGoomerEntry(text: string): {
     warnings.push('Produto não encontrado no formato Goomer');
   }
 
-  // Valor: *Total com desconto: R$ X,XX* ou *Total:* R$ X,XX
+  // ---- Detectar add-ons (complementos com preço, cartão escrito, presenteado)
+  const addOnRegex = /^\s*-\s*\d+x\s+(.+)/gm;
+  const productAddOns: string[] = [];
+  let hasCartaoEscrito = false;
+  let hasPresenteado = false;
+  let addOnExec: RegExpExecArray | null;
+  while ((addOnExec = addOnRegex.exec(norm)) !== null) {
+    const addOnText = addOnExec[1].trim();
+    const hasPrice = /\*R\$\s*[\d.,]+\s*\*/.test(addOnText);
+    const cleaned = addOnText.replace(/\*R\$\s*[\d.,]+\s*\*/, '').trim();
+
+    if (/cart[aã]o\s+escrito/i.test(cleaned)) {
+      hasCartaoEscrito = true;
+    } else if (/presenteado/i.test(cleaned)) {
+      hasPresenteado = true;
+    } else if (hasPrice) {
+      // Add-on de produto (ex: chocolates, pelúcias)
+      productAddOns.push(cleaned);
+    }
+  }
+  // Anexar add-ons ao nome do produto
+  if (productAddOns.length > 0 && formData.produto) {
+    formData.produto += ' + ' + productAddOns.join(' + ');
+  }
+
+  // ---- Valor total
   const totalMatch =
     norm.match(/\*Total com desconto:\s*R\$\s*([\d.,]+)\s*\*/i) ||
     norm.match(/\*Total[^:*]*:\s*R\$\s*([\d.,]+)\s*\*/i);
@@ -390,82 +543,259 @@ function parseGoomerEntry(text: string): {
     warnings.push('Valor total não encontrado');
   }
 
-  // Tipo: *Pedido para retirada* ou *Pedido para entrega*
-  if (/\*Pedido para retirada\s*\*/i.test(norm)) {
-    formData.tipo_pedido = 'Retirada';
-    extractedFields.push('tipo_pedido');
-  } else if (/\*Pedido para entrega\s*\*/i.test(norm)) {
-    formData.tipo_pedido = 'Entrega';
-    extractedFields.push('tipo_pedido');
-  }
-
-  // Cliente: linha *Nome* logo após "*Pedido para retirada*" ou "*Pedido para entrega*"
-  const pedidoParaMatch = norm.match(
-    /\*Pedido para (?:retirada|entrega)\s*\*[\s\n]+\*([^*\n]+)\*/
-  );
-  if (pedidoParaMatch && pedidoParaMatch[1]) {
-    formData.cliente = pedidoParaMatch[1].trim();
-    extractedFields.push('cliente');
-  } else {
-    warnings.push('Nome do cliente não encontrado');
-  }
-
-  // Telefone: (XX) XXXXX-XXXX ou (XX) XXXX-XXXX após o nome
-  const telMatch = norm.match(/\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/);
-  if (telMatch) {
-    const parsed = parseTelefone(telMatch[0]);
+  // ---- Taxa de entrega: *Taxa de entrega*: +R$ X,XX
+  const taxaMatch = norm.match(/\*Taxa de entrega\*\s*:\s*\+?\s*R\$\s*([\d.,]+)/i);
+  if (taxaMatch && taxaMatch[1]) {
+    const parsed = parseValor(taxaMatch[1]);
     if (parsed) {
-      formData.telefone_cliente = parsed;
-      extractedFields.push('telefone_cliente');
+      formData.taxa_entrega = parsed;
+      extractedFields.push('taxa_entrega');
     }
-  } else {
-    warnings.push('Telefone não encontrado');
   }
 
-  // Destinatário e mensagem do cartão: _Obs: Nome: X ... Cartão: Y_ (pode ter quebra de linha)
-  const obsBlock = norm.match(/_Obs:[\s\S]+?_/);
-  if (obsBlock) {
-    const block = obsBlock[0];
-    const nomeMatch = block.match(/Nome:\s*([^\n_]+)/);
-    if (nomeMatch && nomeMatch[1]) {
-      formData.destinatario = nomeMatch[1].trim();
-      extractedFields.push('destinatario');
-    }
-    const cartaoMatch = block.match(/Cartão:\s*([\s\S]+?)(?:_|$)/i);
-    if (cartaoMatch && cartaoMatch[1]) {
-      formData.mensagem = cartaoMatch[1].trim();
-      extractedFields.push('mensagem');
-    }
-  }
-  if (!formData.destinatario) {
-    formData.destinatario = formData.cliente ?? '';
-    if (formData.cliente) extractedFields.push('destinatario');
-  }
-
-  // Pagamento: *Pagamento:* Dinheiro / Pix / etc
-  const pagMatch = norm.match(/\*Pagamento:\s*([^*\n]+)\*/i);
+  // ---- Pagamento: *Pagamento:* Pix  OU  *Pagamento: Pix*
+  const pagMatch =
+    norm.match(/\*Pagamento:\s*\*\s*([^\n]+)/i) ||
+    norm.match(/\*Pagamento:\s*([^*\n]+)\*/i);
   if (pagMatch && pagMatch[1]) {
     formData.pagamento = pagMatch[1].trim();
     extractedFields.push('pagamento');
   }
 
-  // Observações: Troco, Obs, etc.
-  const obsParts: string[] = [];
-  const trocoMatch = norm.match(/\*?Troco para:\s*R\$\s*[\d.,]+\s*\*?/i);
-  if (trocoMatch) obsParts.push(trocoMatch[0].replace(/\*/g, '').trim());
-  if (formData.pagamento) obsParts.push(`Pagamento: ${formData.pagamento}`);
-  const obsItalic = norm.match(/_Obs:[\s\S]+?_/);
-  if (obsItalic) obsParts.push(obsItalic[0].replace(/^_Obs:\s*|_$/g, '').trim());
-  if (obsParts.length > 0) {
-    formData.observacoes = obsParts.join('\n');
-    extractedFields.push('observacoes');
+  // ---- Bloco de Obs: _Obs: ... _
+  const obsBlockMatch = norm.match(/_Obs:\s*([\s\S]+?)_/);
+  const obsText = obsBlockMatch ? obsBlockMatch[1].trim() : null;
+
+  if (isDeliveryFormat) {
+    // ============================================================
+    // GOOMER DELIVERY
+    // ============================================================
+    formData.tipo_pedido = 'Entrega';
+    extractedFields.push('tipo_pedido');
+
+    // ---- Entrega agendada: "Hoje, 14:30" / "Amanhã, 10:00" / "06/02, 14:30"
+    const agendaMatch = norm.match(/\*Entrega agendada:\s*\*\s*(.+)/i);
+    if (agendaMatch && agendaMatch[1]) {
+      const agendaText = agendaMatch[1].trim();
+      const commaIdx = agendaText.indexOf(',');
+      let datePart: string;
+      let timePart: string | null = null;
+
+      if (commaIdx >= 0) {
+        datePart = agendaText.slice(0, commaIdx).trim();
+        timePart = agendaText.slice(commaIdx + 1).trim();
+      } else {
+        datePart = agendaText;
+      }
+
+      const parsedDate = parseDate(datePart);
+      if (parsedDate) {
+        formData.dia_entrega = parsedDate;
+        extractedFields.push('dia_entrega');
+      } else {
+        formData.dia_entrega = dayjs().format('YYYY-MM-DD');
+        extractedFields.push('dia_entrega');
+        warnings.push(`Data de agendamento "${datePart}" não reconhecida; usando hoje.`);
+      }
+
+      if (timePart) {
+        const timeRegex = timePart.match(/(\d{1,2}):(\d{2})/);
+        if (timeRegex) {
+          formData.horario = `${timeRegex[1].padStart(2, '0')}:${timeRegex[2]}`;
+          extractedFields.push('horario');
+        }
+      }
+    }
+
+    // Defaults se não encontrou agendamento
+    if (!formData.dia_entrega) {
+      formData.dia_entrega = dayjs().format('YYYY-MM-DD');
+      extractedFields.push('dia_entrega');
+      warnings.push('Data de entrega não encontrada; usando hoje.');
+    }
+    if (!formData.horario) {
+      formData.horario = '08:00 - 18:00';
+      extractedFields.push('horario');
+      warnings.push('Horário de entrega não encontrado; confira e ajuste.');
+    }
+
+    // ---- Rodapé: nome, telefone, endereço (após último separador ---)
+    const sections = norm.split(/[-]{3,}/);
+    const footer = sections.length > 1 ? sections[sections.length - 1] : norm;
+
+    // Cliente: *Nome* em linha própria (sem ":" — exclui labels como *Pagamento:*)
+    const knownLabels = /entrega|pagamento|total|subtotal|pedido|taxa|desconto/i;
+    const nameRegex = /^\*([^*:]+)\*\s*$/gm;
+    let nameExec: RegExpExecArray | null;
+    while ((nameExec = nameRegex.exec(footer)) !== null) {
+      const candidate = nameExec[1].trim();
+      if (!knownLabels.test(candidate) && candidate.length >= 2) {
+        formData.cliente = candidate;
+        extractedFields.push('cliente');
+        break;
+      }
+    }
+    if (!formData.cliente) {
+      warnings.push('Nome do cliente não encontrado');
+    }
+
+    // Telefone no rodapé
+    const telFooterMatch = footer.match(/\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/);
+    if (telFooterMatch) {
+      const parsed = parseTelefone(telFooterMatch[0]);
+      if (parsed) {
+        formData.telefone_cliente = parsed;
+        extractedFields.push('telefone_cliente');
+      }
+    } else {
+      warnings.push('Telefone não encontrado');
+    }
+
+    // Endereço: bloco entre telefone e *Pagamento:*
+    const addressBlockMatch = footer.match(
+      /\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}\s*\n([\s\S]+?)(?=\n\s*\*Pagamento)/
+    );
+    if (addressBlockMatch && addressBlockMatch[1]) {
+      const addrLines = addressBlockMatch[1]
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (addrLines.length > 0) {
+        const addr = parseGoomerDeliveryAddress(addrLines);
+        formData.endereco = addr.endereco;
+        extractedFields.push('endereco');
+        if (addr.rua) formData.rua = addr.rua;
+        if (addr.numero) formData.numero = addr.numero;
+        if (addr.bairro) formData.bairro = addr.bairro;
+        if (addr.cidade) formData.cidade = addr.cidade;
+        if (addr.cep) formData.cep = addr.cep;
+        if (addr.complemento) formData.complemento = addr.complemento;
+        if (addr.obs_entrega) formData.obs_entrega = addr.obs_entrega;
+      }
+    }
+
+    // ---- Cartão / Obs
+    if (obsText) {
+      if (hasCartaoEscrito) {
+        // Com "Cartão Escrito": tentar formato estruturado, senão tratar tudo como cartão
+        const nomeObs = obsText.match(/Nome:\s*([^\n]+)/);
+        const cartaoObs = obsText.match(/Cart[aã]o:\s*([\s\S]+?)$/i);
+        if (cartaoObs && cartaoObs[1]) {
+          if (nomeObs && nomeObs[1]) {
+            formData.destinatario = nomeObs[1].trim();
+            extractedFields.push('destinatario');
+          }
+          formData.mensagem = cartaoObs[1].trim();
+        } else {
+          // Obs inteiro é o texto do cartão
+          formData.mensagem = obsText;
+        }
+        extractedFields.push('mensagem');
+      } else {
+        // Sem "Cartão Escrito": tentar formato estruturado ou jogar nas observações
+        const nomeObs = obsText.match(/Nome:\s*([^\n]+)/);
+        const cartaoObs = obsText.match(/Cart[aã]o:\s*([\s\S]+?)$/i);
+        if (nomeObs || cartaoObs) {
+          if (nomeObs && nomeObs[1]) {
+            formData.destinatario = nomeObs[1].trim();
+            extractedFields.push('destinatario');
+          }
+          if (cartaoObs && cartaoObs[1]) {
+            formData.mensagem = cartaoObs[1].trim();
+            extractedFields.push('mensagem');
+          }
+        } else {
+          formData.observacoes = obsText;
+          extractedFields.push('observacoes');
+        }
+      }
+    }
+
+    // Destinatário fallback
+    if (!formData.destinatario) {
+      if (hasPresenteado) {
+        warnings.push(
+          'Destinatário (presenteado) não especificado nas observações; verifique com o cliente.'
+        );
+      }
+      formData.destinatario = formData.cliente ?? '';
+      if (formData.cliente) extractedFields.push('destinatario');
+    }
+
+  } else {
+    // ============================================================
+    // GOOMER CATÁLOGO (formato original)
+    // ============================================================
+    formData.tipo_pedido = 'Retirada';
+
+    // Tipo: *Pedido para retirada* ou *Pedido para entrega*
+    if (/\*Pedido para retirada\s*\*/i.test(norm)) {
+      formData.tipo_pedido = 'Retirada';
+      extractedFields.push('tipo_pedido');
+    } else if (/\*Pedido para entrega\s*\*/i.test(norm)) {
+      formData.tipo_pedido = 'Entrega';
+      extractedFields.push('tipo_pedido');
+    }
+
+    // Cliente: *Nome* logo após "*Pedido para retirada/entrega*"
+    const pedidoParaMatch = norm.match(
+      /\*Pedido para (?:retirada|entrega)\s*\*[\s\n]+\*([^*\n]+)\*/
+    );
+    if (pedidoParaMatch && pedidoParaMatch[1]) {
+      formData.cliente = pedidoParaMatch[1].trim();
+      extractedFields.push('cliente');
+    } else {
+      warnings.push('Nome do cliente não encontrado');
+    }
+
+    // Telefone
+    const telMatch = norm.match(/\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/);
+    if (telMatch) {
+      const parsed = parseTelefone(telMatch[0]);
+      if (parsed) {
+        formData.telefone_cliente = parsed;
+        extractedFields.push('telefone_cliente');
+      }
+    } else {
+      warnings.push('Telefone não encontrado');
+    }
+
+    // Destinatário e mensagem do cartão
+    if (obsText) {
+      const nomeObs = obsText.match(/Nome:\s*([^\n]+)/);
+      if (nomeObs && nomeObs[1]) {
+        formData.destinatario = nomeObs[1].trim();
+        extractedFields.push('destinatario');
+      }
+      const cartaoObs = obsText.match(/Cart[aã]o:\s*([\s\S]+?)$/i);
+      if (cartaoObs && cartaoObs[1]) {
+        formData.mensagem = cartaoObs[1].trim();
+        extractedFields.push('mensagem');
+      }
+    }
+    if (!formData.destinatario) {
+      formData.destinatario = formData.cliente ?? '';
+      if (formData.cliente) extractedFields.push('destinatario');
+    }
+
+    // Observações: Troco, Pagamento, Obs
+    const obsParts: string[] = [];
+    const trocoMatch = norm.match(/\*?Troco para:\s*R\$\s*[\d.,]+\s*\*?/i);
+    if (trocoMatch) obsParts.push(trocoMatch[0].replace(/\*/g, '').trim());
+    if (formData.pagamento) obsParts.push(`Pagamento: ${formData.pagamento}`);
+    if (obsText) obsParts.push(obsText);
+    if (obsParts.length > 0) {
+      formData.observacoes = obsParts.join('\n');
+      extractedFields.push('observacoes');
+    }
+
+    // Data/hora defaults para catálogo (não tem no texto)
+    formData.dia_entrega = dayjs().format('YYYY-MM-DD');
+    formData.horario = '08:00 - 18:00';
+    extractedFields.push('dia_entrega', 'horario');
+    warnings.push('Data/horário de entrega não vêm no pedido Goomer Catálogo; confira e ajuste.');
   }
 
-  // Goomer não traz data/hora de entrega no texto — usar hoje e faixa ampla para o usuário ajustar
-  formData.dia_entrega = dayjs().format('YYYY-MM-DD');
-  formData.horario = '08:00 - 18:00';
-  extractedFields.push('dia_entrega', 'horario');
-  warnings.push('Data/horário de entrega não vêm no pedido Goomer; confira e ajuste no wizard se precisar.');
   return { formData, warnings, extractedFields };
 }
 

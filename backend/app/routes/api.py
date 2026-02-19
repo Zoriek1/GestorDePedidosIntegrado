@@ -304,6 +304,31 @@ def criar_pedido():
                 # Não falhar a criação do pedido se houver erro na inserção na tabela auxiliar
                 print(f"[ERRO] Erro ao inserir pedido na tabela da fonte: {e}")
 
+        # Enviar push notification em background (não bloqueia a resposta)
+        try:
+            from flask import current_app
+
+            from app.services.notification_service import (
+                format_delivery_datetime,
+                send_push_to_all_async,
+            )
+
+            # Formatar data/hora de entrega
+            entrega_info = format_delivery_datetime(pedido.dia_entrega, pedido.horario)
+            if entrega_info:
+                body = f"#{pedido.id} - {destinatario} | {produto} | Entrega: {entrega_info}"
+            else:
+                body = f"#{pedido.id} - {destinatario} | {produto}"
+            
+            send_push_to_all_async(
+                app=current_app._get_current_object(),
+                title="Novo Pedido!",
+                body=body,
+                url="/",
+            )
+        except Exception:
+            pass  # Best-effort: não falhar criação do pedido
+
         # Resposta de sucesso
         return (
             jsonify(
@@ -903,6 +928,14 @@ def calcular_distancia_pedido_endpoint(pedido_id):
                 pedido.coords_lon = resultado["coords_destino_lon"]
             db.session.commit()
 
+            # Enfileirar cálculo de frete (não altera lógica de distância)
+            try:
+                from app.services.fila_taxa_entrega import enfileirar_calculo_taxa
+
+                enfileirar_calculo_taxa(pedido_id)
+            except Exception:
+                pass
+
             return jsonify(
                 {
                     "success": True,
@@ -1064,6 +1097,16 @@ def calcular_distancias_lote():
         except Exception as commit_error:
             print(f"[ERRO] Erro ao salvar distâncias: {commit_error}")
             db.session.rollback()
+        else:
+            # Enfileirar cálculo de frete para cada pedido que teve distância calculada (não altera lógica de distância)
+            try:
+                from app.services.fila_taxa_entrega import enfileirar_calculo_taxa
+
+                for r in resultados:
+                    if r.get("distancia_km") is not None and not r.get("cached"):
+                        enfileirar_calculo_taxa(r["id"])
+            except Exception:
+                pass
 
         # Ordenar por distância (None no final)
         resultados.sort(key=lambda x: (x["distancia_km"] is None, x["distancia_km"] or 0))

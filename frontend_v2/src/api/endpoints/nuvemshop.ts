@@ -8,6 +8,10 @@ export interface PendingScheduleItem {
   destinatario: string;
   dia_entrega: string | null;
   horario: string;
+  valor?: string | null;
+  produto?: string | null;
+  endereco?: string | null;
+  status_pagamento?: string | null;
   observacoes?: string;
 }
 
@@ -56,6 +60,7 @@ export function useDefineSchedule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nuvemshop', 'pendencias-agendamento'] });
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
     },
   });
 }
@@ -77,6 +82,7 @@ export function useProcessPendingNuvemshop() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nuvemshop', 'pendencias-agendamento'] });
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
     },
   });
 }

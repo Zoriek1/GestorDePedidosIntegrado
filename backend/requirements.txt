@@ -37,6 +37,9 @@ pytest-cov==4.1.0
 ruff==0.1.6
 black==23.12.1
 
+# Push Notifications (Web Push / VAPID)
+pywebpush>=2.0.0
+
 # Servidor WSGI para produção (opcional)
 # Descomente para usar em produção
 gunicorn==21.2.0

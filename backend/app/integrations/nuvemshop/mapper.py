@@ -422,13 +422,20 @@ def map_nuvemshop_order_to_pedido_data(
     produto, produto_detalhado = _format_produtos_detalhado(produtos)
 
     currency = _safe_str(order.get("currency")) or "BRL"
-    valor_raw = (
-        order.get("total_paid_by_customer")
-        or order.get("total_paid_by_customer_including_fees")
-        or order.get("total")
-        or ""
-    )
-    valor = _safe_str(valor_raw)
+    # Para pedidos pendentes, total_paid_by_customer é "0" ou "0.00".
+    # Usar total (valor real do pedido) como base e só preferir
+    # total_paid_by_customer quando ele for > 0 (pedido já pago).
+    paid_raw = _safe_str(order.get("total_paid_by_customer"))
+    paid_is_zero = paid_raw in ("", "0", "0.0", "0.00")
+    if paid_raw and not paid_is_zero:
+        valor_raw = paid_raw
+    else:
+        valor_raw = (
+            _safe_str(order.get("total"))
+            or _safe_str(order.get("total_paid_by_customer_including_fees"))
+            or ""
+        )
+    valor = valor_raw
     if currency.upper() == "BRL" and valor:
         valor = _format_brl(valor)
     elif valor:
@@ -580,6 +587,16 @@ def map_nuvemshop_order_to_pedido_data(
 
     observacoes = " | ".join([p for p in observacoes_parts if p])
 
+    # Montar obs_entrega incluindo complemento (floor/apt) + shipping option.
+    # O complemento contem dados cruciais para o entregador:
+    #   quadra/lote, edificio/sala, ponto de referencia, etc.
+    obs_entrega_parts = []
+    if complemento:
+        obs_entrega_parts.append(complemento)
+    if shipping_option_text:
+        obs_entrega_parts.append(shipping_option_text)
+    obs_entrega = " | ".join(obs_entrega_parts) if obs_entrega_parts else None
+
     pedido_data = {
         "cliente": cliente,
         "telefone_cliente": telefone,
@@ -592,10 +609,11 @@ def map_nuvemshop_order_to_pedido_data(
         "cep": _safe_str(shipping_address.get("zipcode")) or None,
         "rua": _safe_str(shipping_address.get("address")) or None,
         "numero": _safe_str(shipping_address.get("number")) or None,
+        "complemento": complemento or None,
         "bairro": _safe_str(shipping_address.get("locality")) or None,
         "cidade": _safe_str(shipping_address.get("city")) or None,
         "endereco": None,
-        "obs_entrega": shipping_option_text or None,
+        "obs_entrega": obs_entrega,
         "mensagem": mensagem_cartao,  # owner_note vai para mensagem (cartão)
         "pagamento": pagamento or None,
         "observacoes": observacoes,

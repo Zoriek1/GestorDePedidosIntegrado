@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Box, Typography, Stack, TextField } from '@mui/material';
+import { Box, Typography, Stack, TextField, Grid } from '@mui/material';
 import { usePedidos } from '../../api/endpoints/pedidos';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -8,11 +8,11 @@ import { SalesTable } from './components/SalesTable';
 import { SalesPeriodFilter } from './components/SalesPeriodFilter';
 import { SalesChart } from './components/SalesChart';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { 
-  calcularValorBrutoPedido, 
-  calcularValorRecebidoPedido, 
-  calcularValorEfetivoComFrete 
-} from './utils/valorEfetivo';
+import { SalesChannelDonut } from './components/SalesChannelDonut';
+import { SalesByHourChart } from './components/SalesByHourChart';
+import { SalesTopProducts } from './components/SalesTopProducts';
+import { SalesMetaProgress } from './components/SalesMetaProgress';
+import { calcularTotais } from './utils/salesAnalytics';
 import dayjs from 'dayjs';
 import 'dayjs/locale/pt-br';
 
@@ -26,6 +26,14 @@ export default function SalesPage() {
   const [startDate, setStartDate] = useState(now.startOf('month').format('YYYY-MM-DD'));
   const [endDate, setEndDate] = useState(now.endOf('month').format('YYYY-MM-DD'));
 
+  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [compareStartDate, setCompareStartDate] = useState(
+    now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD')
+  );
+  const [compareEndDate, setCompareEndDate] = useState(
+    now.subtract(1, 'month').endOf('month').format('YYYY-MM-DD')
+  );
+
   const [searchValue, setSearchValue] = useState('');
   const debouncedSearch = useDebouncedValue(searchValue, 400);
 
@@ -35,6 +43,35 @@ export default function SalesPage() {
     search: debouncedSearch || undefined,
     filtrar_por_criacao: true, // Filtrar por created_at
   });
+
+  const prevStartDate = useMemo(
+    () => dayjs(startDate).subtract(1, 'month').format('YYYY-MM-DD'),
+    [startDate]
+  );
+  const prevEndDate = useMemo(
+    () => dayjs(endDate).subtract(1, 'month').format('YYYY-MM-DD'),
+    [endDate]
+  );
+
+  const { data: previousData } = usePedidos(
+    {
+      data_inicio: prevStartDate,
+      data_fim: prevEndDate,
+      search: debouncedSearch || undefined,
+      filtrar_por_criacao: true,
+    },
+    { enabled: true }
+  );
+
+  const { data: compareData } = usePedidos(
+    {
+      data_inicio: compareStartDate,
+      data_fim: compareEndDate,
+      search: debouncedSearch || undefined,
+      filtrar_por_criacao: true,
+    },
+    { enabled: compareEnabled }
+  );
 
   // Filtrar cancelados no frontend (defensivo) e alertar se backend retornou cancelados
   const vendas = useMemo(() => {
@@ -46,32 +83,52 @@ export default function SalesPage() {
     return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
   }, [data?.pedidos]);
 
-  // Calcular KPIs usando helper centralizado
-  const kpis = useMemo(() => {
-    const quantidade = vendas.length;
-    
-    // Total de vendas no mês (bruto - soma de todos os valores)
-    const totalVendasBruto = vendas.reduce((sum, venda) => {
-      return sum + calcularValorBrutoPedido(venda);
-    }, 0);
-    
-    // Total recebido (considera status de pagamento: parcial=50%, pendente=0%, realizado=100%)
-    const totalRecebido = vendas.reduce((sum, venda) => {
-      return sum + calcularValorRecebidoPedido(venda);
-    }, 0);
-    
-    // Total efetivo (valor bruto - frete)
-    const totalEfetivo = vendas.reduce((sum, venda) => {
-      return sum + calcularValorEfetivoComFrete(venda);
-    }, 0);
+  const vendasAnterior = useMemo(() => {
+    const pedidos = previousData?.pedidos || [];
+    return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
+  }, [previousData?.pedidos]);
 
-    return {
-      quantidade,
-      totalVendasBruto,
-      totalRecebido,
-      totalEfetivo,
+  const vendasComparacao = useMemo(() => {
+    if (!compareEnabled) return [];
+    const pedidos = compareData?.pedidos || [];
+    return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
+  }, [compareEnabled, compareData?.pedidos]);
+
+  const baseTotals = useMemo(() => calcularTotais(vendas), [vendas]);
+
+  const projecaoFaturamento = useMemo(() => {
+    const start = dayjs(startDate);
+    const end = dayjs(endDate);
+    const isMesAtual = start.isSame(now.startOf('month'), 'day') && end.isSame(now.endOf('month'), 'day');
+    if (!isMesAtual) return undefined;
+    const diasNoMes = now.daysInMonth();
+    const diasDecorridos = Math.min(now.diff(start, 'day') + 1, diasNoMes);
+    if (diasDecorridos <= 0) return undefined;
+    const mediaDiaria = baseTotals.totalVendasBruto / diasDecorridos;
+    return mediaDiaria * diasNoMes;
+  }, [baseTotals.totalVendasBruto, startDate, endDate, now]);
+
+  const kpis = useMemo(() => ({
+    ...baseTotals,
+    projecaoFaturamento,
+  }), [baseTotals, projecaoFaturamento]);
+
+  const comparativoLabel = useMemo(() => dayjs(prevStartDate).format('MMM'), [prevStartDate]);
+  const comparativo = useMemo(() => {
+    const prevTotals = calcularTotais(vendasAnterior);
+    const calcPct = (atual: number, anterior: number) => {
+      if (!anterior || Number.isNaN(anterior)) return null;
+      return ((atual - anterior) / anterior) * 100;
     };
-  }, [vendas]);
+    return {
+      quantidade: calcPct(baseTotals.quantidade, prevTotals.quantidade),
+      totalVendasBruto: calcPct(baseTotals.totalVendasBruto, prevTotals.totalVendasBruto),
+      totalRecebido: calcPct(baseTotals.totalRecebido, prevTotals.totalRecebido),
+      totalEfetivo: calcPct(baseTotals.totalEfetivo, prevTotals.totalEfetivo),
+      ticketMedioEfetivo: calcPct(baseTotals.ticketMedioEfetivo, prevTotals.ticketMedioEfetivo),
+      projecaoFaturamento: projecaoFaturamento !== undefined ? calcPct(projecaoFaturamento, prevTotals.totalVendasBruto) : null,
+    };
+  }, [vendasAnterior, baseTotals, projecaoFaturamento]);
 
   // Formatar período em português
   const periodoFormatado = useMemo(() => {
@@ -107,9 +164,17 @@ export default function SalesPage() {
         <SalesPeriodFilter
           startDate={startDate}
           endDate={endDate}
+          compareEnabled={compareEnabled}
+          compareStartDate={compareStartDate}
+          compareEndDate={compareEndDate}
           onChange={(start, end) => {
             setStartDate(start);
             setEndDate(end);
+          }}
+          onCompareToggle={(enabled) => setCompareEnabled(enabled)}
+          onCompareChange={(start, end) => {
+            setCompareStartDate(start);
+            setCompareEndDate(end);
           }}
         />
       </Box>
@@ -120,8 +185,28 @@ export default function SalesPage() {
         <ErrorState message="Erro ao carregar vendas" onRetry={() => refetch()} />
       ) : (
         <>
-          <SalesKPIGrid kpis={kpis} />
-          <SalesChart vendas={vendas} startDate={startDate} endDate={endDate} />
+          <SalesKPIGrid kpis={kpis} comparativo={comparativo} comparativoLabel={comparativoLabel} />
+          <SalesMetaProgress startDate={startDate} totalEfetivo={kpis.totalEfetivo} />
+          <SalesChart
+            vendas={vendas}
+            startDate={startDate}
+            endDate={endDate}
+            compareVendas={compareEnabled ? vendasComparacao : undefined}
+            compareStartDate={compareEnabled ? compareStartDate : undefined}
+            compareEndDate={compareEnabled ? compareEndDate : undefined}
+            compareLabel={compareEnabled ? 'Período comparado' : undefined}
+          />
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <SalesChannelDonut vendas={vendas} />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <SalesTopProducts vendas={vendas} />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <SalesByHourChart vendas={vendas} />
+            </Grid>
+          </Grid>
           <SalesTable vendas={vendas} />
         </>
       )}

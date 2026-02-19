@@ -31,6 +31,7 @@ def _save_meta_faturamento(data: dict) -> None:
     with open(META_FATURAMENTO_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
+
 @config_bp.route("/taxa-entrega", methods=["GET"])
 @requires_auth
 def get_taxa_entrega_config():
@@ -41,6 +42,7 @@ def get_taxa_entrega_config():
         return jsonify({"success": True, "config": config})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 @config_bp.route("/taxa-entrega", methods=["POST"])
 @requires_edit_auth
@@ -67,7 +69,9 @@ def update_taxa_entrega_config():
         # Recarregar serviço
         taxa_entrega_service.config = taxa_entrega_service._carregar_config()
 
-        return jsonify({"success": True, "message": "Configuração atualizada com sucesso", "config": data})
+        return jsonify(
+            {"success": True, "message": "Configuração atualizada com sucesso", "config": data}
+        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

@@ -153,6 +153,7 @@ class NuvemshopOrderImporter:
                 if schedule_pending:
                     try:
                         from flask import current_app
+
                         app = current_app._get_current_object()
                         self._schedule_custom_fields_retry(order_id, pedido.id, app)
                     except Exception as exc:
@@ -262,9 +263,10 @@ class NuvemshopOrderImporter:
                 Pedido.created_at >= time_window_start,
                 Pedido.created_at <= time_window_end,
                 ~Pedido.id.in_(
-                    db.session.query(PedidoExternalRef.pedido_id)
-                    .filter(PedidoExternalRef.provider == "nuvemshop")
-                )
+                    db.session.query(PedidoExternalRef.pedido_id).filter(
+                        PedidoExternalRef.provider == "nuvemshop"
+                    )
+                ),
             )
             .order_by(Pedido.created_at.desc())
             .limit(1)
@@ -551,7 +553,9 @@ class NuvemshopOrderImporter:
         except Exception as e:
             logger.warning(f"Erro ao calcular distância para pedido #{pedido_id}: {e}")
 
-    def _schedule_custom_fields_retry(self, order_id: str, pedido_id: int, app, delay_seconds: int = 5) -> None:
+    def _schedule_custom_fields_retry(
+        self, order_id: str, pedido_id: int, app, delay_seconds: int = 5
+    ) -> None:
         """
         Agenda uma tarefa para buscar novamente o pedido da API após delay,
         para capturar custom fields que podem chegar com alguns segundos de atraso.
@@ -562,6 +566,7 @@ class NuvemshopOrderImporter:
             app: Instância do Flask app (para contexto)
             delay_seconds: Delay em segundos antes de tentar novamente (padrão: 5s)
         """
+
         def _retry_worker():
             try:
                 with app.app_context():
@@ -572,11 +577,15 @@ class NuvemshopOrderImporter:
                         return
 
                     # Verificar se há custom fields agora
-                    custom_fields = order.get("custom_fields") or order.get("order_custom_fields") or []
+                    custom_fields = (
+                        order.get("custom_fields") or order.get("order_custom_fields") or []
+                    )
                     has_custom_fields = bool(custom_fields and len(custom_fields) > 0)
 
                     if not has_custom_fields:
-                        logger.debug(f"[Retry] Pedido {order_id} ainda sem custom fields após {delay_seconds}s")
+                        logger.debug(
+                            f"[Retry] Pedido {order_id} ainda sem custom fields após {delay_seconds}s"
+                        )
                         return
 
                     # Buscar external_ref e pedido
@@ -607,10 +616,14 @@ class NuvemshopOrderImporter:
                         external_ref, pedido_data, schedule_pending, agendamento_source
                     )
 
-                    logger.info(f"[Retry] Pedido {pedido_id} atualizado com custom fields após {delay_seconds}s")
+                    logger.info(
+                        f"[Retry] Pedido {pedido_id} atualizado com custom fields após {delay_seconds}s"
+                    )
 
             except Exception as exc:
-                logger.warning(f"[Retry] Erro ao buscar custom fields para pedido {pedido_id}: {exc}")
+                logger.warning(
+                    f"[Retry] Erro ao buscar custom fields para pedido {pedido_id}: {exc}"
+                )
 
         # Agendar tarefa em thread separada após delay
         timer = threading.Timer(delay_seconds, _retry_worker)

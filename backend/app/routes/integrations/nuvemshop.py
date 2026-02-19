@@ -38,6 +38,7 @@ nuvemshop_bp = Blueprint("nuvemshop", __name__, url_prefix="/api/integrations/nu
 # Background webhook processing (Ack-First, Process-Later)
 # ---------------------------------------------------------------------------
 
+
 def _process_webhook_background(app, delivery_id: int) -> None:
     """
     Executa o processamento pesado de um webhook em thread separada.
@@ -51,15 +52,11 @@ def _process_webhook_background(app, delivery_id: int) -> None:
     """
     with app.app_context():
         try:
-            logger.info(
-                "[WebhookBG] Iniciando processamento do delivery_id=%s", delivery_id
-            )
+            logger.info("[WebhookBG] Iniciando processamento do delivery_id=%s", delivery_id)
 
             delivery = NuvemshopWebhookDelivery.query.get(delivery_id)
             if not delivery:
-                logger.error(
-                    "[WebhookBG] Delivery %s nao encontrado no banco.", delivery_id
-                )
+                logger.error("[WebhookBG] Delivery %s nao encontrado no banco.", delivery_id)
                 return
 
             if delivery.status != "pending":
@@ -70,9 +67,7 @@ def _process_webhook_background(app, delivery_id: int) -> None:
                 )
                 return
 
-            store = NuvemshopStore.query.filter_by(
-                store_id=delivery.store_id
-            ).first()
+            store = NuvemshopStore.query.filter_by(store_id=delivery.store_id).first()
 
             if not store:
                 logger.warning(
@@ -95,9 +90,7 @@ def _process_webhook_background(app, delivery_id: int) -> None:
             success = importer.process_delivery(delivery)
 
             if success:
-                logger.info(
-                    "[WebhookBG] Delivery %s processado com sucesso.", delivery_id
-                )
+                logger.info("[WebhookBG] Delivery %s processado com sucesso.", delivery_id)
             else:
                 logger.warning(
                     "[WebhookBG] Delivery %s processado com falha "

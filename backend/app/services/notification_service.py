@@ -41,6 +41,7 @@ def format_delivery_datetime(dia_entrega, horario: Optional[str] = None) -> str:
     if isinstance(dia_entrega, str):
         try:
             from datetime import datetime
+
             dia_entrega = datetime.strptime(dia_entrega, "%Y-%m-%d").date()
         except (ValueError, AttributeError):
             return ""
@@ -150,9 +151,9 @@ def send_push_to_all(
     # Remover subscriptions inválidas
     removed = 0
     if to_remove:
-        removed = PushSubscription.query.filter(
-            PushSubscription.id.in_(to_remove)
-        ).delete(synchronize_session="fetch")
+        removed = PushSubscription.query.filter(PushSubscription.id.in_(to_remove)).delete(
+            synchronize_session="fetch"
+        )
         db.session.commit()
 
     result = {"sent": sent, "failed": failed, "removed": removed}

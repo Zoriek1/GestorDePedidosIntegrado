@@ -121,7 +121,9 @@ class BaseConfig:
     # Push Notifications (VAPID / Web Push)
     VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY") or ""
     VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY") or ""
-    VAPID_CLAIMS_EMAIL = os.environ.get("VAPID_CLAIMS_EMAIL") or "mailto:contato@planteumaflor.com.br"
+    VAPID_CLAIMS_EMAIL = (
+        os.environ.get("VAPID_CLAIMS_EMAIL") or "mailto:contato@planteumaflor.com.br"
+    )
 
     # Nuvemshop (OAuth + Webhooks)
     NUVEMSHOP_APP_ID = os.environ.get("NUVEMSHOP_APP_ID") or ""

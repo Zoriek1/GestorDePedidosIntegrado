@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
 
 import requests
@@ -489,6 +489,12 @@ def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
             user_agent=Config.NUVEMSHOP_USER_AGENT,
         )
         order = client.get_order(ref.external_order_id)
+        try:
+            custom_fields = client.get_order_custom_fields(ref.external_order_id)
+            if custom_fields:
+                order["custom_fields"] = custom_fields
+        except Exception:
+            pass
     except Exception as exc:
         logger.warning(
             "Falha ao buscar pedido %s na API Nuvemshop para enriquecimento: %s",
@@ -619,3 +625,252 @@ def definir_agendamento_pedido(pedido_id: int):
     db.session.commit()
 
     return success_response({"pedido_id": pedido.id, "status": "updated"})
+
+
+@nuvemshop_bp.route("/debug/pedidos-recentes", methods=["GET"])
+@requires_role("admin")
+def debug_pedidos_recentes():
+    """
+    Endpoint de debug para visualizar custom_fields de pedidos recentes da API Nuvemshop.
+    """
+    if not Config.NUVEMSHOP_USER_AGENT:
+        return error_response(
+            "NUVEMSHOP_USER_AGENT nao configurado no servidor",
+            400,
+            details={"required_env": ["NUVEMSHOP_USER_AGENT"]},
+        )
+
+    limit = request.args.get("limit", type=int) or 10
+    days = request.args.get("days", type=int) or 1
+
+    # Buscar loja ativa
+    store = NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
+    if not store:
+        return error_response("Nenhuma loja Nuvemshop ativa encontrada", 404)
+
+    try:
+        client = NuvemshopClient(
+            store_id=str(store.store_id),
+            access_token=store.access_token,
+            user_agent=Config.NUVEMSHOP_USER_AGENT,
+        )
+
+        # Calcular data mínima (últimos N dias)
+        created_at_min = (datetime_now_brazil() - timedelta(days=days)).isoformat()
+
+        # Buscar pedidos recentes
+        orders_response = client.list_orders(limit=limit, created_at_min=created_at_min)
+        orders = orders_response.get("orders", [])
+        if isinstance(orders_response, list):
+            orders = orders_response
+
+        from app.integrations.nuvemshop.mapper import (
+            _extract_schedule_from_custom_fields,
+            map_nuvemshop_order_to_pedido_data,
+        )
+
+        pedidos_debug = []
+        for order in orders:
+            order_id = str(order.get("id", ""))
+            order_number = order.get("number")
+            created_at = order.get("created_at")
+
+            # Custom fields vêm de endpoint separado
+            custom_fields_raw = []
+            try:
+                custom_fields_raw = client.get_order_custom_fields(order_id)
+                if custom_fields_raw:
+                    order["custom_fields"] = custom_fields_raw
+            except Exception:
+                pass
+
+            # Extrair custom_fields usando função do mapper
+            (
+                custom_field_date,
+                custom_field_time,
+                custom_field_name,
+            ) = _extract_schedule_from_custom_fields(order)
+
+            # Mapear pedido completo
+            (
+                pedido_data,
+                schedule_pending,
+                _,
+                agendamento_source,
+            ) = map_nuvemshop_order_to_pedido_data(order)
+
+            # Verificar se já foi importado
+            external_ref = PedidoExternalRef.query.filter_by(
+                provider="nuvemshop",
+                store_id=str(store.store_id),
+                external_order_id=order_id,
+            ).first()
+
+            pedido_info = {
+                "order_id": order_id,
+                "order_number": order_number,
+                "created_at": created_at,
+                "custom_fields_raw": custom_fields_raw,
+                "custom_fields_extraidos": {
+                    "dia_entrega": custom_field_date.isoformat() if custom_field_date else None,
+                    "horario": custom_field_time,
+                    "campo_nome": custom_field_name,
+                },
+                "mapeamento": {
+                    "dia_entrega": (
+                        pedido_data.get("dia_entrega").isoformat()
+                        if pedido_data.get("dia_entrega")
+                        else None
+                    ),
+                    "horario": pedido_data.get("horario"),
+                    "agendamento_source": agendamento_source,
+                    "schedule_pending": schedule_pending,
+                },
+                "ja_importado": external_ref is not None,
+                "pedido_id": external_ref.pedido_id if external_ref else None,
+            }
+            pedidos_debug.append(pedido_info)
+
+        return success_response({"total": len(pedidos_debug), "pedidos": pedidos_debug})
+
+    except Exception as exc:
+        logger.exception("Erro ao buscar pedidos recentes para debug")
+        return error_response(
+            f"Erro ao buscar pedidos: {str(exc)}",
+            500,
+            details={"error_type": type(exc).__name__},
+        )
+
+
+@nuvemshop_bp.route("/debug/pedido/<order_id>", methods=["GET"])
+@requires_role("admin")
+def debug_pedido_especifico(order_id: str):
+    """
+    Endpoint de debug para visualizar custom_fields de um pedido específico da API Nuvemshop.
+    """
+    if not Config.NUVEMSHOP_USER_AGENT:
+        return error_response(
+            "NUVEMSHOP_USER_AGENT nao configurado no servidor",
+            400,
+            details={"required_env": ["NUVEMSHOP_USER_AGENT"]},
+        )
+
+    # Buscar loja ativa
+    store = NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
+    if not store:
+        return error_response("Nenhuma loja Nuvemshop ativa encontrada", 404)
+
+    try:
+        client = NuvemshopClient(
+            store_id=str(store.store_id),
+            access_token=store.access_token,
+            user_agent=Config.NUVEMSHOP_USER_AGENT,
+        )
+
+        # Buscar pedido específico
+        order = client.get_order(order_id)
+        try:
+            custom_fields = client.get_order_custom_fields(order_id)
+            if custom_fields:
+                order["custom_fields"] = custom_fields
+        except Exception:
+            pass
+
+        from app.integrations.nuvemshop.mapper import (
+            _extract_schedule_from_custom_fields,
+            map_nuvemshop_order_to_pedido_data,
+        )
+
+        # Extrair custom_fields raw
+        custom_fields_raw = order.get("custom_fields") or order.get("order_custom_fields") or []
+
+        # Extrair custom_fields usando função do mapper
+        (
+            custom_field_date,
+            custom_field_time,
+            custom_field_name,
+        ) = _extract_schedule_from_custom_fields(order)
+
+        # Mapear pedido completo
+        (
+            pedido_data,
+            schedule_pending,
+            shipping_option_text,
+            agendamento_source,
+        ) = map_nuvemshop_order_to_pedido_data(order)
+
+        # Verificar se já foi importado
+        external_ref = PedidoExternalRef.query.filter_by(
+            provider="nuvemshop",
+            store_id=str(store.store_id),
+            external_order_id=str(order_id),
+        ).first()
+
+        pedido_local = None
+        if external_ref:
+            pedido_local = Pedido.query.get(external_ref.pedido_id)
+
+        debug_info = {
+            "order_id": str(order.get("id", "")),
+            "order_number": order.get("number"),
+            "created_at": order.get("created_at"),
+            "order_json": order,  # JSON completo do pedido
+            "custom_fields_raw": custom_fields_raw,
+            "custom_fields_extraidos": {
+                "dia_entrega": custom_field_date.isoformat() if custom_field_date else None,
+                "horario": custom_field_time,
+                "campo_nome": custom_field_name,
+            },
+            "mapeamento": {
+                "dia_entrega": (
+                    pedido_data.get("dia_entrega").isoformat()
+                    if pedido_data.get("dia_entrega")
+                    else None
+                ),
+                "horario": pedido_data.get("horario"),
+                "agendamento_source": agendamento_source,
+                "schedule_pending": schedule_pending,
+                "shipping_option_text": shipping_option_text,
+                "pedido_data_completo": pedido_data,
+            },
+            "status_importacao": {
+                "ja_importado": external_ref is not None,
+                "pedido_id": external_ref.pedido_id if external_ref else None,
+                "schedule_pending": external_ref.schedule_pending if external_ref else None,
+                "agendamento_source": external_ref.agendamento_source if external_ref else None,
+            },
+            "pedido_local": (
+                {
+                    "id": pedido_local.id,
+                    "cliente": pedido_local.cliente,
+                    "destinatario": pedido_local.destinatario,
+                    "dia_entrega": (
+                        pedido_local.dia_entrega.isoformat() if pedido_local.dia_entrega else None
+                    ),
+                    "horario": pedido_local.horario,
+                    "produto": pedido_local.produto,
+                    "valor": pedido_local.valor,
+                }
+                if pedido_local
+                else None
+            ),
+        }
+
+        return success_response(debug_info)
+
+    except requests.HTTPError as exc:
+        status_code = getattr(exc.response, "status_code", None)
+        if status_code == 404:
+            return error_response(f"Pedido {order_id} nao encontrado na API Nuvemshop", 404)
+        return error_response(
+            f"Erro HTTP ao buscar pedido: {exc}",
+            500,
+            details={"http_status": status_code},
+        )
+    except Exception as exc:
+        logger.exception("Erro ao buscar pedido específico para debug")
+        return error_response(
+            f"Erro ao buscar pedido: {str(exc)}",
+            500,
+            details={"error_type": type(exc).__name__},
+        )

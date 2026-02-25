@@ -76,12 +76,19 @@ class BaseConfig:
     # Secret key para sessões
     SECRET_KEY = os.environ.get("SECRET_KEY") or "plante-uma-flor-pwa-secret-key-2024"
 
-    # Banco de dados SQLite
-    # Novo local: %USERPROFILE%/var/lib/database/database.db (fora do repositório)
+    # Banco de dados
+    # PostgreSQL: use DATABASE_URL (ex: postgresql://user:pass@host:port/dbname)
+    # SQLite: default %USERPROFILE%/var/lib/database/database.db
     DATABASE_PATH = _DB_EXTERNAL_DIR / "database.db"
-    # Formatar caminho para SQLite (Windows precisa de barras normais ou r'')
-    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE_PATH.as_posix()}"
+    SQLALCHEMY_DATABASE_URI = (
+        os.environ.get("DATABASE_URL") or f"sqlite:///{DATABASE_PATH.as_posix()}"
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Frontend (path do dist para servir SPA)
+    FRONTEND_DIST_PATH = (
+        Path(os.environ["FRONTEND_DIST_PATH"]) if os.environ.get("FRONTEND_DIST_PATH") else None
+    )
 
     # Configurações gerais
     JSON_AS_ASCII = False  # Suporte a caracteres UTF-8 em JSON

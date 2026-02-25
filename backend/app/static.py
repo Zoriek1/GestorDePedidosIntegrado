@@ -123,8 +123,14 @@ def register_static_routes(app):
             abort(404)
 
         try:
-            # Apontar para o frontend novo (frontend_v2/dist)
-            frontend_dir = Path(__file__).parent.parent.parent / "frontend_v2" / "dist"
+            # Path do frontend: FRONTEND_DIST_PATH ou default {raiz}/frontend_v2/dist
+            from flask import current_app
+
+            frontend_dir = current_app.config.get("FRONTEND_DIST_PATH")
+            if frontend_dir is None:
+                frontend_dir = Path(__file__).parent.parent.parent / "frontend_v2" / "dist"
+            else:
+                frontend_dir = Path(frontend_dir)
 
             # Normalizar o path para evitar problemas
             if path == "" or path is None:
@@ -169,7 +175,13 @@ def register_static_routes(app):
             print(f"[ERRO] Erro ao servir arquivo '{path}': {e}")
             # Tentar servir o index.html como fallback
             try:
-                frontend_dir = Path(__file__).parent.parent.parent / "frontend_v2" / "dist"
+                from flask import current_app
+
+                frontend_dir = current_app.config.get("FRONTEND_DIST_PATH")
+                if frontend_dir is None:
+                    frontend_dir = Path(__file__).parent.parent.parent / "frontend_v2" / "dist"
+                else:
+                    frontend_dir = Path(frontend_dir)
                 response = send_from_directory(str(frontend_dir), "index.html")
                 response = add_security_headers(response)
                 response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

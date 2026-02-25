@@ -228,6 +228,30 @@ def _format_brl(value: str) -> str:
     return f"R$ {normalized}"
 
 
+def _normalize_valor_canonical(value: str) -> str:
+    """
+    Normaliza valor bruto da API para string canônica "xxx.xx" (ponto decimal, sem R$).
+    Usado para persistir no DB e evitar quebra de lógica (somas, comparações).
+    """
+    if not value:
+        return ""
+    raw = str(value).strip().replace("R$", "").strip()
+    if not raw:
+        return ""
+    # Formato BR: vírgula decimal, ponto milhar
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    elif "." in raw:
+        dot_count = raw.count(".")
+        if dot_count > 1:
+            raw = raw.replace(".", "")
+    try:
+        f = float(raw)
+        return f"{f:.2f}"
+    except (ValueError, TypeError):
+        return ""
+
+
 def _parse_datetime(value: Any) -> Optional[datetime]:
     if not value:
         return None
@@ -347,17 +371,83 @@ def _collect_text_for_date_search(order: Dict[str, Any], shipping_option_text: s
     return " | ".join([p for p in parts if p])
 
 
+# Nomes de campos personalizados que indicam data de entrega (Huapps/Nuvemshop)
+_DATE_FIELD_NAMES = frozenset(
+    {"data da entrega", "data", "agendamento", "data agendada", "data entrega"}
+)
+# Nomes que indicam período/horário
+_TIME_FIELD_NAMES = frozenset(
+    {"período da entrega", "período", "periodo", "horário", "horario", "agendamento"}
+)
+# Nome do campo de destinatário
+_DESTINATARIO_FIELD_NAMES = frozenset(
+    {"nome do destinatário", "nome destinatario", "destinatário", "destinatario"}
+)
+
+
 def _extract_schedule_from_custom_fields(
     order: Dict[str, Any],
 ) -> Tuple[Optional[date], Optional[str], Optional[str]]:
     """
     Extrai data/horário de entrega de Order Custom Fields.
 
-    Alguns apps (ex.: agendadores) salvam a data escolhida em um custom field do pedido.
-    Estruturas encontradas:
-    - order["custom_fields"] = [{"name": "...", "value": "02/01/2026"}, ...]
-    - ou chaves semelhantes (key/label/text/value).
+    Na API Nuvemshop, custom fields vêm do endpoint GET /orders/{id}/custom-fields
+    (precisam ser buscados separadamente e mesclados no order).
+
+    Campos Huapps comuns:
+    - "Data da Entrega" = "03/03/2026"
+    - "Período da Entrega" = "Manhã (09:00 - 12:00)"
+    - Ou em um único campo "Agendamento" = "03/03/2026 09:00 - 12:00"
+
+    Percorre TODOS os campos para obter data e horário (podem estar separados).
     """
+    candidates = []
+    for key in ("custom_fields", "order_custom_fields"):
+        value = order.get(key)
+        if isinstance(value, list):
+            candidates.extend([v for v in value if isinstance(v, dict)])
+
+    best_date: Optional[date] = None
+    best_time: Optional[str] = None
+    source_names: list = []
+
+    for entry in candidates:
+        name = _safe_str(
+            entry.get("name") or entry.get("key") or entry.get("label") or entry.get("title")
+        )
+        raw_value = _safe_str(
+            entry.get("value") or entry.get("text") or entry.get("data") or entry.get("string")
+        )
+        if not raw_value:
+            continue
+
+        name_lower = name.lower()
+        combined = f"{name} {raw_value}".strip()
+
+        # Extrair data (de valor ou nome+valor)
+        extracted_date = _extract_date_from_text(raw_value) or _extract_date_from_text(combined)
+        if extracted_date and (name_lower in _DATE_FIELD_NAMES or not best_date):
+            best_date = extracted_date
+            if name and name not in source_names:
+                source_names.append(name)
+
+        # Extrair horário (de valor ou nome+valor)
+        extracted_time = _extract_time_interval(raw_value) or _extract_time_interval(combined)
+        if extracted_time and (name_lower in _TIME_FIELD_NAMES or not best_time):
+            best_time = extracted_time
+            if name and name not in source_names:
+                source_names.append(name)
+
+    source = (
+        " | ".join(source_names)
+        if source_names
+        else ("custom_field" if (best_date or best_time) else None)
+    )
+    return best_date, best_time, source
+
+
+def _extract_destinatario_from_custom_fields(order: Dict[str, Any]) -> Optional[str]:
+    """Extrai Nome do Destinatário de custom fields (Huapps)."""
     candidates = []
     for key in ("custom_fields", "order_custom_fields"):
         value = order.get(key)
@@ -371,22 +461,11 @@ def _extract_schedule_from_custom_fields(
         raw_value = _safe_str(
             entry.get("value") or entry.get("text") or entry.get("data") or entry.get("string")
         )
-        if not raw_value:
+        if not raw_value or not raw_value.strip():
             continue
-
-        extracted_date = _extract_date_from_text(raw_value)
-        extracted_time = _extract_time_interval(raw_value)
-        if extracted_date or extracted_time:
-            return extracted_date, extracted_time, (name or "custom_field")
-
-        # fallback: alguns campos podem embutir texto maior; tentar extrair no conjunto
-        combined = f"{name} {raw_value}".strip()
-        extracted_date = _extract_date_from_text(combined)
-        extracted_time = _extract_time_interval(combined)
-        if extracted_date or extracted_time:
-            return extracted_date, extracted_time, (name or "custom_field")
-
-    return None, None, None
+        if name.lower() in _DESTINATARIO_FIELD_NAMES:
+            return raw_value.strip()
+    return None
 
 
 def map_nuvemshop_order_to_pedido_data(
@@ -403,6 +482,10 @@ def map_nuvemshop_order_to_pedido_data(
 
     cliente = _safe_str(order.get("contact_name") or customer.get("name")) or "Nao informado"
     destinatario = _safe_str(shipping_address.get("name")) or cliente
+    # Huapps: Nome do Destinatário pode vir em custom field (diferente do comprador)
+    cf_destinatario = _extract_destinatario_from_custom_fields(order)
+    if cf_destinatario:
+        destinatario = cf_destinatario
 
     telefone = _normalize_phone(
         _safe_str(
@@ -421,7 +504,7 @@ def map_nuvemshop_order_to_pedido_data(
     produtos = order.get("products") or []
     produto, produto_detalhado = _format_produtos_detalhado(produtos)
 
-    currency = _safe_str(order.get("currency")) or "BRL"
+    _currency = _safe_str(order.get("currency")) or "BRL"
     # Para pedidos pendentes, total_paid_by_customer é "0" ou "0.00".
     # Usar total (valor real do pedido) como base e só preferir
     # total_paid_by_customer quando ele for > 0 (pedido já pago).
@@ -435,11 +518,10 @@ def map_nuvemshop_order_to_pedido_data(
             or _safe_str(order.get("total_paid_by_customer_including_fees"))
             or ""
         )
-    valor = valor_raw
-    if currency.upper() == "BRL" and valor:
-        valor = _format_brl(valor)
-    elif valor:
-        valor = f"{currency} {valor}"
+    # Persistir valor no formato canônico "xxx.xx" (evita "R$ xxx,xx" que quebra somas no backend)
+    valor = _normalize_valor_canonical(valor_raw) if valor_raw else None
+    if valor == "":
+        valor = None
 
     # Extrair forma de pagamento de múltiplos campos possíveis
     payment_details = order.get("payment_details") or {}

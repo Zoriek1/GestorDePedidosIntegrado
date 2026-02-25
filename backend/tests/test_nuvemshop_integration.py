@@ -98,6 +98,44 @@ def test_map_order_date_from_custom_field():
     assert "custom_field" in agendamento_source
 
 
+def test_map_order_huapps_separate_custom_fields():
+    """Testa extração quando Data da Entrega e Período da Entrega vêm em campos separados"""
+    order = {
+        "id": 1905409827,
+        "number": 172,
+        "token": "abc",
+        "contact_name": "Rayssa Rafaellen",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-20T10:00:00-0300",
+        "currency": "BRL",
+        "total": "134.80",
+        "storefront": "store",
+        "shipping_option": "Entrega Agendada (Huapps)",
+        "custom_fields": [
+            {"name": "Data da Entrega", "value": "03/03/2026"},
+            {"name": "Período da Entrega", "value": "Manhã (09:00 - 12:00)"},
+            {"name": "Nome do Destinatário", "value": "Letícia Justo"},
+        ],
+        "shipping_address": {
+            "name": "Rayssa Rafaellen",
+            "address": "Rua T 55",
+            "number": "930",
+            "locality": "Setor Bueno",
+            "city": "Goiânia",
+            "zipcode": "74215170",
+        },
+        "products": [{"name": "Buquê de flor do campo P", "quantity": 1}],
+    }
+
+    pedido_data, schedule_pending, _, agendamento_source = map_nuvemshop_order_to_pedido_data(order)
+
+    assert pedido_data["dia_entrega"] == date(2026, 3, 3)
+    assert pedido_data["horario"] == "09:00 - 12:00"
+    assert pedido_data["destinatario"] == "Letícia Justo"
+    assert schedule_pending is False
+    assert "custom_field" in (agendamento_source or "")
+
+
 def test_map_order_storefront_to_canal():
     """Testa mapeamento de storefront para canal"""
     # Teste com storefront = "store" (Site)

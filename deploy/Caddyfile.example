@@ -1,0 +1,7 @@
+# Caddy - Proxy reverso para Plante Uma Flor
+# SSL automático com Let's Encrypt
+# Uso: caddy run --config Caddyfile
+
+seu-dominio.com {
+    reverse_proxy 127.0.0.1:5000
+}

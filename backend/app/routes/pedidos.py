@@ -84,6 +84,7 @@ def listar_pedidos():
             data_fim=data_fim_obj,
             search=search,
             excluir_ocultos=excluir_ocultos,
+            excluir_deletados=True,
             filtrar_por_criacao=filtrar_por_criacao,
             ordenar_por=sort_by,
             ordenar_direcao=sort_order,

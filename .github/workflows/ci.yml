@@ -10,7 +10,7 @@ on:
 jobs:
   backend:
     name: Backend (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -43,6 +43,7 @@ jobs:
       - name: Run pytest (unit tests)
         working-directory: backend
         env:
+          FLASK_ENV: testing
           SQLITE_FOREIGN_KEYS: "OFF"
         run: |
           pytest tests/ -v --cov=app --cov-report=term-missing -m "not integration and not slow"
@@ -50,13 +51,14 @@ jobs:
       - name: Run pytest (integration tests)
         working-directory: backend
         env:
+          FLASK_ENV: testing
           SQLITE_FOREIGN_KEYS: "OFF"
         run: |
           pytest tests/ -v -m "integration" --tb=short
 
   frontend:
     name: Frontend (Node.js)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
       - name: Checkout code

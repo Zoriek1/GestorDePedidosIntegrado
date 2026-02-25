@@ -41,6 +41,16 @@ docker compose up -d
 
 **Referência no projeto:** `backend/app/middleware.py` (proxy), `backend/app/config.py` (`USE_HTTPS`), `docs/configuration.md` (produção).
 
+### Tunnel (Cloudflare Tunnel, ngrok, etc.)
+
+Quando o acesso é por domínio via tunnel (ex.: `https://gestaopedidos.planteumaflor.online` apontando para `http://VPS:5000`):
+
+1. **Backend:** no `.env` da raiz (ou do Compose), defina `USE_HTTPS=true` para o backend gerar links/redirects em HTTPS quando necessário.
+2. **Frontend:** o build em Docker já usa API relativa (`/api`), então o login e as chamadas à API vão para o mesmo host que a página (o tunnel encaminha tudo para o backend). Não use `VITE_API_BASE_URL` absoluta (ex.: `http://IP:5000/api`) no build de produção.
+3. **Tunnel:** configure o tunnel para encaminhar **todo** o host (incluindo `/api/*`) para `http://127.0.0.1:5000` (ou o IP/porta do backend). Assim tanto a SPA quanto a API são servidas pelo mesmo backend.
+
+Se o login não funcionar pelo domínio e funcionar por IP:5000, confira que o tunnel encaminha `/api` e que não há bloqueio de headers (ex.: `Authorization`).
+
 ---
 
 ## 3. Process manager (quando não usar Docker)

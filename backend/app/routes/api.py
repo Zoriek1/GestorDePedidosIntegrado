@@ -3,6 +3,8 @@
 Rotas da API REST - PWA v3.0
 API completa para o frontend PWA
 """
+from __future__ import annotations
+
 import re
 from datetime import datetime
 

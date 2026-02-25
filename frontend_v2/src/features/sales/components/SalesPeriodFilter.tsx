@@ -20,6 +20,11 @@ export interface SalesPeriodFilterProps {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   onChange: (startDate: string, endDate: string) => void;
+  compareEnabled?: boolean;
+  compareStartDate?: string;
+  compareEndDate?: string;
+  onCompareToggle?: (enabled: boolean) => void;
+  onCompareChange?: (startDate: string, endDate: string) => void;
 }
 
 const QUICK_PERIODS = [
@@ -30,10 +35,26 @@ const QUICK_PERIODS = [
   { label: 'Este ano', months: -12 },
 ];
 
-export function SalesPeriodFilter({ startDate, endDate, onChange }: SalesPeriodFilterProps) {
+export function SalesPeriodFilter({
+  startDate,
+  endDate,
+  onChange,
+  compareEnabled = false,
+  compareStartDate,
+  compareEndDate,
+  onCompareToggle,
+  onCompareChange,
+}: SalesPeriodFilterProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [tempStartDate, setTempStartDate] = useState<Dayjs | null>(dayjs(startDate));
   const [tempEndDate, setTempEndDate] = useState<Dayjs | null>(dayjs(endDate));
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false);
+  const [tempCompareStart, setTempCompareStart] = useState<Dayjs | null>(
+    compareStartDate ? dayjs(compareStartDate) : null
+  );
+  const [tempCompareEnd, setTempCompareEnd] = useState<Dayjs | null>(
+    compareEndDate ? dayjs(compareEndDate) : null
+  );
 
   const handleQuickPeriod = (months: number) => {
     const now = dayjs();
@@ -64,6 +85,17 @@ export function SalesPeriodFilter({ startDate, endDate, onChange }: SalesPeriodF
     }
   };
 
+  const handleCompareConfirm = () => {
+    if (tempCompareStart && tempCompareEnd && onCompareChange) {
+      onCompareChange(
+        tempCompareStart.startOf('day').format('YYYY-MM-DD'),
+        tempCompareEnd.endOf('day').format('YYYY-MM-DD')
+      );
+      setCompareDialogOpen(false);
+      onCompareToggle?.(true);
+    }
+  };
+
   return (
     <Box>
       <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
@@ -80,10 +112,34 @@ export function SalesPeriodFilter({ startDate, endDate, onChange }: SalesPeriodF
         <Button
           size="small"
           variant="contained"
-          onClick={() => setDialogOpen(true)}
+          onClick={() => {
+            setTempStartDate(dayjs(startDate));
+            setTempEndDate(dayjs(endDate));
+            setDialogOpen(true);
+          }}
         >
           Período personalizado
         </Button>
+        <Button
+          size="small"
+          variant={compareEnabled ? 'outlined' : 'contained'}
+          onClick={() => {
+            setTempCompareStart(compareStartDate ? dayjs(compareStartDate) : null);
+            setTempCompareEnd(compareEndDate ? dayjs(compareEndDate) : null);
+            setCompareDialogOpen(true);
+          }}
+        >
+          {compareEnabled ? 'Editar comparação' : 'Comparar com...'}
+        </Button>
+        {compareEnabled && (
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => onCompareToggle?.(false)}
+          >
+            Remover comparação
+          </Button>
+        )}
       </Stack>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -110,6 +166,36 @@ export function SalesPeriodFilter({ startDate, endDate, onChange }: SalesPeriodF
             onClick={handleCustomDateConfirm}
             variant="contained"
             disabled={!tempStartDate || !tempEndDate}
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={compareDialogOpen} onClose={() => setCompareDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Selecionar Período de Comparação</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <DatePicker
+              label="Data inicial"
+              value={tempCompareStart}
+              onChange={(newValue) => setTempCompareStart(newValue)}
+              slotProps={{ textField: { fullWidth: true } }}
+            />
+            <DatePicker
+              label="Data final"
+              value={tempCompareEnd}
+              onChange={(newValue) => setTempCompareEnd(newValue)}
+              slotProps={{ textField: { fullWidth: true } }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCompareDialogOpen(false)}>Cancelar</Button>
+          <Button
+            onClick={handleCompareConfirm}
+            variant="contained"
+            disabled={!tempCompareStart || !tempCompareEnd}
           >
             Confirmar
           </Button>

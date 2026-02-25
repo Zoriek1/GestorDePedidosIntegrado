@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback } from 'react';
+import React, { ReactNode, useCallback, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -15,6 +15,9 @@ import {
   Divider,
   Stack,
   Chip,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon,
 } from '@mui/material';
 import {
   LocalFlorist,
@@ -24,11 +27,16 @@ import {
   CloudDone,
   Menu as MenuIcon,
   NotificationsNone,
+  Add as AddIcon,
+  Bolt as BoltIcon,
+  AddShoppingCart as AddShoppingCartIcon,
+  Settings,
 } from '@mui/icons-material';
 
-import { SettingsButton } from '../components/uiverse/SettingsButton/SettingsButton';
 import { useAuth } from '../features/auth/authStore';
+import { NotificationManager } from '../features/notifications/NotificationManager';
 import { useOffline } from '../lib/offline/useOffline';
+import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
 
 interface AppShellProps {
   children: ReactNode;
@@ -42,6 +50,8 @@ export function AppShell({ children }: AppShellProps) {
   const { isOnline, outboxCount } = useOffline();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [navMenuEl, setNavMenuEl] = React.useState<null | HTMLElement>(null);
+  const [quickEntryOpen, setQuickEntryOpen] = useState(false);
+  const [speedDialOpen, setSpeedDialOpen] = useState(false);
   
   // Full width para páginas de wizard de pedido
   const isOrderWizardPage =
@@ -83,8 +93,18 @@ export function AppShell({ children }: AppShellProps) {
       }
     }
     handleNavMenuClose();
+    setSpeedDialOpen(false);
     navigate('/pedidos/novo', { state: { orderReset: Date.now() } });
   }, [handleNavMenuClose, navigate]);
+
+  const handleQuickEntryOpen = useCallback(() => {
+    setSpeedDialOpen(false);
+    setQuickEntryOpen(true);
+  }, []);
+
+  const handleQuickEntryClose = useCallback(() => {
+    setQuickEntryOpen(false);
+  }, []);
 
   const handleNavigate = (path: string) => {
     navigate(path);
@@ -139,9 +159,14 @@ export function AppShell({ children }: AppShellProps) {
                   <MenuItem onClick={() => handleNavigate('/vendas')}>Vendas</MenuItem>
                   <MenuItem onClick={() => handleNavigate('/clientes')}>Clientes</MenuItem>
                   <MenuItem onClick={() => handleNavigate('/fontes-pedido')}>Fontes</MenuItem>
+                  <MenuItem onClick={() => handleNavigate('/integracoes/nuvemshop')}>Nuvemshop</MenuItem>
                 </>
               )}
               <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
+              <MenuItem onClick={() => handleNavigate('/configuracoes')}>
+                <Settings sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
+                Configurações
+              </MenuItem>
             </Menu>
           </Box>
 
@@ -198,11 +223,19 @@ export function AppShell({ children }: AppShellProps) {
                 <Button color="inherit" onClick={() => handleNavigate('/fontes-pedido')} sx={{ textTransform: 'none' }}>
                   Fontes
                 </Button>
+                <Button color="inherit" onClick={() => handleNavigate('/integracoes/nuvemshop')} sx={{ textTransform: 'none' }}>
+                  Nuvemshop
+                </Button>
               </>
             )}
             <Button color="inherit" onClick={() => handleNavigate('/rota-entrega')} sx={{ textTransform: 'none' }}>
               Rota
             </Button>
+            <Tooltip title="Configurações">
+              <IconButton color="inherit" onClick={() => handleNavigate('/configuracoes')}>
+                <Settings />
+              </IconButton>
+            </Tooltip>
           </Box>
 
           {/* Seção Direita: Notificações + Avatar */}
@@ -286,12 +319,63 @@ export function AppShell({ children }: AppShellProps) {
           )}
         </Toolbar>
       </AppBar>
+      {/* SpeedDial com opções de criar pedido */}
       {authenticated && isOrdersPage && (
-        <SettingsButton
-          onClick={handleCreateOrder}
-          aria-label="Criar pedido"
-        />
+        <SpeedDial
+          ariaLabel="Opções de criação"
+          sx={{ 
+            position: 'fixed', 
+            bottom: 24, 
+            right: 24,
+            '& .MuiFab-primary': {
+              bgcolor: 'primary.main',
+              '&:hover': {
+                bgcolor: 'primary.dark',
+              },
+            },
+          }}
+          icon={<SpeedDialIcon openIcon={<AddIcon />} />}
+          open={speedDialOpen}
+          onOpen={() => setSpeedDialOpen(true)}
+          onClose={() => setSpeedDialOpen(false)}
+        >
+          <SpeedDialAction
+            icon={<AddShoppingCartIcon />}
+            tooltipTitle="Novo Pedido"
+            tooltipOpen
+            onClick={handleCreateOrder}
+            sx={{
+              '& .MuiSpeedDialAction-staticTooltipLabel': {
+                whiteSpace: 'nowrap',
+              },
+            }}
+          />
+          <SpeedDialAction
+            icon={<BoltIcon />}
+            tooltipTitle="Entrada Rápida"
+            tooltipOpen
+            onClick={handleQuickEntryOpen}
+            sx={{
+              '& .MuiFab-primary': {
+                bgcolor: 'warning.main',
+                color: 'warning.contrastText',
+                '&:hover': {
+                  bgcolor: 'warning.dark',
+                },
+              },
+              '& .MuiSpeedDialAction-staticTooltipLabel': {
+                whiteSpace: 'nowrap',
+              },
+            }}
+          />
+        </SpeedDial>
       )}
+
+      {/* Push Notification Manager (invisível, registra subscription) */}
+      {authenticated && <NotificationManager />}
+
+      {/* Modal de Entrada Rápida */}
+      <QuickEntryModal open={quickEntryOpen} onClose={handleQuickEntryClose} />
       <Container
         maxWidth={isOrderWizardPage ? false : 'xl'}
         sx={{

@@ -70,16 +70,37 @@ def get_tabela_fonte(fonte_id):
     return f"pedidos_{nome_normalizado}"
 
 
+def _table_exists(nome_tabela):
+    """Verifica se tabela existe (SQLite ou PostgreSQL)"""
+    dialect = db.engine.dialect.name
+    with db.engine.connect() as conn:
+        if dialect == "sqlite":
+            result = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
+                {"name": nome_tabela},
+            )
+        else:
+            result = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = :name"
+                ),
+                {"name": nome_tabela},
+            )
+        return result.fetchone() is not None
+
+
 def criar_tabela_fonte(nome_tabela):
     """
-    Cria tabela SQL dinamicamente para uma fonte específica
+    Cria tabela SQL dinamicamente para uma fonte específica.
+    Suporta SQLite e PostgreSQL.
 
-    Estrutura da tabela:
-    - id (PK, AUTOINCREMENT)
+    Estrutura:
+    - id (PK, autoincrement)
     - pedido_id (INTEGER, UNIQUE, FK para pedidos.id)
-    - numero_sequencial (INTEGER, numeração própria da fonte)
-    - valor (VARCHAR, cópia do valor do pedido)
-    - created_at (DATETIME)
+    - numero_sequencial (INTEGER)
+    - valor (VARCHAR)
+    - created_at (TIMESTAMP)
 
     Args:
         nome_tabela (str): Nome da tabela (ex: "pedidos_whatsapp_paula")
@@ -87,24 +108,12 @@ def criar_tabela_fonte(nome_tabela):
     Returns:
         bool: True se tabela foi criada, False se já existia
     """
-    # Verificar se tabela já existe
-    with db.engine.connect() as conn:
-        result = conn.execute(
-            text(
-                f"""
-            SELECT name FROM sqlite_master
-            WHERE type='table' AND name='{nome_tabela}'
-        """
-            )
-        )
-        if result.fetchone():
-            return False  # Tabela já existe
+    if _table_exists(nome_tabela):
+        return False
 
-    # Criar tabela
-    with db.engine.connect() as conn:
-        conn.execute(
-            text(
-                f"""
+    dialect = db.engine.dialect.name
+    if dialect == "sqlite":
+        create_sql = f"""
             CREATE TABLE IF NOT EXISTS {nome_tabela} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 pedido_id INTEGER NOT NULL UNIQUE,
@@ -114,28 +123,31 @@ def criar_tabela_fonte(nome_tabela):
                 FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
             )
         """
+    else:
+        create_sql = f"""
+            CREATE TABLE IF NOT EXISTS {nome_tabela} (
+                id SERIAL PRIMARY KEY,
+                pedido_id INTEGER NOT NULL UNIQUE REFERENCES pedidos(id),
+                numero_sequencial INTEGER NOT NULL,
+                valor VARCHAR(20),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        )
+        """
 
-        # Criar índices para performance
+    with db.engine.connect() as conn:
+        conn.execute(text(create_sql))
         conn.execute(
             text(
-                f"""
-            CREATE INDEX IF NOT EXISTS idx_{nome_tabela}_pedido_id
-            ON {nome_tabela}(pedido_id)
-        """
+                f"CREATE INDEX IF NOT EXISTS idx_{nome_tabela}_pedido_id "
+                f"ON {nome_tabela}(pedido_id)"
             )
         )
-
         conn.execute(
             text(
-                f"""
-            CREATE INDEX IF NOT EXISTS idx_{nome_tabela}_numero_sequencial
-            ON {nome_tabela}(numero_sequencial)
-        """
+                f"CREATE INDEX IF NOT EXISTS idx_{nome_tabela}_numero_sequencial "
+                f"ON {nome_tabela}(numero_sequencial)"
             )
         )
-
         conn.commit()
 
     return True

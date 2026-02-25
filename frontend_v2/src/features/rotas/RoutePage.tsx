@@ -270,7 +270,7 @@ export default function RoutePage() {
     }
     const firstWithCoords = pedidosOrdenados.find((p) => p.coords_lat && p.coords_lon);
     if (firstWithCoords) return [firstWithCoords.coords_lat!, firstWithCoords.coords_lon!] as [number, number];
-    return [-23.5489, -46.6388] as [number, number]; // fallback
+    return [-16.6869, -49.2648] as [number, number]; // Goiânia, GO (fallback)
   }, [rotaData, pedidosOrdenados]);
 
   return (

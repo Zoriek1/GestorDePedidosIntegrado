@@ -134,8 +134,8 @@ export const pedidoFormSchema = z.object({
     .min(1, 'Valor do produto é obrigatório')
     .refine(
       (val) => {
-        const numericValue = parseFloat(val.replace(/[^\d,.-]/g, '').replace(',', '.'));
-        return !isNaN(numericValue) && numericValue >= 0;
+        const parsed = parseCurrencyToFloat(val);
+        return parsed !== undefined && parsed >= 0;
       },
       'Valor inválido'
     ),
@@ -252,16 +252,21 @@ export const pedidoFormDefaultValues: PedidoFormData = {
 export function parseCurrencyToFloat(value: string | undefined): number | undefined {
   if (!value) return undefined;
 
-  const cleaned = value.replace(/[^\d,.,-]/g, '');
+  // Remove prefixo R$ e espaços, mantém apenas dígitos, vírgula, ponto e hífen
+  const cleaned = value.replace(/R\$\s*/g, '').trim().replace(/[^\d,.-]/g, '');
 
-  // Se tem vírgula, tratar como formato BR
+  // Se tem vírgula, tratar como formato BR (1.000,00)
   if (cleaned.includes(',')) {
+    // Remove pontos (separadores de milhar) e substitui vírgula por ponto
     const normalized = cleaned.replace(/\./g, '').replace(',', '.');
     const parsed = parseFloat(normalized);
     return Number.isNaN(parsed) ? undefined : parsed;
   }
 
-  const parsed = parseFloat(cleaned);
+  // Se não tem vírgula, pode ser número puro ou formato incorreto
+  // Remove pontos e trata como número inteiro
+  const normalized = cleaned.replace(/\./g, '');
+  const parsed = parseFloat(normalized);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 

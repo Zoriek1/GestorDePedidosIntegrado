@@ -2,7 +2,7 @@
  * Order List component
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Grid, Box, Typography, Paper, Collapse, IconButton } from '@mui/material';
 import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import type { Pedido } from '../../../api/endpoints/pedidos';
@@ -27,19 +27,10 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
   // Estado para controlar quais grupos estão expandidos
   // Por padrão, apenas "HOJE" está expandido
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
-    // Estado inicial será calculado após os grupos serem conhecidos
-    return new Set();
+    const initialGroups = groupOrdersByDate(pedidosValidos);
+    const hojeGroup = initialGroups.find((g) => g.label === 'HOJE');
+    return hojeGroup ? new Set(['HOJE']) : new Set();
   });
-  
-  // Sincronizar estado inicial: expandir HOJE quando grupos estiverem disponíveis
-  useEffect(() => {
-    if (grupos.length > 0 && expandedGroups.size === 0) {
-      const hojeGroup = grupos.find(g => g.label === 'HOJE');
-      if (hojeGroup) {
-        setExpandedGroups(new Set(['HOJE']));
-      }
-    }
-  }, [grupos.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleGroup = (label: string) => {
     setExpandedGroups((prev) => {

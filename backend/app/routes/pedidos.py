@@ -7,12 +7,14 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 # Command Pattern Imports
 from app.commands.gerar_comprovante_command import GerarComprovanteCommand
 from app.middleware import requires_any_role, requires_edit_auth, requires_role
 from app.models.pedido import datetime_now_brazil
+from app.models.pedido_external_ref import PedidoExternalRef
+from app.models.pedido_manual_override import PedidoManualOverride
 from app.repositories.pedido_repository import PedidoRepository
 from app.schemas.common import error_response, success_response
 from app.schemas.pedido_schema import (
@@ -82,6 +84,7 @@ def listar_pedidos():
             data_fim=data_fim_obj,
             search=search,
             excluir_ocultos=excluir_ocultos,
+            excluir_deletados=True,
             filtrar_por_criacao=filtrar_por_criacao,
             ordenar_por=sort_by,
             ordenar_direcao=sort_order,
@@ -475,6 +478,31 @@ def criar_pedido():
             except Exception:
                 pass  # Não falhar se houver erro
 
+        # Enviar push notification em background (não bloqueia a resposta)
+        try:
+            from flask import current_app
+
+            from app.services.notification_service import (
+                format_delivery_datetime,
+                send_push_to_all_async,
+            )
+
+            # Formatar data/hora de entrega
+            entrega_info = format_delivery_datetime(pedido.dia_entrega, pedido.horario)
+            if entrega_info:
+                body = f"#{pedido.id} - {destinatario} | {produto} | Entrega: {entrega_info}"
+            else:
+                body = f"#{pedido.id} - {destinatario} | {produto}"
+
+            send_push_to_all_async(
+                app=current_app._get_current_object(),
+                title="Novo Pedido!",
+                body=body,
+                url="/",
+            )
+        except Exception:
+            pass  # Best-effort: não falhar criação do pedido
+
         return success_response(
             {"pedido_id": pedido.id, "pedido": pedido.to_dict()},
             message="Pedido criado com sucesso",
@@ -497,6 +525,7 @@ def atualizar_pedido(pedido_id):
     """
     Atualiza dados completos do pedido
     CRÍTICO: Preservar lógica de resetar distância quando endereço muda
+    IMPORTANTE: Registra overrides para pedidos com external_ref (Nuvemshop)
     """
     try:
         from datetime import datetime
@@ -510,48 +539,74 @@ def atualizar_pedido(pedido_id):
 
         data = request.get_json() or {}
 
+        # Verificar se pedido tem external_ref (importado de plataforma externa)
+        external_ref = PedidoExternalRef.query.filter_by(pedido_id=pedido_id).first()
+        has_external_ref = external_ref is not None
+
+        # Lista de campos que foram alterados (para registro de override)
+        changed_fields = []
+
+        # Helper para rastrear mudanças
+        def track_change(field_name, old_value, new_value):
+            if old_value != new_value:
+                changed_fields.append((field_name, new_value))
+
         # Atualizar campos (preservar lógica exata)
         if "cliente" in data:
+            track_change("cliente", pedido.cliente, data["cliente"])
             pedido.cliente = data["cliente"]
         if "telefone_cliente" in data:
             telefone_raw = data["telefone_cliente"].strip()
-            pedido.telefone_cliente = re.sub(r"[^\d]", "", telefone_raw)
+            new_telefone = re.sub(r"[^\d]", "", telefone_raw)
+            track_change("telefone_cliente", pedido.telefone_cliente, new_telefone)
+            pedido.telefone_cliente = new_telefone
         if "destinatario" in data:
+            track_change("destinatario", pedido.destinatario, data["destinatario"])
             pedido.destinatario = data["destinatario"]
         if "tipo_pedido" in data:
+            track_change("tipo_pedido", pedido.tipo_pedido, data["tipo_pedido"])
             pedido.tipo_pedido = data["tipo_pedido"]
         if "fonte_pedido_id" in data:
             try:
-                pedido.fonte_pedido_id = (
-                    int(data["fonte_pedido_id"]) if data["fonte_pedido_id"] else None
-                )
+                new_fonte_id = int(data["fonte_pedido_id"]) if data["fonte_pedido_id"] else None
+                track_change("fonte_pedido_id", pedido.fonte_pedido_id, new_fonte_id)
+                pedido.fonte_pedido_id = new_fonte_id
             except (ValueError, TypeError):
                 pedido.fonte_pedido_id = None
         elif "fonte_pedido" in data:
             fonte = FontePedido.query.filter_by(nome=data["fonte_pedido"], ativo=True).first()
             if fonte:
+                track_change("fonte_pedido_id", pedido.fonte_pedido_id, fonte.id)
                 pedido.fonte_pedido_id = fonte.id
+            track_change("fonte_pedido", pedido.fonte_pedido, data["fonte_pedido"])
             pedido.fonte_pedido = data["fonte_pedido"]
         if "produto" in data:
+            track_change("produto", pedido.produto, data["produto"])
             pedido.produto = data["produto"]
         if "flores_cor" in data:
+            track_change("flores_cor", pedido.flores_cor, data["flores_cor"])
             pedido.flores_cor = data["flores_cor"]
         if "valor" in data:
+            track_change("valor", pedido.valor, data["valor"])
             pedido.valor = data["valor"]
         if "horario" in data:
+            track_change("horario", pedido.horario, data["horario"])
             pedido.horario = data["horario"]
         if "dia_entrega" in data:
             dia_entrega_str = data["dia_entrega"]
             if "/" in dia_entrega_str:
-                pedido.dia_entrega = datetime.strptime(dia_entrega_str, "%d/%m/%Y").date()
+                new_dia = datetime.strptime(dia_entrega_str, "%d/%m/%Y").date()
             else:
-                pedido.dia_entrega = datetime.strptime(dia_entrega_str, "%Y-%m-%d").date()
+                new_dia = datetime.strptime(dia_entrega_str, "%Y-%m-%d").date()
+            track_change("dia_entrega", pedido.dia_entrega, new_dia)
+            pedido.dia_entrega = new_dia
 
         # Verificar se endereço mudou (resetar distância)
         endereco_mudou = False
         campos_endereco = ["cep", "rua", "numero", "bairro", "cidade", "endereco"]
         for campo in campos_endereco:
             if campo in data and data[campo] != getattr(pedido, campo):
+                track_change(campo, getattr(pedido, campo), data[campo])
                 setattr(pedido, campo, data[campo])
                 endereco_mudou = True
 
@@ -559,24 +614,43 @@ def atualizar_pedido(pedido_id):
             pedido.distancia_km = None
 
         if "obs_entrega" in data:
+            track_change("obs_entrega", pedido.obs_entrega, data["obs_entrega"])
             pedido.obs_entrega = data["obs_entrega"]
         if "mensagem" in data:
+            track_change("mensagem", pedido.mensagem, data["mensagem"])
             pedido.mensagem = data["mensagem"]
         if "pagamento" in data:
+            track_change("pagamento", pedido.pagamento, data["pagamento"])
             pedido.pagamento = data["pagamento"]
         if "observacoes" in data:
+            track_change("observacoes", pedido.observacoes, data["observacoes"])
             pedido.observacoes = data["observacoes"]
+
         # Status anterior para hook (ANTES de atualizar)
         status_anterior = pedido.status
         status_pagamento_anterior = pedido.status_pagamento
 
         if "status_pagamento" in data:
+            track_change("status_pagamento", pedido.status_pagamento, data["status_pagamento"])
             pedido.status_pagamento = data["status_pagamento"]
 
         if "status" in data:
+            track_change("status", pedido.status, data["status"])
             pedido.status = data["status"]
 
         pedido.updated_at = datetime_now_brazil()
+
+        # Registrar overrides para pedidos com external_ref (Nuvemshop)
+        # Isso protege os campos editados manualmente de serem sobrescritos por webhooks
+        if has_external_ref and changed_fields:
+            actor = getattr(g, "user", None) or "admin"
+            for field_name, field_value in changed_fields:
+                PedidoManualOverride.set_override(
+                    pedido_id=pedido_id,
+                    field_name=field_name,
+                    field_value=str(field_value) if field_value is not None else None,
+                    edited_by=actor,
+                )
 
         db.session.commit()
 

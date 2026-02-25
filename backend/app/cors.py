@@ -88,9 +88,8 @@ def setup_cors(app):
 
     SEGURANÇA: Apenas origens do próprio servidor (localhost + hostname configurado)
     são permitidas para evitar requisições de origens não autorizadas.
-
-    Args:
-        app: Instância da aplicação Flask
+    Usa after_request para refletir sempre o Origin da requisição (evita CORS
+    errado quando atrás de proxy/Cloudflare que altera headers).
     """
     allowed_origins = get_allowed_origins()
 
@@ -105,5 +104,18 @@ def setup_cors(app):
             }
         },
     )
+
+    @app.after_request
+    def _cors_reflect_origin(response):
+        """Reflete o Origin da requisição na resposta para /api/* (evita proxy/Cloudflare)."""
+        from flask import request
+        if not request.path.startswith("/api/"):
+            return response
+        origin = getattr(request, "origin", None) or request.headers.get("Origin")
+        if origin:
+            origin = origin.strip()
+            if origin in allowed_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+        return response
 
     print(f"[SEGURANCA] OK CORS restrito a: {len(allowed_origins)} origens permitidas")

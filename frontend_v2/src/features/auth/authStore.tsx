@@ -185,55 +185,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string, remember = false): Promise<{ success: boolean; error?: string; message?: string; role?: string }> => {
     try {
-      // Primary approach (robust): Save credentials first, then validate via GET /api/auth/check
-      // This is the robust Basic Auth approach - do NOT require POST /api/auth/login
-      saveCredentials(username, password, remember);
-
-      // Validate credentials using GET /api/auth/check with Authorization header
-      const tempAuthHeader = () => {
-        // Create auth header temporarily for validation
-        try {
-          const credentials = btoa(`${username}:${password}`);
-          return { 'Authorization': `Basic ${credentials}` };
-        } catch {
-          const encoder = new TextEncoder();
-          const data = encoder.encode(`${username}:${password}`);
-          let binary = '';
-          const chunkSize = 8192;
-          for (let i = 0; i < data.length; i += chunkSize) {
-            binary += String.fromCharCode(...data.slice(i, i + chunkSize));
-          }
-          return { 'Authorization': `Basic ${btoa(binary)}` };
-        }
-      };
-
-      // Create request with explicit Authorization header (bypass getAuthHeader exclusion)
-      const tempAuthHeaderValue = tempAuthHeader();
-      const apiRequest = createApiRequest(tempAuthHeader);
-      const response = await apiRequest<{ success: boolean; authenticated?: boolean; message?: string; role?: string }>('/auth/check', {
-        headers: tempAuthHeaderValue
+      // POST /auth/login com JSON no body: evita que proxy/Cloudflare remova o header Authorization.
+      const apiRequest = createApiRequest(() => ({}));
+      const response = await apiRequest<{ username?: string; role?: string; message?: string }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
       });
 
-      if (response.ok && response.data?.success && response.data?.authenticated === true) {
-        const role = (response.data as { role?: string })?.role || 'admin'; // Default para admin se não especificado
+      if (response.ok && response.data && (response.data as { username?: string }).username) {
+        const role = (response.data as { role?: string }).role || 'admin';
         saveCredentials(username, password, remember, role);
         return { success: true, message: 'Login realizado com sucesso', role };
       } else {
-        // Validation failed - clear credentials
         logout();
-        const errorMessage = response.ok && response.data ? response.data.message : 'Credenciais inválidas';
-        return { 
-          success: false, 
-          error: errorMessage
-        };
+        const errorMessage = response.ok
+          ? (response.data as { message?: string } | undefined)?.message ?? 'Credenciais inválidas'
+          : (response as { message?: string }).message ?? 'Credenciais inválidas';
+        return { success: false, error: errorMessage };
       }
     } catch (error) {
       console.error('Erro ao fazer login:', error);
-      // Clear credentials on error
       logout();
       return {
         success: false,
-        error: 'Erro ao conectar com o servidor. Verifique sua conexão.'
+        error: 'Erro ao conectar com o servidor. Verifique sua conexão.',
       };
     }
   }, [saveCredentials, logout]);

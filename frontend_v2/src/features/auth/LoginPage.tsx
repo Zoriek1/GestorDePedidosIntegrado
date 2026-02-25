@@ -37,19 +37,26 @@ export default function LoginPage() {
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setUsernameError(false);
     setPasswordError(false);
 
-    // Validação em tempo real
+    // Ler do formulário (DOM) para não depender só do estado React: autofill e
+    // alguns contextos (tunnel/HTTPS) podem preencher os campos sem atualizar o state.
+    const form = e.currentTarget;
+    const userInput = form.elements.namedItem('username') as HTMLInputElement | null;
+    const passInput = form.elements.namedItem('password') as HTMLInputElement | null;
+    const usernameValue = (userInput?.value ?? username).trim();
+    const passwordValue = passInput?.value ?? password;
+
     let hasError = false;
-    if (!username.trim()) {
+    if (!usernameValue) {
       setUsernameError(true);
       hasError = true;
     }
-    if (!password.trim()) {
+    if (!passwordValue) {
       setPasswordError(true);
       hasError = true;
     }
@@ -60,9 +67,8 @@ export default function LoginPage() {
       return;
     }
 
-    // Prevenção básica de SQL injection (sanitização)
-    const sanitizedUsername = username.trim().replace(/[<>'"]/g, '');
-    if (sanitizedUsername !== username.trim()) {
+    const sanitizedUsername = usernameValue.replace(/[<>'"]/g, '');
+    if (sanitizedUsername !== usernameValue) {
       showError('Usuário contém caracteres inválidos');
       setUsernameError(true);
       setLoading(false);
@@ -70,7 +76,7 @@ export default function LoginPage() {
     }
 
     try {
-      const result = await login(sanitizedUsername, password, remember);
+      const result = await login(sanitizedUsername, passwordValue, remember);
 
       if (result.success) {
         // Navigate to original route or home
@@ -132,6 +138,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit}>
             <TextField
               fullWidth
+              name="username"
               label="Usuário"
               variant="outlined"
               value={username}
@@ -146,12 +153,14 @@ export default function LoginPage() {
               autoComplete="username"
               error={usernameError}
               helperText={usernameError ? 'Usuário é obrigatório' : ''}
+              inputProps={{ name: 'username' }}
               sx={{ mb: 2 }}
               autoFocus
             />
 
             <TextField
               fullWidth
+              name="password"
               label="Senha"
               type={showPassword ? 'text' : 'password'}
               variant="outlined"
@@ -167,6 +176,7 @@ export default function LoginPage() {
               autoComplete="current-password"
               error={passwordError}
               helperText={passwordError ? 'Senha é obrigatória' : ''}
+              inputProps={{ name: 'password' }}
               sx={{ mb: 2 }}
               InputProps={{
                 endAdornment: (

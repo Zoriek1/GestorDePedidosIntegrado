@@ -14,7 +14,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gestor} -d ${POSTGRES_DB:-gestor_pedidos}"]
       interval: 5s
-      timeout: 5s
+      timeout: 7s
       retries: 5
 
   backend:
@@ -32,6 +32,11 @@ services:
       HOST: 0.0.0.0
       PORT: 5000
       USE_HTTPS: ${USE_HTTPS:-false}
+      # Caminho exato onde o arquivo de credenciais está agora
+      GOOGLE_APPLICATION_CREDENTIALS: /app/backend/user/config/google_credentials.json
+    volumes:
+      # Montamos apenas a pasta backend para evitar confusão de caminhos
+      - ./backend:/app/backend
     ports:
       - "5000:5000"
 

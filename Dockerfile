@@ -6,7 +6,7 @@ FROM node:20-alpine AS frontend-build
 WORKDIR /build/frontend_v2
 
 COPY frontend_v2/package.json frontend_v2/package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY frontend_v2/ ./
 RUN npm run build

@@ -26,6 +26,7 @@ import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 # --- backend path ---
 BACKEND_DIR = Path(__file__).parent.parent.parent
@@ -35,7 +36,8 @@ if str(BACKEND_DIR) not in sys.path:
 from app.utils.backup_helper import create_backup  # noqa: E402
 
 
-def should_run_backup_now(now: datetime) -> bool:
+def should_run_backup_now(now: Optional[datetime] = None) -> bool:
+    now = now or datetime.now()
     weekday = now.weekday()  # 0=Segunda, 6=Domingo
     hour = now.hour
     minute = now.minute
@@ -61,8 +63,9 @@ def should_run_backup_now(now: datetime) -> bool:
 
 
 def get_recent_backup_timestamp(
-    backup_dir: Path, now: datetime, minutes_threshold: int
-) -> datetime | None:
+    backup_dir: Path, minutes_threshold: int, now: Optional[datetime] = None
+) -> Optional[datetime]:
+    now = now or datetime.now()
     if not backup_dir.exists():
         return None
 

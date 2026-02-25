@@ -76,12 +76,19 @@ class BaseConfig:
     # Secret key para sessões
     SECRET_KEY = os.environ.get("SECRET_KEY") or "plante-uma-flor-pwa-secret-key-2024"
 
-    # Banco de dados SQLite
-    # Novo local: %USERPROFILE%/var/lib/database/database.db (fora do repositório)
+    # Banco de dados
+    # PostgreSQL: use DATABASE_URL (ex: postgresql://user:pass@host:port/dbname)
+    # SQLite: default %USERPROFILE%/var/lib/database/database.db
     DATABASE_PATH = _DB_EXTERNAL_DIR / "database.db"
-    # Formatar caminho para SQLite (Windows precisa de barras normais ou r'')
-    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE_PATH.as_posix()}"
+    SQLALCHEMY_DATABASE_URI = (
+        os.environ.get("DATABASE_URL") or f"sqlite:///{DATABASE_PATH.as_posix()}"
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Frontend (path do dist para servir SPA)
+    FRONTEND_DIST_PATH = (
+        Path(os.environ["FRONTEND_DIST_PATH"]) if os.environ.get("FRONTEND_DIST_PATH") else None
+    )
 
     # Configurações gerais
     JSON_AS_ASCII = False  # Suporte a caracteres UTF-8 em JSON
@@ -117,6 +124,19 @@ class BaseConfig:
     ENABLE_AUTH = os.environ.get("ENABLE_AUTH", "true").lower() == "true"
     ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
     ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
+
+    # Push Notifications (VAPID / Web Push)
+    VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY") or ""
+    VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY") or ""
+    VAPID_CLAIMS_EMAIL = (
+        os.environ.get("VAPID_CLAIMS_EMAIL") or "mailto:contato@planteumaflor.com.br"
+    )
+
+    # Nuvemshop (OAuth + Webhooks)
+    NUVEMSHOP_APP_ID = os.environ.get("NUVEMSHOP_APP_ID") or ""
+    NUVEMSHOP_CLIENT_SECRET = os.environ.get("NUVEMSHOP_CLIENT_SECRET") or ""
+    NUVEMSHOP_USER_AGENT = os.environ.get("NUVEMSHOP_USER_AGENT") or ""
+    NUVEMSHOP_PUBLIC_BASE_URL = os.environ.get("NUVEMSHOP_PUBLIC_BASE_URL") or ""
 
     # Ambiente
     FLASK_ENV = os.environ.get("FLASK_ENV") or os.environ.get("ENVIRONMENT") or "development"

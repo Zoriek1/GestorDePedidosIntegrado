@@ -1,0 +1,22 @@
+# Systemd - Plante Uma Flor (sem Docker)
+# Copie para /etc/systemd/system/gestor-pedidos.service
+# systemctl daemon-reload && systemctl enable gestor-pedidos && systemctl start gestor-pedidos
+
+[Unit]
+Description=Gestor de Pedidos Plante Uma Flor
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/gestor-pedidos/backend
+Environment="FLASK_ENV=production"
+Environment="APP_ENV=production"
+EnvironmentFile=/opt/gestor-pedidos/.env
+ExecStart=/usr/bin/python3 wsgi.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

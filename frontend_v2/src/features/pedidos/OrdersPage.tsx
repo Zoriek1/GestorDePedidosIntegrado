@@ -2,7 +2,7 @@
  * Orders Page - Main orders list view
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Typography,

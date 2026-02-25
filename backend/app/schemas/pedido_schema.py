@@ -65,11 +65,20 @@ class PedidoSchema(Schema):
     cliente_id = fields.Int(allow_none=True)
     status_pagamento = fields.Str(allow_none=True, validate=validate.Length(max=50))
 
+    # Plataforma e Canal (integrações)
+    plataforma = fields.Str(allow_none=True, validate=validate.Length(max=50))
+    canal = fields.Str(allow_none=True, validate=validate.Length(max=50))
+
     # Distância e Taxa
     distancia_km = fields.Float(allow_none=True)
     taxa_entrega = fields.Float(allow_none=True)
     coords_lat = fields.Float(allow_none=True)
     coords_lon = fields.Float(allow_none=True)
+
+    # Frete (vindo da Order API - Nuvemshop, etc)
+    frete_cobrado_cliente = fields.Float(allow_none=True)
+    desconto_frete = fields.Float(allow_none=True)
+    frete_liquido_cliente = fields.Float(allow_none=True)
 
     # Timestamps
     created_at = fields.DateTime(dump_only=True)
@@ -153,8 +162,13 @@ class PedidoUpdateSchema(Schema):
     fonte_pedido_id = fields.Int(allow_none=True)
     cliente_id = fields.Int(allow_none=True)
     status_pagamento = fields.Str(allow_none=True)
+    plataforma = fields.Str(allow_none=True)
+    canal = fields.Str(allow_none=True)
     distancia_km = fields.Float(allow_none=True)
     taxa_entrega = fields.Float(allow_none=True)
+    frete_cobrado_cliente = fields.Float(allow_none=True)
+    desconto_frete = fields.Float(allow_none=True)
+    frete_liquido_cliente = fields.Float(allow_none=True)
     coords_lat = fields.Float(allow_none=True)
     coords_lon = fields.Float(allow_none=True)
 

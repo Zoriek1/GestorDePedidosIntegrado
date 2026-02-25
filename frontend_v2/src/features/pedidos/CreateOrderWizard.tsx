@@ -20,6 +20,7 @@ import {
   useMediaQuery,
   useTheme,
   MobileStepper,
+  Tooltip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -33,6 +34,7 @@ import {
   transformFormToApiPayload,
   type PedidoFormData,
 } from './schemas';
+import type { FieldPath } from 'react-hook-form';
 import {
   StepCliente,
   StepEntrega,
@@ -115,7 +117,7 @@ export function CreateOrderWizard({
     mode: 'onBlur',
   });
 
-  const { handleSubmit, watch, trigger } = methods;
+  const { handleSubmit, watch, trigger, setError, getValues, formState } = methods;
 
   // Salva no localStorage com debounce
   useEffect(() => {
@@ -146,15 +148,13 @@ export function CreateOrderWizard({
     }
   }, [activeStep, onClearError]);
 
-  // Resetar estado de submissão ao mudar para o último step e adicionar delay
+  // Atualizar estado de submissão baseado no step atual (SEM delay)
   useEffect(() => {
+    // Permitir submissão imediatamente ao chegar no último step
     if (activeStep === STEPS.length - 1) {
+      setIsReadyToSubmit(true);
+    } else {
       setIsReadyToSubmit(false);
-      // Adicionar um pequeno delay antes de permitir submissão (500ms)
-      const timer = setTimeout(() => {
-        setIsReadyToSubmit(true);
-      }, 500);
-      return () => clearTimeout(timer);
     }
   }, [activeStep]);
 
@@ -245,14 +245,35 @@ export function CreateOrderWizard({
 
   // Submissão (salvar e concluir)
   const onFormSubmit = async (data: PedidoFormData) => {
+    // DEBUG: Log detalhado para diagnóstico
+    console.log('=== DEBUG SUBMIT ===');
+    console.log('activeStep:', activeStep, 'STEPS.length - 1:', STEPS.length - 1);
+    console.log('isReadyToSubmit:', isReadyToSubmit);
+    console.log('Form data:', data);
+    console.log('Form errors:', formState.errors);
+    
     // Prevenir submissão automática: só permite se estiver no último step E isReadyToSubmit for true
     if (activeStep !== STEPS.length - 1 || !isReadyToSubmit) {
+      console.warn('Submit bloqueado:', { activeStep, isReadyToSubmit, expectedStep: STEPS.length - 1 });
+      return;
+    }
+
+    // Validação explícita antes de prosseguir
+    const isValid = await validateFormExplicitly();
+    if (!isValid) {
+      console.error('Formulário inválido - submit cancelado');
       return;
     }
 
     try {
+      console.log('Transformando payload...');
       const payload = transformFormToApiPayload(data);
+      console.log('Payload transformado:', payload);
+      
+      console.log('Chamando onSubmit...');
       const ok = await onSubmit(payload);
+      console.log('Resultado onSubmit:', ok);
+      
       if (ok) {
         // Limpa o rascunho após sucesso
         localStorage.removeItem(STORAGE_KEY);
@@ -262,6 +283,7 @@ export function CreateOrderWizard({
     } catch (error) {
       // Erro é tratado pelo componente pai
       console.error('Erro ao salvar pedido:', error);
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'N/A');
     }
   };
 
@@ -279,6 +301,35 @@ export function CreateOrderWizard({
     if (onReset) {
       onReset();
     }
+  };
+
+  // Validação explícita do formulário com feedback detalhado
+  const validateFormExplicitly = async (): Promise<boolean> => {
+    const formData = getValues();
+    console.log('=== Validando formulário explicitamente ===');
+    console.log('Form data para validação:', formData);
+    
+    const validationResult = pedidoFormSchema.safeParse(formData);
+    
+    if (!validationResult.success) {
+      console.error('Validação Zod falhou:', validationResult.error.flatten());
+      console.error('Erros detalhados:', validationResult.error.errors);
+      
+      // Mostrar erros ao usuário via react-hook-form
+      validationResult.error.errors.forEach(err => {
+        const fieldPath = err.path.join('.') as FieldPath<PedidoFormData>;
+        setError(fieldPath, {
+          type: 'manual',
+          message: err.message
+        });
+        console.error(`Erro no campo "${fieldPath}":`, err.message);
+      });
+      
+      return false;
+    }
+    
+    console.log('Validação passou com sucesso!');
+    return true;
   };
 
   // Handler para prevenir submissão por Enter quando não estiver pronto
@@ -387,21 +438,35 @@ export function CreateOrderWizard({
                 >
                   Salvar Rascunho
                 </Button>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  disabled={isSubmitting || !isReadyToSubmit}
-                  startIcon={
-                    isSubmitting ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <SaveIcon />
-                    )
+                <Tooltip
+                  title={
+                    isSubmitting 
+                      ? 'Salvando pedido...' 
+                      : !isReadyToSubmit 
+                        ? 'Navegue até o último passo para salvar' 
+                        : 'Clique para salvar o pedido'
                   }
+                  arrow
                 >
-                  {isSubmitting ? 'Salvando...' : 'Salvar e Concluir'}
-                </Button>
+                  <span>
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      color="primary"
+                      disabled={isSubmitting || !isReadyToSubmit}
+                      onClick={() => console.log('Botão Salvar clicado! isReadyToSubmit:', isReadyToSubmit)}
+                      startIcon={
+                        isSubmitting ? (
+                          <CircularProgress size={20} color="inherit" />
+                        ) : (
+                          <SaveIcon />
+                        )
+                      }
+                    >
+                      {isSubmitting ? 'Salvando...' : 'Salvar e Concluir'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Box>
             ) : (
               <Button
@@ -440,18 +505,32 @@ export function CreateOrderWizard({
                   >
                     Rascunho
                   </Button>
-                  <Button
-                    type="submit"
-                    size="small"
-                    disabled={isSubmitting || !isReadyToSubmit}
-                    startIcon={
-                      isSubmitting ? (
-                        <CircularProgress size={16} color="inherit" />
-                      ) : null
+                  <Tooltip
+                    title={
+                      isSubmitting 
+                        ? 'Salvando...' 
+                        : !isReadyToSubmit 
+                          ? 'Navegue até o último passo' 
+                          : 'Salvar pedido'
                     }
+                    arrow
                   >
-                    {isSubmitting ? '...' : 'Concluir'}
-                  </Button>
+                    <span>
+                      <Button
+                        type="submit"
+                        size="small"
+                        disabled={isSubmitting || !isReadyToSubmit}
+                        onClick={() => console.log('Botão Concluir clicado! isReadyToSubmit:', isReadyToSubmit)}
+                        startIcon={
+                          isSubmitting ? (
+                            <CircularProgress size={16} color="inherit" />
+                          ) : null
+                        }
+                      >
+                        {isSubmitting ? '...' : 'Concluir'}
+                      </Button>
+                    </span>
+                  </Tooltip>
                 </Box>
               ) : (
                 <Button type="button" size="small" onClick={handleNext}>

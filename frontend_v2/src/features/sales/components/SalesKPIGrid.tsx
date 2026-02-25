@@ -5,13 +5,26 @@ interface SalesKPIs {
   totalVendasBruto: number;
   totalRecebido: number;
   totalEfetivo: number;
+  ticketMedioEfetivo: number;
+  projecaoFaturamento?: number;
+}
+
+interface KPIComparativo {
+  quantidade?: number | null;
+  totalVendasBruto?: number | null;
+  totalRecebido?: number | null;
+  totalEfetivo?: number | null;
+  ticketMedioEfetivo?: number | null;
+  projecaoFaturamento?: number | null;
 }
 
 interface SalesKPIGridProps {
   kpis: SalesKPIs;
+  comparativo?: KPIComparativo;
+  comparativoLabel?: string;
 }
 
-export function SalesKPIGrid({ kpis }: SalesKPIGridProps) {
+export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGridProps) {
   const formatMoney = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { 
       style: 'currency', 
@@ -19,8 +32,15 @@ export function SalesKPIGrid({ kpis }: SalesKPIGridProps) {
     }).format(value);
   };
 
+  const formatPercent = (value: number | null | undefined) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(1).replace('.', ',')}%`;
+  };
+
   const items = [
     { 
+      key: 'quantidade',
       title: 'Quantidade de Pedidos', 
       value: kpis.quantidade, 
       color: '#2563eb',
@@ -28,13 +48,25 @@ export function SalesKPIGrid({ kpis }: SalesKPIGridProps) {
       isText: false
     },
     { 
+      key: 'totalVendasBruto',
       title: 'Total de Vendas no Mês', 
       value: formatMoney(kpis.totalVendasBruto), 
       color: '#16a34a',
       isCurrency: false, // Já formatado como string
       isText: true
     },
+    ...(kpis.projecaoFaturamento !== undefined
+      ? [{
+          key: 'projecaoFaturamento',
+          title: 'Projeção de Faturamento',
+          value: formatMoney(kpis.projecaoFaturamento),
+          color: '#0ea5e9',
+          isCurrency: false,
+          isText: true
+        }]
+      : []),
     { 
+      key: 'totalRecebido',
       title: 'Total Recebido', 
       value: formatMoney(kpis.totalRecebido), 
       color: '#f59e0b',
@@ -42,10 +74,19 @@ export function SalesKPIGrid({ kpis }: SalesKPIGridProps) {
       isText: true
     },
     { 
+      key: 'totalEfetivo',
       title: 'Total Efetivo', 
       value: formatMoney(kpis.totalEfetivo), 
       color: '#8b5cf6',
       isCurrency: false, // Já formatado como string
+      isText: true
+    },
+    {
+      key: 'ticketMedioEfetivo',
+      title: 'Ticket Médio',
+      value: formatMoney(kpis.ticketMedioEfetivo),
+      color: '#22c55e',
+      isCurrency: false,
       isText: true
     },
   ];
@@ -66,6 +107,24 @@ export function SalesKPIGrid({ kpis }: SalesKPIGridProps) {
               >
                 {item.isText ? item.value : (item.isCurrency ? formatMoney(item.value as number) : item.value)}
               </Typography>
+              {comparativoLabel && comparativo && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color:
+                      comparativo[item.key as keyof KPIComparativo] === null ||
+                      comparativo[item.key as keyof KPIComparativo] === undefined
+                        ? 'text.secondary'
+                        : (comparativo[item.key as keyof KPIComparativo] as number) >= 0
+                          ? '#16a34a'
+                          : '#dc2626',
+                    display: 'block',
+                    mt: 0.5,
+                  }}
+                >
+                  {formatPercent(comparativo[item.key as keyof KPIComparativo])} vs. {comparativoLabel}
+                </Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>

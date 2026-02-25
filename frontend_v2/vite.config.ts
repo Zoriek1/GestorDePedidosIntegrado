@@ -68,11 +68,14 @@ export default defineConfig(({ mode }) => {
           ]
         },
         workbox: {
+          // Importar push notification handler no Service Worker
+          importScripts: ['/push-sw.js'],
           // Forçar atualização imediata quando nova versão for detectada
           skipWaiting: true,
           clientsClaim: true,
-          // Excluir rotas do Meta Gateway - devem ir direto para o backend, sem interceptação
-          navigateFallbackDenylist: [/^\/capig/, /^\/meta-gateway/],
+          // Excluir rotas do backend - devem ir direto para o Flask (não SPA shell)
+          // IMPORTANTE: OAuth callback da Nuvemshop é navegação para /api/... e o SW não pode interceptar.
+          navigateFallbackDenylist: [/^\/api\//, /^\/capig/, /^\/meta-gateway/],
           runtimeCaching: [
             // Rotas do Meta Gateway - sempre buscar da rede, nunca cachear
             {

@@ -80,6 +80,18 @@ class Pedido(db.Model):
         comment="Status do pagamento (Realizado, Pendente, etc)",
     )
 
+    # Plataforma e Canal (para integrações como Nuvemshop)
+    plataforma = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Plataforma de origem (Nuvemshop, Sistema, etc)",
+    )
+    canal = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Canal de venda (Site, PDV, Mercado Livre, etc)",
+    )
+
     # Controle e Status
     status = db.Column(db.String(30), default="agendado", comment="Status do pedido")
     quantidade = db.Column(db.Integer, default=1, comment="Quantidade (compatibilidade)")
@@ -111,8 +123,27 @@ class Pedido(db.Model):
         comment="Distância em km da floricultura até o endereço",
     )
 
-    # Taxa de entrega calculada
-    taxa_entrega = db.Column(db.Float, nullable=True, comment="Taxa de entrega calculada (R$)")
+    # Taxa de entrega calculada (operacional - custo interno)
+    taxa_entrega = db.Column(
+        db.Float, nullable=True, comment="Taxa de entrega operacional calculada (R$)"
+    )
+
+    # Frete cobrado do cliente (vindo da Order API - Nuvemshop, etc)
+    frete_cobrado_cliente = db.Column(
+        db.Float,
+        nullable=True,
+        comment="Frete cobrado do cliente na compra (R$)",
+    )
+    desconto_frete = db.Column(
+        db.Float,
+        nullable=True,
+        comment="Desconto aplicado no frete (R$)",
+    )
+    frete_liquido_cliente = db.Column(
+        db.Float,
+        nullable=True,
+        comment="Frete efetivo pago pelo cliente (R$)",
+    )
 
     # Coordenadas do endereço (cache para evitar geocodificação repetida)
     coords_lat = db.Column(db.Float, nullable=True, comment="Latitude do endereço")
@@ -172,6 +203,9 @@ class Pedido(db.Model):
             "fonte_pedido_id": self.fonte_pedido_id,
             "fonte_pedido_nome": self.fonte_pedido_rel.nome if self.fonte_pedido_rel else "",
             "status_pagamento": self.status_pagamento or "",
+            # Plataforma e Canal (integrações)
+            "plataforma": self.plataforma or "",
+            "canal": self.canal or "",
             # Controle
             "status": self.status or "agendado",
             "quantidade": self.quantidade or 1,
@@ -180,6 +214,10 @@ class Pedido(db.Model):
             "cliente_id": self.cliente_id,
             "distancia_km": self.distancia_km,
             "taxa_entrega": self.taxa_entrega,
+            # Frete (vindo da Order API)
+            "frete_cobrado_cliente": self.frete_cobrado_cliente,
+            "desconto_frete": self.desconto_frete,
+            "frete_liquido_cliente": self.frete_liquido_cliente,
             "coords_lat": self.coords_lat,
             "coords_lon": self.coords_lon,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
@@ -240,8 +278,11 @@ class Pedido(db.Model):
 
     @staticmethod
     def get_statistics():
-        """Retorna estatísticas dos pedidos (excluindo ocultos)"""
-        base_query = Pedido.query.filter_by(oculto=False)
+        """Retorna estatísticas dos pedidos (excluindo ocultos e deletados)"""
+        # Filtrar apenas pedidos não deletados (soft delete) e não ocultos
+        base_query = Pedido.query.filter(
+            Pedido.oculto == False, Pedido.deleted_at.is_(None)  # noqa: E712
+        )
         stats = {
             "total": base_query.count(),
             "agendado": base_query.filter_by(status="agendado").count(),
@@ -255,9 +296,11 @@ class Pedido(db.Model):
 
     @staticmethod
     def get_overdue_pedidos():
-        """Retorna pedidos atrasados (excluindo ocultos)"""
+        """Retorna pedidos atrasados (excluindo ocultos e deletados)"""
         all_pedidos = Pedido.query.filter(
-            Pedido.status != "concluido", Pedido.oculto is False
+            Pedido.status != "concluido",
+            Pedido.oculto == False,  # noqa: E712
+            Pedido.deleted_at.is_(None),
         ).all()
         return [p for p in all_pedidos if p.is_overdue()]
 

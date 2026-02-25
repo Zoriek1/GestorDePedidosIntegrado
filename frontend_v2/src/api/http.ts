@@ -3,7 +3,21 @@
  * All API calls go through this client
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// Em produção, sempre usar URL relativa quando a página for servida pelo mesmo host (ex.: tunnel).
+// Evita login falhar quando acessa via https://dominio e o build tinha API absoluta (ex.: http://IP:5000).
+export function getApiBaseUrl(): string {
+  const raw = import.meta.env.VITE_API_BASE_URL || '/api';
+  if (import.meta.env.PROD && typeof window !== 'undefined' && raw.startsWith('http')) {
+    try {
+      if (new URL(raw).origin !== window.location.origin) return '/api';
+    } catch {
+      return '/api';
+    }
+  }
+  return raw;
+}
+
+const BASE_URL = getApiBaseUrl();
 const DEFAULT_TIMEOUT = 15000; // 15 seconds
 
 export interface ApiError {

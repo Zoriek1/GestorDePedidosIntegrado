@@ -9,6 +9,9 @@ COPY frontend_v2/package.json frontend_v2/package-lock.json ./
 RUN npm ci
 
 COPY frontend_v2/ ./
+# API relativa para funcionar tanto por IP:5000 quanto por tunnel (https://dominio)
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=/api
 RUN npm run build
 
 # Stage 2: Backend

@@ -1,3 +1,4 @@
+import { getApiBaseUrl } from '../../../api/http';
 import { IPedidoPrintService } from './IPedidoPrintService';
 import { useAuth } from '../../auth/authStore';
 import { useMarcarImpresso } from '../../../api/endpoints/pedidos';
@@ -7,7 +8,6 @@ import { useMarcarImpresso } from '../../../api/endpoints/pedidos';
  * O Frontend atua apenas como "View/Render", buscando o HTML pronto do Backend.
  * Lógica de negócio e template estão no servidor.
  */
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export class PedidoPrintService implements IPedidoPrintService {
   private getAuthHeader: () => Record<string, string>;
@@ -27,7 +27,7 @@ export class PedidoPrintService implements IPedidoPrintService {
       ...authHeaders,
     };
     
-    const url = `${BASE_URL}/pedidos/${pedidoId}/comprovante`;
+    const url = `${getApiBaseUrl()}/pedidos/${pedidoId}/comprovante`;
     const response = await fetch(url, { headers });
     
     if (!response.ok) {

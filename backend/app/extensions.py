@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Engine, event
+from sqlalchemy import Engine, event, text
 from sqlalchemy.engine import make_url
 
 # Instância global do SQLAlchemy
@@ -20,8 +20,18 @@ db = SQLAlchemy()
 migrate = Migrate()
 
 
+def _is_sqlite(database_uri: str) -> bool:
+    """Retorna True se a URI for SQLite"""
+    if not database_uri:
+        return False
+    url = make_url(database_uri)
+    return url.drivername in ("sqlite", "sqlite+pysqlite")
+
+
 def _get_sqlite_path(database_uri: str, app=None) -> Path:
-    """Extrai e resolve caminho SQLite de forma determinística"""
+    """Extrai e resolve caminho SQLite de forma determinística. Só usar quando _is_sqlite(uri)."""
+    if not _is_sqlite(database_uri):
+        raise ValueError(f"URI não é SQLite: {database_uri[:50]}...")
     url = make_url(database_uri)
     db_path_str = url.database
 
@@ -134,17 +144,20 @@ def init_extensions(app):
     db.init_app(app)
     migrate.init_app(app, db)
 
-    # Configurar PRAGMAs via event hook
+    # Configurar PRAGMAs via event hook (apenas SQLite)
     configure_sqlite_pragmas()
 
-    foreign_keys_status = (
-        "ON"
-        if os.environ.get("SQLITE_FOREIGN_KEYS", "ON").upper() in ("ON", "1", "TRUE", "YES")
-        else "OFF"
-    )
-    print(
-        f"[DB] PRAGMAs configurados via event hook: WAL, synchronous, foreign_keys={foreign_keys_status}, busy_timeout"
-    )
+    if _is_sqlite(app.config.get("SQLALCHEMY_DATABASE_URI", "")):
+        foreign_keys_status = (
+            "ON"
+            if os.environ.get("SQLITE_FOREIGN_KEYS", "ON").upper() in ("ON", "1", "TRUE", "YES")
+            else "OFF"
+        )
+        print(
+            f"[DB] PRAGMAs configurados via event hook: WAL, synchronous, foreign_keys={foreign_keys_status}, busy_timeout"
+        )
+    else:
+        print("[DB] PostgreSQL detectado - PRAGMAs não aplicados")
 
 
 def init_database(app):
@@ -158,51 +171,62 @@ def init_database(app):
         app: Instância da aplicação Flask
     """
     with app.app_context():
-        db_path = _get_sqlite_path(app.config["SQLALCHEMY_DATABASE_URI"], app)
+        uri = app.config["SQLALCHEMY_DATABASE_URI"]
         app_env = os.environ.get("APP_ENV") or os.environ.get("ENVIRONMENT", "development")
         is_production = app_env == "production"
         allow_bootstrap = os.environ.get("ALLOW_DB_BOOTSTRAP", "").lower() == "true"
 
-        # Logs de diagnóstico
-        abs_path = db_path.resolve()
-        print(f"[DB] Caminho absoluto: {abs_path}")
-        print(f"[DB] Arquivo existe: {db_path.exists()}")
+        if _is_sqlite(uri):
+            db_path = _get_sqlite_path(uri, app)
+            print(f"[DB] Caminho absoluto: {db_path.resolve()}")
+            print(f"[DB] Arquivo existe: {db_path.exists()}")
 
-        if db_path.exists():
-            from datetime import datetime
+            if db_path.exists():
+                from datetime import datetime
 
-            stat = db_path.stat()
-            size_kb = stat.st_size / 1024
-            mtime = datetime.fromtimestamp(stat.st_mtime)
-            print(f"[DB] Tamanho: {size_kb:.2f} KB")
-            print(f"[DB] Modificado: {mtime}")
-        else:
-            print("[DB] ⚠️ AVISO: Arquivo não existe!")
+                stat = db_path.stat()
+                size_kb = stat.st_size / 1024
+                mtime = datetime.fromtimestamp(stat.st_mtime)
+                print(f"[DB] Tamanho: {size_kb:.2f} KB")
+                print(f"[DB] Modificado: {mtime}")
+            else:
+                print("[DB] AVISO: Arquivo não existe!")
 
-        # Validar APP_ENV em produção
-        if is_production and not os.environ.get("APP_ENV") and not os.environ.get("ENVIRONMENT"):
-            print("[ERRO] APP_ENV ou ENVIRONMENT obrigatório em produção")
-            sys.exit(1)
-
-        # Fail-fast em produção se DB não existir
-        if not db_path.exists():
-            if is_production and not allow_bootstrap:
-                print(f"[ERRO] Banco não encontrado: {db_path}")
-                print("[ERRO] Em produção, banco deve existir ou usar ALLOW_DB_BOOTSTRAP=true")
-                print("[ERRO] Para criar banco: flask db upgrade (em DB vazio)")
+            if (
+                is_production
+                and not os.environ.get("APP_ENV")
+                and not os.environ.get("ENVIRONMENT")
+            ):
+                print("[ERRO] APP_ENV ou ENVIRONMENT obrigatório em produção")
                 sys.exit(1)
-            print("[DB] Banco não existe - criando...")
 
-        # NÃO rodar migrations aqui
-        # Migrations devem ser executadas via: flask db upgrade (antes do start)
+            if not db_path.exists():
+                if is_production and not allow_bootstrap:
+                    print(f"[ERRO] Banco não encontrado: {db_path}")
+                    print("[ERRO] Em produção, banco deve existir ou usar ALLOW_DB_BOOTSTRAP=true")
+                    print("[ERRO] Para criar banco: flask db upgrade (em DB vazio)")
+                    sys.exit(1)
+                print("[DB] Banco não existe - criando...")
+
+            should_create = not db_path.exists() or allow_bootstrap
+        else:
+            # PostgreSQL: verificar conexão
+            print("[DB] PostgreSQL - verificando conexão...")
+            try:
+                db.session.execute(text("SELECT 1"))
+                db.session.commit()
+                print("[DB] Conexão OK")
+            except Exception as e:
+                if is_production and not allow_bootstrap:
+                    print(f"[ERRO] Falha ao conectar ao PostgreSQL: {e}")
+                    sys.exit(1)
+                print(f"[DB] AVISO: Falha ao conectar: {e}")
+            should_create = allow_bootstrap
 
         # Importar todos os models ANTES de criar tabelas
-        # Esta ordem é CRÍTICA para que db.create_all() crie todas as tabelas
-
-        # Criar todas as tabelas apenas se banco não existir (dev) ou se permitido (bootstrap)
-        if not db_path.exists() or allow_bootstrap:
+        if should_create:
             db.create_all()
             print("[OK] Banco de dados inicializado")
-            print(f"[OK] Tabelas criadas: {db.metadata.tables.keys()}")
+            print(f"[OK] Tabelas criadas: {list(db.metadata.tables.keys())}")
         else:
             print("[OK] Banco de dados verificado")

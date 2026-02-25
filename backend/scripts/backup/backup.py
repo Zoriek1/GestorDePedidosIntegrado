@@ -26,6 +26,27 @@ try:
 except ImportError:
     AUDIT_LOGGER_AVAILABLE = False
 
+
+def _get_basic_logger():
+    """Retorna logger básico quando audit não disponível"""
+    import logging
+
+    logger = logging.getLogger("backup_basic")
+    if not logger.handlers:
+        backend_dir = Path(__file__).parent.parent.parent
+        logs_dir = backend_dir / "instance" / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(logs_dir / "backup_audit.log", encoding="utf-8", mode="a")
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    return logger
+
+
 # Importar módulos P1 (com fallback silencioso)
 STATUS_AVAILABLE = False
 REMOTE_VERIFY_AVAILABLE = False
@@ -51,23 +72,6 @@ try:
     DRIVE_UTILS_AVAILABLE = True
 except ImportError:
     pass
-    # Criar logger básico se não conseguir importar
-    import logging
-
-    logs_dir = backend_dir / "instance" / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    basic_logger = logging.getLogger("backup_basic")
-    basic_logger.setLevel(logging.INFO)
-    if not basic_logger.handlers:
-        file_handler = logging.FileHandler(
-            logs_dir / "backup_audit.log", encoding="utf-8", mode="a"
-        )
-        file_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-            )
-        )
-        basic_logger.addHandler(file_handler)
 
 
 class BackupManager:
@@ -94,13 +98,18 @@ class BackupManager:
 
             default_db_path = Config.DATABASE_PATH
             default_backup_dir = Config.INSTANCE_DIR / "backups"
+            self.database_uri = Config.SQLALCHEMY_DATABASE_URI
         except ImportError:
-            # Fallback seguro (ex: durante setup inicial)
             default_db_path = self.backend_dir / "instance" / "database.db"
             default_backup_dir = self.backend_dir / "instance" / "backups"
+            self.database_uri = os.environ.get("DATABASE_URL", "")
 
-        if db_path:
+        self._is_postgres = self.database_uri and "postgresql" in self.database_uri.split(":")[0]
+
+        if db_path and not self._is_postgres:
             self.db_path = Path(db_path)
+        elif self._is_postgres:
+            self.db_path = None
         else:
             self.db_path = default_db_path
 
@@ -143,145 +152,176 @@ class BackupManager:
 
     def create_backup(self, compress=True, reason="manual"):
         """
-        Cria um backup do banco de dados usando sqlite3.Connection.backup()
-        e valida integridade com PRAGMA integrity_check
+        Cria um backup do banco de dados.
+        SQLite: sqlite3.Connection.backup() + PRAGMA integrity_check
+        PostgreSQL: pg_dump (subprocess)
 
         Args:
-            compress: Se True, comprime o backup em .zip
+            compress: Se True, comprime o backup (.zip para SQLite, .gz para PostgreSQL)
 
         Returns:
             Path do arquivo de backup criado ou None em caso de erro
         """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if self._is_postgres:
+            return self._create_backup_postgres(timestamp, compress, reason)
+        return self._create_backup_sqlite(timestamp, compress, reason)
+
+    def _create_backup_postgres(self, timestamp, compress, reason):
+        """Backup PostgreSQL via pg_dump"""
+        import subprocess
+
+        backup_name = f"database_{timestamp}.sql"
+        backup_path = self.backup_dir / backup_name
+
+        try:
+            print(f"[BACKUP] Criando backup PostgreSQL: {backup_name}")
+            result = subprocess.run(
+                ["pg_dump", self.database_uri, "--file", str(backup_path)],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode != 0:
+                print(f"[ERRO] pg_dump falhou: {result.stderr}")
+                if backup_path.exists():
+                    backup_path.unlink()
+                return None
+
+            abs_path = backup_path.resolve()
+            size_mb = abs_path.stat().st_size / (1024 * 1024)
+            print(f"[BACKUP] Backup criado: {abs_path} ({size_mb:.2f} MB)")
+
+            if compress:
+                import gzip
+
+                gz_path = self.backup_dir / f"database_{timestamp}.sql.gz"
+                with open(backup_path, "rb") as f_in:
+                    with gzip.open(gz_path, "wb") as f_out:
+                        f_out.writelines(f_in)
+                backup_path.unlink()
+                backup_path = gz_path
+                size_mb = backup_path.stat().st_size / (1024 * 1024)
+                print(f"[BACKUP] Backup compactado: {backup_path} ({size_mb:.2f} MB)")
+
+            return self._finalize_backup(backup_path, reason, size_mb)
+        except FileNotFoundError:
+            print("[ERRO] pg_dump não encontrado. Instale postgresql-client.")
+            return None
+        except Exception as e:
+            print(f"[ERRO] Erro ao criar backup PostgreSQL: {e}")
+            if backup_path.exists():
+                try:
+                    backup_path.unlink()
+                except Exception:
+                    pass
+            return None
+
+    def _finalize_backup(self, backup_path, reason, size_mb):
+        """Registra backup no audit log, status e cópia secundária"""
+        try:
+            if AUDIT_LOGGER_AVAILABLE:
+                get_audit_logger().log_backup_created(backup_path, reason=reason, size_mb=size_mb)
+            else:
+                _get_basic_logger().info(
+                    f"BACKUP CRIADO | Arquivo: {backup_path.name} | "
+                    f"Motivo: {reason} | Tamanho: {size_mb:.2f} MB"
+                )
+        except Exception as log_error:
+            print(f"[AVISO] Erro ao registrar no log de auditoria: {log_error}")
+
+        if STATUS_AVAILABLE:
+            try:
+                update_backup_status(last_backup_ok_at=datetime.now().isoformat())
+                backups_count = len(list(self.backup_dir.glob("database_*.*")))
+                update_backup_status(backups_local_count=backups_count)
+            except Exception as status_error:
+                print(f"[AVISO] Erro ao atualizar status de backup: {status_error}")
+
+        try:
+            from app.config import Config as BackupConfig
+
+            if BackupConfig.BACKUP_SECONDARY_DIR:
+                try:
+                    import shutil
+
+                    secondary_dir = Path(BackupConfig.BACKUP_SECONDARY_DIR)
+                    secondary_dir.mkdir(parents=True, exist_ok=True)
+                    secondary_backup = secondary_dir / backup_path.name
+                    shutil.copy2(backup_path, secondary_backup)
+                    if secondary_backup.exists():
+                        if backup_path.stat().st_size == secondary_backup.stat().st_size:
+                            print(
+                                f"[BACKUP] Cópia para diretório secundário: OK ({secondary_backup})"
+                            )
+                        else:
+                            print("[AVISO] Tamanho diferente no diretório secundário")
+                    else:
+                        print("[AVISO] Cópia para diretório secundário falhou")
+                except Exception as secondary_error:
+                    print(f"[AVISO] Erro ao copiar para diretório secundário: {secondary_error}")
+
+            if DRIVE_UTILS_AVAILABLE and BackupConfig.BACKUP_SECONDARY_DIR and self.db_path:
+                try:
+                    warnings = check_drive_separation(
+                        db_path=self.db_path,
+                        backup_dir=self.backup_dir,
+                        secondary_dir=Path(BackupConfig.BACKUP_SECONDARY_DIR),
+                    )
+                    for warning in warnings:
+                        print(f"[AVISO] {warning}")
+                except Exception as drive_check_error:
+                    print(f"[AVISO] Erro ao verificar separação de drives: {drive_check_error}")
+        except ImportError:
+            pass
+
+        return backup_path
+
+    def _create_backup_sqlite(self, timestamp, compress, reason):
+        """Backup SQLite via sqlite3.Connection.backup()"""
         import sqlite3
 
-        # Verificar se o banco de dados existe
-        if not self.db_path.exists():
+        if not self.db_path or not self.db_path.exists():
             print(f"[ERRO] Banco de dados não encontrado: {self.db_path}")
             return None
 
-        # Gerar nome do arquivo de backup com timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_name = f"database_{timestamp}.db"
         backup_path = self.backup_dir / backup_name
 
         try:
-            # Backup com context manager
             print(f"[BACKUP] Criando backup: {backup_name}")
             with sqlite3.connect(str(self.db_path)) as source_conn:
                 with sqlite3.connect(str(backup_path)) as backup_conn:
                     source_conn.backup(backup_conn)
 
-            # Integrity check obrigatório
             with sqlite3.connect(str(backup_path)) as check_conn:
                 cursor = check_conn.cursor()
                 cursor.execute("PRAGMA integrity_check;")
                 result = cursor.fetchone()
-
                 if result[0] != "ok":
                     print(f"[ERRO] Integrity check falhou: {result[0]}")
                     backup_path.unlink()
                     return None
 
-            # Logar informações
             abs_path = backup_path.resolve()
             size_mb = abs_path.stat().st_size / (1024 * 1024)
             print(f"[BACKUP] Backup criado: {abs_path} ({size_mb:.2f} MB)")
 
-            # Comprimir se solicitado
             if compress:
                 try:
                     zip_path = self.backup_dir / f"database_{timestamp}.zip"
                     print(f"[BACKUP] Comprimindo: {zip_path.name}")
-
                     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                         zipf.write(backup_path, backup_name)
-
-                    # Remover arquivo .db descomprimido
                     backup_path.unlink()
                     backup_path = zip_path
-                    abs_path = backup_path.resolve()
-                    size_mb = abs_path.stat().st_size / (1024 * 1024)
-                    print(f"[BACKUP] Backup compactado: {abs_path} ({size_mb:.2f} MB)")
+                    size_mb = backup_path.stat().st_size / (1024 * 1024)
+                    print(f"[BACKUP] Backup compactado: {backup_path} ({size_mb:.2f} MB)")
                 except Exception as exc:
                     print(f"[AVISO] Falha ao comprimir; mantendo .db: {exc}")
 
-            # Registrar no log de auditoria
-            try:
-                if AUDIT_LOGGER_AVAILABLE:
-                    get_audit_logger().log_backup_created(
-                        backup_path, reason=reason, size_mb=size_mb
-                    )
-                else:
-                    basic_logger.info(
-                        f"BACKUP CRIADO | Arquivo: {backup_path.name} | "
-                        f"Motivo: {reason} | Tamanho: {size_mb:.2f} MB"
-                    )
-            except Exception as log_error:
-                print(f"[AVISO] Erro ao registrar no log de auditoria: {log_error}")
-
-            # Atualizar status (P1.5)
-            if STATUS_AVAILABLE:
-                try:
-                    # datetime já foi importado no topo do arquivo
-                    update_backup_status(last_backup_ok_at=datetime.now().isoformat())
-                    # Contar backups locais
-                    backups_count = len(list(self.backup_dir.glob("database_*.*")))
-                    update_backup_status(backups_local_count=backups_count)
-                except Exception as status_error:
-                    print(f"[AVISO] Erro ao atualizar status de backup: {status_error}")
-
-            # Cópia para diretório secundário (P1.4)
-            try:
-                from app.config import Config as BackupConfig
-
-                if BackupConfig.BACKUP_SECONDARY_DIR:
-                    try:
-                        secondary_dir = Path(BackupConfig.BACKUP_SECONDARY_DIR)
-                        secondary_dir.mkdir(parents=True, exist_ok=True)
-                        secondary_backup = secondary_dir / backup_path.name
-
-                        # Copiar backup para secundário
-                        import shutil
-
-                        shutil.copy2(backup_path, secondary_backup)
-
-                        # Verificar cópia (tamanho)
-                        if secondary_backup.exists():
-                            source_size = backup_path.stat().st_size
-                            dest_size = secondary_backup.stat().st_size
-                            if source_size == dest_size:
-                                print(
-                                    f"[BACKUP] Cópia para diretório secundário: OK ({secondary_backup})"
-                                )
-                            else:
-                                print(
-                                    f"[AVISO] Tamanho diferente no diretório secundário: {source_size} != {dest_size}"
-                                )
-                        else:
-                            print(
-                                "[AVISO] Cópia para diretório secundário falhou: arquivo não encontrado"
-                            )
-                    except Exception as secondary_error:
-                        print(
-                            f"[AVISO] Erro ao copiar para diretório secundário: {secondary_error}"
-                        )
-
-                # Verificação de separação de drives (P1.4)
-                if DRIVE_UTILS_AVAILABLE and BackupConfig.BACKUP_SECONDARY_DIR:
-                    try:
-                        warnings = check_drive_separation(
-                            db_path=self.db_path,
-                            backup_dir=self.backup_dir,
-                            secondary_dir=Path(BackupConfig.BACKUP_SECONDARY_DIR),
-                        )
-                        for warning in warnings:
-                            print(f"[AVISO] {warning}")
-                    except Exception as drive_check_error:
-                        print(f"[AVISO] Erro ao verificar separação de drives: {drive_check_error}")
-            except ImportError:
-                pass  # Config não disponível
-
-            return backup_path
+            return self._finalize_backup(backup_path, reason, size_mb)
 
         except Exception as e:
             error_msg = str(e)
@@ -292,7 +332,9 @@ class BackupManager:
                 if AUDIT_LOGGER_AVAILABLE:
                     get_audit_logger().log_backup_failed(reason, error_msg)
                 else:
-                    basic_logger.error(f"BACKUP FALHOU | Motivo: {reason} | Erro: {error_msg}")
+                    _get_basic_logger().error(
+                        f"BACKUP FALHOU | Motivo: {reason} | Erro: {error_msg}"
+                    )
             except Exception as log_error:
                 print(f"[AVISO] Erro ao registrar falha no log: {log_error}")
 
@@ -485,6 +527,8 @@ class BackupManager:
         patterns = [
             "database_*.db",
             "database_*.zip",
+            "database_*.sql",
+            "database_*.sql.gz",
             "database_*.enc",
             "database_*.zip.enc",
         ]

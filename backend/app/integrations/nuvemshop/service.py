@@ -108,6 +108,14 @@ class NuvemshopOrderImporter:
                 return self._mark_failed(delivery, "missing_order_id")
 
             order = self.client.get_order(order_id)
+            # Custom fields vêm de endpoint separado na API Nuvemshop
+            try:
+                custom_fields = self.client.get_order_custom_fields(order_id)
+                if custom_fields:
+                    order["custom_fields"] = custom_fields
+            except Exception as exc:
+                logger.debug(f"Custom fields não disponíveis para order {order_id}: {exc}")
+
             delivery.order_json = json.dumps(order, ensure_ascii=False)
 
             (
@@ -381,7 +389,7 @@ class NuvemshopOrderImporter:
         new_valor = pedido_data.get("valor") or ""
         if new_valor:
             cur_valor = pedido.valor or ""
-            if not cur_valor or cur_valor in ("", "R$ 0,00", "R$ 0.00"):
+            if not cur_valor or cur_valor in ("", "R$ 0,00", "R$ 0.00", "0.00"):
                 updates["valor"] = new_valor
 
         new_produto = pedido_data.get("produto") or ""
@@ -576,11 +584,11 @@ class NuvemshopOrderImporter:
                         logger.debug(f"[Retry] Pedido {order_id} não encontrado na API")
                         return
 
-                    # Verificar se há custom fields agora
-                    custom_fields = (
-                        order.get("custom_fields") or order.get("order_custom_fields") or []
-                    )
-                    has_custom_fields = bool(custom_fields and len(custom_fields) > 0)
+                    # Custom fields vêm de endpoint separado
+                    custom_fields = self.client.get_order_custom_fields(order_id)
+                    if custom_fields:
+                        order["custom_fields"] = custom_fields
+                    has_custom_fields = bool(custom_fields)
 
                     if not has_custom_fields:
                         logger.debug(

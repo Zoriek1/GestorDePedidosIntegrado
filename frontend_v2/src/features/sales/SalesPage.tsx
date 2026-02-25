@@ -73,25 +73,27 @@ export default function SalesPage() {
     { enabled: compareEnabled }
   );
 
-  // Filtrar cancelados no frontend (defensivo) e alertar se backend retornou cancelados
+  // Filtrar cancelados e soft-deleted (defensivo para contagem de vendas)
   const vendas = useMemo(() => {
     const pedidos = data?.pedidos || [];
-    // Backend retornou cancelados (indica bug no filtro server-side) - silenciado em produção
-    // const cancelados = pedidos.filter((p) => p.status?.toLowerCase().trim() === 'cancelado');
-    // if (cancelados.length > 0) { ... }
-    
-    return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
+    return pedidos.filter(
+      (p) => p.status?.toLowerCase().trim() !== 'cancelado' && !p.deleted_at
+    );
   }, [data?.pedidos]);
 
   const vendasAnterior = useMemo(() => {
     const pedidos = previousData?.pedidos || [];
-    return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
+    return pedidos.filter(
+      (p) => p.status?.toLowerCase().trim() !== 'cancelado' && !p.deleted_at
+    );
   }, [previousData?.pedidos]);
 
   const vendasComparacao = useMemo(() => {
     if (!compareEnabled) return [];
     const pedidos = compareData?.pedidos || [];
-    return pedidos.filter((p) => p.status?.toLowerCase().trim() !== 'cancelado');
+    return pedidos.filter(
+      (p) => p.status?.toLowerCase().trim() !== 'cancelado' && !p.deleted_at
+    );
   }, [compareEnabled, compareData?.pedidos]);
 
   const baseTotals = useMemo(() => calcularTotais(vendas), [vendas]);
@@ -186,7 +188,7 @@ export default function SalesPage() {
       ) : (
         <>
           <SalesKPIGrid kpis={kpis} comparativo={comparativo} comparativoLabel={comparativoLabel} />
-          <SalesMetaProgress startDate={startDate} totalEfetivo={kpis.totalEfetivo} />
+          <SalesMetaProgress startDate={startDate} totalBruto={kpis.totalVendasBruto} />
           <SalesChart
             vendas={vendas}
             startDate={startDate}

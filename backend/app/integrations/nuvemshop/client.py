@@ -43,6 +43,18 @@ class NuvemshopClient:
         response.raise_for_status()
         return response.json()
 
+    def get_order_custom_fields(self, order_id: str) -> list:
+        """
+        Busca custom fields associados a um pedido específico.
+        Na API Nuvemshop, custom fields vêm de endpoint separado e NÃO estão
+        incluídos no objeto do pedido retornado por get_order().
+        """
+        url = self._url(f"/orders/{order_id}/custom-fields")
+        response = requests.get(url, headers=self._headers(), timeout=self.timeout_seconds)
+        response.raise_for_status()
+        result = response.json()
+        return result if isinstance(result, list) else []
+
     def create_webhook(self, event: str, url: str) -> Dict[str, Any]:
         payload = {"event": event, "url": url}
         response = requests.post(
@@ -60,6 +72,48 @@ class NuvemshopClient:
             params["event"] = event
         response = requests.get(
             self._url("/webhooks"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def list_orders(
+        self,
+        limit: Optional[int] = None,
+        since_id: Optional[int] = None,
+        status: Optional[str] = None,
+        created_at_min: Optional[str] = None,
+        created_at_max: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Lista pedidos da loja Nuvemshop.
+
+        Args:
+            limit: Número máximo de pedidos a retornar
+            since_id: Retornar apenas pedidos com ID maior que este valor
+            status: Filtrar por status (open, closed, cancelled, etc)
+            created_at_min: Data mínima de criação (formato ISO 8601)
+            created_at_max: Data máxima de criação (formato ISO 8601)
+
+        Returns:
+            Dict com lista de pedidos e metadados de paginação
+        """
+        params: Dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        if since_id is not None:
+            params["since_id"] = since_id
+        if status:
+            params["status"] = status
+        if created_at_min:
+            params["created_at_min"] = created_at_min
+        if created_at_max:
+            params["created_at_max"] = created_at_max
+
+        response = requests.get(
+            self._url("/orders"),
             params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,

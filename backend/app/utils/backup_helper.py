@@ -129,7 +129,8 @@ def get_audit_logger():
 
 def create_backup(reason="automatic", compress=True, silent=False):
     """
-    Cria um backup do banco de dados programaticamente
+    Cria um backup do banco de dados programaticamente.
+    Suporta SQLite e PostgreSQL (via DATABASE_URL).
 
     Args:
         reason: Motivo do backup (automatic, critical_operation, startup, etc)
@@ -140,22 +141,19 @@ def create_backup(reason="automatic", compress=True, silent=False):
         Path do arquivo de backup criado ou None em caso de erro
     """
     try:
-        # Importar Config para obter o caminho correto do banco de dados
         from app.config import Config
 
-        # Usar o caminho correto do banco de dados (pode estar em %USERPROFILE%/var/lib/database/database.db)
-        db_path = Config.DATABASE_PATH
-
-        # Diretório de backups continua em backend/instance/backups
         backend_dir = Path(__file__).parent.parent.parent
         instance_dir = backend_dir / "instance"
         backup_dir = instance_dir / "backups"
-
-        # Criar diretórios se não existirem
         instance_dir.mkdir(exist_ok=True)
         backup_dir.mkdir(exist_ok=True)
 
-        # Criar gerenciador de backups com caminhos explícitos
+        db_path = (
+            None
+            if ("postgresql" in (Config.SQLALCHEMY_DATABASE_URI or ""))
+            else Config.DATABASE_PATH
+        )
         backup_mgr = BackupManager(db_path=db_path, backup_dir=backup_dir)
 
         # Criar backup
@@ -194,13 +192,13 @@ def get_last_backup_time():
         Tupla (path, datetime, size_mb) ou None se não houver backups
     """
     try:
-        # Importar Config para obter o caminho correto do banco de dados
         from app.config import Config
 
-        # Usar o caminho correto do banco de dados
-        db_path = Config.DATABASE_PATH
-
-        # Diretório de backups continua em backend/instance/backups
+        db_path = (
+            None
+            if ("postgresql" in (Config.SQLALCHEMY_DATABASE_URI or ""))
+            else Config.DATABASE_PATH
+        )
         backend_dir = Path(__file__).parent.parent.parent
         instance_dir = backend_dir / "instance"
         backup_dir = instance_dir / "backups"
@@ -245,13 +243,13 @@ def get_backup_stats():
         Dicionário com estatísticas
     """
     try:
-        # Importar Config para obter o caminho correto do banco de dados
         from app.config import Config
 
-        # Usar o caminho correto do banco de dados
-        db_path = Config.DATABASE_PATH
-
-        # Diretório de backups continua em backend/instance/backups
+        db_path = (
+            None
+            if ("postgresql" in (Config.SQLALCHEMY_DATABASE_URI or ""))
+            else Config.DATABASE_PATH
+        )
         backend_dir = Path(__file__).parent.parent.parent
         instance_dir = backend_dir / "instance"
         backup_dir = instance_dir / "backups"

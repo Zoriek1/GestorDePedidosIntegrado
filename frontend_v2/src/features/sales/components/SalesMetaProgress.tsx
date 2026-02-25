@@ -5,10 +5,11 @@ import { useMetaFaturamento, useUpdateMetaFaturamento } from '../../../api/endpo
 
 interface SalesMetaProgressProps {
   startDate: string;
-  totalEfetivo: number;
+  /** Faturamento bruto do período (sem descontar entregas) para comparar com a meta */
+  totalBruto: number;
 }
 
-export function SalesMetaProgress({ startDate, totalEfetivo }: SalesMetaProgressProps) {
+export function SalesMetaProgress({ startDate, totalBruto }: SalesMetaProgressProps) {
   const mes = useMemo(() => dayjs(startDate).format('YYYY-MM'), [startDate]);
   const { data, isLoading } = useMetaFaturamento(mes);
   const { mutateAsync: updateMeta, isPending } = useUpdateMetaFaturamento();
@@ -16,7 +17,7 @@ export function SalesMetaProgress({ startDate, totalEfetivo }: SalesMetaProgress
   const [metaInput, setMetaInput] = useState('');
 
   const metaValor = data?.valor ?? null;
-  const progress = metaValor && metaValor > 0 ? Math.min((totalEfetivo / metaValor) * 100, 100) : 0;
+  const progress = metaValor && metaValor > 0 ? Math.min((totalBruto / metaValor) * 100, 100) : 0;
   const metaLabel = dayjs(startDate).format('MMMM [de] YYYY');
 
   const handleOpen = () => {
@@ -50,7 +51,7 @@ export function SalesMetaProgress({ startDate, totalEfetivo }: SalesMetaProgress
             Meta do mês ({metaLabel})
           </Typography>
           <Typography variant="body1" sx={{ mt: 0.5 }}>
-            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalEfetivo)} /{' '}
+            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalBruto)} /{' '}
             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(metaValor)}
           </Typography>
           <LinearProgress

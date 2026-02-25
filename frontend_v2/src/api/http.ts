@@ -3,18 +3,12 @@
  * All API calls go through this client
  */
 
-// Em produção, sempre usar URL relativa quando a página for servida pelo mesmo host (ex.: tunnel).
-// Evita login falhar quando acessa via https://dominio e o build tinha API absoluta (ex.: http://IP:5000).
+// Em produção sempre usar /api relativo: evita mixed content (HTTPS página → HTTP API) e funciona
+// tanto por IP (http://IP:5000) quanto por tunnel (https://dominio). Navegador bloqueia requisição
+// HTTP a partir de HTTPS sem mostrar no Network nem erro no console.
 export function getApiBaseUrl(): string {
-  const raw = import.meta.env.VITE_API_BASE_URL || '/api';
-  if (import.meta.env.PROD && typeof window !== 'undefined' && raw.startsWith('http')) {
-    try {
-      if (new URL(raw).origin !== window.location.origin) return '/api';
-    } catch {
-      return '/api';
-    }
-  }
-  return raw;
+  if (import.meta.env.PROD) return '/api';
+  return import.meta.env.VITE_API_BASE_URL || '/api';
 }
 
 const BASE_URL = getApiBaseUrl();

@@ -16,8 +16,10 @@ def log_debug(msg, data):
     env = os.environ.get("FLASK_ENV", "development")
     if env != "production":
         try:
+            log_path = Path(__file__).resolve().parent.parent.parent / ".cursor" / "debug.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
             with open(
-                r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
+                log_path,
                 "a",
                 encoding="utf-8",
             ) as f:

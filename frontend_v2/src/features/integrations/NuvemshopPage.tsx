@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -38,8 +39,19 @@ export default function NuvemshopPage() {
   const { error: toastError, success } = useToast();
 
   const [drafts, setDrafts] = useState<DraftState>({});
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const pendingItems = useMemo(() => data?.pedidos ?? [], [data]);
+
+  useEffect(() => {
+    if (searchParams.get('nuvemshop') === 'connected') {
+      success('Loja Nuvemshop conectada. Webhooks configurados.');
+      setSearchParams((prev) => {
+        prev.delete('nuvemshop');
+        return prev;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams, success]);
 
   const handleDraftChange = (pedidoId: number, field: 'dia_entrega' | 'horario', value: string) => {
     setDrafts((prev) => ({
@@ -76,7 +88,7 @@ export default function NuvemshopPage() {
             loading={install.isPending}
             onClick={() =>
               install.mutate(undefined, {
-                onSuccess: (url) => window.open(url, '_blank'),
+                onSuccess: (url) => { window.location.href = url; },
                 onError: (err) => toastError((err as Error).message),
               })
             }

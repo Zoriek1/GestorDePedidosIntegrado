@@ -18,6 +18,8 @@ import {
   usePendingSchedules,
   useDefineSchedule,
   useProcessPendingNuvemshop,
+  useNuvemshopInstall,
+  useSetupNuvemshopWebhooks,
 } from '../../api/endpoints/nuvemshop';
 
 interface DraftState {
@@ -31,6 +33,8 @@ export default function NuvemshopPage() {
   const { data, isLoading, isError, refetch } = usePendingSchedules();
   const defineSchedule = useDefineSchedule();
   const processPending = useProcessPendingNuvemshop();
+  const install = useNuvemshopInstall();
+  const setupWebhooks = useSetupNuvemshopWebhooks();
   const { error: toastError, success } = useToast();
 
   const [drafts, setDrafts] = useState<DraftState>({});
@@ -65,7 +69,32 @@ export default function NuvemshopPage() {
         <Typography variant="body2" color="text.secondary">
           Pedidos importados sem data de entrega confirmada (HuaApps). Ajuste a data e confirme.
         </Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} flexWrap="wrap" spacing={2}>
+          <AppButton
+            variant="outlined"
+            loading={install.isPending}
+            onClick={() =>
+              install.mutate(undefined, {
+                onSuccess: (url) => window.open(url, '_blank'),
+                onError: (err) => toastError((err as Error).message),
+              })
+            }
+          >
+            Conectar / reconectar loja
+          </AppButton>
+          <AppButton
+            variant="outlined"
+            loading={setupWebhooks.isPending}
+            onClick={() =>
+              setupWebhooks.mutate(undefined, {
+                onSuccess: () => success('Webhooks recriados'),
+                onError: (err) => toastError((err as Error).message),
+              })
+            }
+          >
+            Recriar webhooks
+          </AppButton>
           <AppButton
             variant="contained"
             loading={processPending.isPending}

@@ -101,6 +101,38 @@ Depois, ajuste manualmente via:
 POST /api/integrations/nuvemshop/pedidos/<pedido_id>/definir-agendamento
 ```
 
+## 9) Nuvemshop na VPS (após deploy)
+
+Se o sistema rodava em outro ambiente e você migrou para uma VPS (Docker, domínio público):
+
+1. **Variáveis no `.env` da raiz** (ou no ambiente do backend):
+   - `NUVEMSHOP_APP_ID` e `NUVEMSHOP_CLIENT_SECRET` — use os mesmos do app na Nuvemshop.
+   - `NUVEMSHOP_USER_AGENT` — ex.: `Gestor Pedidos (contato@seudominio.com)`.
+   - **`NUVEMSHOP_PUBLIC_BASE_URL`** — URL pública do backend na VPS, **sem barra no final**  
+     Ex.: `https://gestaopedidos.planteumaflor.online`  
+     Essa URL é usada para o callback OAuth e para registrar os webhooks na loja.
+
+2. **Redirect URL no painel do app (Nuvemshop)**  
+   Em **Dados Básicos**, defina a URL de redirecionamento para:
+   ```
+   https://SEU_DOMINIO_VPS/api/integrations/nuvemshop/oauth/callback
+   ```
+   (substitua `SEU_DOMINIO_VPS` pelo mesmo host de `NUVEMSHOP_PUBLIC_BASE_URL`.)
+
+3. **Reconectar a loja**  
+   No Gestor de Pedidos (pela interface na VPS), vá em Integrações > Nuvemshop e **instale/conecte de novo** a loja. Isso:
+   - Troca o token (OAuth) no servidor da VPS.
+   - Recria os webhooks apontando para `NUVEMSHOP_PUBLIC_BASE_URL/api/integrations/nuvemshop/webhooks`.
+
+4. **Se já reconectou e os pedidos não caem**  
+   - Confirme que as 4 variáveis estão definidas no container (ex.: `docker compose exec backend env | grep NUVEMSHOP`).
+   - Chame **POST /api/integrations/nuvemshop/setup-webhooks** (como admin) para recriar os webhooks com a URL atual.
+   - Verifique no painel da Nuvemshop se os webhooks do app estão com a URL da VPS.
+
+Sem `NUVEMSHOP_PUBLIC_BASE_URL` correto na VPS, o callback e os webhooks usam URL errada e a integração (puxar pedidos) deixa de funcionar.
+
+---
+
 ## Links de referencia
 - OAuth: https://dev.nuvemshop.com.br/docs/applications/authentication
 - API intro: https://tiendanube.github.io/api-documentation/intro

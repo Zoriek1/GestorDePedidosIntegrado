@@ -211,6 +211,7 @@ Para rodar direto na host (PostgreSQL instalado na VPS):
 | Build frontend | Script de deploy ou estágio Docker |
 | Migrations | Comando no script de deploy ou no entrypoint Docker |
 | Config backups | Variáveis no .env da VPS |
+| Nuvemshop (puxar pedidos) | NUVEMSHOP_* no .env + reconectar loja; ver backend/docs/NUVEMSHOP_CREDENTIALS.md §9 |
 
 ---
 
@@ -225,4 +226,6 @@ Para rodar direto na host (PostgreSQL instalado na VPS):
 5. Configure Nginx ou Caddy (copie `deploy/nginx.conf.example` ou `deploy/Caddyfile.example`).
 6. Aponte o domínio e obtenha SSL (certbot ou Caddy automático).
 7. Defina `USE_HTTPS=true` no `.env` se o proxy terminar SSL.
-8. Abra portas 80/443 no firewall (seção 10).
+8. Abra portas 80/443 no firewall (seção 11).
+9. (Opcional) Google Sheets/Drive: siga [GOOGLE_CREDENTIALS_VPS.md](GOOGLE_CREDENTIALS_VPS.md).
+10. (Opcional) Nuvemshop: defina no `.env` as variáveis `NUVEMSHOP_APP_ID`, `NUVEMSHOP_CLIENT_SECRET`, `NUVEMSHOP_USER_AGENT` e **`NUVEMSHOP_PUBLIC_BASE_URL`** (URL pública da VPS, ex.: `https://gestaopedidos.planteumaflor.online`); atualize a Redirect URL no painel do app Nuvemshop; reconecte a loja em Integrações > Nuvemshop. Ver [backend/docs/NUVEMSHOP_CREDENTIALS.md](../backend/docs/NUVEMSHOP_CREDENTIALS.md) §9.

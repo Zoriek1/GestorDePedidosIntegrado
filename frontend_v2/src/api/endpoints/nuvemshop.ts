@@ -86,3 +86,39 @@ export function useProcessPendingNuvemshop() {
     },
   });
 }
+
+/** Retorna a URL de autorização OAuth para conectar/reconectar a loja na Nuvemshop. */
+export function useNuvemshopInstall() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest<{ authorize_url: string }>('/integrations/nuvemshop/install');
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      const url = (response.data as { authorize_url?: string })?.authorize_url;
+      if (!url) throw new Error('URL de autorização não retornada');
+      return url;
+    },
+  });
+}
+
+/** Recria os webhooks de pedidos na loja conectada (útil após mudar de domínio/VPS). */
+export function useSetupNuvemshopWebhooks() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('/integrations/nuvemshop/setup-webhooks', {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+  });
+}

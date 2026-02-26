@@ -8,6 +8,7 @@ import os
 import socket
 from pathlib import Path
 
+from flask import request
 from flask_cors import CORS
 
 
@@ -108,7 +109,6 @@ def setup_cors(app):
     @app.after_request
     def _cors_reflect_origin(response):
         """Reflete o Origin da requisição na resposta para /api/* (evita proxy/Cloudflare)."""
-        from flask import request
         if not request.path.startswith("/api/"):
             return response
         origin = getattr(request, "origin", None) or request.headers.get("Origin")

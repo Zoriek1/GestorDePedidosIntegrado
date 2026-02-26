@@ -257,7 +257,9 @@ def nuvemshop_oauth_callback():
             },
         )
 
-    return success_response({"store_id": store_id, "status": "connected"})
+    # Redirecionar de volta ao app para o usuário não ficar vendo JSON
+    front_url = _build_public_url("/integracoes/nuvemshop?nuvemshop=connected")
+    return redirect(front_url)
 
 
 @nuvemshop_bp.route("/setup-webhooks", methods=["POST"])

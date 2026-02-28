@@ -59,10 +59,11 @@ interface OrderCardProps {
   onClick?: () => void;
   selectable?: boolean;
   selected?: boolean;
+  selectionOrder?: number;
   onToggleSelect?: (pedido: Pedido) => void;
 }
 
-export function OrderCard({ pedido, onClick, selectable = false, selected = false, onToggleSelect }: OrderCardProps) {
+export function OrderCard({ pedido, onClick, selectable = false, selected = false, selectionOrder = 0, onToggleSelect }: OrderCardProps) {
   const navigate = useNavigate();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const statusColor = getStatusColor(pedido.status);
@@ -343,19 +344,44 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
             </Box>
             <Box display="flex" alignItems="center" gap={1}>
               {selectable && (
-                <Tooltip title={pedido.tipo_pedido === 'Entrega' ? 'Selecionar para rota' : 'Apenas entregas podem ser roteirizadas'}>
+                <Tooltip title={pedido.tipo_pedido === 'Entrega' ? (selected ? `Parada ${selectionOrder} — clique para remover` : 'Selecionar para rota') : 'Apenas entregas podem ser roteirizadas'}>
                   <span>
-                    <Checkbox
-                      size="small"
-                      checked={selected}
-                      disabled={pedido.tipo_pedido !== 'Entrega'}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (pedido.tipo_pedido === 'Entrega') {
+                    {selected && selectionOrder > 0 ? (
+                      <Box
+                        onClick={(e) => {
+                          e.stopPropagation();
                           onToggleSelect?.(pedido);
-                        }
-                      }}
-                    />
+                        }}
+                        sx={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: '50%',
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          '&:hover': { bgcolor: 'primary.dark' },
+                        }}
+                      >
+                        {selectionOrder}
+                      </Box>
+                    ) : (
+                      <Checkbox
+                        size="small"
+                        checked={false}
+                        disabled={pedido.tipo_pedido !== 'Entrega'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (pedido.tipo_pedido === 'Entrega') {
+                            onToggleSelect?.(pedido);
+                          }
+                        }}
+                      />
+                    )}
                   </span>
                 </Tooltip>
               )}

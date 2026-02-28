@@ -54,3 +54,27 @@ export function useRotaOtimizada(rotaId?: number) {
   });
 }
 
+export interface GerarRotaMapsResult {
+  google_maps_url: string | null;
+  google_maps_step_by_step: StepByStepUrl[];
+  pedidos: { id: number; cliente: string; destinatario: string; endereco: string }[];
+  sem_coords: number[];
+}
+
+export function useGerarRotaMaps() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useMutation({
+    mutationFn: async (pedidoIds: number[]) => {
+      const response = await apiRequest<GerarRotaMapsResult>('/pedidos/gerar-rota-maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_ids: pedidoIds }),
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+  });
+}
+

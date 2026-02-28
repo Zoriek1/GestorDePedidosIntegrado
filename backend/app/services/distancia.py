@@ -571,16 +571,20 @@ class DistanciaService:
         # -----------------------------------------------------------------
         result = self._geocodificar_google(endereco)
         if result:
+            if self.DEBUG:
+                print("[DEBUG] ✓ Geocodificação via Google (provider primário)")
             return result
 
         # -----------------------------------------------------------------
-        # TENTATIVA 1: Nominatim com variações
+        # TENTATIVA 1: Nominatim com variações (fallback)
         # -----------------------------------------------------------------
         if self.DEBUG:
-            print("[DEBUG] Google falhou/indisponível, tentando Nominatim...")
+            print("[DEBUG] ⚠ Google falhou/indisponível → fallback Nominatim")
 
         coords = self.geocodificar_nominatim(endereco)
         if coords and self.validar_coords_goias(coords):
+            if self.DEBUG:
+                print("[DEBUG] ✓ Geocodificação via Nominatim (fallback 1)")
             return coords
 
         # Sem número
@@ -661,7 +665,7 @@ class DistanciaService:
         # TENTATIVA 3: OpenRouteService (fallback final de geocoding)
         # -----------------------------------------------------------------
         if self.DEBUG:
-            print("[DEBUG] Tentando OpenRouteService como fallback de geocoding...")
+            print("[DEBUG] ⚠ Nominatim/ViaCEP falharam → fallback OpenRouteService")
         if not self.api_key:
             return None
 
@@ -692,6 +696,8 @@ class DistanciaService:
                         return None
                     coords_tupla = (coords[0], coords[1])
                     if self.validar_coords_goias(coords_tupla):
+                        if self.DEBUG:
+                            print("[DEBUG] ✓ Geocodificação via OpenRouteService (fallback final)")
                         return coords_tupla
         except requests.exceptions.Timeout:
             print(f"[ERRO] Timeout ao geocodificar (ORS): {endereco[:60]}")
@@ -839,18 +845,47 @@ class DistanciaService:
             print(f"[DEBUG] Origem:  lon={coords_origem[0]}, lat={coords_origem[1]}")
             print(f"[DEBUG] Destino: lon={coords_destino[0]}, lat={coords_destino[1]}")
 
-        # TENTATIVA 1: GraphHopper (preferido)
+        # TENTATIVA 1: Google Directions API (primário)
         if self.DEBUG:
-            print("[DEBUG] Tentativa 1: GraphHopper...")
+            print("[DEBUG] Tentativa 1: Google Directions...")
+
+        try:
+            from app.services.google_routes import google_routes_service
+
+            # Google usa (lat, lon), mas recebemos (lon, lat)
+            origem_g = (coords_origem[1], coords_origem[0])
+            destino_g = (coords_destino[1], coords_destino[0])
+
+            resultado_g = google_routes_service.calcular_rota(origem_g, destino_g)
+
+            if resultado_g:
+                if self.DEBUG:
+                    print(f"[DEBUG] ✓ Sucesso com Google Directions: {resultado_g['distancia_km']} km")
+                return {
+                    "distancia_km": resultado_g["distancia_km"],
+                    "duracao_min": resultado_g["duracao_min"],
+                    "coords_origem": coords_origem,
+                    "coords_destino": coords_destino,
+                    "metodo": "google_directions",
+                }
+            else:
+                if self.DEBUG:
+                    print("[DEBUG] ✗ Google Directions retornou None")
+        except ImportError as e:
+            if self.DEBUG:
+                print(f"[DEBUG] Google Routes não disponível: {e}")
+        except Exception as e:
+            if self.DEBUG:
+                print(f"[DEBUG] ✗ Google Directions falhou: {type(e).__name__}: {e}")
+
+        # TENTATIVA 2: GraphHopper (fallback)
+        if self.DEBUG:
+            print("[DEBUG] Tentativa 2: GraphHopper...")
 
         try:
             from app.services.graphhopper import graphhopper_service
 
-            # GraphHopper usa (lat, lon), mas recebemos (lon, lat)
-            origem_gh = (
-                coords_origem[1],
-                coords_origem[0],
-            )  # Converter para (lat, lon)
+            origem_gh = (coords_origem[1], coords_origem[0])
             destino_gh = (coords_destino[1], coords_destino[0])
 
             resultado_gh = graphhopper_service.calcular_rota(origem_gh, destino_gh)
@@ -858,7 +893,6 @@ class DistanciaService:
             if resultado_gh:
                 if self.DEBUG:
                     print(f"[DEBUG] ✓ Sucesso com GraphHopper: {resultado_gh['distancia_km']} km")
-                # Converter de volta para (lon, lat) para manter compatibilidade
                 return {
                     "distancia_km": resultado_gh["distancia_km"],
                     "duracao_min": resultado_gh["duracao_min"],
@@ -875,11 +909,8 @@ class DistanciaService:
         except Exception as e:
             if self.DEBUG:
                 print(f"[DEBUG] ✗ GraphHopper falhou: {type(e).__name__}: {e}")
-                import traceback
 
-                traceback.print_exc()
-
-        # TENTATIVA 2: OpenRouteService (fallback)
+        # TENTATIVA 3: OpenRouteService (fallback)
         if self.DEBUG:
             print("[DEBUG] Tentativa 2: OpenRouteService...")
 
@@ -952,9 +983,9 @@ class DistanciaService:
 
                     traceback.print_exc()
 
-        # TENTATIVA 3: Haversine (último recurso - distância em linha reta)
+        # TENTATIVA 4: Haversine (último recurso - distância em linha reta)
         if self.DEBUG:
-            print("[DEBUG] Tentativa 3: Haversine (distância em linha reta)...")
+            print("[DEBUG] Tentativa 4: Haversine (distância em linha reta)...")
 
         resultado_haversine = self._calcular_distancia_haversine(coords_origem, coords_destino)
         if resultado_haversine:

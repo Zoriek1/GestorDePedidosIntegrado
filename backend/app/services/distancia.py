@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Serviço de Cálculo de Distância usando OpenRouteService
-Geocodifica endereços e calcula distância de rota (dirigindo)
+Serviço de Cálculo de Distância
+
+Geocodifica endereços e calcula distância de rota (dirigindo).
+Provider primário: Google Geocoding API (com cache em EnderecoCliente).
+Fallback:          Nominatim (OpenStreetMap) + OpenRouteService.
 """
 import os
 import re
@@ -10,13 +13,13 @@ import requests
 
 
 class DistanciaService:
-    """Serviço para cálculo de distância usando OpenRouteService + Nominatim"""
+    """Serviço para cálculo de distância com Google Geocoding + cache."""
 
-    # URLs das APIs
+    # URLs das APIs (fallback)
     GEOCODE_URL = "https://api.openrouteservice.org/geocode/search"
-    NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"  # Geocoding gratuito
+    NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
     DIRECTIONS_URL = "https://api.openrouteservice.org/v2/directions/driving-car"
-    VIACEP_URL = "https://viacep.com.br/ws"  # API ViaCEP para validação de CEP
+    VIACEP_URL = "https://viacep.com.br/ws"
 
     # Cache de endereços que falharam (evita requisições repetidas)
     _enderecos_invalidos = set()
@@ -33,8 +36,6 @@ class DistanciaService:
         self.endereco_floricultura = os.environ.get("ENDERECO_FLORICULTURA", "")
         self._coords_floricultura = None
 
-        # Variáveis são opcionais - não mostrar avisos desnecessários
-        # Apenas log em modo DEBUG se configurado
         if self.endereco_floricultura and self.DEBUG:
             print(f"[DEBUG] Endereço floricultura: {self.endereco_floricultura}")
 
@@ -535,8 +536,13 @@ class DistanciaService:
 
     def geocodificar(self, endereco, normalizar=True, cep_separado=None):
         """
-        Converte endereço em coordenadas (latitude, longitude)
-        Usa Nominatim (OpenStreetMap) como principal, OpenRouteService como backup
+        Converte endereço em coordenadas (latitude, longitude).
+
+        Ordem de tentativas:
+          1) Google Geocoding API (provider primário)
+          2) Nominatim (OpenStreetMap) com variações
+          3) ViaCEP + Nominatim (por CEP)
+          4) OpenRouteService (fallback)
 
         Args:
             endereco: String com o endereço completo
@@ -545,13 +551,12 @@ class DistanciaService:
 
         Returns:
             Tuple (longitude, latitude) para endereços exatos
-            OU Dict {'coords': (lon, lat), 'aproximado': True, 'nivel_aproximacao': str, 'aviso': str}
+            OU Dict {'coords': (lon, lat), 'aproximado': True, ...}
             OU None se falhar
         """
         if not endereco:
             return None
 
-        # Normalizar endereço se solicitado
         endereco_original = endereco
         if normalizar:
             endereco = self.normalizar_endereco(endereco)
@@ -561,20 +566,27 @@ class DistanciaService:
             print(f"[DEBUG] Endereço original: {endereco_original}")
             print(f"[DEBUG] Endereço para API: {endereco}")
 
-        # TENTATIVA 1: Nominatim (OpenStreetMap) com múltiplas variações
-        if self.DEBUG:
-            print("[DEBUG] Tentando Nominatim com variações do endereço...")
+        # -----------------------------------------------------------------
+        # TENTATIVA 0: Google Geocoding API (provider primário)
+        # -----------------------------------------------------------------
+        result = self._geocodificar_google(endereco)
+        if result:
+            return result
 
-        # Tentar endereço completo primeiro
+        # -----------------------------------------------------------------
+        # TENTATIVA 1: Nominatim com variações
+        # -----------------------------------------------------------------
+        if self.DEBUG:
+            print("[DEBUG] Google falhou/indisponível, tentando Nominatim...")
+
         coords = self.geocodificar_nominatim(endereco)
         if coords and self.validar_coords_goias(coords):
             return coords
 
-        # TENTATIVA 1.2: Tentar sem número (às vezes ajuda)
+        # Sem número
         if "," in endereco:
             partes = [p.strip() for p in endereco.split(",")]
             if len(partes) >= 3:
-                # Remover segunda parte (geralmente o número)
                 endereco_sem_numero = ", ".join([partes[0]] + partes[2:])
                 if self.DEBUG:
                     print(f"[DEBUG] Tentando sem número: {endereco_sem_numero}")
@@ -582,11 +594,10 @@ class DistanciaService:
                 if coords and self.validar_coords_goias(coords):
                     return coords
 
-        # TENTATIVA 1.3: Tentar só rua + bairro + cidade
+        # Simplificado (rua + bairro + cidade)
         if "," in endereco:
             partes = [p.strip() for p in endereco.split(",")]
             if len(partes) >= 4:
-                # Rua, Bairro, Cidade, Estado, País
                 endereco_simplificado = ", ".join([partes[0], partes[2], partes[3], "GO", "Brasil"])
                 if self.DEBUG:
                     print(f"[DEBUG] Tentando simplificado: {endereco_simplificado}")
@@ -594,79 +605,51 @@ class DistanciaService:
                 if coords and self.validar_coords_goias(coords):
                     return coords
 
-        # TENTATIVA 1.4: Usar ViaCEP para obter endereço real do CEP
-        # Primeiro tenta extrair CEP do endereço, depois usa cep_separado se fornecido
-        import re
-
+        # -----------------------------------------------------------------
+        # TENTATIVA 2: ViaCEP + Nominatim (por CEP)
+        # -----------------------------------------------------------------
         cep = None
         cep_match = re.search(r"(\d{5})-?(\d{3})", endereco)
         if cep_match:
             cep = f"{cep_match.group(1)}{cep_match.group(2)}"
         elif cep_separado:
-            # Limpar CEP separado (remover caracteres não numéricos)
             cep = re.sub(r"\D", "", str(cep_separado))
 
         if cep and len(cep) == 8:
             if self.DEBUG:
-                print("[DEBUG] Tentando obter endereço do CEP via ViaCEP...")
-
-            # Buscar endereço real do CEP via ViaCEP
+                print("[DEBUG] Tentando ViaCEP...")
             endereco_viacep = self.buscar_endereco_por_cep(cep)
-
             if endereco_viacep:
-                # Tentar geocodificar com o endereço obtido do ViaCEP
-                if self.DEBUG:
-                    print(f"[DEBUG] Geocodificando endereço do ViaCEP: {endereco_viacep}")
                 coords = self.geocodificar_nominatim(endereco_viacep)
                 if coords and self.validar_coords_goias(coords):
                     print("[INFO] ✓ Endereço encontrado via ViaCEP + Nominatim")
                     return coords
 
-            # Se ViaCEP falhou ou não retornou coordenadas válidas, tenta só o CEP
             cep_formatado = f"{cep[:5]}-{cep[5:]}"
-            endereco_cep = f"{cep_formatado}, Brasil"
-            if self.DEBUG:
-                print(f"[DEBUG] Tentando apenas com CEP no Nominatim: {endereco_cep}")
-            coords = self.geocodificar_nominatim(endereco_cep)
+            coords = self.geocodificar_nominatim(f"{cep_formatado}, Brasil")
             if coords and self.validar_coords_goias(coords):
                 print(f"[INFO] ✓ Endereço encontrado usando apenas CEP: {cep_formatado}")
                 return coords
-            else:
-                if self.DEBUG:
-                    print(f"[DEBUG] CEP {cep_formatado} não encontrou resultado válido em Goiás")
 
-        # TENTATIVA 1.5: Geocodificação aproximada por bairro
-        # Extrair bairro e cidade do endereço do ViaCEP se disponível
+        # Geocodificação aproximada por bairro/cidade
         if cep_separado:
             endereco_viacep = self.buscar_endereco_por_cep(cep_separado)
             if endereco_viacep:
-                # Tentar apenas bairro + cidade
                 partes = [p.strip() for p in endereco_viacep.split(",")]
-                if len(partes) >= 3:  # Tem logradouro, bairro, cidade
-                    bairro_cidade = ", ".join(partes[1:])  # Pula logradouro
-                    if self.DEBUG:
-                        print(
-                            f"[DEBUG] Tentando geocodificação aproximada (bairro): {bairro_cidade}"
-                        )
+                if len(partes) >= 3:
+                    bairro_cidade = ", ".join(partes[1:])
                     coords = self.geocodificar_nominatim(bairro_cidade)
                     if coords and self.validar_coords_goias(coords):
-                        print("[INFO] ⚠️ Usando localização APROXIMADA do bairro")
-                        # Retornar com flag de aproximado
                         return {
                             "coords": coords,
                             "aproximado": True,
                             "nivel_aproximacao": "bairro",
                             "aviso": "Distância aproximada - endereço fora da área de mapeamento",
                         }
-
-                # Tentar apenas cidade
                 if len(partes) >= 2:
-                    cidade_uf = ", ".join(partes[-2:])  # Cidade, UF, Brasil
-                    if self.DEBUG:
-                        print(f"[DEBUG] Tentando geocodificação aproximada (cidade): {cidade_uf}")
+                    cidade_uf = ", ".join(partes[-2:])
                     coords = self.geocodificar_nominatim(cidade_uf)
                     if coords and self.validar_coords_goias(coords):
-                        print("[INFO] ⚠️ Usando localização APROXIMADA da cidade")
                         return {
                             "coords": coords,
                             "aproximado": True,
@@ -674,10 +657,11 @@ class DistanciaService:
                             "aviso": "Distância muito aproximada - endereço não encontrado",
                         }
 
-        # TENTATIVA 2: OpenRouteService como backup
+        # -----------------------------------------------------------------
+        # TENTATIVA 3: OpenRouteService (fallback final de geocoding)
+        # -----------------------------------------------------------------
         if self.DEBUG:
-            print("[DEBUG] Nominatim falhou, tentando OpenRouteService...")
-
+            print("[DEBUG] Tentando OpenRouteService como fallback de geocoding...")
         if not self.api_key:
             return None
 
@@ -686,7 +670,6 @@ class DistanciaService:
                 "Authorization": self.api_key,
                 "Content-Type": "application/json",
             }
-
             params = {
                 "api_key": self.api_key,
                 "text": endereco,
@@ -695,54 +678,54 @@ class DistanciaService:
                 "focus.point.lat": self.GOIANIA_LAT,
                 "focus.point.lon": self.GOIANIA_LON,
             }
-
             response = requests.get(self.GEOCODE_URL, headers=headers, params=params, timeout=10)
-
             if response.status_code == 200:
                 data = response.json()
                 features = data.get("features", [])
-
                 if features:
                     feature = features[0]
                     coords = feature["geometry"]["coordinates"]
                     properties = feature.get("properties", {})
-
-                    label = properties.get("label", "N/A")
-                    confidence = properties.get("confidence", 0)
                     accuracy = properties.get("accuracy", "N/A")
-
-                    # Rejeitar se for fallback/centroid com baixa confiança
+                    confidence = properties.get("confidence", 0)
                     if accuracy == "centroid" and confidence < 0.7:
-                        if self.DEBUG:
-                            print("[DEBUG] Resultado rejeitado (centroid com baixa confiança)")
                         return None
-
-                    if self.DEBUG:
-                        print("[DEBUG] OpenRouteService encontrou:")
-                        print(f"[DEBUG]   Label: {label}")
-                        print(f"[DEBUG]   Confidence: {confidence}")
-                        print(f"[DEBUG]   Coordenadas: lon={coords[0]}, lat={coords[1]}")
-
-                    # Validar se coordenadas estão em Goiás
                     coords_tupla = (coords[0], coords[1])
-                    if not self.validar_coords_goias(coords_tupla):
-                        print(f"[ALERTA] OpenRouteService retornou local FORA de Goiás: {label}")
-                        print(f"[ALERTA] Coordenadas rejeitadas: lon={coords[0]}, lat={coords[1]}")
-                        print("[ALERTA] O endereço pode estar incorreto ou incompleto")
-                        return None
-
-                    return coords_tupla
-                else:
-                    if self.DEBUG:
-                        print("[DEBUG] Nenhum resultado encontrado")
-            else:
-                print(f"[ERRO] Geocodificação falhou: {response.status_code}")
-
+                    if self.validar_coords_goias(coords_tupla):
+                        return coords_tupla
         except requests.exceptions.Timeout:
-            print(f"[ERRO] Timeout ao geocodificar: {endereco}")
+            print(f"[ERRO] Timeout ao geocodificar (ORS): {endereco[:60]}")
         except Exception as e:
-            print(f"[ERRO] Erro ao geocodificar: {e}")
+            print(f"[ERRO] Erro ao geocodificar (ORS): {e}")
 
+        return None
+
+    # ------------------------------------------------------------------
+    # Google Geocoding (provider primário)
+    # ------------------------------------------------------------------
+
+    def _geocodificar_google(self, endereco):
+        """
+        Tenta geocodificar via Google Geocoding API.
+        Retorna tuple (lon, lat) ou None.
+        """
+        try:
+            from app.services.google_geocoding import google_geocoding_service
+
+            result = google_geocoding_service.geocode(endereco)
+            if result:
+                lat = result["lat"]
+                lng = result["lng"]
+                if self.DEBUG:
+                    print(f"[DEBUG] ✓ Google Geocoding: lat={lat}, lng={lng}")
+                # Retornar no formato (lon, lat) para manter compatibilidade
+                return (lng, lat)
+        except ImportError:
+            if self.DEBUG:
+                print("[DEBUG] google_geocoding_service não disponível")
+        except Exception as e:
+            if self.DEBUG:
+                print(f"[DEBUG] Google Geocoding falhou: {e}")
         return None
 
     def _validar_coordenadas(self, coords):
@@ -985,20 +968,29 @@ class DistanciaService:
         return None
 
     def calcular_distancia_pedido(
-        self, pedido_id=None, rua=None, numero=None, bairro=None, cidade=None, cep=None
+        self,
+        pedido_id=None,
+        rua=None,
+        numero=None,
+        bairro=None,
+        cidade=None,
+        cep=None,
+        cliente_id=None,
     ):
         """
-        Calcula a distância da floricultura até o endereço do pedido usando APENAS campos separados.
+        Calcula a distância da floricultura até o endereço do pedido.
+
+        Fluxo:
+          1) Checar cache em EnderecoCliente (via address_hash).
+          2) Se cache miss → geocodificar (Google → Nominatim → ORS).
+          3) Salvar resultado de volta no EnderecoCliente (se houver cliente_id).
+          4) Calcular distância rota (GraphHopper → ORS → Haversine).
 
         Args obrigatórios:
-            rua: Rua/Logradouro (OBRIGATÓRIO)
-            bairro: Bairro (OBRIGATÓRIO)
+            rua, bairro
 
         Args opcionais:
-            numero: Número do endereço
-            cidade: Cidade (padrão: Goiânia)
-            cep: CEP (opcional, mas se fornecido deve ser válido)
-            pedido_id: ID do pedido (opcional, para logs)
+            numero, cidade, cep, pedido_id, cliente_id
 
         Returns:
             Dict com distancia_km, duracao_min e coordenadas
@@ -1006,10 +998,11 @@ class DistanciaService:
         """
         print(f"\n[DEBUG] ========== CALCULANDO DISTÂNCIA PEDIDO {pedido_id or '?'} ==========")
         print(
-            f"[DEBUG] Campos recebidos: rua={rua}, num={numero}, bairro={bairro}, cidade={cidade}, cep={cep}"
+            f"[DEBUG] Campos: rua={rua}, num={numero}, bairro={bairro}, "
+            f"cidade={cidade}, cep={cep}, cliente_id={cliente_id}"
         )
 
-        # Validar campos mínimos ANTES de tentar construir endereço
+        # Validar campos mínimos
         valido, mensagem_erro = self.validar_campos_endereco(rua=rua, bairro=bairro, cep=cep)
         if not valido:
             print(f"[ERRO] Validação de campos falhou: {mensagem_erro}")
@@ -1025,119 +1018,212 @@ class DistanciaService:
                 },
             }
 
-        # Construir endereço otimizado para geocodificação (apenas campos separados)
+        # Construir endereço para geocode
         endereco_geocode = self.construir_endereco_para_geocode(
             rua=rua, numero=numero, bairro=bairro, cidade=cidade, cep=cep
         )
-
         if not endereco_geocode:
-            erro_msg = "Não foi possível construir endereço para geocodificação"
-            print(f"[ERRO] {erro_msg}")
             return {
-                "error": erro_msg,
+                "error": "Não foi possível construir endereço para geocodificação",
                 "detalhes": "Verifique se os campos Rua e Bairro estão preenchidos corretamente.",
             }
 
-        print(f"[DEBUG] Endereço para geocode: {endereco_geocode}")
-
-        # Obter coordenadas da floricultura
-        if self.DEBUG:
-            print("[DEBUG] Obtendo coordenadas da floricultura...")
-
-        origem = self.coords_floricultura
-        if not origem:
-            erro_msg = "Não foi possível obter coordenadas da floricultura. Verifique se ENDERECO_FLORICULTURA está configurado corretamente no .env"
-            print(f"[ERRO] {erro_msg}")
-            if self.DEBUG:
-                print(f"[DEBUG] Endereço configurado: {self.endereco_floricultura}")
-            return {
-                "error": erro_msg,
-                "detalhes": "Configure a variável ENDERECO_FLORICULTURA no arquivo .env",
-            }
-
-        if self.DEBUG:
-            print(
-                f"[DEBUG] ✓ Coordenadas da floricultura obtidas: lon={origem[0]}, lat={origem[1]}"
-            )
-
-        # Geocodificar endereço do pedido
-        if self.DEBUG:
-            print("[DEBUG] Geocodificando endereço do pedido...")
-
-        # Passar CEP separado para usar como fallback se endereço completo falhar
-        resultado_geocode = self.geocodificar(endereco_geocode, normalizar=False, cep_separado=cep)
-        if not resultado_geocode:
-            # Marcar como inválido para não tentar novamente
-            self.marcar_endereco_invalido(endereco_geocode)
-            erro_msg = f"Não foi possível geocodificar o endereço: {endereco_geocode[:80]}..."
-            print(f"[ERRO] {erro_msg}")
-            return {
-                "error": erro_msg,
-                "detalhes": "As APIs de geocodificação (Nominatim, OpenRouteService) não conseguiram encontrar este endereço. Verifique se Rua, Bairro e Cidade estão corretos.",
-                "endereco_tentado": endereco_geocode,
-            }
-
-        # Extrair coordenadas e flags de aproximação
+        # ----- Cache check via EnderecoCliente -----
+        cached = self._check_endereco_cache(
+            cliente_id,
+            rua=rua,
+            numero=numero,
+            bairro=bairro,
+            cidade=cidade,
+            cep=cep,
+        )
+        destino = None
         aproximado = False
         nivel_aproximacao = "exato"
         aviso_aproximacao = None
+        confidence_status = None
 
-        if isinstance(resultado_geocode, dict):
-            # Retorno com flags de aproximação
-            destino = resultado_geocode["coords"]
-            aproximado = resultado_geocode.get("aproximado", False)
-            nivel_aproximacao = resultado_geocode.get("nivel_aproximacao", "exato")
-            aviso_aproximacao = resultado_geocode.get("aviso")
-        else:
-            # Retorno normal (tupla)
-            destino = resultado_geocode
+        if cached:
+            destino = (cached["lng"], cached["lat"])  # (lon, lat)
+            confidence_status = cached.get("confidence_status")
+            if self.DEBUG:
+                print(
+                    f"[DEBUG] ✓ Cache hit EnderecoCliente: lon={destino[0]}, lat={destino[1]}, "
+                    f"confidence={confidence_status}"
+                )
+
+        # ----- Geocodificar se cache miss -----
+        if not destino:
+            # Obter coordenadas via geocodificação
+            resultado_geocode = self.geocodificar(
+                endereco_geocode, normalizar=False, cep_separado=cep
+            )
+            if not resultado_geocode:
+                self.marcar_endereco_invalido(endereco_geocode)
+                return {
+                    "error": f"Não foi possível geocodificar: {endereco_geocode[:80]}...",
+                    "detalhes": "Verifique se Rua, Bairro e Cidade estão corretos.",
+                    "endereco_tentado": endereco_geocode,
+                }
+
+            if isinstance(resultado_geocode, dict):
+                destino = resultado_geocode["coords"]
+                aproximado = resultado_geocode.get("aproximado", False)
+                nivel_aproximacao = resultado_geocode.get("nivel_aproximacao", "exato")
+                aviso_aproximacao = resultado_geocode.get("aviso")
+            else:
+                destino = resultado_geocode
+
+            # ----- Salvar no cache EnderecoCliente -----
+            self._save_endereco_cache(
+                cliente_id,
+                lat=destino[1],
+                lng=destino[0],
+                rua=rua,
+                numero=numero,
+                bairro=bairro,
+                cidade=cidade,
+                cep=cep,
+            )
 
         if self.DEBUG:
             print(f"[DEBUG] ✓ Endereço geocodificado: lon={destino[0]}, lat={destino[1]}")
-            if aproximado:
-                print(f"[INFO] ⚠️ Coordenadas aproximadas (nível: {nivel_aproximacao})")
 
-        # Calcular distância
-        if self.DEBUG:
-            print("[DEBUG] Calculando distância entre origem e destino...")
+        # ----- Obter coordenadas da floricultura -----
+        origem = self.coords_floricultura
+        if not origem:
+            return {
+                "error": "Não foi possível obter coordenadas da floricultura.",
+                "detalhes": "Configure ENDERECO_FLORICULTURA no .env",
+            }
 
+        # ----- Calcular distância -----
         resultado = self.calcular_distancia(origem, destino)
 
         if resultado:
-            # Adicionar coordenadas do destino ao resultado (para salvar no banco)
-            resultado["coords_destino_lat"] = destino[1]  # latitude
-            resultado["coords_destino_lon"] = destino[0]  # longitude
-
-            # Adicionar flags de aproximação
+            resultado["coords_destino_lat"] = destino[1]
+            resultado["coords_destino_lon"] = destino[0]
             resultado["aproximado"] = aproximado
             resultado["nivel_aproximacao"] = nivel_aproximacao
+            resultado["confidence_status"] = confidence_status
             if aviso_aproximacao:
                 resultado["aviso"] = aviso_aproximacao
-
             metodo = resultado.get("metodo", "desconhecido")
             print(
-                f"[DEBUG] ✓ Pedido {pedido_id or '?'}: {resultado['distancia_km']} km (método: {metodo}, aproximado: {aproximado})"
+                f"[DEBUG] ✓ Pedido {pedido_id or '?'}: {resultado['distancia_km']} km "
+                f"(método: {metodo}, aproximado: {aproximado})"
             )
             return resultado
-        else:
-            erro_msg = "Falha no cálculo de rota. Todas as tentativas (GraphHopper, OpenRouteService, Haversine) falharam."
-            print(f"[ERRO] ✗ Pedido {pedido_id or '?'}: {erro_msg}")
-            if self.DEBUG:
-                print(f"[DEBUG] Origem: {origem}")
-                print(f"[DEBUG] Destino: {destino}")
-            return {
-                "error": erro_msg,
-                "detalhes": "As APIs de cálculo de rota não estão respondendo ou a rota não pôde ser calculada.",
-                "coords_origem": origem,
-                "coords_destino": destino,
-            }
+
+        return {
+            "error": "Falha no cálculo de rota (GraphHopper/ORS/Haversine).",
+            "detalhes": "As APIs de rota não responderam.",
+            "coords_origem": origem,
+            "coords_destino": destino,
+        }
+
+    # ------------------------------------------------------------------
+    # EnderecoCliente cache helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_endereco_cache(cliente_id, **addr_fields):
+        """Busca coordenadas cacheadas no EnderecoCliente via address_hash."""
+        if not cliente_id:
+            return None
+        try:
+            from app.models.endereco_cliente import EnderecoCliente
+
+            # Construir canonical e hash para comparação
+            ec_dummy = EnderecoCliente(
+                rua=addr_fields.get("rua"),
+                numero=addr_fields.get("numero"),
+                bairro=addr_fields.get("bairro"),
+                cidade=addr_fields.get("cidade"),
+                cep=addr_fields.get("cep"),
+            )
+            target_hash = ec_dummy.compute_address_hash()
+
+            # Buscar endereço cacheado com mesmo hash e coordenadas
+            cached = (
+                EnderecoCliente.query.filter_by(cliente_id=cliente_id, address_hash=target_hash)
+                .filter(EnderecoCliente.lat.isnot(None))
+                .first()
+            )
+            if cached:
+                return {
+                    "lat": cached.lat,
+                    "lng": cached.lng,
+                    "confidence_status": cached.confidence_status,
+                }
+        except Exception as e:
+            print(f"[DEBUG] Cache check falhou: {e}")
+        return None
+
+    @staticmethod
+    def _save_endereco_cache(cliente_id, lat, lng, **addr_fields):
+        """Salva resultado de geocodificação no EnderecoCliente (se cliente_id)."""
+        if not cliente_id or lat is None or lng is None:
+            return
+        try:
+            from app import db
+            from app.models.endereco_cliente import EnderecoCliente
+            from app.services.google_geocoding import GoogleGeocodingService
+
+            # Encontrar endereço do cliente que melhor combina
+            enderecos = EnderecoCliente.query.filter_by(cliente_id=cliente_id).all()
+
+            # Criar hash do endereço atual para comparação
+            ec_dummy = EnderecoCliente(
+                rua=addr_fields.get("rua"),
+                numero=addr_fields.get("numero"),
+                bairro=addr_fields.get("bairro"),
+                cidade=addr_fields.get("cidade"),
+                cep=addr_fields.get("cep"),
+            )
+            target_hash = ec_dummy.compute_address_hash()
+
+            # Procurar endereço existente para atualizar
+            target = None
+            for ec in enderecos:
+                if ec.address_hash == target_hash:
+                    target = ec
+                    break
+                # Fallback: comparar campos individuais
+                if ec.rua == addr_fields.get("rua") and ec.bairro == addr_fields.get("bairro"):
+                    target = ec
+                    break
+
+            if not target and enderecos:
+                # Usar endereço principal ou primeiro
+                target = next((e for e in enderecos if e.principal), enderecos[0])
+
+            if target:
+                has_numero = bool(addr_fields.get("numero", "").strip())
+                has_cep = bool(addr_fields.get("cep", "").strip())
+                confidence = GoogleGeocodingService.classify_confidence(
+                    location_type="ROOFTOP",  # Google default if we got a result
+                    has_numero=has_numero,
+                    has_cep=has_cep,
+                )
+                target.update_geocode_cache(
+                    lat=lat,
+                    lng=lng,
+                    confidence_status=confidence,
+                    provider="google",
+                )
+                db.session.commit()
+                print(f"[DEBUG] ✓ Cache salvo em EnderecoCliente #{target.id}")
+        except Exception as e:
+            print(f"[DEBUG] Cache save falhou: {e}")
 
     def calcular_distancias_lote(self, pedidos):
         """
-        Calcula distâncias para múltiplos pedidos usando campos separados
+        Calcula distâncias para múltiplos pedidos usando campos separados.
 
         Args:
-            pedidos: Lista de dicts com 'id', 'rua', 'numero', 'bairro', 'cidade', 'cep'
+            pedidos: Lista de dicts com 'id', 'rua', 'numero', 'bairro', 'cidade', 'cep',
+                     e opcionalmente 'cliente_id'
 
         Returns:
             Dict com id do pedido como chave e resultado (distância ou erro) como valor
@@ -1151,8 +1237,8 @@ class DistanciaService:
             bairro = pedido.get("bairro", "")
             cidade = pedido.get("cidade", "")
             cep = pedido.get("cep", "")
+            cliente_id = pedido.get("cliente_id")
 
-            # Validar campos mínimos
             if not rua or not bairro:
                 resultados[pedido_id] = {
                     "error": "Campos obrigatórios ausentes",
@@ -1167,6 +1253,7 @@ class DistanciaService:
                 bairro=bairro,
                 cidade=cidade,
                 cep=cep,
+                cliente_id=cliente_id,
             )
             resultados[pedido_id] = resultado
 

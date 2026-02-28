@@ -33,6 +33,11 @@ __pycache__/
 .Python
 venv/
 env/
+.env
+.venv
+frontend_v2/.venv
+frontend_v2/node_modules
+frontend_v2/.env
 ENV/
 build/
 develop-eggs/
@@ -82,3 +87,4 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.env

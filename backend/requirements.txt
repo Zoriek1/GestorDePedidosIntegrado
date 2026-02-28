@@ -25,6 +25,7 @@ backports.zoneinfo>=0.2.1; python_version < "3.9"
 reportlab==4.0.7
 
 # Segurança e Backup
+bcrypt>=4.0.0
 cryptography==41.0.0
 schedule==1.2.0
 

@@ -13,6 +13,9 @@
 import { useEffect, useRef } from 'react';
 import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
+import { createLogger } from '../../lib/logger';
+
+const log = createLogger('Push');
 
 /** Converte base64url para Uint8Array (necessário para applicationServerKey). */
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -48,7 +51,7 @@ export function NotificationManager() {
           '/notifications/vapid-public-key',
         );
         if (!resp.ok || !resp.data?.publicKey) {
-          console.warn('[Push] VAPID key não disponível:', resp.message);
+          log.warn('VAPID key não disponível:', resp.message);
           return;
         }
         const vapidPublicKey = resp.data.publicKey;
@@ -56,7 +59,7 @@ export function NotificationManager() {
         // 2. Pedir permissão (se ainda não dada)
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          console.info('[Push] Permissão de notificação negada pelo usuário.');
+          log.info('Permissão de notificação negada pelo usuário.');
           return;
         }
 
@@ -80,9 +83,9 @@ export function NotificationManager() {
         // 6. Enviar subscription para o backend
         await sendSubscriptionToBackend(subscription, apiRequest);
 
-        console.info('[Push] Inscrição de push registrada com sucesso.');
+        log.info('Inscrição de push registrada com sucesso.');
       } catch (err) {
-        console.warn('[Push] Erro ao configurar push notifications:', err);
+        log.warn('Erro ao configurar push notifications:', err);
       }
     };
 

@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Docs e configs de dev
+*.md
+.cursor/
+.vscode/
+.claude/
+docs/
+
+# Frontend - dependências (reconstruídas no build)
+frontend_v2/node_modules/
+frontend_v2/dist/
+frontend_v2/.vite/
+frontend_v2/coverage/
+
+# Backend - cache e arquivos temporários
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.pytest_cache/
+backend/tests/
+backend/.venv/
+backend/venv/
+
+# Banco local (nunca vai pro container)
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+
+# Logs
+*.log
+backend/logs/
+
+# Docker
+docker-compose.override.yml
+
+# Testes e CI
+.github/

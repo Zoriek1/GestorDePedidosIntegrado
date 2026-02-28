@@ -19,11 +19,18 @@ def log_debug(msg, data):
 # ============================================
 # CONFIGURAÇÃO DE USUÁRIOS
 # ============================================
-# Edite aqui seus usuários e senhas
-# Para maior segurança, use variáveis de ambiente em produção
+# Configure as credenciais via variáveis de ambiente.
+# ADMIN_PASSWORD_HASH: hash bcrypt (recomendado).
+# ADMIN_PASSWORD: senha plain-text (retrocompatibilidade).
+# Senha vazia desabilita o usuário.
+def _admin_credential() -> str:
+    """Retorna hash bcrypt ou senha plain-text do admin, nesta ordem de preferência."""
+    return os.environ.get("ADMIN_PASSWORD_HASH", "") or os.environ.get("ADMIN_PASSWORD", "")
+
+
 USERS = {
     "admin": {
-        "password": os.environ.get("ADMIN_PASSWORD", "plante1998"),
+        "password": _admin_credential(),
         "role": "admin",
     },
     "atendente": {
@@ -37,29 +44,31 @@ USERS = {
 }
 
 
-# Compatibilidade retroativa: se usuário não tiver papel definido, assumir "admin"
-# Para usuários antigos que podem estar usando formato antigo
 def get_user_config(username):
-    """Retorna configuração do usuário com compatibilidade retroativa"""
+    """Retorna configuração do usuário."""
     user_config = USERS.get(username)
     if user_config is None:
         return None
-
-    # Se for formato antigo (apenas string de senha), converter
+    # Compatibilidade com formato antigo (string pura de senha)
     if isinstance(user_config, str):
-        return {
-            "password": user_config,
-            "role": "admin",  # Default para admin em compatibilidade retroativa
-        }
-
+        return {"password": user_config, "role": "admin"}
     return user_config
 
 
-# Para maior segurança, você pode usar hash de senhas:
-# import bcrypt
-# USERS_HASHED = {
-#     'admin': '$2b$12$...'  # Hash bcrypt da senha
-# }
+def _verify_password(stored: str, provided: str) -> bool:
+    """
+    Verifica senha com suporte a bcrypt e plain-text.
+    Hashes bcrypt são identificados pelo prefixo '$2b$' ou '$2a$'.
+    """
+    if stored.startswith(("$2b$", "$2a$")):
+        try:
+            import bcrypt as _bcrypt
+
+            return _bcrypt.checkpw(provided.encode("utf-8"), stored.encode("utf-8"))
+        except ImportError:
+            return False
+    # Retrocompatibilidade: comparação plain-text
+    return stored == provided
 
 
 # ============================================
@@ -67,31 +76,20 @@ def get_user_config(username):
 # ============================================
 def check_auth(username, password):
     """
-    Verifica se o usuário e senha são válidos
-    Retorna (bool, role) onde bool indica se autenticado e role é o papel do usuário
+    Verifica se o usuário e senha são válidos.
+    Retorna (bool, role) onde bool indica se autenticado e role é o papel do usuário.
     """
     user_config = get_user_config(username)
     if user_config is None:
         return False, None
 
-    expected_password = user_config["password"]
-    if not expected_password:  # Senha vazia = usuário desabilitado
+    stored_password = user_config["password"]
+    if not stored_password:  # Senha vazia = usuário desabilitado
         return False, None
 
-    # Comparação simples (em produção, use hash)
-    is_authenticated = password == expected_password
-    role = user_config.get("role", "admin")  # Default para admin se não especificado
-
+    is_authenticated = _verify_password(stored_password, password)
+    role = user_config.get("role", "admin")
     return is_authenticated, role if is_authenticated else None
-
-    # Se estiver usando hash bcrypt:
-    # import bcrypt
-    # if username in USERS_HASHED:
-    #     return bcrypt.checkpw(
-    #         password.encode('utf-8'),
-    #         USERS_HASHED[username].encode('utf-8')
-    #     )
-    # return False
 
 
 def requires_auth(f):

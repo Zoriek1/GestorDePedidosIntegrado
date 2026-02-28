@@ -202,28 +202,12 @@ export default function RoutePage() {
     return undefined;
   }, [calcRota.data, rotaQuery.data]);
 
-  // Função para gerar URL do Google Maps
-  // Nota: waypoints do backend vêm como [lon, lat] para GraphHopper
-  // Google Maps precisa de [lat, lon], então invertemos
-  const gerarGoogleMapsUrl = (rotaData: RotaOtimizada): string | null => {
-    if (!rotaData?.origem || !rotaData?.waypoints || rotaData.waypoints.length === 0) {
-      return null;
-    }
-    
-    const origem = `${rotaData.origem.lat},${rotaData.origem.lon}`;
-    // Waypoints vêm como [lon, lat] do backend, inverter para Google Maps [lat, lon]
-    const waypoints = rotaData.waypoints
-      .map(wp => `${wp[1]},${wp[0]}`) // Inverter: wp[1] é lat, wp[0] é lon
-      .join('/');
-    
-    // Formato: /dir/origem/waypoint1/waypoint2/.../origem (retorno)
-    return `https://www.google.com/maps/dir/${origem}/${waypoints}/${origem}`;
-  };
+  // URL do Google Maps vem pronta do backend (formato ?api=1)
+  const googleMapsUrl = rotaData?.google_maps_url ?? null;
+  const stepByStepUrls = rotaData?.google_maps_step_by_step ?? [];
 
-  const googleMapsUrl = useMemo(() => {
-    if (!rotaData) return null;
-    return gerarGoogleMapsUrl(rotaData);
-  }, [rotaData]);
+  // Estado para mostrar/esconder links step-by-step
+  const [showStepByStep, setShowStepByStep] = useState(false);
 
   useEffect(() => {
     if (selectedIds.length > 0) {
@@ -322,6 +306,15 @@ export default function RoutePage() {
               Abrir no Google Maps
             </Button>
           )}
+          {stepByStepUrls.length > 0 && (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setShowStepByStep((prev) => !prev)}
+            >
+              {showStepByStep ? 'Esconder etapas' : 'Entrega a entrega'}
+            </Button>
+          )}
         </Stack>
       </Stack>
 
@@ -414,9 +407,29 @@ export default function RoutePage() {
                 )}
               </MapContainer>
             </Paper>
+            {showStepByStep && stepByStepUrls.length > 0 && (
+              <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Navegação entrega a entrega (fallback)
+                </Typography>
+                <Stack spacing={0.5}>
+                  {stepByStepUrls.map((s) => (
+                    <Button
+                      key={s.step}
+                      variant="text"
+                      size="small"
+                      sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                      onClick={() => window.open(s.url, '_blank')}
+                    >
+                      {s.step}. {s.label}
+                    </Button>
+                  ))}
+                </Stack>
+              </Paper>
+            )}
             {selectedIds.length > 0 && (
               <Alert severity="info" sx={{ mt: 2 }}>
-                Visualizando IDs: {selectedIds.join(', ')}. Clique em “Otimizar rota” para gerar caminho.
+                Visualizando IDs: {selectedIds.join(', ')}. Clique em "Otimizar rota" para gerar caminho.
               </Alert>
             )}
           </Grid>

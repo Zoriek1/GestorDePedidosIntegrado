@@ -529,6 +529,7 @@ class NuvemshopOrderImporter:
                 bairro=pedido.bairro,
                 cidade=pedido.cidade,
                 cep=pedido.cep,
+                cliente_id=pedido.cliente_id,
             )
 
             if resultado and "error" not in resultado:

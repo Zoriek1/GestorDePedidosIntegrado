@@ -2,6 +2,12 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 
+export interface StepByStepUrl {
+  step: number;
+  label: string;
+  url: string;
+}
+
 export interface RotaOtimizada {
   rota_id: number;
   nome: string;
@@ -13,6 +19,8 @@ export interface RotaOtimizada {
   origem?: { lat: number; lon: number };
   waypoints?: [number, number][];
   graphhopper_maps_url?: string | null;
+  google_maps_url?: string | null;
+  google_maps_step_by_step?: StepByStepUrl[];
 }
 
 export function useCalcularRotaOtimizada() {

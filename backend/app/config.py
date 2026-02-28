@@ -4,43 +4,8 @@ Configurações da Aplicação Flask
 
 Centraliza todas as variáveis de ambiente e configurações da aplicação.
 """
-import json
 import os
-import time
 from pathlib import Path
-
-
-# #region agent log
-def log_debug(msg, data):
-    """Log de debug apenas em modo desenvolvimento"""
-    env = os.environ.get("FLASK_ENV", "development")
-    if env != "production":
-        try:
-            log_path = Path(__file__).resolve().parent.parent.parent / ".cursor" / "debug.log"
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(
-                log_path,
-                "a",
-                encoding="utf-8",
-            ) as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "timestamp": int(time.time() * 1000),
-                            "location": "config.py",
-                            "message": msg,
-                            "data": data,
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            # Silenciar erros de log em produção
-            pass
-
-
-# #endregion
 
 
 class BaseConfig:
@@ -76,7 +41,8 @@ class BaseConfig:
     )
 
     # Secret key para sessões
-    SECRET_KEY = os.environ.get("SECRET_KEY") or "plante-uma-flor-pwa-secret-key-2024"
+    # Em desenvolvimento, usa fallback genérico. Em produção, exige configuração explícita.
+    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
 
     # Banco de dados
     # PostgreSQL: use DATABASE_URL (ex: postgresql://user:pass@host:port/dbname)
@@ -101,13 +67,16 @@ class BaseConfig:
     PORT = int(os.environ.get("PORT") or 5000)
     DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-    # Autenticação
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "plante1998"
+    # Autenticação — sem fallback. Senha vazia desabilita o usuário admin.
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
     # APIs Externas
     GRAPHHOPPER_API_KEY = os.environ.get("GRAPHHOPPER_API_KEY") or ""
     OPENROUTE_API_KEY = os.environ.get("OPENROUTE_API_KEY") or ""
     ENDERECO_FLORICULTURA = os.environ.get("ENDERECO_FLORICULTURA") or ""
+
+    # Google Maps Platform (Geocoding + Address Validation)
+    GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY") or ""
 
     # Meta Conversions API
     META_PIXEL_ID = os.environ.get("META_PIXEL_ID") or ""
@@ -164,18 +133,7 @@ class BaseConfig:
     @staticmethod
     def init_app(app):
         """Inicialização adicional da aplicação"""
-        # Do not log secrets (password). Only log non-sensitive diagnostics.
-        log_debug(
-            "BaseConfig.init_app",
-            {
-                "DATABASE_PATH": str(BaseConfig.DATABASE_PATH),
-                "ADMIN_PASSWORD_LEN": len(BaseConfig.ADMIN_PASSWORD)
-                if BaseConfig.ADMIN_PASSWORD
-                else 0,
-                "ADMIN_PASSWORD_IS_LOWER": bool(BaseConfig.ADMIN_PASSWORD)
-                and BaseConfig.ADMIN_PASSWORD == BaseConfig.ADMIN_PASSWORD.lower(),
-            },
-        )
+        pass
 
 
 # Backwards-compat alias:
@@ -201,18 +159,22 @@ class ProductionConfig(BaseConfig):
     FLASK_ENV = "production"
     APP_ENV = "production"
 
-    # Em produção, usar secret key da variável de ambiente
-    SECRET_KEY = os.environ.get("SECRET_KEY") or "change-this-in-production-please"
+    SECRET_KEY = os.environ.get("SECRET_KEY", "")
 
     @staticmethod
     def init_app(app):
-        # Validar SECRET_KEY apenas quando a app for iniciada
-        if app.config.get("SECRET_KEY") == "change-this-in-production-please":
-            import warnings
+        secret_key = app.config.get("SECRET_KEY", "")
+        if not secret_key or secret_key == "dev-secret-key-change-in-production":
+            raise ValueError(
+                "SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção."
+            )
 
-            warnings.warn(
-                "SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção.",
-                stacklevel=2,
+        admin_password = os.environ.get("ADMIN_PASSWORD", "")
+        admin_password_hash = os.environ.get("ADMIN_PASSWORD_HASH", "")
+        if not admin_password and not admin_password_hash:
+            raise ValueError(
+                "ADMIN_PASSWORD ou ADMIN_PASSWORD_HASH não definido! "
+                "Configure uma das variáveis de ambiente em produção."
             )
 
 

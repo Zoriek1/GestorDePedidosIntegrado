@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -9,29 +9,66 @@ import {
   Stack,
   Button,
   Alert,
+  IconButton,
 } from '@mui/material';
-import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import ChevronLeft from '@mui/icons-material/ChevronLeft';
+import ChevronRight from '@mui/icons-material/ChevronRight';
+import Today from '@mui/icons-material/Today';
+import DragIndicator from '@mui/icons-material/DragIndicator';
+import {
+  GoogleMap,
+  useJsApiLoader,
+  Marker,
+  InfoWindow,
+  Polyline,
+} from '@react-google-maps/api';
 import dayjs from 'dayjs';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { DragIndicator } from '@mui/icons-material';
 import { usePedidos, useCalcularDistanciasLote } from '../../api/endpoints/pedidos';
 import { useCalcularRotaOtimizada, useRotaOtimizada, type RotaOtimizada } from '../../api/endpoints/rotas';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
 
-// Ajuste padrão para ícones do Leaflet (evita erro de assets)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-delete (L.Icon.Default as any).prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
+// Cores de marcador por status
+const STATUS_COLORS: Record<string, string> = {
+  agendado: '#4285F4',      // azul
+  em_producao: '#FF9800',   // laranja
+  pronto_entrega: '#4CAF50', // verde
+  pronto_retirada: '#4CAF50',
+  em_rota: '#9C27B0',       // roxo
+  atrasado: '#F44336',      // vermelho
+  concluido: '#9E9E9E',     // cinza
+};
+
+function getMarkerIcon(status: string) {
+  const color = STATUS_COLORS[status] || '#4285F4';
+  return {
+    path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+    fillColor: color,
+    fillOpacity: 1,
+    strokeColor: '#fff',
+    strokeWeight: 1,
+    scale: 1.5,
+    anchor: { x: 12, y: 22 } as google.maps.Point,
+  };
+}
+
+const ORIGIN_ICON = {
+  path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+  fillColor: '#E91E63',
+  fillOpacity: 1,
+  strokeColor: '#fff',
+  strokeWeight: 2,
+  scale: 2,
+  anchor: { x: 12, y: 22 } as google.maps.Point,
+};
+
+const MAP_CONTAINER_STYLE = { height: '100%', width: '100%' };
 
 // Componente SortableItem para cada pedido na lista
 interface SortableItemProps {
@@ -80,40 +117,20 @@ function SortableItem({ id, children }: SortableItemProps) {
   );
 }
 
-// Função para criar ícone customizado por status
-function createStatusIcon(status: string): L.Icon {
-  let color = 'blue'; // padrão
-  
-  if (status === 'agendado') {
-    color = 'blue';
-  } else if (status === 'em_producao') {
-    color = 'orange';
-  } else if (status === 'pronto_entrega' || status === 'pronto_retirada') {
-    color = 'green';
-  } else if (status === 'em_rota') {
-    color = 'purple';
-  } else if (status === 'atrasado') {
-    color = 'red';
-  } else if (status === 'concluido') {
-    color = 'gray';
-  }
-
-  return L.icon({
-    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  });
-}
-
 export default function RoutePage() {
   const [onlyAgendados, setOnlyAgendados] = useState(false);
   const [searchParams] = useSearchParams();
   const idsParam = searchParams.get('ids');
   const rotaIdParam = searchParams.get('rota_id');
-  const hoje = dayjs().startOf('day').format('YYYY-MM-DD');
+
+  // --- Day selector state ---
+  const [selectedDate, setSelectedDate] = useState(() => dayjs().startOf('day'));
+  const dateStr = selectedDate.format('YYYY-MM-DD');
+  const isToday = selectedDate.isSame(dayjs().startOf('day'), 'day');
+
+  const goBack = () => setSelectedDate((d) => d.subtract(1, 'day'));
+  const goForward = () => setSelectedDate((d) => d.add(1, 'day'));
+  const goToday = () => setSelectedDate(dayjs().startOf('day'));
 
   const selectedIds = useMemo(
     () => (idsParam ? idsParam.split(',').map((id) => Number(id)).filter(Number.isFinite) : []),
@@ -126,8 +143,8 @@ export default function RoutePage() {
 
   const { data, isLoading, error, refetch } = usePedidos({
     status: onlyAgendados ? 'agendado' : undefined,
-    data_inicio: hoje,
-    data_fim: hoje,
+    data_inicio: dateStr,
+    data_fim: dateStr,
   });
   const calcLote = useCalcularDistanciasLote();
   const calcRota = useCalcularRotaOtimizada();
@@ -142,30 +159,26 @@ export default function RoutePage() {
     return base;
   }, [data?.pedidos, selectedIds]);
 
-  // Filtro de visibilidade: apenas pedidos tipo 'Entrega' com dia_entrega == hoje
+  // Filtro: apenas pedidos tipo 'Entrega' com dia_entrega == data selecionada
   const pedidosFiltrados = useMemo(() => {
-    return pedidos.filter(p => 
-      p.tipo_pedido === 'Entrega' && 
-      p.dia_entrega === hoje
+    return pedidos.filter(p =>
+      p.tipo_pedido === 'Entrega' &&
+      p.dia_entrega === dateStr
     );
-  }, [pedidos, hoje]);
+  }, [pedidos, dateStr]);
 
   // Estado para ordem dos pedidos após drag-and-drop
-  // Usar chave baseada nos IDs para resetar quando pedidosFiltrados mudar estruturalmente
   const pedidosFiltradosKey = useMemo(
     () => pedidosFiltrados.map(p => p.id).join(','),
     [pedidosFiltrados]
   );
-  
+
   const [pedidosOrdenados, setPedidosOrdenados] = useState<typeof pedidosFiltrados>(() => pedidosFiltrados);
   const prevKeyRef = useRef(pedidosFiltradosKey);
 
-  // Resetar ordem quando lista de pedidos mudar estruturalmente
-  // Usar requestAnimationFrame para evitar setState síncrono no render
   useEffect(() => {
     if (prevKeyRef.current !== pedidosFiltradosKey) {
       prevKeyRef.current = pedidosFiltradosKey;
-      // Usar requestAnimationFrame para tornar assíncrono
       requestAnimationFrame(() => {
         setPedidosOrdenados([...pedidosFiltrados]);
       });
@@ -180,7 +193,6 @@ export default function RoutePage() {
     })
   );
 
-  // Handler para fim do drag
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -188,7 +200,7 @@ export default function RoutePage() {
     setPedidosOrdenados((items) => {
       const oldIndex = items.findIndex((item) => item.id === active.id);
       const newIndex = items.findIndex((item) => item.id === over.id);
-      
+
       const newItems = [...items];
       const [removed] = newItems.splice(oldIndex, 1);
       newItems.splice(newIndex, 0, removed);
@@ -202,16 +214,13 @@ export default function RoutePage() {
     return undefined;
   }, [calcRota.data, rotaQuery.data]);
 
-  // URL do Google Maps vem pronta do backend (formato ?api=1)
   const googleMapsUrl = rotaData?.google_maps_url ?? null;
   const stepByStepUrls = rotaData?.google_maps_step_by_step ?? [];
 
-  // Estado para mostrar/esconder links step-by-step
   const [showStepByStep, setShowStepByStep] = useState(false);
 
   useEffect(() => {
     if (selectedIds.length > 0) {
-      // Usar setTimeout para evitar setState síncrono em effect
       setTimeout(() => {
         setOnlyAgendados(false);
       }, 0);
@@ -248,14 +257,64 @@ export default function RoutePage() {
     }
   };
 
-  const mapCenter = useMemo<[number, number]>(() => {
+  // --- Google Maps ---
+  const { isLoaded: mapsLoaded } = useJsApiLoader({
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+  });
+
+  const mapCenter = useMemo(() => {
     if (rotaData?.origem) {
-      return [rotaData.origem.lat, rotaData.origem.lon] as [number, number];
+      return { lat: rotaData.origem.lat, lng: rotaData.origem.lon };
     }
     const firstWithCoords = pedidosOrdenados.find((p) => p.coords_lat && p.coords_lon);
-    if (firstWithCoords) return [firstWithCoords.coords_lat!, firstWithCoords.coords_lon!] as [number, number];
-    return [-16.6869, -49.2648] as [number, number]; // Goiânia, GO (fallback)
+    if (firstWithCoords) return { lat: firstWithCoords.coords_lat!, lng: firstWithCoords.coords_lon! };
+    return { lat: -16.6869, lng: -49.2648 }; // Goiânia fallback
   }, [rotaData, pedidosOrdenados]);
+
+  const [activeInfoWindow, setActiveInfoWindow] = useState<number | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    mapRef.current = map;
+  }, []);
+
+  // Fit bounds when data changes
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const points: { lat: number; lng: number }[] = [];
+    if (rotaData?.origem) {
+      points.push({ lat: rotaData.origem.lat, lng: rotaData.origem.lon });
+    }
+    pedidosOrdenados.forEach((p) => {
+      if (p.coords_lat && p.coords_lon) {
+        points.push({ lat: p.coords_lat, lng: p.coords_lon });
+      }
+    });
+    if (points.length > 1) {
+      const bounds = new google.maps.LatLngBounds();
+      points.forEach((pt) => bounds.extend(pt));
+      mapRef.current.fitBounds(bounds, 50);
+    }
+  }, [rotaData, pedidosOrdenados]);
+
+  // Polyline path for optimized route
+  const routePath = useMemo(() => {
+    if (!rotaData?.waypoints || rotaData.waypoints.length < 2) return [];
+    const path = rotaData.waypoints.map((wp) => ({ lat: wp[0], lng: wp[1] }));
+    // Add origin at start and end if available
+    if (rotaData.origem) {
+      const origin = { lat: rotaData.origem.lat, lng: rotaData.origem.lon };
+      path.unshift(origin);
+      path.push(origin);
+    }
+    return path;
+  }, [rotaData]);
+
+  // Format date for display
+  const dateDisplay = useMemo(() => {
+    if (isToday) return `Hoje, ${selectedDate.format('DD/MM')}`;
+    return selectedDate.format('ddd, DD/MM/YYYY');
+  }, [selectedDate, isToday]);
 
   return (
     <Box>
@@ -268,6 +327,26 @@ export default function RoutePage() {
             Visualize mapa, waypoints e otimize trajetos
           </Typography>
         </Box>
+
+        {/* Day selector */}
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          <IconButton size="small" onClick={goBack} title="Dia anterior">
+            <ChevronLeft />
+          </IconButton>
+          <Button
+            size="small"
+            variant={isToday ? 'contained' : 'outlined'}
+            onClick={goToday}
+            startIcon={<Today />}
+            sx={{ minWidth: 160, textTransform: 'none' }}
+          >
+            {dateDisplay}
+          </Button>
+          <IconButton size="small" onClick={goForward} title="Próximo dia">
+            <ChevronRight />
+          </IconButton>
+        </Stack>
+
         <Stack direction="row" spacing={1} flexWrap="wrap">
           <Button variant="outlined" size="small" onClick={() => setOnlyAgendados((prev) => !prev)}>
             {onlyAgendados ? 'Mostrar todos' : 'Somente agendados'}
@@ -286,7 +365,7 @@ export default function RoutePage() {
             onClick={handleOtimizarRota}
             disabled={calcRota.isPending || pedidosOrdenados.length < 2}
           >
-            {calcRota.isPending ? 'Otimizado...' : 'Otimizar rota'}
+            {calcRota.isPending ? 'Otimizando...' : 'Otimizar rota'}
           </Button>
           {googleMapsUrl && (
             <Button
@@ -317,91 +396,105 @@ export default function RoutePage() {
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 7 }}>
             <Paper sx={{ height: 480, overflow: 'hidden' }}>
-              <MapContainer center={mapCenter} zoom={12} style={{ height: '100%', width: '100%' }}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                
-                {/* Origem (Floricultura) */}
-                {rotaData?.origem && (
-                  <Marker position={[rotaData.origem.lat, rotaData.origem.lon]}>
-                    <Popup>
-                      <strong>Origem (Floricultura)</strong>
-                    </Popup>
-                  </Marker>
-                )}
-                
-                {/* Marcadores dos pedidos com coordenadas calculadas */}
-                {pedidosOrdenados
-                  .filter((p) => p.coords_lat && p.coords_lon)
-                  .map((pedido) => (
+              {!GOOGLE_MAPS_API_KEY ? (
+                <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                  <Alert severity="warning">
+                    Configure <code>VITE_GOOGLE_MAPS_API_KEY</code> no .env para exibir o mapa.
+                  </Alert>
+                </Box>
+              ) : !mapsLoaded ? (
+                <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                  <Loading variant="spinner" />
+                </Box>
+              ) : (
+                <GoogleMap
+                  mapContainerStyle={MAP_CONTAINER_STYLE}
+                  center={mapCenter}
+                  zoom={12}
+                  onLoad={onMapLoad}
+                  options={{
+                    streetViewControl: false,
+                    mapTypeControl: false,
+                    fullscreenControl: true,
+                  }}
+                >
+                  {/* Origem (Floricultura) */}
+                  {rotaData?.origem && (
                     <Marker
-                      key={`pedido-${pedido.id}`}
-                      position={[pedido.coords_lat!, pedido.coords_lon!]}
-                      icon={createStatusIcon(pedido.status)}
+                      position={{ lat: rotaData.origem.lat, lng: rotaData.origem.lon }}
+                      icon={ORIGIN_ICON}
+                      title="Floricultura (Origem)"
+                      onClick={() => setActiveInfoWindow(-1)}
                     >
-                      <Popup>
-                        <Box>
-                          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                            Pedido #{pedido.id}
-                          </Typography>
-                          <Typography variant="body2">
-                            <strong>Cliente:</strong> {pedido.cliente}
-                          </Typography>
-                          {pedido.destinatario && (
-                            <Typography variant="body2">
-                              <strong>Destinatário:</strong> {pedido.destinatario}
-                            </Typography>
-                          )}
-                          <Typography variant="body2">
-                            <strong>Endereço:</strong> {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
-                          </Typography>
-                          <Typography variant="body2">
-                            <strong>Data/Hora:</strong> {pedido.dia_entrega} {pedido.horario}
-                          </Typography>
-                          <Typography variant="body2">
-                            <strong>Status:</strong> {pedido.status}
-                          </Typography>
-                          {pedido.distancia_km && (
-                            <Typography variant="body2">
-                              <strong>Distância:</strong> {pedido.distancia_km.toFixed(2)} km
-                            </Typography>
-                          )}
-                        </Box>
-                      </Popup>
+                      {activeInfoWindow === -1 && (
+                        <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
+                          <div><strong>Origem (Floricultura)</strong></div>
+                        </InfoWindow>
+                      )}
                     </Marker>
-                  ))}
-                
-                {/* Waypoints da rota otimizada */}
-                {rotaData?.waypoints?.map((wp, idx) => {
-                  // Verificar se já existe um marcador de pedido nesta posição
-                  const pedidoNoWaypoint = pedidosOrdenados.find(
-                    (p) => p.coords_lat && p.coords_lon && 
-                    Math.abs(p.coords_lat - wp[0]) < 0.0001 && 
-                    Math.abs(p.coords_lon - wp[1]) < 0.0001
-                  );
-                  
-                  // Só mostrar waypoint se não houver pedido já marcado
-                  if (pedidoNoWaypoint) return null;
-                  
-                  return (
-                    <Marker key={`waypoint-${idx}`} position={[wp[0], wp[1]]}>
-                      <Popup>Waypoint {idx + 1} - Pedido #{rotaData.sequencia_pedidos?.[idx] ?? ''}</Popup>
-                    </Marker>
-                  );
-                })}
-                
-                {/* Linha da rota otimizada */}
-                {rotaData?.waypoints && rotaData.waypoints.length > 1 && (
-                  <Polyline 
-                    positions={rotaData.waypoints.map((wp) => [wp[0], wp[1]])} 
-                    pathOptions={{ color: 'green', weight: 3, opacity: 0.7 }} 
-                  />
-                )}
-              </MapContainer>
+                  )}
+
+                  {/* Marcadores dos pedidos */}
+                  {pedidosOrdenados
+                    .filter((p) => p.coords_lat && p.coords_lon)
+                    .map((pedido, idx) => (
+                      <Marker
+                        key={`pedido-${pedido.id}`}
+                        position={{ lat: pedido.coords_lat!, lng: pedido.coords_lon! }}
+                        icon={getMarkerIcon(pedido.status)}
+                        label={{
+                          text: String(idx + 1),
+                          color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                        }}
+                        title={`#${pedido.id} - ${pedido.destinatario || pedido.cliente}`}
+                        onClick={() => setActiveInfoWindow(pedido.id)}
+                      >
+                        {activeInfoWindow === pedido.id && (
+                          <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
+                            <div style={{ maxWidth: 220 }}>
+                              <strong>Pedido #{pedido.id}</strong>
+                              <br />
+                              <strong>Cliente:</strong> {pedido.cliente}
+                              {pedido.destinatario && (
+                                <>
+                                  <br />
+                                  <strong>Destinatário:</strong> {pedido.destinatario}
+                                </>
+                              )}
+                              <br />
+                              <strong>Endereço:</strong> {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
+                              <br />
+                              <strong>Data/Hora:</strong> {pedido.dia_entrega} {pedido.horario}
+                              <br />
+                              <strong>Status:</strong> {pedido.status}
+                              {pedido.distancia_km && (
+                                <>
+                                  <br />
+                                  <strong>Distância:</strong> {pedido.distancia_km.toFixed(2)} km
+                                </>
+                              )}
+                            </div>
+                          </InfoWindow>
+                        )}
+                      </Marker>
+                    ))}
+
+                  {/* Linha da rota otimizada */}
+                  {routePath.length > 1 && (
+                    <Polyline
+                      path={routePath}
+                      options={{ strokeColor: '#4CAF50', strokeWeight: 4, strokeOpacity: 0.8 }}
+                    />
+                  )}
+                </GoogleMap>
+              )}
             </Paper>
             {showStepByStep && stepByStepUrls.length > 0 && (
               <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  Navegação entrega a entrega (fallback)
+                  Navegação entrega a entrega
                 </Typography>
                 <Stack spacing={0.5}>
                   {stepByStepUrls.map((s) => (
@@ -430,7 +523,7 @@ export default function RoutePage() {
               {pedidosOrdenados.length === 0 ? (
                 <Box p={2}>
                   <Typography variant="body2" color="text.secondary">
-                    Nenhum pedido de entrega para hoje.
+                    Nenhum pedido de entrega para {isToday ? 'hoje' : selectedDate.format('DD/MM/YYYY')}.
                   </Typography>
                 </Box>
               ) : (
@@ -444,11 +537,11 @@ export default function RoutePage() {
                     strategy={verticalListSortingStrategy}
                   >
                     <Stack spacing={1.5}>
-                      {pedidosOrdenados.map((pedido) => (
+                      {pedidosOrdenados.map((pedido, idx) => (
                         <SortableItem key={pedido.id} id={pedido.id}>
                           <Stack spacing={0.5}>
                             <Typography variant="subtitle1" fontWeight="bold">
-                              #{pedido.id} · {pedido.destinatario || pedido.cliente}
+                              {idx + 1}. #{pedido.id} · {pedido.destinatario || pedido.cliente}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
                               {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}

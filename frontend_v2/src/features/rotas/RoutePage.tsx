@@ -288,15 +288,6 @@ export default function RoutePage() {
           >
             {calcRota.isPending ? 'Otimizado...' : 'Otimizar rota'}
           </Button>
-          {rotaData?.graphhopper_maps_url && (
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => window.open(rotaData.graphhopper_maps_url as string, '_blank')}
-            >
-              Abrir no GraphHopper
-            </Button>
-          )}
           {googleMapsUrl && (
             <Button
               variant="outlined"

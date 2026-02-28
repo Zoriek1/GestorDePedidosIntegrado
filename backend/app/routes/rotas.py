@@ -205,6 +205,76 @@ def obter_rota_otimizada(rota_id):
         return error_response(f"Erro ao obter rota: {str(e)}", 500)
 
 
+@rotas_bp.route("/gerar-rota-maps", methods=["POST"])
+@requires_any_role("admin", "atendente", "entregador")
+def gerar_rota_maps():
+    """
+    Gera link do Google Maps respeitando a ordem dos IDs recebidos.
+    Sem otimização — a sequência é a que o usuário escolheu.
+
+    Input:  { "pedido_ids": [10, 5, 22] }
+    Output: { "google_maps_url": "...", "step_by_step": [...], "sem_coords": [...] }
+    """
+    try:
+        data = request.get_json() or {}
+        pedido_ids = data.get("pedido_ids", [])
+
+        if not pedido_ids:
+            return error_response("Nenhum pedido selecionado", 400)
+
+        # Origem (floricultura)
+        origem_lonlat = distancia_service.coords_floricultura
+        if not origem_lonlat:
+            return error_response("Coordenadas da floricultura não configuradas", 500)
+
+        origem = (origem_lonlat[1], origem_lonlat[0])  # (lat, lon)
+
+        # Buscar pedidos mantendo a ordem recebida
+        pedidos_map = {
+            p.id: p
+            for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()
+        }
+
+        stops = []
+        sem_coords = []
+        pedidos_na_rota = []
+
+        for pid in pedido_ids:
+            pedido = pedidos_map.get(pid)
+            if not pedido:
+                continue
+            if pedido.coords_lat and pedido.coords_lon:
+                stops.append((pedido.coords_lat, pedido.coords_lon))
+                pedidos_na_rota.append({
+                    "id": pedido.id,
+                    "cliente": pedido.cliente or "",
+                    "destinatario": pedido.destinatario or "",
+                    "endereco": pedido.endereco or f"{pedido.rua or ''} {pedido.numero or ''}".strip(),
+                })
+            else:
+                sem_coords.append(pid)
+
+        if not stops:
+            return error_response(
+                "Nenhum pedido tem coordenadas. Calcule as distâncias primeiro.",
+                400,
+                details={"sem_coords": sem_coords},
+            )
+
+        google_url = build_google_maps_url(origem, stops, return_to_origin=True)
+        step_urls = build_step_by_step_urls(origem, stops, return_to_origin=True)
+
+        return success_response({
+            "google_maps_url": google_url,
+            "google_maps_step_by_step": step_urls,
+            "pedidos": pedidos_na_rota,
+            "sem_coords": sem_coords,
+        })
+
+    except Exception as e:
+        return error_response(f"Erro ao gerar rota: {str(e)}", 500)
+
+
 # ------------------------------------------------------------------
 # Helpers internos
 # ------------------------------------------------------------------

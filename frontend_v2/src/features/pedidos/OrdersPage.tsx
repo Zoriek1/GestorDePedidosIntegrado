@@ -20,12 +20,13 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route } from '@mui/icons-material';
+import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route, Map } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
 import { useStats } from '../../api/endpoints/stats';
+import { useGerarRotaMaps } from '../../api/endpoints/rotas';
 import { OrderList } from './components/OrderList';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -52,13 +53,14 @@ export default function OrdersPage() {
   });
   const [sortByDistance, setSortByDistance] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
 
   const queryClient = useQueryClient();
   const { getAuthHeader, getUserRole } = useAuth();
   const { success, error: showError, info } = useToast();
   const confirm = useConfirm();
+  const gerarRotaMaps = useGerarRotaMaps();
   
   const userRole = getUserRole() || 'admin'; // Default para admin se não especificado
   const isAdmin = userRole === 'admin';
@@ -141,7 +143,7 @@ export default function OrdersPage() {
   const handleToggleSelectionMode = () => {
     setSelectionMode((prev) => {
       if (prev) {
-        setSelectedIds(new Set());
+        setSelectedIds([]);
       }
       return !prev;
     });
@@ -149,25 +151,22 @@ export default function OrdersPage() {
 
   const handleToggleSelectPedido = (pedido: { id: number; tipo_pedido?: string }) => {
     setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(pedido.id)) {
-        next.delete(pedido.id);
-      } else {
-        if (pedido.tipo_pedido !== 'Entrega') return next;
-        next.add(pedido.id);
+      const idx = prev.indexOf(pedido.id);
+      if (idx !== -1) {
+        return prev.filter((id) => id !== pedido.id);
       }
-      return next;
+      if (pedido.tipo_pedido !== 'Entrega') return prev;
+      return [...prev, pedido.id];
     });
   };
 
   const handleCalcularDistanciasSelecionados = async () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) {
+    if (selectedIds.length === 0) {
       info('Selecione ao menos 1 pedido de entrega');
       return;
     }
     try {
-      await calcDistanciasLote.mutateAsync({ pedidoIds: ids, forceRecalc: true });
+      await calcDistanciasLote.mutateAsync({ pedidoIds: selectedIds, forceRecalc: true });
       success('Distâncias recalculadas para selecionados');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao recalcular distâncias';
@@ -175,13 +174,31 @@ export default function OrdersPage() {
     }
   };
 
+  const handleGerarRota = async () => {
+    if (selectedIds.length === 0) {
+      info('Selecione pedidos para gerar a rota');
+      return;
+    }
+    try {
+      const result = await gerarRotaMaps.mutateAsync(selectedIds);
+      if (result.sem_coords.length > 0) {
+        showError(`Pedidos sem coordenadas: ${result.sem_coords.join(', ')}. Calcule as distâncias primeiro.`);
+      }
+      if (result.google_maps_url) {
+        window.open(result.google_maps_url, '_blank');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao gerar rota';
+      showError(errorMessage);
+    }
+  };
+
   const handleIrParaMapa = () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) {
+    if (selectedIds.length === 0) {
       info('Selecione pedidos para roteirizar');
       return;
     }
-    const query = `ids=${ids.join(',')}`;
+    const query = `ids=${selectedIds.join(',')}`;
     window.open(`/rota-entrega?${query}`, '_blank');
   };
 
@@ -470,7 +487,7 @@ export default function OrdersPage() {
                 size="small"
                 variant="outlined"
                 onClick={handleCalcularDistanciasSelecionados}
-                disabled={calcDistanciasLote.isPending}
+                disabled={calcDistanciasLote.isPending || selectedIds.length === 0}
                 fullWidth={isMobile}
               >
                 {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
@@ -478,17 +495,27 @@ export default function OrdersPage() {
               <Button
                 size="small"
                 variant="contained"
-                color="primary"
-                onClick={handleIrParaMapa}
-                disabled={selectedIds.size === 0}
+                color="success"
+                startIcon={<Map />}
+                onClick={handleGerarRota}
+                disabled={selectedIds.length === 0 || gerarRotaMaps.isPending}
                 fullWidth={isMobile}
               >
-                Ir para o mapa
+                {gerarRotaMaps.isPending ? 'Gerando...' : 'Gerar Rota'}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleIrParaMapa}
+                disabled={selectedIds.length === 0}
+                fullWidth={isMobile}
+              >
+                Ver no mapa
               </Button>
             </Stack>
             <Chip
-              color={selectedIds.size > 0 ? 'primary' : 'default'}
-              label={`${selectedIds.size} selecionado(s) para rota`}
+              color={selectedIds.length > 0 ? 'primary' : 'default'}
+              label={`${selectedIds.length} selecionado(s) para rota`}
               sx={{ alignSelf: { xs: 'center', sm: 'auto' } }}
             />
           </Stack>

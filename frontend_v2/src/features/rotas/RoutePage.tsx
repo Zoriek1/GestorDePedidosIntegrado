@@ -10,11 +10,16 @@ import {
   Button,
   Alert,
   IconButton,
+  Checkbox,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import ChevronLeft from '@mui/icons-material/ChevronLeft';
 import ChevronRight from '@mui/icons-material/ChevronRight';
 import Today from '@mui/icons-material/Today';
 import DragIndicator from '@mui/icons-material/DragIndicator';
+import MapIcon from '@mui/icons-material/Map';
+import RouteIcon from '@mui/icons-material/Route';
 import {
   GoogleMap,
   useJsApiLoader,
@@ -27,7 +32,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { usePedidos, useCalcularDistanciasLote } from '../../api/endpoints/pedidos';
-import { useCalcularRotaOtimizada, useRotaOtimizada, type RotaOtimizada } from '../../api/endpoints/rotas';
+import { useCalcularRotaOtimizada, useRotaOtimizada, useGerarRotaMaps, type RotaOtimizada } from '../../api/endpoints/rotas';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
@@ -36,24 +41,26 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // Cores de marcador por status
 const STATUS_COLORS: Record<string, string> = {
-  agendado: '#4285F4',      // azul
-  em_producao: '#FF9800',   // laranja
-  pronto_entrega: '#4CAF50', // verde
+  agendado: '#4285F4',
+  em_producao: '#FF9800',
+  pronto_entrega: '#4CAF50',
   pronto_retirada: '#4CAF50',
-  em_rota: '#9C27B0',       // roxo
-  atrasado: '#F44336',      // vermelho
-  concluido: '#9E9E9E',     // cinza
+  em_rota: '#9C27B0',
+  atrasado: '#F44336',
+  concluido: '#9E9E9E',
 };
 
-function getMarkerIcon(status: string) {
-  const color = STATUS_COLORS[status] || '#4285F4';
+function getMarkerIcon(status: string, selected: boolean) {
+  const color = selected
+    ? (STATUS_COLORS[status] || '#4285F4')
+    : '#BDBDBD'; // cinza se não selecionado
   return {
     path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
     fillColor: color,
-    fillOpacity: 1,
-    strokeColor: '#fff',
-    strokeWeight: 1,
-    scale: 1.5,
+    fillOpacity: selected ? 1 : 0.5,
+    strokeColor: selected ? '#fff' : '#999',
+    strokeWeight: selected ? 1 : 0.5,
+    scale: selected ? 1.5 : 1.2,
     anchor: { x: 12, y: 22 } as google.maps.Point,
   };
 }
@@ -73,10 +80,11 @@ const MAP_CONTAINER_STYLE = { height: '100%', width: '100%' };
 // Componente SortableItem para cada pedido na lista
 interface SortableItemProps {
   id: number;
+  compact?: boolean;
   children: React.ReactNode;
 }
 
-function SortableItem({ id, children }: SortableItemProps) {
+function SortableItem({ id, compact, children }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -94,18 +102,16 @@ function SortableItem({ id, children }: SortableItemProps) {
 
   return (
     <div ref={setNodeRef} style={style}>
-      <Paper variant="outlined" sx={{ p: 1.5, position: 'relative' }}>
+      <Paper variant="outlined" sx={{ p: compact ? 0.75 : 1.5, position: 'relative' }}>
         {children}
         <Box
           sx={{
             position: 'absolute',
-            top: 8,
-            right: 8,
+            top: compact ? 4 : 8,
+            right: compact ? 4 : 8,
             cursor: 'grab',
             color: 'text.secondary',
-            '&:active': {
-              cursor: 'grabbing',
-            },
+            '&:active': { cursor: 'grabbing' },
           }}
           {...attributes}
           {...listeners}
@@ -118,6 +124,9 @@ function SortableItem({ id, children }: SortableItemProps) {
 }
 
 export default function RoutePage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [onlyAgendados, setOnlyAgendados] = useState(false);
   const [searchParams] = useSearchParams();
   const idsParam = searchParams.get('ids');
@@ -131,6 +140,19 @@ export default function RoutePage() {
   const goBack = () => setSelectedDate((d) => d.subtract(1, 'day'));
   const goForward = () => setSelectedDate((d) => d.add(1, 'day'));
   const goToday = () => setSelectedDate(dayjs().startOf('day'));
+
+  // --- Selection state ---
+  const [selectedPedidoIds, setSelectedPedidoIds] = useState<Set<number>>(new Set());
+  const [showMap, setShowMap] = useState(false); // mobile map toggle
+
+  const togglePedido = (id: number) => {
+    setSelectedPedidoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const selectedIds = useMemo(
     () => (idsParam ? idsParam.split(',').map((id) => Number(id)).filter(Number.isFinite) : []),
@@ -149,6 +171,7 @@ export default function RoutePage() {
   const calcLote = useCalcularDistanciasLote();
   const calcRota = useCalcularRotaOtimizada();
   const rotaQuery = useRotaOtimizada(rotaId);
+  const gerarRotaMaps = useGerarRotaMaps();
   const { success, error: showError, info } = useToast();
 
   const pedidos = useMemo(() => {
@@ -181,9 +204,19 @@ export default function RoutePage() {
       prevKeyRef.current = pedidosFiltradosKey;
       requestAnimationFrame(() => {
         setPedidosOrdenados([...pedidosFiltrados]);
+        // Select all by default when list changes
+        setSelectedPedidoIds(new Set(pedidosFiltrados.map(p => p.id)));
       });
     }
   }, [pedidosFiltradosKey, pedidosFiltrados]);
+
+  // Initialize selection when first loaded
+  useEffect(() => {
+    if (pedidosFiltrados.length > 0 && selectedPedidoIds.size === 0) {
+      setSelectedPedidoIds(new Set(pedidosFiltrados.map(p => p.id)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidosFiltrados]);
 
   // Sensores para drag-and-drop
   const sensors = useSensors(
@@ -227,10 +260,27 @@ export default function RoutePage() {
     }
   }, [selectedIds.length]);
 
+  // Selected pedido IDs in order
+  const selectedIdsInOrder = useMemo(
+    () => pedidosOrdenados.filter(p => selectedPedidoIds.has(p.id)).map(p => p.id),
+    [pedidosOrdenados, selectedPedidoIds]
+  );
+
+  const allSelected = pedidosOrdenados.length > 0 && selectedPedidoIds.size === pedidosOrdenados.length;
+  const someSelected = selectedPedidoIds.size > 0 && !allSelected;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedPedidoIds(new Set());
+    } else {
+      setSelectedPedidoIds(new Set(pedidosOrdenados.map(p => p.id)));
+    }
+  };
+
   const handleCalcularDistancias = async () => {
-    const ids = pedidosOrdenados.map((p) => p.id);
+    const ids = selectedIdsInOrder;
     if (ids.length === 0) {
-      info('Nenhum pedido elegível para cálculo de distância');
+      info('Selecione pelo menos 1 pedido');
       return;
     }
     try {
@@ -243,7 +293,7 @@ export default function RoutePage() {
   };
 
   const handleOtimizarRota = async () => {
-    const ids = pedidosOrdenados.map((p) => p.id);
+    const ids = selectedIdsInOrder;
     if (ids.length < 2) {
       info('Selecione pelo menos 2 entregas para otimizar');
       return;
@@ -253,6 +303,26 @@ export default function RoutePage() {
       success('Rota otimizada');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao otimizar rota';
+      showError(errorMessage);
+    }
+  };
+
+  const handleGerarRota = async () => {
+    const ids = selectedIdsInOrder;
+    if (ids.length < 2) {
+      info('Selecione pelo menos 2 entregas para gerar rota');
+      return;
+    }
+    try {
+      const result = await gerarRotaMaps.mutateAsync(ids);
+      if (result.google_maps_url) {
+        window.open(result.google_maps_url, '_blank');
+        success('Rota aberta no Google Maps');
+      } else {
+        showError('Não foi possível gerar a URL do Google Maps');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao gerar rota';
       showError(errorMessage);
     }
   };
@@ -268,7 +338,7 @@ export default function RoutePage() {
     }
     const firstWithCoords = pedidosOrdenados.find((p) => p.coords_lat && p.coords_lon);
     if (firstWithCoords) return { lat: firstWithCoords.coords_lat!, lng: firstWithCoords.coords_lon! };
-    return { lat: -16.6869, lng: -49.2648 }; // Goiânia fallback
+    return { lat: -16.6869, lng: -49.2648 };
   }, [rotaData, pedidosOrdenados]);
 
   const [activeInfoWindow, setActiveInfoWindow] = useState<number | null>(null);
@@ -301,7 +371,6 @@ export default function RoutePage() {
   const routePath = useMemo(() => {
     if (!rotaData?.waypoints || rotaData.waypoints.length < 2) return [];
     const path = rotaData.waypoints.map((wp) => ({ lat: wp[0], lng: wp[1] }));
-    // Add origin at start and end if available
     if (rotaData.origem) {
       const origin = { lat: rotaData.origem.lat, lng: rotaData.origem.lon };
       path.unshift(origin);
@@ -316,76 +385,227 @@ export default function RoutePage() {
     return selectedDate.format('ddd, DD/MM/YYYY');
   }, [selectedDate, isToday]);
 
+  // Map section (reused for both desktop and mobile)
+  const mapSection = (
+    <Paper sx={{ height: isMobile ? 350 : 480, overflow: 'hidden' }}>
+      {!GOOGLE_MAPS_API_KEY ? (
+        <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+          <Alert severity="warning">
+            Configure <code>VITE_GOOGLE_MAPS_API_KEY</code> no .env para exibir o mapa.
+          </Alert>
+        </Box>
+      ) : !mapsLoaded ? (
+        <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+          <Loading variant="spinner" />
+        </Box>
+      ) : (
+        <GoogleMap
+          mapContainerStyle={MAP_CONTAINER_STYLE}
+          center={mapCenter}
+          zoom={12}
+          onLoad={onMapLoad}
+          options={{
+            streetViewControl: false,
+            mapTypeControl: false,
+            fullscreenControl: true,
+          }}
+        >
+          {/* Origem (Floricultura) */}
+          {rotaData?.origem && (
+            <Marker
+              position={{ lat: rotaData.origem.lat, lng: rotaData.origem.lon }}
+              icon={ORIGIN_ICON}
+              title="Floricultura (Origem)"
+              onClick={() => setActiveInfoWindow(-1)}
+            >
+              {activeInfoWindow === -1 && (
+                <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
+                  <div><strong>Origem (Floricultura)</strong></div>
+                </InfoWindow>
+              )}
+            </Marker>
+          )}
+
+          {/* Marcadores dos pedidos */}
+          {pedidosOrdenados
+            .filter((p) => p.coords_lat && p.coords_lon)
+            .map((pedido, idx) => {
+              const isSelected = selectedPedidoIds.has(pedido.id);
+              return (
+                <Marker
+                  key={`pedido-${pedido.id}`}
+                  position={{ lat: pedido.coords_lat!, lng: pedido.coords_lon! }}
+                  icon={getMarkerIcon(pedido.status, isSelected)}
+                  label={isSelected ? {
+                    text: String(idx + 1),
+                    color: '#fff',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                  } : undefined}
+                  title={`#${pedido.id} - ${pedido.destinatario || pedido.cliente}`}
+                  onClick={() => {
+                    togglePedido(pedido.id);
+                    setActiveInfoWindow(pedido.id);
+                  }}
+                >
+                  {activeInfoWindow === pedido.id && (
+                    <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
+                      <div style={{ maxWidth: 220 }}>
+                        <strong>Pedido #{pedido.id}</strong>
+                        <br />
+                        <strong>Cliente:</strong> {pedido.cliente}
+                        {pedido.destinatario && (
+                          <>
+                            <br />
+                            <strong>Destinatário:</strong> {pedido.destinatario}
+                          </>
+                        )}
+                        <br />
+                        <strong>Endereço:</strong> {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
+                        <br />
+                        <strong>Status:</strong> {pedido.status}
+                        {pedido.distancia_km && (
+                          <>
+                            <br />
+                            <strong>Distância:</strong> {pedido.distancia_km.toFixed(2)} km
+                          </>
+                        )}
+                        <br />
+                        <Chip
+                          label={isSelected ? 'Selecionado' : 'Não selecionado'}
+                          size="small"
+                          color={isSelected ? 'success' : 'default'}
+                          sx={{ mt: 0.5 }}
+                        />
+                      </div>
+                    </InfoWindow>
+                  )}
+                </Marker>
+              );
+            })}
+
+          {/* Linha da rota otimizada */}
+          {routePath.length > 1 && (
+            <Polyline
+              path={routePath}
+              options={{ strokeColor: '#4CAF50', strokeWeight: 4, strokeOpacity: 0.8 }}
+            />
+          )}
+        </GoogleMap>
+      )}
+    </Paper>
+  );
+
   return (
-    <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} spacing={2} flexWrap="wrap">
+    <Box sx={{ px: isMobile ? 0.5 : 0 }}>
+      {/* Header */}
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={isMobile ? 1 : 2} spacing={1} flexWrap="wrap">
         <Box>
-          <Typography variant="h4" component="h1">
+          <Typography variant={isMobile ? 'h6' : 'h4'} component="h1">
             Rota de Entrega
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Visualize mapa, waypoints e otimize trajetos
-          </Typography>
+          {!isMobile && (
+            <Typography variant="body2" color="text.secondary">
+              Visualize mapa, waypoints e otimize trajetos
+            </Typography>
+          )}
         </Box>
 
         {/* Day selector */}
         <Stack direction="row" alignItems="center" spacing={0.5}>
           <IconButton size="small" onClick={goBack} title="Dia anterior">
-            <ChevronLeft />
+            <ChevronLeft fontSize={isMobile ? 'small' : 'medium'} />
           </IconButton>
           <Button
             size="small"
             variant={isToday ? 'contained' : 'outlined'}
             onClick={goToday}
-            startIcon={<Today />}
-            sx={{ minWidth: 160, textTransform: 'none' }}
+            startIcon={<Today fontSize="small" />}
+            sx={{
+              minWidth: isMobile ? 120 : 160,
+              textTransform: 'none',
+              fontSize: isMobile ? '0.75rem' : undefined,
+              px: isMobile ? 1 : 2,
+            }}
           >
             {dateDisplay}
           </Button>
           <IconButton size="small" onClick={goForward} title="Próximo dia">
-            <ChevronRight />
+            <ChevronRight fontSize={isMobile ? 'small' : 'medium'} />
           </IconButton>
         </Stack>
+      </Stack>
 
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          <Button variant="outlined" size="small" onClick={() => setOnlyAgendados((prev) => !prev)}>
-            {onlyAgendados ? 'Mostrar todos' : 'Somente agendados'}
-          </Button>
+      {/* Action buttons */}
+      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap mb={isMobile ? 1 : 2} sx={{ gap: isMobile ? 0.5 : 1 }}>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => setOnlyAgendados((prev) => !prev)}
+          sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
+        >
+          {onlyAgendados ? 'Todos' : 'Agendados'}
+        </Button>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={handleCalcularDistancias}
+          disabled={calcLote.isPending || isLoading || selectedPedidoIds.size === 0}
+          sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
+        >
+          {calcLote.isPending ? 'Calculando...' : 'Distâncias'}
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          onClick={handleOtimizarRota}
+          disabled={calcRota.isPending || selectedPedidoIds.size < 2}
+          sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
+        >
+          {calcRota.isPending ? 'Otimizando...' : 'Otimizar'}
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          color="success"
+          startIcon={<RouteIcon fontSize="small" />}
+          onClick={handleGerarRota}
+          disabled={gerarRotaMaps.isPending || selectedPedidoIds.size < 2}
+          sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
+        >
+          {gerarRotaMaps.isPending ? 'Gerando...' : `Rota (${selectedPedidoIds.size})`}
+        </Button>
+        {isMobile && (
           <Button
             variant="outlined"
             size="small"
-            onClick={handleCalcularDistancias}
-            disabled={calcLote.isPending || isLoading}
+            startIcon={<MapIcon fontSize="small" />}
+            onClick={() => setShowMap((prev) => !prev)}
+            sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
           >
-            {calcLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
+            {showMap ? 'Esconder' : 'Mapa'}
           </Button>
+        )}
+        {googleMapsUrl && (
           <Button
-            variant="contained"
+            variant="outlined"
             size="small"
-            onClick={handleOtimizarRota}
-            disabled={calcRota.isPending || pedidosOrdenados.length < 2}
+            onClick={() => window.open(googleMapsUrl, '_blank')}
+            sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
           >
-            {calcRota.isPending ? 'Otimizando...' : 'Otimizar rota'}
+            Google Maps
           </Button>
-          {googleMapsUrl && (
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => window.open(googleMapsUrl, '_blank')}
-            >
-              Abrir no Google Maps
-            </Button>
-          )}
-          {stepByStepUrls.length > 0 && (
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => setShowStepByStep((prev) => !prev)}
-            >
-              {showStepByStep ? 'Esconder etapas' : 'Entrega a entrega'}
-            </Button>
-          )}
-        </Stack>
+        )}
+        {stepByStepUrls.length > 0 && (
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setShowStepByStep((prev) => !prev)}
+            sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
+          >
+            {showStepByStep ? 'Esconder etapas' : 'Etapas'}
+          </Button>
+        )}
       </Stack>
 
       {isLoading ? (
@@ -393,178 +613,162 @@ export default function RoutePage() {
       ) : error ? (
         <ErrorState message="Erro ao carregar pedidos" onRetry={() => refetch()} />
       ) : (
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 7 }}>
-            <Paper sx={{ height: 480, overflow: 'hidden' }}>
-              {!GOOGLE_MAPS_API_KEY ? (
-                <Box display="flex" alignItems="center" justifyContent="center" height="100%">
-                  <Alert severity="warning">
-                    Configure <code>VITE_GOOGLE_MAPS_API_KEY</code> no .env para exibir o mapa.
-                  </Alert>
-                </Box>
-              ) : !mapsLoaded ? (
-                <Box display="flex" alignItems="center" justifyContent="center" height="100%">
-                  <Loading variant="spinner" />
-                </Box>
-              ) : (
-                <GoogleMap
-                  mapContainerStyle={MAP_CONTAINER_STYLE}
-                  center={mapCenter}
-                  zoom={12}
-                  onLoad={onMapLoad}
-                  options={{
-                    streetViewControl: false,
-                    mapTypeControl: false,
-                    fullscreenControl: true,
-                  }}
-                >
-                  {/* Origem (Floricultura) */}
-                  {rotaData?.origem && (
-                    <Marker
-                      position={{ lat: rotaData.origem.lat, lng: rotaData.origem.lon }}
-                      icon={ORIGIN_ICON}
-                      title="Floricultura (Origem)"
-                      onClick={() => setActiveInfoWindow(-1)}
-                    >
-                      {activeInfoWindow === -1 && (
-                        <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
-                          <div><strong>Origem (Floricultura)</strong></div>
-                        </InfoWindow>
-                      )}
-                    </Marker>
-                  )}
+        <>
+          {/* Mobile: show map only when toggled */}
+          {isMobile && showMap && (
+            <Box mb={2}>
+              {mapSection}
+            </Box>
+          )}
 
-                  {/* Marcadores dos pedidos */}
-                  {pedidosOrdenados
-                    .filter((p) => p.coords_lat && p.coords_lon)
-                    .map((pedido, idx) => (
-                      <Marker
-                        key={`pedido-${pedido.id}`}
-                        position={{ lat: pedido.coords_lat!, lng: pedido.coords_lon! }}
-                        icon={getMarkerIcon(pedido.status)}
-                        label={{
-                          text: String(idx + 1),
-                          color: '#fff',
-                          fontSize: '11px',
-                          fontWeight: 'bold',
-                        }}
-                        title={`#${pedido.id} - ${pedido.destinatario || pedido.cliente}`}
-                        onClick={() => setActiveInfoWindow(pedido.id)}
-                      >
-                        {activeInfoWindow === pedido.id && (
-                          <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
-                            <div style={{ maxWidth: 220 }}>
-                              <strong>Pedido #{pedido.id}</strong>
-                              <br />
-                              <strong>Cliente:</strong> {pedido.cliente}
-                              {pedido.destinatario && (
-                                <>
-                                  <br />
-                                  <strong>Destinatário:</strong> {pedido.destinatario}
-                                </>
-                              )}
-                              <br />
-                              <strong>Endereço:</strong> {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
-                              <br />
-                              <strong>Data/Hora:</strong> {pedido.dia_entrega} {pedido.horario}
-                              <br />
-                              <strong>Status:</strong> {pedido.status}
-                              {pedido.distancia_km && (
-                                <>
-                                  <br />
-                                  <strong>Distância:</strong> {pedido.distancia_km.toFixed(2)} km
-                                </>
-                              )}
-                            </div>
-                          </InfoWindow>
-                        )}
-                      </Marker>
-                    ))}
-
-                  {/* Linha da rota otimizada */}
-                  {routePath.length > 1 && (
-                    <Polyline
-                      path={routePath}
-                      options={{ strokeColor: '#4CAF50', strokeWeight: 4, strokeOpacity: 0.8 }}
-                    />
-                  )}
-                </GoogleMap>
-              )}
-            </Paper>
-            {showStepByStep && stepByStepUrls.length > 0 && (
-              <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Navegação entrega a entrega
-                </Typography>
-                <Stack spacing={0.5}>
-                  {stepByStepUrls.map((s) => (
-                    <Button
-                      key={s.step}
-                      variant="text"
-                      size="small"
-                      sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-                      onClick={() => window.open(s.url, '_blank')}
-                    >
-                      {s.step}. {s.label}
-                    </Button>
-                  ))}
-                </Stack>
-              </Paper>
-            )}
-            {selectedIds.length > 0 && (
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Visualizando IDs: {selectedIds.join(', ')}. Clique em "Otimizar rota" para gerar caminho.
-              </Alert>
-            )}
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 5 }}>
-            <Paper sx={{ p: 2 }}>
-              {pedidosOrdenados.length === 0 ? (
-                <Box p={2}>
-                  <Typography variant="body2" color="text.secondary">
-                    Nenhum pedido de entrega para {isToday ? 'hoje' : selectedDate.format('DD/MM/YYYY')}.
-                  </Typography>
-                </Box>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={pedidosOrdenados.map(p => p.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <Stack spacing={1.5}>
-                      {pedidosOrdenados.map((pedido, idx) => (
-                        <SortableItem key={pedido.id} id={pedido.id}>
-                          <Stack spacing={0.5}>
-                            <Typography variant="subtitle1" fontWeight="bold">
-                              {idx + 1}. #{pedido.id} · {pedido.destinatario || pedido.cliente}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
-                            </Typography>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <Chip label={pedido.status} size="small" />
-                              {pedido.distancia_km && (
-                                <Chip label={`${pedido.distancia_km.toFixed(1)} km`} size="small" color="info" />
-                              )}
-                            </Stack>
-                            <Typography variant="body2" color="text.secondary">
-                              Data/Hora: {pedido.dia_entrega} {pedido.horario}
-                            </Typography>
-                          </Stack>
-                        </SortableItem>
+          <Grid container spacing={2}>
+            {/* Desktop: always show map */}
+            {!isMobile && (
+              <Grid size={{ xs: 12, md: 7 }}>
+                {mapSection}
+                {showStepByStep && stepByStepUrls.length > 0 && (
+                  <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Navegação entrega a entrega
+                    </Typography>
+                    <Stack spacing={0.5}>
+                      {stepByStepUrls.map((s) => (
+                        <Button
+                          key={s.step}
+                          variant="text"
+                          size="small"
+                          sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                          onClick={() => window.open(s.url, '_blank')}
+                        >
+                          {s.step}. {s.label}
+                        </Button>
                       ))}
                     </Stack>
-                  </SortableContext>
-                </DndContext>
+                  </Paper>
+                )}
+                {selectedIds.length > 0 && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Visualizando IDs: {selectedIds.join(', ')}. Clique em "Otimizar rota" para gerar caminho.
+                  </Alert>
+                )}
+              </Grid>
+            )}
+
+            <Grid size={{ xs: 12, md: !isMobile ? 5 : 12 }}>
+              {/* Mobile: step by step below list */}
+              {isMobile && showStepByStep && stepByStepUrls.length > 0 && (
+                <Paper variant="outlined" sx={{ mb: 2, p: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Navegação entrega a entrega
+                  </Typography>
+                  <Stack spacing={0.5}>
+                    {stepByStepUrls.map((s) => (
+                      <Button
+                        key={s.step}
+                        variant="text"
+                        size="small"
+                        sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                        onClick={() => window.open(s.url, '_blank')}
+                      >
+                        {s.step}. {s.label}
+                      </Button>
+                    ))}
+                  </Stack>
+                </Paper>
               )}
-            </Paper>
+
+              <Paper sx={{ p: isMobile ? 1 : 2 }}>
+                {pedidosOrdenados.length === 0 ? (
+                  <Box p={1}>
+                    <Typography variant={isMobile ? 'caption' : 'body2'} color="text.secondary">
+                      Nenhum pedido de entrega para {isToday ? 'hoje' : selectedDate.format('DD/MM/YYYY')}.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <>
+                    {/* Select all header */}
+                    <Stack direction="row" alignItems="center" spacing={0.5} mb={1}>
+                      <Checkbox
+                        checked={allSelected}
+                        indeterminate={someSelected}
+                        onChange={toggleSelectAll}
+                        size="small"
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {selectedPedidoIds.size}/{pedidosOrdenados.length} selecionados
+                      </Typography>
+                    </Stack>
+
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={pedidosOrdenados.map(p => p.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <Stack spacing={isMobile ? 0.75 : 1.5}>
+                          {pedidosOrdenados.map((pedido, idx) => (
+                            <SortableItem key={pedido.id} id={pedido.id} compact={isMobile}>
+                              <Stack direction="row" alignItems="flex-start" spacing={0.5}>
+                                <Checkbox
+                                  checked={selectedPedidoIds.has(pedido.id)}
+                                  onChange={() => togglePedido(pedido.id)}
+                                  size="small"
+                                  sx={{ mt: -0.5, ml: -0.5, p: isMobile ? 0.25 : undefined }}
+                                />
+                                <Stack spacing={0.25} sx={{ flex: 1, minWidth: 0 }}>
+                                  <Typography
+                                    variant={isMobile ? 'body2' : 'subtitle1'}
+                                    fontWeight="bold"
+                                    sx={{ fontSize: isMobile ? '0.8rem' : undefined }}
+                                  >
+                                    {idx + 1}. #{pedido.id} · {pedido.destinatario || pedido.cliente}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    noWrap
+                                    sx={{ fontSize: isMobile ? '0.7rem' : undefined }}
+                                  >
+                                    {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
+                                  </Typography>
+                                  <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <Chip
+                                      label={pedido.status}
+                                      size="small"
+                                      sx={{ fontSize: isMobile ? '0.65rem' : undefined, height: isMobile ? 20 : undefined }}
+                                    />
+                                    {pedido.distancia_km && (
+                                      <Chip
+                                        label={`${pedido.distancia_km.toFixed(1)} km`}
+                                        size="small"
+                                        color="info"
+                                        sx={{ fontSize: isMobile ? '0.65rem' : undefined, height: isMobile ? 20 : undefined }}
+                                      />
+                                    )}
+                                  </Stack>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ fontSize: isMobile ? '0.65rem' : undefined }}
+                                  >
+                                    {pedido.dia_entrega} {pedido.horario}
+                                  </Typography>
+                                </Stack>
+                              </Stack>
+                            </SortableItem>
+                          ))}
+                        </Stack>
+                      </SortableContext>
+                    </DndContext>
+                  </>
+                )}
+              </Paper>
+            </Grid>
           </Grid>
-        </Grid>
+        </>
       )}
     </Box>
   );

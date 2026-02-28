@@ -1158,6 +1158,11 @@ class DistanciaService:
                 }
         except Exception as e:
             print(f"[DEBUG] Cache check falhou: {e}")
+            try:
+                from app import db
+                db.session.rollback()
+            except Exception:
+                pass
         return None
 
     @staticmethod
@@ -1216,6 +1221,10 @@ class DistanciaService:
                 print(f"[DEBUG] ✓ Cache salvo em EnderecoCliente #{target.id}")
         except Exception as e:
             print(f"[DEBUG] Cache save falhou: {e}")
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
     def calcular_distancias_lote(self, pedidos):
         """

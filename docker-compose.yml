@@ -34,12 +34,8 @@ services:
       HOST: 0.0.0.0
       PORT: 5000
       USE_HTTPS: ${USE_HTTPS:-false}
+      # Caminho exato onde o arquivo de credenciais está agora
       GOOGLE_APPLICATION_CREDENTIALS: /app/backend/user/config/google_credentials.json
-      # Nuvemshop (obrigatório para puxar pedidos; ver backend/docs/NUVEMSHOP_CREDENTIALS.md)
-      NUVEMSHOP_APP_ID: ${NUVEMSHOP_APP_ID:-}
-      NUVEMSHOP_CLIENT_SECRET: ${NUVEMSHOP_CLIENT_SECRET:-}
-      NUVEMSHOP_USER_AGENT: ${NUVEMSHOP_USER_AGENT:-}
-      NUVEMSHOP_PUBLIC_BASE_URL: ${NUVEMSHOP_PUBLIC_BASE_URL:-}
     volumes:
       # Montamos apenas a pasta backend para evitar confusão de caminhos
       - ./backend:/app/backend

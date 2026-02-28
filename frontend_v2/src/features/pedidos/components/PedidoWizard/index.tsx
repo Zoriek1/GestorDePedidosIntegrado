@@ -6,6 +6,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { createLogger } from '../../../../lib/logger';
+
+const log = createLogger('PedidoWizard');
 import {
   Box,
   Stepper,
@@ -202,7 +205,7 @@ export function PedidoWizard({
       localStorage.removeItem(STORAGE_KEY);
     } catch (error) {
       // Erro é tratado pelo componente pai
-      console.error('Erro ao salvar pedido:', error);
+      log.error('Erro ao salvar pedido:', error);
     }
   };
 

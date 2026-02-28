@@ -5,6 +5,9 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { createApiRequest } from '../../api/http';
+import { createLogger } from '../../lib/logger';
+
+const log = createLogger('AuthStore');
 
 const STORAGE_KEY = 'plante_uma_flor_auth';
 const SESSION_KEY = 'plante_uma_flor_auth_session';
@@ -51,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return JSON.parse(stored) as AuthCredentials;
       }
     } catch (error) {
-      console.error('Erro ao obter credenciais:', error);
+      log.error('Erro ao obter credenciais:', error);
     }
     return null;
   }, []);
@@ -204,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: errorMessage };
       }
     } catch (error) {
-      console.error('Erro ao fazer login:', error);
+      log.error('Erro ao fazer login:', error);
       logout();
       return {
         success: false,
@@ -234,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return false;
     } catch (error) {
-      console.error('Erro ao verificar autenticação:', error);
+      log.error('Erro ao verificar autenticação:', error);
       return false;
     }
   }, [getCredentials, getAuthHeader, saveCredentials]);

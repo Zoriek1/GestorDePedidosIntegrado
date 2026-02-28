@@ -4,42 +4,9 @@ Plante Uma Flor v3.0 - PWA
 Inicialização do servidor Flask
 """
 import configparser
-import json
 import os
 import sys
-import time
 from pathlib import Path
-
-
-# #region agent log
-def log_debug(msg, data):
-    """Log de debug apenas em modo desenvolvimento"""
-    env = os.environ.get("FLASK_ENV", "development")
-    if env != "production":
-        try:
-            with open(
-                r"c:\Gestor de Pedidos Plante uma flor\.cursor\debug.log",
-                "a",
-                encoding="utf-8",
-            ) as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "timestamp": int(time.time() * 1000),
-                            "location": "main.py",
-                            "message": msg,
-                            "data": data,
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            # Silenciar erros de log em produção
-            pass
-
-
-# #endregion
 
 # Carregar variáveis de ambiente do arquivo .env
 from dotenv import load_dotenv  # noqa: E402
@@ -118,17 +85,14 @@ def check_port_in_use(port=5000):
         sock.settimeout(1)
         result = sock.connect_ex(("localhost", port))
         sock.close()
-        log_debug("check_port_in_use", {"port": port, "result": result, "in_use": result == 0})
         return result == 0
-    except Exception as e:
-        log_debug("check_port_in_use exception", {"error": str(e)})
+    except Exception:
         return False
 
 
 def main():
     """Função principal para iniciar o servidor"""
     is_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    log_debug("main starting", {"args": sys.argv, "WERKZEUG_RUN_MAIN": str(is_reloader)})
 
     # Determinar ambiente (development ou production) - ANTES de usar
     env = os.environ.get("FLASK_ENV", "development")
@@ -329,19 +293,6 @@ def main():
 
     # Iniciar servidor com run_simple (mais robusto que app.run())
     try:
-        # Log apenas em desenvolvimento
-        if env != "production":
-            log_debug(
-                "run_simple calling",
-                {
-                    "host": app_config.HOST,
-                    "port": app_config.PORT,
-                    "threaded": True,
-                    "debug": debug_mode,
-                    "reloader": use_reloader_mode,
-                },
-            )
-
         run_simple(
             hostname=app_config.HOST,
             port=app_config.PORT,
@@ -356,8 +307,6 @@ def main():
         print("\n\n[AVISO] Servidor encerrado pelo usuario")
         print("[OK] Obrigado por usar Plante Uma Flor!\n")
     except Exception as e:
-        if env != "production":
-            log_debug("app.run exception", {"error": str(e)})
         print(f"\n[ERRO] Erro ao iniciar servidor: {e}\n")
         raise
 

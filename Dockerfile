@@ -11,6 +11,7 @@ RUN npm ci
 COPY frontend_v2/ ./
 # API relativa para funcionar tanto por IP:5000 quanto por tunnel (https://dominio)
 ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ARG VITE_GOOGLE_MAPS_API_KEY
 ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
@@ -23,8 +24,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+postgresql-client \
+&& rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
@@ -37,7 +38,3 @@ ENV FLASK_APP=wsgi:app
 WORKDIR /app/backend
 
 RUN chmod +x /app/backend/entrypoint.sh
-
-EXPOSE 5000
-
-ENTRYPOINT ["/app/backend/entrypoint.sh"]

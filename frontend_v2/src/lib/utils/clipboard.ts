@@ -24,7 +24,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       return true;
     } catch (err) {
       // Fall through to fallback method
-      log.warn('Clipboard API failed, trying fallback:', err);
+      console.warn('Clipboard API failed, trying fallback:', err);
     }
   }
 
@@ -47,7 +47,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     
     return successful;
   } catch (err) {
-    log.error('Fallback clipboard copy failed:', err);
+    console.error('Fallback clipboard copy failed:', err);
     return false;
   }
 }

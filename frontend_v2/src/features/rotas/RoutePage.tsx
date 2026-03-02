@@ -53,7 +53,7 @@ const STATUS_COLORS: Record<string, string> = {
 function getMarkerIcon(status: string, selected: boolean) {
   const color = selected
     ? (STATUS_COLORS[status] || '#4285F4')
-    : '#BDBDBD'; // cinza se não selecionado
+    : '#BDBDBD';
   return {
     path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
     fillColor: color,
@@ -143,7 +143,7 @@ export default function RoutePage() {
 
   // --- Selection state ---
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<Set<number>>(new Set());
-  const [showMap, setShowMap] = useState(false); // mobile map toggle
+  const [showMap, setShowMap] = useState(false);
 
   const togglePedido = (id: number) => {
     setSelectedPedidoIds((prev) => {
@@ -190,7 +190,6 @@ export default function RoutePage() {
     );
   }, [pedidos, dateStr]);
 
-  // Estado para ordem dos pedidos após drag-and-drop
   const pedidosFiltradosKey = useMemo(
     () => pedidosFiltrados.map(p => p.id).join(','),
     [pedidosFiltrados]
@@ -204,7 +203,6 @@ export default function RoutePage() {
       prevKeyRef.current = pedidosFiltradosKey;
       requestAnimationFrame(() => {
         setPedidosOrdenados([...pedidosFiltrados]);
-        // Select all by default when list changes
         setSelectedPedidoIds(new Set(pedidosFiltrados.map(p => p.id)));
       });
     }
@@ -260,7 +258,6 @@ export default function RoutePage() {
     }
   }, [selectedIds.length]);
 
-  // Selected pedido IDs in order
   const selectedIdsInOrder = useMemo(
     () => pedidosOrdenados.filter(p => selectedPedidoIds.has(p.id)).map(p => p.id),
     [pedidosOrdenados, selectedPedidoIds]
@@ -348,7 +345,6 @@ export default function RoutePage() {
     mapRef.current = map;
   }, []);
 
-  // Fit bounds when data changes
   useEffect(() => {
     if (!mapRef.current) return;
     const points: { lat: number; lng: number }[] = [];
@@ -367,7 +363,6 @@ export default function RoutePage() {
     }
   }, [rotaData, pedidosOrdenados]);
 
-  // Polyline path for optimized route
   const routePath = useMemo(() => {
     if (!rotaData?.waypoints || rotaData.waypoints.length < 2) return [];
     const path = rotaData.waypoints.map((wp) => ({ lat: wp[0], lng: wp[1] }));
@@ -379,13 +374,11 @@ export default function RoutePage() {
     return path;
   }, [rotaData]);
 
-  // Format date for display
   const dateDisplay = useMemo(() => {
     if (isToday) return `Hoje, ${selectedDate.format('DD/MM')}`;
     return selectedDate.format('ddd, DD/MM/YYYY');
   }, [selectedDate, isToday]);
 
-  // Map section (reused for both desktop and mobile)
   const mapSection = (
     <Paper sx={{ height: isMobile ? 350 : 480, overflow: 'hidden' }}>
       {!GOOGLE_MAPS_API_KEY ? (
@@ -410,7 +403,6 @@ export default function RoutePage() {
             fullscreenControl: true,
           }}
         >
-          {/* Origem (Floricultura) */}
           {rotaData?.origem && (
             <Marker
               position={{ lat: rotaData.origem.lat, lng: rotaData.origem.lon }}
@@ -426,7 +418,6 @@ export default function RoutePage() {
             </Marker>
           )}
 
-          {/* Marcadores dos pedidos */}
           {pedidosOrdenados
             .filter((p) => p.coords_lat && p.coords_lon)
             .map((pedido, idx) => {
@@ -484,7 +475,6 @@ export default function RoutePage() {
               );
             })}
 
-          {/* Linha da rota otimizada */}
           {routePath.length > 1 && (
             <Polyline
               path={routePath}
@@ -498,7 +488,6 @@ export default function RoutePage() {
 
   return (
     <Box sx={{ px: isMobile ? 0.5 : 0 }}>
-      {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={isMobile ? 1 : 2} spacing={1} flexWrap="wrap">
         <Box>
           <Typography variant={isMobile ? 'h6' : 'h4'} component="h1">
@@ -511,7 +500,6 @@ export default function RoutePage() {
           )}
         </Box>
 
-        {/* Day selector */}
         <Stack direction="row" alignItems="center" spacing={0.5}>
           <IconButton size="small" onClick={goBack} title="Dia anterior">
             <ChevronLeft fontSize={isMobile ? 'small' : 'medium'} />
@@ -536,7 +524,6 @@ export default function RoutePage() {
         </Stack>
       </Stack>
 
-      {/* Action buttons */}
       <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap mb={isMobile ? 1 : 2} sx={{ gap: isMobile ? 0.5 : 1 }}>
         <Button
           variant="outlined"
@@ -614,7 +601,6 @@ export default function RoutePage() {
         <ErrorState message="Erro ao carregar pedidos" onRetry={() => refetch()} />
       ) : (
         <>
-          {/* Mobile: show map only when toggled */}
           {isMobile && showMap && (
             <Box mb={2}>
               {mapSection}
@@ -622,7 +608,6 @@ export default function RoutePage() {
           )}
 
           <Grid container spacing={2}>
-            {/* Desktop: always show map */}
             {!isMobile && (
               <Grid size={{ xs: 12, md: 7 }}>
                 {mapSection}
@@ -654,8 +639,7 @@ export default function RoutePage() {
               </Grid>
             )}
 
-            <Grid size={{ xs: 12, md: !isMobile ? 5 : 12 }}>
-              {/* Mobile: step by step below list */}
+            <Grid size={{ xs: 12, md: 5 }}>
               {isMobile && showStepByStep && stepByStepUrls.length > 0 && (
                 <Paper variant="outlined" sx={{ mb: 2, p: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>
@@ -686,7 +670,6 @@ export default function RoutePage() {
                   </Box>
                 ) : (
                   <>
-                    {/* Select all header */}
                     <Stack direction="row" alignItems="center" spacing={0.5} mb={1}>
                       <Checkbox
                         checked={allSelected}

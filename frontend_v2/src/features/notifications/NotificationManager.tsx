@@ -51,7 +51,7 @@ export function NotificationManager() {
           '/notifications/vapid-public-key',
         );
         if (!resp.ok || !resp.data?.publicKey) {
-          log.warn('VAPID key não disponível:', resp.message);
+          console.warn('[Push] VAPID key não disponível:', resp.message);
           return;
         }
         const vapidPublicKey = resp.data.publicKey;
@@ -59,7 +59,7 @@ export function NotificationManager() {
         // 2. Pedir permissão (se ainda não dada)
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          log.info('Permissão de notificação negada pelo usuário.');
+          console.info('[Push] Permissão de notificação negada pelo usuário.');
           return;
         }
 
@@ -83,9 +83,9 @@ export function NotificationManager() {
         // 6. Enviar subscription para o backend
         await sendSubscriptionToBackend(subscription, apiRequest);
 
-        log.info('Inscrição de push registrada com sucesso.');
+        console.info('[Push] Inscrição de push registrada com sucesso.');
       } catch (err) {
-        log.warn('Erro ao configurar push notifications:', err);
+        console.warn('[Push] Erro ao configurar push notifications:', err);
       }
     };
 

@@ -84,17 +84,17 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
       const clipboardText = await navigator.clipboard.readText();
       setText(clipboardText);
     } catch {
-      log.warn('Não foi possível acessar a área de transferência');
+      console.warn('Não foi possível acessar a área de transferência');
     }
   }, []);
-
+  
   // Handler para copiar template
   const handleCopyTemplate = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(QUICK_ENTRY_TEMPLATE);
       success('Template copiado para a área de transferência!');
     } catch {
-      log.warn('Não foi possível copiar para a área de transferência');
+      console.warn('Não foi possível copiar para a área de transferência');
     }
   }, [success]);
   

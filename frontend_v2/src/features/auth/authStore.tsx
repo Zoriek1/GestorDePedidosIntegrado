@@ -207,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: errorMessage };
       }
     } catch (error) {
-      log.error('Erro ao fazer login:', error);
+      console.error('Erro ao fazer login:', error);
       logout();
       return {
         success: false,

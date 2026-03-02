@@ -1,12 +1,11 @@
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import type { PedidoFormData } from '../schemas';
 import { formatCurrency, STATUS_PAGAMENTO, TIPOS_PEDIDO } from '../schemas';
-import { createLogger } from '../../../lib/logger';
-
-const log = createLogger('orderToForm');
 
 export function orderToForm(pedido: Pedido): PedidoFormData {
-  log.debug('Pedido recebido:', pedido);
+  // DEBUG: Log do pedido recebido para diagnóstico
+  console.log('=== DEBUG orderToForm ===');
+  console.log('Pedido recebido:', pedido);
   
   // Converter valor de string para number se necessário
   let valorNum: number | undefined;
@@ -29,7 +28,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
   // Garantir que fonte_pedido_id existe e é válido
   let fontePedidoId = pedido.fonte_pedido_id;
   if (!fontePedidoId || fontePedidoId === 0) {
-    log.warn('Pedido sem fonte_pedido_id válida, usando 1 como fallback');
+    console.warn('Pedido sem fonte_pedido_id válida, usando 1 como fallback');
     fontePedidoId = 1; // Fallback para fonte padrão (Site)
   }
 
@@ -38,22 +37,22 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
   if (pedido.tipo_pedido && TIPOS_PEDIDO.includes(pedido.tipo_pedido as typeof TIPOS_PEDIDO[number])) {
     tipoPedido = pedido.tipo_pedido as 'Entrega' | 'Retirada';
   } else if (pedido.tipo_pedido) {
-    log.warn('tipo_pedido inválido:', pedido.tipo_pedido, '- usando "Entrega" como fallback');
+    console.warn('tipo_pedido inválido:', pedido.tipo_pedido, '- usando "Entrega" como fallback');
   }
 
   // Garantir que dia_entrega está no formato correto (YYYY-MM-DD)
   let diaEntrega = pedido.dia_entrega || '';
   if (diaEntrega && !/^\d{4}-\d{2}-\d{2}$/.test(diaEntrega)) {
-    log.warn('dia_entrega em formato inválido:', diaEntrega);
+    console.warn('dia_entrega em formato inválido:', diaEntrega);
     // Tentar converter se estiver em outro formato
     try {
       const date = new Date(diaEntrega);
       if (!isNaN(date.getTime())) {
         diaEntrega = date.toISOString().split('T')[0];
-        log.debug('dia_entrega convertido para:', diaEntrega);
+        console.log('dia_entrega convertido para:', diaEntrega);
       }
     } catch {
-      log.error('Falha ao converter dia_entrega');
+      console.error('Falha ao converter dia_entrega');
     }
   }
 
@@ -86,7 +85,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     observacoes: pedido.observacoes || '',
   };
 
-  log.debug('FormData gerado:', formData);
+  console.log('FormData gerado:', formData);
   return formData;
 }
 

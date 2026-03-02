@@ -205,7 +205,7 @@ export function PedidoWizard({
       localStorage.removeItem(STORAGE_KEY);
     } catch (error) {
       // Erro é tratado pelo componente pai
-      log.error('Erro ao salvar pedido:', error);
+      console.error('Erro ao salvar pedido:', error);
     }
   };
 

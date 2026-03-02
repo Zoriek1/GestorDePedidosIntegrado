@@ -120,7 +120,7 @@ export function CreateOrderWizard({
     mode: 'onBlur',
   });
 
-  const { handleSubmit, watch, trigger, setError, getValues } = methods;
+  const { handleSubmit, watch, trigger, setError, getValues, formState } = methods;
 
   // Salva no localStorage com debounce
   useEffect(() => {
@@ -248,20 +248,35 @@ export function CreateOrderWizard({
 
   // Submissão (salvar e concluir)
   const onFormSubmit = async (data: PedidoFormData) => {
+    // DEBUG: Log detalhado para diagnóstico
+    console.log('=== DEBUG SUBMIT ===');
+    console.log('activeStep:', activeStep, 'STEPS.length - 1:', STEPS.length - 1);
+    console.log('isReadyToSubmit:', isReadyToSubmit);
+    console.log('Form data:', data);
+    console.log('Form errors:', formState.errors);
+    
+    // Prevenir submissão automática: só permite se estiver no último step E isReadyToSubmit for true
     if (activeStep !== STEPS.length - 1 || !isReadyToSubmit) {
-      log.warn('Submit bloqueado:', { activeStep, isReadyToSubmit, expectedStep: STEPS.length - 1 });
+      console.warn('Submit bloqueado:', { activeStep, isReadyToSubmit, expectedStep: STEPS.length - 1 });
       return;
     }
 
+    // Validação explícita antes de prosseguir
     const isValid = await validateFormExplicitly();
     if (!isValid) {
+      console.error('Formulário inválido - submit cancelado');
       return;
     }
 
     try {
+      console.log('Transformando payload...');
       const payload = transformFormToApiPayload(data);
+      console.log('Payload transformado:', payload);
+      
+      console.log('Chamando onSubmit...');
       const ok = await onSubmit(payload);
-
+      console.log('Resultado onSubmit:', ok);
+      
       if (ok) {
         // Limpa o rascunho após sucesso
         localStorage.removeItem(STORAGE_KEY);
@@ -269,7 +284,9 @@ export function CreateOrderWizard({
         setIsReadyToSubmit(false);
       }
     } catch (error) {
-      log.error('Erro ao salvar pedido:', error);
+      // Erro é tratado pelo componente pai
+      console.error('Erro ao salvar pedido:', error);
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'N/A');
     }
   };
 
@@ -292,17 +309,29 @@ export function CreateOrderWizard({
   // Validação explícita do formulário com feedback detalhado
   const validateFormExplicitly = async (): Promise<boolean> => {
     const formData = getValues();
+    console.log('=== Validando formulário explicitamente ===');
+    console.log('Form data para validação:', formData);
+    
     const validationResult = pedidoFormSchema.safeParse(formData);
-
+    
     if (!validationResult.success) {
-      log.warn('Validação falhou:', validationResult.error.flatten());
+      console.error('Validação Zod falhou:', validationResult.error.flatten());
+      console.error('Erros detalhados:', validationResult.error.errors);
+      
+      // Mostrar erros ao usuário via react-hook-form
       validationResult.error.errors.forEach(err => {
         const fieldPath = err.path.join('.') as FieldPath<PedidoFormData>;
-        setError(fieldPath, { type: 'manual', message: err.message });
+        setError(fieldPath, {
+          type: 'manual',
+          message: err.message
+        });
+        console.error(`Erro no campo "${fieldPath}":`, err.message);
       });
+      
       return false;
     }
-
+    
+    console.log('Validação passou com sucesso!');
     return true;
   };
 
@@ -428,6 +457,7 @@ export function CreateOrderWizard({
                       variant="contained"
                       color="primary"
                       disabled={isSubmitting || !isReadyToSubmit}
+                      onClick={() => console.log('Botão Salvar clicado! isReadyToSubmit:', isReadyToSubmit)}
                       startIcon={
                         isSubmitting ? (
                           <CircularProgress size={20} color="inherit" />
@@ -493,6 +523,7 @@ export function CreateOrderWizard({
                         type="submit"
                         size="small"
                         disabled={isSubmitting || !isReadyToSubmit}
+                        onClick={() => console.log('Botão Concluir clicado! isReadyToSubmit:', isReadyToSubmit)}
                         startIcon={
                           isSubmitting ? (
                             <CircularProgress size={16} color="inherit" />

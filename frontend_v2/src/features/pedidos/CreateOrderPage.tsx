@@ -6,9 +6,6 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { createLogger } from '../../lib/logger';
-
-const log = createLogger('CreateOrderPage');
 import { Typography, Breadcrumbs, Link, Container, Paper, Box, Alert, Collapse, IconButton } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
@@ -79,7 +76,9 @@ export default function CreateOrderPage() {
   useEffect(() => {
     if (prefillData && prefillData.fonte_pedido_id && !prefillAppliedRef.current) {
       prefillAppliedRef.current = true;
-      log.debug('Quick Entry Prefill:', { prefillData, warnings: quickEntryWarnings });
+      console.log('=== Quick Entry Prefill ===');
+      console.log('Prefill data:', prefillData);
+      console.log('Warnings:', quickEntryWarnings);
 
       // Limpar draft anterior para não misturar dados
       clearLocalDraft();
@@ -129,7 +128,7 @@ export default function CreateOrderPage() {
   const initialData = useMemo(() => {
     // Se tem prefillData, usar ele como base (já inclui fonte_pedido_id)
     if (prefillData) {
-      log.debug('Using prefillData as initialData:', prefillData);
+      console.log('Using prefillData as initialData:', prefillData);
       return prefillData;
     }
     // Caso contrário, apenas fonte selecionada

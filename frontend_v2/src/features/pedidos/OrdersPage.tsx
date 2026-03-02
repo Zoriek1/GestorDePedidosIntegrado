@@ -20,7 +20,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route, Map } from '@mui/icons-material';
+import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
@@ -53,7 +53,7 @@ export default function OrdersPage() {
   });
   const [sortByDistance, setSortByDistance] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
 
   const queryClient = useQueryClient();
@@ -143,7 +143,7 @@ export default function OrdersPage() {
   const handleToggleSelectionMode = () => {
     setSelectionMode((prev) => {
       if (prev) {
-        setSelectedIds([]);
+        setSelectedIds(new Set());
       }
       return !prev;
     });
@@ -151,22 +151,25 @@ export default function OrdersPage() {
 
   const handleToggleSelectPedido = (pedido: { id: number; tipo_pedido?: string }) => {
     setSelectedIds((prev) => {
-      const idx = prev.indexOf(pedido.id);
-      if (idx !== -1) {
-        return prev.filter((id) => id !== pedido.id);
+      const next = new Set(prev);
+      if (next.has(pedido.id)) {
+        next.delete(pedido.id);
+      } else {
+        if (pedido.tipo_pedido !== 'Entrega') return next;
+        next.add(pedido.id);
       }
-      if (pedido.tipo_pedido !== 'Entrega') return prev;
-      return [...prev, pedido.id];
+      return next;
     });
   };
 
   const handleCalcularDistanciasSelecionados = async () => {
-    if (selectedIds.length === 0) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
       info('Selecione ao menos 1 pedido de entrega');
       return;
     }
     try {
-      await calcDistanciasLote.mutateAsync({ pedidoIds: selectedIds, forceRecalc: true });
+      await calcDistanciasLote.mutateAsync({ pedidoIds: ids, forceRecalc: true });
       success('Distâncias recalculadas para selecionados');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao recalcular distâncias';
@@ -174,31 +177,13 @@ export default function OrdersPage() {
     }
   };
 
-  const handleGerarRota = async () => {
-    if (selectedIds.length === 0) {
-      info('Selecione pedidos para gerar a rota');
-      return;
-    }
-    try {
-      const result = await gerarRotaMaps.mutateAsync(selectedIds);
-      if (result.sem_coords.length > 0) {
-        showError(`Pedidos sem coordenadas: ${result.sem_coords.join(', ')}. Calcule as distâncias primeiro.`);
-      }
-      if (result.google_maps_url) {
-        window.open(result.google_maps_url, '_blank');
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao gerar rota';
-      showError(errorMessage);
-    }
-  };
-
   const handleIrParaMapa = () => {
-    if (selectedIds.length === 0) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
       info('Selecione pedidos para roteirizar');
       return;
     }
-    const query = `ids=${selectedIds.join(',')}`;
+    const query = `ids=${ids.join(',')}`;
     window.open(`/rota-entrega?${query}`, '_blank');
   };
 
@@ -487,7 +472,7 @@ export default function OrdersPage() {
                 size="small"
                 variant="outlined"
                 onClick={handleCalcularDistanciasSelecionados}
-                disabled={calcDistanciasLote.isPending || selectedIds.length === 0}
+                disabled={calcDistanciasLote.isPending}
                 fullWidth={isMobile}
               >
                 {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
@@ -495,27 +480,17 @@ export default function OrdersPage() {
               <Button
                 size="small"
                 variant="contained"
-                color="success"
-                startIcon={<Map />}
-                onClick={handleGerarRota}
-                disabled={selectedIds.length === 0 || gerarRotaMaps.isPending}
-                fullWidth={isMobile}
-              >
-                {gerarRotaMaps.isPending ? 'Gerando...' : 'Gerar Rota'}
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
+                color="primary"
                 onClick={handleIrParaMapa}
-                disabled={selectedIds.length === 0}
+                disabled={selectedIds.size === 0}
                 fullWidth={isMobile}
               >
-                Ver no mapa
+                Ir para o mapa
               </Button>
             </Stack>
             <Chip
-              color={selectedIds.length > 0 ? 'primary' : 'default'}
-              label={`${selectedIds.length} selecionado(s) para rota`}
+              color={selectedIds.size > 0 ? 'primary' : 'default'}
+              label={`${selectedIds.size} selecionado(s) para rota`}
               sx={{ alignSelf: { xs: 'center', sm: 'auto' } }}
             />
           </Stack>

@@ -581,6 +581,7 @@ class DistanciaService:
         if self.DEBUG:
             print("[DEBUG] ⚠ Google falhou/indisponível → fallback Nominatim")
 
+        # Tentar endereço completo primeiro
         coords = self.geocodificar_nominatim(endereco)
         if coords and self.validar_coords_goias(coords):
             if self.DEBUG:
@@ -629,6 +630,7 @@ class DistanciaService:
                     print("[INFO] ✓ Endereço encontrado via ViaCEP + Nominatim")
                     return coords
 
+            # Se ViaCEP falhou ou não retornou coordenadas válidas, tenta só o CEP
             cep_formatado = f"{cep[:5]}-{cep[5:]}"
             coords = self.geocodificar_nominatim(f"{cep_formatado}, Brasil")
             if coords and self.validar_coords_goias(coords):
@@ -666,6 +668,7 @@ class DistanciaService:
         # -----------------------------------------------------------------
         if self.DEBUG:
             print("[DEBUG] ⚠ Nominatim/ViaCEP falharam → fallback OpenRouteService")
+
         if not self.api_key:
             return None
 
@@ -682,10 +685,13 @@ class DistanciaService:
                 "focus.point.lat": self.GOIANIA_LAT,
                 "focus.point.lon": self.GOIANIA_LON,
             }
+
             response = requests.get(self.GEOCODE_URL, headers=headers, params=params, timeout=10)
+
             if response.status_code == 200:
                 data = response.json()
                 features = data.get("features", [])
+
                 if features:
                     feature = features[0]
                     coords = feature["geometry"]["coordinates"]
@@ -1277,8 +1283,8 @@ class DistanciaService:
             bairro = pedido.get("bairro", "")
             cidade = pedido.get("cidade", "")
             cep = pedido.get("cep", "")
-            cliente_id = pedido.get("cliente_id")
 
+            # Validar campos mínimos
             if not rua or not bairro:
                 resultados[pedido_id] = {
                     "error": "Campos obrigatórios ausentes",

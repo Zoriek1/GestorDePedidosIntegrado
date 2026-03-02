@@ -993,7 +993,10 @@ export function parseQuickEntry(text: string, fontePedidoId: number): QuickEntry
     extractedFields.push('observacoes');
   }
   
-  log.debug('Parse result:', { formData, extractedFields, warnings });
+  console.log('=== Quick Entry Parse Result ===');
+  console.log('Form Data:', formData);
+  console.log('Extracted Fields:', extractedFields);
+  console.log('Warnings:', warnings);
   
   return {
     formData,

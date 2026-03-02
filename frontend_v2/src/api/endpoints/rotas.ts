@@ -18,8 +18,7 @@ export interface RotaOtimizada {
   metodo_otimizacao?: string;
   origem?: { lat: number; lon: number };
   waypoints?: [number, number][];
-  google_maps_url?: string | null;
-  google_maps_step_by_step?: StepByStepUrl[];
+  graphhopper_maps_url?: string | null;
 }
 
 export function useCalcularRotaOtimizada() {

@@ -13,7 +13,7 @@ interface OrderListProps {
   pedidos: Pedido[];
   onOrderClick?: (pedido: Pedido) => void;
   selectionMode?: boolean;
-  selectedIds?: number[];
+  selectedIds?: Set<number>;
   onToggleSelect?: (pedido: Pedido) => void;
 }
 
@@ -156,8 +156,7 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
                       pedido={pedido}
                       onClick={onOrderClick ? () => onOrderClick(pedido) : undefined}
                       selectable={selectionMode}
-                      selected={selectedIds ? selectedIds.includes(pedido.id) : false}
-                      selectionOrder={selectedIds ? selectedIds.indexOf(pedido.id) + 1 : 0}
+                      selected={selectedIds ? selectedIds.has(pedido.id) : false}
                       onToggleSelect={onToggleSelect}
                     />
                   </Grid>

@@ -361,10 +361,20 @@ class NuvemshopOrderImporter:
         overridden_fields = PedidoManualOverride.get_overridden_fields(pedido.id)
 
         # Atualizar campos relevantes sem sobrescrever dados manuais
+        # Statuses internos avançados não devem ser revertidos para "agendado" pela Nuvemshop
+        _ADVANCED_STATUSES = {"em_preparo", "em_entrega", "saiu_para_entrega", "concluido"}
+        incoming_status = pedido_data.get("status")  # mapper retorna "agendado" ou "cancelado"
+        if incoming_status == "cancelado":
+            status_update = "cancelado"  # cancelamento da Nuvemshop sempre vence
+        elif pedido.status in _ADVANCED_STATUSES:
+            status_update = pedido.status  # proteger status avançado
+        else:
+            status_update = incoming_status or pedido.status
+
         updates = {
             "status_pagamento": pedido_data.get("status_pagamento") or pedido.status_pagamento,
             "pagamento": pedido_data.get("pagamento") or pedido.pagamento,
-            "status": pedido_data.get("status") or pedido.status,
+            "status": status_update,
             "obs_entrega": pedido_data.get("obs_entrega") or pedido.obs_entrega,
             "observacoes": self._merge_observacoes(
                 pedido.observacoes, pedido_data.get("observacoes")

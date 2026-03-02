@@ -39,12 +39,11 @@ def add_security_headers(response):
     # ViaCEP agora é acessado via proxy backend (/api/cep/:cep), então não precisa de allowlist externa
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://maps.googleapis.com; "  # unsafe-inline/eval necessário para alguns bundlers
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://maps.googleapis.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://maps.googleapis.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://maps.googleapis.com https://maps.gstatic.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https:; "
-        # Workbox/Service Worker faz fetch da CSS do Google Fonts em runtime (connect-src)
-        "connect-src 'self' https://gestaopedidos.planteumaflor.online https://fonts.googleapis.com https://fonts.gstatic.com https://maps.googleapis.com; "
+        "connect-src 'self' https://gestaopedidos.planteumaflor.online https://fonts.googleapis.com https://fonts.gstatic.com https://maps.googleapis.com https://maps.gstatic.com; "
         "worker-src 'self' blob:; "
         "manifest-src 'self';"
     )

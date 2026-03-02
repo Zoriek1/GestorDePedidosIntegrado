@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c:*)",
+      "Bash(npm install)",
+      "Bash(npx tsc --noEmit -p tsconfig.app.json)"
+    ]
+  }
+}

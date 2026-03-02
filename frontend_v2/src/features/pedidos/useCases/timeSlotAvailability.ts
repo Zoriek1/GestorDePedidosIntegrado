@@ -101,7 +101,7 @@ export class TimeSlotAvailabilityService implements ITimeSlotAvailabilityService
       const pedidos = Array.isArray(response.data.pedidos) ? response.data.pedidos : [];
       return this.calculateAvailability(date, pedidos);
     } catch (error) {
-      log.error('Erro:', error);
+      console.error('[TimeSlotAvailability] Erro:', error);
       return this.createFallbackAvailability(date);
     }
   }

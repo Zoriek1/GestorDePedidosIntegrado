@@ -12,11 +12,16 @@ from app.models.pedido import datetime_now_brazil
 # Mapeamento de períodos textuais para intervalos de horário
 HUAAPPS_KEYWORD_MAP = {
     "dia inteiro": "08:00 - 18:00",
+    "horario comercial": "08:00 - 18:00",
+    "horário comercial": "08:00 - 18:00",
     "manhã": "08:00 - 12:00",
     "manha": "08:00 - 12:00",
     "tarde": "13:00 - 18:00",
     "noite": "18:00 - 22:00",
 }
+
+# Keywords que identificam frete expresso (entrega em ~1h)
+_EXPRESS_KEYWORDS = frozenset({"expresso", "expressa", "express"})
 
 # Mapeamento de storefront da Nuvemshop para canal interno
 STOREFRONT_TO_CANAL_MAP = {
@@ -339,6 +344,28 @@ def _extract_time_interval(text: str) -> Optional[str]:
     return None
 
 
+def _is_express_shipping(text: str) -> bool:
+    """Verifica se o texto da opção de frete indica entrega expressa (~1h)."""
+    lowered = text.lower()
+    return any(kw in lowered for kw in _EXPRESS_KEYWORDS)
+
+
+def _compute_express_time_window(created_at: Optional[datetime]) -> str:
+    """
+    Calcula janela de 1h para frete expresso a partir do horário de criação do pedido.
+    Arredonda para baixo no múltiplo de 15 minutos mais próximo.
+    Ex: criado às 14:23 → "14:15 - 15:15"
+    """
+    from app.models.pedido import datetime_now_brazil
+
+    base = created_at or datetime_now_brazil()
+    rounded_min = (base.minute // 15) * 15
+    start = base.replace(minute=rounded_min, second=0, microsecond=0)
+    end_hour = start.hour + 1 if start.hour < 23 else 23
+    end_min = start.minute if start.hour < 23 else 59
+    return f"{start.hour:02d}:{start.minute:02d} - {end_hour:02d}:{end_min:02d}"
+
+
 def _get_shipping_option_text(order: Dict[str, Any]) -> str:
     candidates = []
     for key in ("shipping_option", "shipping_option_name", "shipping_method", "shipping"):
@@ -565,6 +592,12 @@ def map_nuvemshop_order_to_pedido_data(
 
     shipping_option_text = _get_shipping_option_text(order)
     horario_from_shipping = _extract_time_interval(shipping_option_text)
+
+    # Frete expresso: calcular janela dinâmica de 1h a partir do horário do pedido
+    if not horario_from_shipping and _is_express_shipping(shipping_option_text):
+        created_at_express = _parse_datetime(order.get("created_at"))
+        horario_from_shipping = _compute_express_time_window(created_at_express)
+
     horario = horario_from_shipping
     if not horario:
         horario = "08:00 - 18:00"

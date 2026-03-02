@@ -2,11 +2,6 @@
 """
 Rotas de Otimização - Blueprint para endpoints de rotas otimizadas
 """
-<<<<<<< HEAD
-import os
-
-=======
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 from flask import Blueprint, request
 
 from app import db
@@ -14,11 +9,7 @@ from app.middleware import requires_any_role
 from app.models import Pedido, RotaOtimizada
 from app.schemas.common import error_response, success_response
 from app.services.distancia import distancia_service
-<<<<<<< HEAD
-from app.services.graphhopper import graphhopper_service
-=======
 from app.utils.google_maps_url import build_google_maps_url, build_step_by_step_urls
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
 rotas_bp = Blueprint("rotas", __name__, url_prefix="/api/pedidos")
 
@@ -39,11 +30,7 @@ def calcular_rota_otimizada():
 
         if not pedido_ids:
             pedidos = Pedido.query.filter(
-<<<<<<< HEAD
-                Pedido.oculto is False,
-=======
                 Pedido.oculto.is_(False),
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
                 Pedido.status != "concluido",
                 Pedido.tipo_pedido == "Entrega",
                 Pedido.distancia_km.isnot(None),
@@ -62,27 +49,6 @@ def calcular_rota_otimizada():
                 details={"pedidos_encontrados": len(pedidos)},
             )
 
-<<<<<<< HEAD
-        # Obter coordenadas da floricultura
-        origem = distancia_service.coords_floricultura
-        if not origem:
-            return error_response("Não foi possível obter coordenadas da floricultura", 500)
-
-        # Converter para formato (lat, lon) para GraphHopper
-        origem_gh = (origem[1], origem[0])
-
-        # Coletar waypoints dos pedidos
-        pedidos_com_coords = []
-        for pedido in pedidos:
-            if pedido.coords_lat and pedido.coords_lon:
-                pedidos_com_coords.append(
-                    {
-                        "pedido": pedido,
-                        "coords": (pedido.coords_lat, pedido.coords_lon),
-                        "coords_gh": (pedido.coords_lon, pedido.coords_lat),
-                    }
-                )
-=======
         # Coordenadas da floricultura (lon, lat) → converter para (lat, lon)
         origem_lonlat = distancia_service.coords_floricultura
         if not origem_lonlat:
@@ -95,51 +61,10 @@ def calcular_rota_otimizada():
         for pedido in pedidos:
             if pedido.coords_lat and pedido.coords_lon:
                 pedidos_com_coords.append(pedido)
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
         if len(pedidos_com_coords) < 2:
             return error_response("É necessário pelo menos 2 pedidos com coordenadas válidas", 400)
 
-<<<<<<< HEAD
-        # Ordenar por horário de entrega (mais cedo primeiro)
-        pedidos_com_coords.sort(
-            key=lambda p: (p["pedido"].dia_entrega, p["pedido"].horario or "00:00")
-        )
-
-        # Construir waypoints para GraphHopper
-        waypoints = [origem_gh]  # Começar na floricultura
-        for item in pedidos_com_coords:
-            waypoints.append(item["coords_gh"])
-        waypoints.append(origem_gh)  # Voltar para floricultura
-
-        # Calcular rota usando GraphHopper
-        graphhopper_key = os.environ.get("GRAPHHOPPER_API_KEY", "")
-        if not graphhopper_key:
-            return error_response(
-                "GraphHopper API key não configurada",
-                500,
-                details={"message": "Configure GRAPHHOPPER_API_KEY no .env"},
-            )
-
-        route_result = graphhopper_service.calculate_route(waypoints)
-
-        if not route_result or "error" in route_result:
-            return error_response(
-                "Erro ao calcular rota",
-                500,
-                details=route_result.get("error", "Erro desconhecido"),
-            )
-
-        # Criar registro de rota otimizada
-        rota = RotaOtimizada(
-            nome=nome_rota,
-            pedido_ids=",".join(str(p["pedido"].id) for p in pedidos_com_coords),
-            distancia_total=route_result.get("distance", 0) / 1000,  # Converter m para km
-            tempo_total=route_result.get("time", 0) / 60,  # Converter s para min
-            coordenadas=str(waypoints),
-            instrucoes=str(route_result.get("instructions", [])),
-        )
-=======
         # Waypoints no formato (lat, lon)
         waypoints = [(p.coords_lat, p.coords_lon) for p in pedidos_com_coords]
 
@@ -210,46 +135,17 @@ def calcular_rota_otimizada():
         )
         rota.set_sequencia_pedidos(sequencia_ids)
         rota.set_waypoints_coords([[lat, lon] for lat, lon in waypoints_ordenados])
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
         db.session.add(rota)
         db.session.commit()
 
-<<<<<<< HEAD
-        # Preparar resposta
-        pedidos_data = []
-        for item in pedidos_com_coords:
-            pedido = item["pedido"]
-            pedidos_data.append(
-                {
-                    "id": pedido.id,
-                    "cliente": pedido.cliente,
-                    "destinatario": pedido.destinatario,
-                    "endereco": pedido.endereco,
-                    "dia_entrega": pedido.dia_entrega.strftime("%Y-%m-%d")
-                    if pedido.dia_entrega
-                    else "",
-                    "horario": pedido.horario,
-                    "coords": {"lat": pedido.coords_lat, "lon": pedido.coords_lon},
-                }
-            )
-
-=======
         # ------------------------------------------------------------------
         # Resposta no formato esperado pelo frontend
         # ------------------------------------------------------------------
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
         return success_response(
             {
                 "rota_id": rota.id,
                 "nome": rota.nome,
-<<<<<<< HEAD
-                "distancia_total_km": round(rota.distancia_total, 2),
-                "tempo_total_min": round(rota.tempo_total, 2),
-                "pedidos": pedidos_data,
-                "waypoints": waypoints,
-                "route_details": route_result,
-=======
                 "distancia_total_km": rota.distancia_total_km,
                 "duracao_total_min": rota.duracao_total_min,
                 "sequencia_pedidos": sequencia_ids,
@@ -259,7 +155,6 @@ def calcular_rota_otimizada():
                 "waypoints": [[lat, lon] for lat, lon in waypoints_ordenados],
                 "google_maps_url": google_url,
                 "google_maps_step_by_step": step_urls,
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
             },
             message="Rota otimizada calculada com sucesso",
         )
@@ -280,24 +175,6 @@ def obter_rota_otimizada(rota_id):
         if not rota:
             return error_response("Rota não encontrada", 404)
 
-<<<<<<< HEAD
-        # Parsear pedido_ids
-        pedido_ids = [int(id) for id in rota.pedido_ids.split(",") if id]
-        pedidos = Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()
-
-        pedidos_data = [p.to_dict() for p in pedidos]
-
-        return success_response(
-            {
-                "rota": {
-                    "id": rota.id,
-                    "nome": rota.nome,
-                    "distancia_total_km": rota.distancia_total,
-                    "tempo_total_min": rota.tempo_total,
-                    "created_at": rota.created_at.isoformat() if rota.created_at else None,
-                },
-                "pedidos": pedidos_data,
-=======
         sequencia_ids = rota.get_sequencia_pedidos()
         waypoints_coords = rota.get_waypoints_coords()
         origem = (rota.origem_lat, rota.origem_lon)
@@ -321,14 +198,11 @@ def obter_rota_otimizada(rota_id):
                 "waypoints": waypoints_coords,
                 "google_maps_url": google_url,
                 "google_maps_step_by_step": step_urls,
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
             }
         )
 
     except Exception as e:
         return error_response(f"Erro ao obter rota: {str(e)}", 500)
-<<<<<<< HEAD
-=======
 
 
 @rotas_bp.route("/gerar-rota-maps", methods=["POST"])
@@ -466,4 +340,3 @@ def _reordenar_pedidos(pedidos, sequencia_coords):
             ordenados.append(p)
 
     return ordenados
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14

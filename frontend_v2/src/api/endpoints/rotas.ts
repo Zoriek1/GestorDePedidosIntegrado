@@ -2,15 +2,12 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 
-<<<<<<< HEAD
-=======
 export interface StepByStepUrl {
   step: number;
   label: string;
   url: string;
 }
 
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 export interface RotaOtimizada {
   rota_id: number;
   nome: string;
@@ -21,12 +18,7 @@ export interface RotaOtimizada {
   metodo_otimizacao?: string;
   origem?: { lat: number; lon: number };
   waypoints?: [number, number][];
-<<<<<<< HEAD
   graphhopper_maps_url?: string | null;
-=======
-  google_maps_url?: string | null;
-  google_maps_step_by_step?: StepByStepUrl[];
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 }
 
 export function useCalcularRotaOtimizada() {
@@ -61,8 +53,6 @@ export function useRotaOtimizada(rotaId?: number) {
   });
 }
 
-<<<<<<< HEAD
-=======
 export interface GerarRotaMapsResult {
   google_maps_url: string | null;
   google_maps_step_by_step: StepByStepUrl[];
@@ -87,4 +77,3 @@ export function useGerarRotaMaps() {
   });
 }
 
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14

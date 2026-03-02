@@ -6,12 +6,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-<<<<<<< HEAD
-=======
 import { createLogger } from '../../../../lib/logger';
 
 const log = createLogger('PedidoWizard');
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 import {
   Box,
   Stepper,
@@ -208,11 +205,7 @@ export function PedidoWizard({
       localStorage.removeItem(STORAGE_KEY);
     } catch (error) {
       // Erro é tratado pelo componente pai
-<<<<<<< HEAD
       console.error('Erro ao salvar pedido:', error);
-=======
-      log.error('Erro ao salvar pedido:', error);
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     }
   };
 

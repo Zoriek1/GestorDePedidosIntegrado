@@ -5,12 +5,9 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { createApiRequest } from '../../api/http';
-<<<<<<< HEAD
-=======
 import { createLogger } from '../../lib/logger';
 
 const log = createLogger('AuthStore');
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
 const STORAGE_KEY = 'plante_uma_flor_auth';
 const SESSION_KEY = 'plante_uma_flor_auth_session';
@@ -210,11 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: errorMessage };
       }
     } catch (error) {
-<<<<<<< HEAD
       console.error('Erro ao fazer login:', error);
-=======
-      log.error('Erro ao fazer login:', error);
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       logout();
       return {
         success: false,

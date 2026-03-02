@@ -371,8 +371,6 @@ def check_ssl_status():
     else:
         click.echo("[AVISO] Certificados SSL não encontrados")
         click.echo("Execute: flask cli ssl generate")
-<<<<<<< HEAD
-=======
 
 
 @cli.command("hash-password")
@@ -391,7 +389,6 @@ def hash_password_command(password):
         click.echo()
     except ImportError:
         click.echo("[ERRO] bcrypt não instalado. Execute: pip install bcrypt", err=True)
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
 
 # Registrar comandos no Flask CLI

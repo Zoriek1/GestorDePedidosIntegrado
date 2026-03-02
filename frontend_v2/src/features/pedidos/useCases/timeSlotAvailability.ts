@@ -4,13 +4,10 @@
  * Consulta pedidos do dia e calcula slots disponíveis
  */
 
-<<<<<<< HEAD
-=======
 import { createLogger } from '../../../lib/logger';
 
 const log = createLogger('TimeSlotAvailability');
 
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 import { createApiRequest } from '../../../api/http';
 import type { Pedido, PedidosResponse } from '../../../api/endpoints/pedidos';
 
@@ -104,11 +101,7 @@ export class TimeSlotAvailabilityService implements ITimeSlotAvailabilityService
       const pedidos = Array.isArray(response.data.pedidos) ? response.data.pedidos : [];
       return this.calculateAvailability(date, pedidos);
     } catch (error) {
-<<<<<<< HEAD
       console.error('[TimeSlotAvailability] Erro:', error);
-=======
-      log.error('Erro:', error);
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       return this.createFallbackAvailability(date);
     }
   }

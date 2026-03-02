@@ -902,10 +902,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
             bairro=pedido.bairro,
             cidade=pedido.cidade,
             cep=pedido.cep,
-<<<<<<< HEAD
-=======
             cliente_id=pedido.cliente_id,
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
         )
 
         # Verificar se houve erro de validação
@@ -1046,10 +1043,7 @@ def calcular_distancias_lote():
                     bairro=pedido.bairro,
                     cidade=pedido.cidade,
                     cep=pedido.cep,
-<<<<<<< HEAD
-=======
                     cliente_id=pedido.cliente_id,
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
                 )
 
                 if resultado:
@@ -1165,10 +1159,7 @@ def calcular_taxa_pedido(pedido_id):
                 bairro=pedido.bairro,
                 cidade=pedido.cidade,
                 cep=pedido.cep,
-<<<<<<< HEAD
-=======
                 cliente_id=pedido.cliente_id,
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
             )
 
             if not resultado:
@@ -1442,10 +1433,7 @@ def calcular_rota_otimizada():
                     bairro=pedido.bairro,
                     cidade=pedido.cidade,
                     cep=pedido.cep,
-<<<<<<< HEAD
-=======
                     cliente_id=pedido.cliente_id,
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
                 )
 
                 # Verificar se houve erro ou se obteve coordenadas
@@ -1758,7 +1746,6 @@ def obter_rota_otimizada(rota_id):
 
             graphhopper_maps_url = f"https://graphhopper.com/maps/?{points_params}&profile=car&layer=Omniscale&key={graphhopper_key}"
 
-<<<<<<< HEAD
         # Gerar URL do Google Maps como alternativa (sempre disponível)
         if waypoints_coords and len(waypoints_coords) > 0:
             # Construir URL do Google Maps com waypoints
@@ -1775,29 +1762,11 @@ def obter_rota_otimizada(rota_id):
                 waypoints_str = "/".join([f"{wp[0]},{wp[1]}" for wp in waypoints_coords])
                 destino_str = f"{waypoints_coords[-1][0]},{waypoints_coords[-1][1]}"
                 google_maps_url = f"https://www.google.com/maps/dir/{origem_str}/{waypoints_str}/{destino_str}/{origem_str}"
-=======
-        # Gerar URL do Google Maps (formato ?api=1 — mais confiável)
-        google_maps_step_by_step = []
-        if waypoints_coords and len(waypoints_coords) > 0:
-            from app.utils.google_maps_url import (
-                build_google_maps_url,
-                build_step_by_step_urls,
-            )
-
-            origin_coord = (rota.origem_lat, rota.origem_lon)
-            stops = [(wp[0], wp[1]) for wp in waypoints_coords]
-
-            google_maps_url = build_google_maps_url(origin_coord, stops)
-            google_maps_step_by_step = build_step_by_step_urls(origin_coord, stops)
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
         rota_dict = rota.to_dict()
         rota_dict["graphhopper_maps_url"] = graphhopper_maps_url
         rota_dict["google_maps_url"] = google_maps_url
-<<<<<<< HEAD
-=======
         rota_dict["google_maps_step_by_step"] = google_maps_step_by_step
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
         return jsonify({"success": True, "rota": rota_dict, "pedidos": pedidos_info})
 

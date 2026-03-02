@@ -3,11 +3,8 @@
 Model de Endereço do Cliente
 Permite múltiplos endereços por cliente, com cache de geocodificação
 """
-<<<<<<< HEAD
-=======
 import hashlib
 import re
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 from datetime import datetime
 
 from app import db
@@ -43,8 +40,6 @@ class EnderecoCliente(db.Model):
     cidade = db.Column(db.String(100), nullable=True)
     estado = db.Column(db.String(2), nullable=True, default="GO")
 
-<<<<<<< HEAD
-=======
     # Geocodificação (cache)
     lat = db.Column(db.Float, nullable=True, comment="Latitude geocodificada")
     lng = db.Column(db.Float, nullable=True, comment="Longitude geocodificada")
@@ -75,7 +70,6 @@ class EnderecoCliente(db.Model):
         db.DateTime, nullable=True, comment="Timestamp da última geocodificação"
     )
 
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     # Timestamp
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -103,12 +97,9 @@ class EnderecoCliente(db.Model):
             "cidade": self.cidade or "",
             "estado": self.estado or "GO",
             "endereco_completo": self.get_endereco_completo(),
-<<<<<<< HEAD
-=======
             "lat": self.lat,
             "lng": self.lng,
             "confidence_status": self.confidence_status,
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -138,8 +129,6 @@ class EnderecoCliente(db.Model):
 
         return ", ".join(partes)
 
-<<<<<<< HEAD
-=======
     def build_address_canonical(self):
         """
         Constrói string canônica do endereço para geocodificação e cache.
@@ -203,7 +192,6 @@ class EnderecoCliente(db.Model):
         current_hash = self.compute_address_hash()
         return self.address_hash != current_hash or self.lat is None
 
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     def marcar_como_principal(self):
         """
         Marca este endereço como principal e desmarca os outros do mesmo cliente

@@ -1,20 +1,11 @@
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import type { PedidoFormData } from '../schemas';
 import { formatCurrency, STATUS_PAGAMENTO, TIPOS_PEDIDO } from '../schemas';
-<<<<<<< HEAD
 
 export function orderToForm(pedido: Pedido): PedidoFormData {
   // DEBUG: Log do pedido recebido para diagnóstico
   console.log('=== DEBUG orderToForm ===');
   console.log('Pedido recebido:', pedido);
-=======
-import { createLogger } from '../../../lib/logger';
-
-const log = createLogger('orderToForm');
-
-export function orderToForm(pedido: Pedido): PedidoFormData {
-  log.debug('Pedido recebido:', pedido);
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
   
   // Converter valor de string para number se necessário
   let valorNum: number | undefined;
@@ -37,11 +28,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
   // Garantir que fonte_pedido_id existe e é válido
   let fontePedidoId = pedido.fonte_pedido_id;
   if (!fontePedidoId || fontePedidoId === 0) {
-<<<<<<< HEAD
     console.warn('Pedido sem fonte_pedido_id válida, usando 1 como fallback');
-=======
-    log.warn('Pedido sem fonte_pedido_id válida, usando 1 como fallback');
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     fontePedidoId = 1; // Fallback para fonte padrão (Site)
   }
 
@@ -50,37 +37,22 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
   if (pedido.tipo_pedido && TIPOS_PEDIDO.includes(pedido.tipo_pedido as typeof TIPOS_PEDIDO[number])) {
     tipoPedido = pedido.tipo_pedido as 'Entrega' | 'Retirada';
   } else if (pedido.tipo_pedido) {
-<<<<<<< HEAD
     console.warn('tipo_pedido inválido:', pedido.tipo_pedido, '- usando "Entrega" como fallback');
-=======
-    log.warn('tipo_pedido inválido:', pedido.tipo_pedido, '- usando "Entrega" como fallback');
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
   }
 
   // Garantir que dia_entrega está no formato correto (YYYY-MM-DD)
   let diaEntrega = pedido.dia_entrega || '';
   if (diaEntrega && !/^\d{4}-\d{2}-\d{2}$/.test(diaEntrega)) {
-<<<<<<< HEAD
     console.warn('dia_entrega em formato inválido:', diaEntrega);
-=======
-    log.warn('dia_entrega em formato inválido:', diaEntrega);
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     // Tentar converter se estiver em outro formato
     try {
       const date = new Date(diaEntrega);
       if (!isNaN(date.getTime())) {
         diaEntrega = date.toISOString().split('T')[0];
-<<<<<<< HEAD
         console.log('dia_entrega convertido para:', diaEntrega);
       }
     } catch {
       console.error('Falha ao converter dia_entrega');
-=======
-        log.debug('dia_entrega convertido para:', diaEntrega);
-      }
-    } catch {
-      log.error('Falha ao converter dia_entrega');
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     }
   }
 
@@ -113,11 +85,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     observacoes: pedido.observacoes || '',
   };
 
-<<<<<<< HEAD
   console.log('FormData gerado:', formData);
-=======
-  log.debug('FormData gerado:', formData);
->>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
   return formData;
 }
 

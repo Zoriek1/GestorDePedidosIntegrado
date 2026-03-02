@@ -4,6 +4,13 @@
  * Parser tolerante: extrai o que for possível e retorna warnings para campos problemáticos.
  */
 
+<<<<<<< HEAD
+=======
+import { createLogger } from '../../../lib/logger';
+
+const log = createLogger('QuickEntryParser');
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import type { PedidoFormData } from '../schemas';
@@ -989,10 +996,14 @@ export function parseQuickEntry(text: string, fontePedidoId: number): QuickEntry
     extractedFields.push('observacoes');
   }
   
+<<<<<<< HEAD
   console.log('=== Quick Entry Parse Result ===');
   console.log('Form Data:', formData);
   console.log('Extracted Fields:', extractedFields);
   console.log('Warnings:', warnings);
+=======
+  log.debug('Parse result:', { formData, extractedFields, warnings });
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
   
   return {
     formData,

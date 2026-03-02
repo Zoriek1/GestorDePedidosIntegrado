@@ -76,7 +76,12 @@ class BaseConfig:
     )
 
     # Secret key para sessões
+<<<<<<< HEAD
     SECRET_KEY = os.environ.get("SECRET_KEY") or "plante-uma-flor-pwa-secret-key-2024"
+=======
+    # Em desenvolvimento, usa fallback genérico. Em produção, exige configuração explícita.
+    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
     # Banco de dados
     # PostgreSQL: use DATABASE_URL (ex: postgresql://user:pass@host:port/dbname)
@@ -101,14 +106,25 @@ class BaseConfig:
     PORT = int(os.environ.get("PORT") or 5000)
     DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
+<<<<<<< HEAD
     # Autenticação
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "plante1998"
+=======
+    # Autenticação — sem fallback. Senha vazia desabilita o usuário admin.
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
     # APIs Externas
     GRAPHHOPPER_API_KEY = os.environ.get("GRAPHHOPPER_API_KEY") or ""
     OPENROUTE_API_KEY = os.environ.get("OPENROUTE_API_KEY") or ""
     ENDERECO_FLORICULTURA = os.environ.get("ENDERECO_FLORICULTURA") or ""
 
+<<<<<<< HEAD
+=======
+    # Google Maps Platform (Geocoding + Address Validation)
+    GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY") or ""
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     # Meta Conversions API
     META_PIXEL_ID = os.environ.get("META_PIXEL_ID") or ""
     META_CAPI_ACCESS_TOKEN = os.environ.get("META_CAPI_ACCESS_TOKEN") or ""
@@ -184,6 +200,12 @@ class BaseConfig:
 Config = BaseConfig
 
 
+# Backwards-compat alias:
+# Some modules import `Config` (e.g. `from app.config import Config`) expecting a class
+# with static paths like `INSTANCE_DIR`. Keep compatibility without refactoring callers.
+Config = BaseConfig
+
+
 class DevelopmentConfig(BaseConfig):
     """Configurações de desenvolvimento"""
 
@@ -201,6 +223,7 @@ class ProductionConfig(BaseConfig):
     FLASK_ENV = "production"
     APP_ENV = "production"
 
+<<<<<<< HEAD
     # Em produção, usar secret key da variável de ambiente
     SECRET_KEY = os.environ.get("SECRET_KEY") or "change-this-in-production-please"
 
@@ -213,6 +236,24 @@ class ProductionConfig(BaseConfig):
             warnings.warn(
                 "SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção.",
                 stacklevel=2,
+=======
+    SECRET_KEY = os.environ.get("SECRET_KEY", "")
+
+    @staticmethod
+    def init_app(app):
+        secret_key = app.config.get("SECRET_KEY", "")
+        if not secret_key or secret_key == "dev-secret-key-change-in-production":
+            raise ValueError(
+                "SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção."
+            )
+
+        admin_password = os.environ.get("ADMIN_PASSWORD", "")
+        admin_password_hash = os.environ.get("ADMIN_PASSWORD_HASH", "")
+        if not admin_password and not admin_password_hash:
+            raise ValueError(
+                "ADMIN_PASSWORD ou ADMIN_PASSWORD_HASH não definido! "
+                "Configure uma das variáveis de ambiente em produção."
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
             )
 
 

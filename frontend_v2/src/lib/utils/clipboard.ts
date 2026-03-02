@@ -3,6 +3,13 @@
  * Uses modern Clipboard API with fallback to execCommand for older browsers
  */
 
+<<<<<<< HEAD
+=======
+import { createLogger } from '../logger';
+
+const log = createLogger('clipboard');
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 /**
  * Copies text to clipboard
  * @param text - Text to copy
@@ -20,7 +27,11 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       return true;
     } catch (err) {
       // Fall through to fallback method
+<<<<<<< HEAD
       console.warn('Clipboard API failed, trying fallback:', err);
+=======
+      log.warn('Clipboard API failed, trying fallback:', err);
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     }
   }
 
@@ -43,7 +54,11 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     
     return successful;
   } catch (err) {
+<<<<<<< HEAD
     console.error('Fallback clipboard copy failed:', err);
+=======
+    log.error('Fallback clipboard copy failed:', err);
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     return false;
   }
 }

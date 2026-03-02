@@ -6,6 +6,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+<<<<<<< HEAD
 import { Typography, Breadcrumbs, Link, Container, Paper, Box, Alert, Collapse, IconButton } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
@@ -18,6 +19,23 @@ import { useToast } from '../../components/system/useToast';
 import { SourceSelectionModal } from './components/SourceSelectionModal';
 import type { PedidoFormData } from './schemas';
 
+=======
+import { createLogger } from '../../lib/logger';
+
+const log = createLogger('CreateOrderPage');
+import { Typography, Breadcrumbs, Link, Container, Paper, Box, Alert, Collapse, IconButton } from '@mui/material';
+import HomeIcon from '@mui/icons-material/Home';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import BoltIcon from '@mui/icons-material/Bolt';
+import CloseIcon from '@mui/icons-material/Close';
+import { CreateOrderWizard } from './CreateOrderWizard';
+import { OrderFormProvider } from './contexts/OrderFormContext';
+import { useCreatePedido, CreatePedidoPayload } from '../../api/endpoints/pedidos';
+import { useToast } from '../../components/system/useToast';
+import { SourceSelectionModal } from './components/SourceSelectionModal';
+import type { PedidoFormData } from './schemas';
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 // Tipo para os dados passados via location.state (Quick Entry)
 interface QuickEntryLocationState {
   prefillData?: Partial<PedidoFormData>;
@@ -76,9 +94,13 @@ export default function CreateOrderPage() {
   useEffect(() => {
     if (prefillData && prefillData.fonte_pedido_id && !prefillAppliedRef.current) {
       prefillAppliedRef.current = true;
+<<<<<<< HEAD
       console.log('=== Quick Entry Prefill ===');
       console.log('Prefill data:', prefillData);
       console.log('Warnings:', quickEntryWarnings);
+=======
+      log.debug('Quick Entry Prefill:', { prefillData, warnings: quickEntryWarnings });
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
       // Limpar draft anterior para não misturar dados
       clearLocalDraft();
@@ -128,7 +150,11 @@ export default function CreateOrderPage() {
   const initialData = useMemo(() => {
     // Se tem prefillData, usar ele como base (já inclui fonte_pedido_id)
     if (prefillData) {
+<<<<<<< HEAD
       console.log('Using prefillData as initialData:', prefillData);
+=======
+      log.debug('Using prefillData as initialData:', prefillData);
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       return prefillData;
     }
     // Caso contrário, apenas fonte selecionada

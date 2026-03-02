@@ -19,11 +19,22 @@ def log_debug(msg, data):
 # ============================================
 # CONFIGURAÇÃO DE USUÁRIOS
 # ============================================
-# Edite aqui seus usuários e senhas
-# Para maior segurança, use variáveis de ambiente em produção
+# Configure as credenciais via variáveis de ambiente.
+# ADMIN_PASSWORD_HASH: hash bcrypt (recomendado).
+# ADMIN_PASSWORD: senha plain-text (retrocompatibilidade).
+# Senha vazia desabilita o usuário.
+def _admin_credential() -> str:
+    """Retorna hash bcrypt ou senha plain-text do admin, nesta ordem de preferência."""
+    return os.environ.get("ADMIN_PASSWORD_HASH", "") or os.environ.get("ADMIN_PASSWORD", "")
+
+
 USERS = {
     "admin": {
+<<<<<<< HEAD
         "password": os.environ.get("ADMIN_PASSWORD", "plante1998"),
+=======
+        "password": _admin_credential(),
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
         "role": "admin",
     },
     "atendente": {
@@ -37,6 +48,7 @@ USERS = {
 }
 
 
+<<<<<<< HEAD
 # Compatibilidade retroativa: se usuário não tiver papel definido, assumir "admin"
 # Para usuários antigos que podem estar usando formato antigo
 def get_user_config(username):
@@ -60,6 +72,33 @@ def get_user_config(username):
 # USERS_HASHED = {
 #     'admin': '$2b$12$...'  # Hash bcrypt da senha
 # }
+=======
+def get_user_config(username):
+    """Retorna configuração do usuário."""
+    user_config = USERS.get(username)
+    if user_config is None:
+        return None
+    # Compatibilidade com formato antigo (string pura de senha)
+    if isinstance(user_config, str):
+        return {"password": user_config, "role": "admin"}
+    return user_config
+
+
+def _verify_password(stored: str, provided: str) -> bool:
+    """
+    Verifica senha com suporte a bcrypt e plain-text.
+    Hashes bcrypt são identificados pelo prefixo '$2b$' ou '$2a$'.
+    """
+    if stored.startswith(("$2b$", "$2a$")):
+        try:
+            import bcrypt as _bcrypt
+
+            return _bcrypt.checkpw(provided.encode("utf-8"), stored.encode("utf-8"))
+        except ImportError:
+            return False
+    # Retrocompatibilidade: comparação plain-text
+    return stored == provided
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
 
 # ============================================
@@ -67,13 +106,19 @@ def get_user_config(username):
 # ============================================
 def check_auth(username, password):
     """
+<<<<<<< HEAD
     Verifica se o usuário e senha são válidos
     Retorna (bool, role) onde bool indica se autenticado e role é o papel do usuário
+=======
+    Verifica se o usuário e senha são válidos.
+    Retorna (bool, role) onde bool indica se autenticado e role é o papel do usuário.
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     """
     user_config = get_user_config(username)
     if user_config is None:
         return False, None
 
+<<<<<<< HEAD
     expected_password = user_config["password"]
     if not expected_password:  # Senha vazia = usuário desabilitado
         return False, None
@@ -92,6 +137,15 @@ def check_auth(username, password):
     #         USERS_HASHED[username].encode('utf-8')
     #     )
     # return False
+=======
+    stored_password = user_config["password"]
+    if not stored_password:  # Senha vazia = usuário desabilitado
+        return False, None
+
+    is_authenticated = _verify_password(stored_password, password)
+    role = user_config.get("role", "admin")
+    return is_authenticated, role if is_authenticated else None
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
 
 def requires_auth(f):

@@ -20,12 +20,17 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+<<<<<<< HEAD
 import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route } from '@mui/icons-material';
+=======
+import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route, Map } from '@mui/icons-material';
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
 import { useStats } from '../../api/endpoints/stats';
+import { useGerarRotaMaps } from '../../api/endpoints/rotas';
 import { OrderList } from './components/OrderList';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -52,13 +57,21 @@ export default function OrdersPage() {
   });
   const [sortByDistance, setSortByDistance] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
+<<<<<<< HEAD
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+=======
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
 
   const queryClient = useQueryClient();
   const { getAuthHeader, getUserRole } = useAuth();
   const { success, error: showError, info } = useToast();
   const confirm = useConfirm();
+<<<<<<< HEAD
+=======
+  const gerarRotaMaps = useGerarRotaMaps();
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
   
   const userRole = getUserRole() || 'admin'; // Default para admin se não especificado
   const isAdmin = userRole === 'admin';
@@ -141,7 +154,11 @@ export default function OrdersPage() {
   const handleToggleSelectionMode = () => {
     setSelectionMode((prev) => {
       if (prev) {
+<<<<<<< HEAD
         setSelectedIds(new Set());
+=======
+        setSelectedIds([]);
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       }
       return !prev;
     });
@@ -149,6 +166,7 @@ export default function OrdersPage() {
 
   const handleToggleSelectPedido = (pedido: { id: number; tipo_pedido?: string }) => {
     setSelectedIds((prev) => {
+<<<<<<< HEAD
       const next = new Set(prev);
       if (next.has(pedido.id)) {
         next.delete(pedido.id);
@@ -157,17 +175,33 @@ export default function OrdersPage() {
         next.add(pedido.id);
       }
       return next;
+=======
+      const idx = prev.indexOf(pedido.id);
+      if (idx !== -1) {
+        return prev.filter((id) => id !== pedido.id);
+      }
+      if (pedido.tipo_pedido !== 'Entrega') return prev;
+      return [...prev, pedido.id];
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     });
   };
 
   const handleCalcularDistanciasSelecionados = async () => {
+<<<<<<< HEAD
     const ids = Array.from(selectedIds);
     if (ids.length === 0) {
+=======
+    if (selectedIds.length === 0) {
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       info('Selecione ao menos 1 pedido de entrega');
       return;
     }
     try {
+<<<<<<< HEAD
       await calcDistanciasLote.mutateAsync({ pedidoIds: ids, forceRecalc: true });
+=======
+      await calcDistanciasLote.mutateAsync({ pedidoIds: selectedIds, forceRecalc: true });
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       success('Distâncias recalculadas para selecionados');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao recalcular distâncias';
@@ -175,6 +209,7 @@ export default function OrdersPage() {
     }
   };
 
+<<<<<<< HEAD
   const handleIrParaMapa = () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) {
@@ -182,6 +217,33 @@ export default function OrdersPage() {
       return;
     }
     const query = `ids=${ids.join(',')}`;
+=======
+  const handleGerarRota = async () => {
+    if (selectedIds.length === 0) {
+      info('Selecione pedidos para gerar a rota');
+      return;
+    }
+    try {
+      const result = await gerarRotaMaps.mutateAsync(selectedIds);
+      if (result.sem_coords.length > 0) {
+        showError(`Pedidos sem coordenadas: ${result.sem_coords.join(', ')}. Calcule as distâncias primeiro.`);
+      }
+      if (result.google_maps_url) {
+        window.open(result.google_maps_url, '_blank');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao gerar rota';
+      showError(errorMessage);
+    }
+  };
+
+  const handleIrParaMapa = () => {
+    if (selectedIds.length === 0) {
+      info('Selecione pedidos para roteirizar');
+      return;
+    }
+    const query = `ids=${selectedIds.join(',')}`;
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     window.open(`/rota-entrega?${query}`, '_blank');
   };
 
@@ -470,7 +532,11 @@ export default function OrdersPage() {
                 size="small"
                 variant="outlined"
                 onClick={handleCalcularDistanciasSelecionados}
+<<<<<<< HEAD
                 disabled={calcDistanciasLote.isPending}
+=======
+                disabled={calcDistanciasLote.isPending || selectedIds.length === 0}
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
                 fullWidth={isMobile}
               >
                 {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
@@ -478,6 +544,7 @@ export default function OrdersPage() {
               <Button
                 size="small"
                 variant="contained"
+<<<<<<< HEAD
                 color="primary"
                 onClick={handleIrParaMapa}
                 disabled={selectedIds.size === 0}
@@ -489,6 +556,29 @@ export default function OrdersPage() {
             <Chip
               color={selectedIds.size > 0 ? 'primary' : 'default'}
               label={`${selectedIds.size} selecionado(s) para rota`}
+=======
+                color="success"
+                startIcon={<Map />}
+                onClick={handleGerarRota}
+                disabled={selectedIds.length === 0 || gerarRotaMaps.isPending}
+                fullWidth={isMobile}
+              >
+                {gerarRotaMaps.isPending ? 'Gerando...' : 'Gerar Rota'}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleIrParaMapa}
+                disabled={selectedIds.length === 0}
+                fullWidth={isMobile}
+              >
+                Ver no mapa
+              </Button>
+            </Stack>
+            <Chip
+              color={selectedIds.length > 0 ? 'primary' : 'default'}
+              label={`${selectedIds.length} selecionado(s) para rota`}
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
               sx={{ alignSelf: { xs: 'center', sm: 'auto' } }}
             />
           </Stack>

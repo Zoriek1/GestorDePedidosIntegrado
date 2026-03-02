@@ -2,6 +2,15 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 
+<<<<<<< HEAD
+=======
+export interface StepByStepUrl {
+  step: number;
+  label: string;
+  url: string;
+}
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 export interface RotaOtimizada {
   rota_id: number;
   nome: string;
@@ -12,7 +21,12 @@ export interface RotaOtimizada {
   metodo_otimizacao?: string;
   origem?: { lat: number; lon: number };
   waypoints?: [number, number][];
+<<<<<<< HEAD
   graphhopper_maps_url?: string | null;
+=======
+  google_maps_url?: string | null;
+  google_maps_step_by_step?: StepByStepUrl[];
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 }
 
 export function useCalcularRotaOtimizada() {
@@ -47,3 +61,30 @@ export function useRotaOtimizada(rotaId?: number) {
   });
 }
 
+<<<<<<< HEAD
+=======
+export interface GerarRotaMapsResult {
+  google_maps_url: string | null;
+  google_maps_step_by_step: StepByStepUrl[];
+  pedidos: { id: number; cliente: string; destinatario: string; endereco: string }[];
+  sem_coords: number[];
+}
+
+export function useGerarRotaMaps() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useMutation({
+    mutationFn: async (pedidoIds: number[]) => {
+      const response = await apiRequest<GerarRotaMapsResult>('/pedidos/gerar-rota-maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_ids: pedidoIds }),
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+  });
+}
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14

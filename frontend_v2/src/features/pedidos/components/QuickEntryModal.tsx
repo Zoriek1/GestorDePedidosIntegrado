@@ -6,6 +6,12 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+<<<<<<< HEAD
+=======
+import { createLogger } from '../../../lib/logger';
+
+const log = createLogger('QuickEntryModal');
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 import {
   Dialog,
   DialogTitle,
@@ -81,17 +87,28 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
       const clipboardText = await navigator.clipboard.readText();
       setText(clipboardText);
     } catch {
+<<<<<<< HEAD
       console.warn('Não foi possível acessar a área de transferência');
     }
   }, []);
   
+=======
+      log.warn('Não foi possível acessar a área de transferência');
+    }
+  }, []);
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
   // Handler para copiar template
   const handleCopyTemplate = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(QUICK_ENTRY_TEMPLATE);
       success('Template copiado para a área de transferência!');
     } catch {
+<<<<<<< HEAD
       console.warn('Não foi possível copiar para a área de transferência');
+=======
+      log.warn('Não foi possível copiar para a área de transferência');
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     }
   }, [success]);
   

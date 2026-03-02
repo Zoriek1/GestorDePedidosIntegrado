@@ -18,7 +18,14 @@ services:
       retries: 5
 
   backend:
+<<<<<<< HEAD
     build: .
+=======
+    build:
+      context: .
+      args:
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     restart: unless-stopped
     depends_on:
       db:
@@ -38,6 +45,11 @@ services:
       NUVEMSHOP_CLIENT_SECRET: ${NUVEMSHOP_CLIENT_SECRET:-}
       NUVEMSHOP_USER_AGENT: ${NUVEMSHOP_USER_AGENT:-}
       NUVEMSHOP_PUBLIC_BASE_URL: ${NUVEMSHOP_PUBLIC_BASE_URL:-}
+<<<<<<< HEAD
+=======
+      # Google Maps Platform (geocodificação e rotas)
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     volumes:
       # Montamos apenas a pasta backend para evitar confusão de caminhos
       - ./backend:/app/backend

@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 Model de Endereço do Cliente
-Permite múltiplos endereços por cliente
+Permite múltiplos endereços por cliente, com cache de geocodificação
 """
+<<<<<<< HEAD
+=======
+import hashlib
+import re
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 from datetime import datetime
 
 from app import db
@@ -38,6 +43,39 @@ class EnderecoCliente(db.Model):
     cidade = db.Column(db.String(100), nullable=True)
     estado = db.Column(db.String(2), nullable=True, default="GO")
 
+<<<<<<< HEAD
+=======
+    # Geocodificação (cache)
+    lat = db.Column(db.Float, nullable=True, comment="Latitude geocodificada")
+    lng = db.Column(db.Float, nullable=True, comment="Longitude geocodificada")
+    location_type = db.Column(
+        db.String(30),
+        nullable=True,
+        comment="ROOFTOP, RANGE_INTERPOLATED, GEOMETRIC_CENTER, APPROXIMATE",
+    )
+    place_id = db.Column(db.String(255), nullable=True, comment="Google Place ID")
+    confidence_status = db.Column(
+        db.String(20),
+        nullable=True,
+        comment="AUTO_OK, OK_WITH_CAUTION, NEEDS_REVIEW",
+    )
+    geocode_provider = db.Column(db.String(20), nullable=True, comment="Provider usado (google)")
+    address_canonical = db.Column(
+        db.String(500),
+        nullable=True,
+        comment="String canônica para geocodificação",
+    )
+    address_hash = db.Column(
+        db.String(64),
+        nullable=True,
+        index=True,
+        comment="SHA-256 da address_canonical (detectar mudança)",
+    )
+    last_geocoded_at = db.Column(
+        db.DateTime, nullable=True, comment="Timestamp da última geocodificação"
+    )
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     # Timestamp
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -65,6 +103,12 @@ class EnderecoCliente(db.Model):
             "cidade": self.cidade or "",
             "estado": self.estado or "GO",
             "endereco_completo": self.get_endereco_completo(),
+<<<<<<< HEAD
+=======
+            "lat": self.lat,
+            "lng": self.lng,
+            "confidence_status": self.confidence_status,
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -94,6 +138,72 @@ class EnderecoCliente(db.Model):
 
         return ", ".join(partes)
 
+<<<<<<< HEAD
+=======
+    def build_address_canonical(self):
+        """
+        Constrói string canônica do endereço para geocodificação e cache.
+        Formato: "Logradouro, Número - Bairro, Cidade - UF, CEP, Brasil"
+
+        Returns:
+            str: Endereço canônico normalizado
+        """
+        partes = []
+        if self.rua:
+            partes.append(self.rua.strip())
+        if self.numero and self.numero.strip():
+            partes.append(self.numero.strip())
+
+        bairro_cidade = []
+        if self.bairro:
+            bairro_cidade.append(self.bairro.strip())
+        cidade = (self.cidade or "Goiânia").strip()
+        estado = (self.estado or "GO").strip().upper()
+        bairro_cidade.append(f"{cidade} - {estado}")
+
+        if partes:
+            canonical = ", ".join(partes) + " - " + ", ".join(bairro_cidade)
+        else:
+            canonical = ", ".join(bairro_cidade)
+
+        if self.cep:
+            cep_limpo = re.sub(r"\D", "", self.cep)
+            if len(cep_limpo) == 8:
+                canonical += f", {cep_limpo[:5]}-{cep_limpo[5:]}"
+
+        canonical += ", Brasil"
+        return canonical
+
+    def compute_address_hash(self):
+        """
+        Calcula SHA-256 da address_canonical para detectar mudanças.
+
+        Returns:
+            str: Hash hexadecimal de 64 caracteres
+        """
+        canonical = self.build_address_canonical()
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def update_geocode_cache(
+        self, lat, lng, location_type=None, place_id=None, confidence_status=None, provider="google"
+    ):
+        """Atualiza campos de geocodificação em lote."""
+        self.lat = lat
+        self.lng = lng
+        self.location_type = location_type
+        self.place_id = place_id
+        self.confidence_status = confidence_status
+        self.geocode_provider = provider
+        self.address_canonical = self.build_address_canonical()
+        self.address_hash = self.compute_address_hash()
+        self.last_geocoded_at = datetime.utcnow()
+
+    def needs_geocoding(self):
+        """Retorna True se o endereço precisa ser (re)geocodificado."""
+        current_hash = self.compute_address_hash()
+        return self.address_hash != current_hash or self.lat is None
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     def marcar_como_principal(self):
         """
         Marca este endereço como principal e desmarca os outros do mesmo cliente

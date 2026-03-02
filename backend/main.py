@@ -4,10 +4,15 @@ Plante Uma Flor v3.0 - PWA
 Inicialização do servidor Flask
 """
 import configparser
+<<<<<<< HEAD
 import json
 import os
 import sys
 import time
+=======
+import os
+import sys
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 from pathlib import Path
 
 
@@ -120,15 +125,22 @@ def check_port_in_use(port=5000):
         sock.close()
         log_debug("check_port_in_use", {"port": port, "result": result, "in_use": result == 0})
         return result == 0
+<<<<<<< HEAD
     except Exception as e:
         log_debug("check_port_in_use exception", {"error": str(e)})
+=======
+    except Exception:
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
         return False
 
 
 def main():
     """Função principal para iniciar o servidor"""
     is_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+<<<<<<< HEAD
     log_debug("main starting", {"args": sys.argv, "WERKZEUG_RUN_MAIN": str(is_reloader)})
+=======
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
     # Determinar ambiente (development ou production) - ANTES de usar
     env = os.environ.get("FLASK_ENV", "development")
@@ -329,6 +341,7 @@ def main():
 
     # Iniciar servidor com run_simple (mais robusto que app.run())
     try:
+<<<<<<< HEAD
         # Log apenas em desenvolvimento
         if env != "production":
             log_debug(
@@ -342,6 +355,8 @@ def main():
                 },
             )
 
+=======
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
         run_simple(
             hostname=app_config.HOST,
             port=app_config.PORT,

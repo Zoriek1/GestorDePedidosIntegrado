@@ -5,6 +5,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+<<<<<<< HEAD
+=======
+import { createLogger } from '../../lib/logger';
+
+const log = createLogger('CreateOrderWizard');
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -117,7 +123,11 @@ export function CreateOrderWizard({
     mode: 'onBlur',
   });
 
+<<<<<<< HEAD
   const { handleSubmit, watch, trigger, setError, getValues, formState } = methods;
+=======
+  const { handleSubmit, watch, trigger, setError, getValues } = methods;
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
   // Salva no localStorage com debounce
   useEffect(() => {
@@ -245,6 +255,7 @@ export function CreateOrderWizard({
 
   // Submissão (salvar e concluir)
   const onFormSubmit = async (data: PedidoFormData) => {
+<<<<<<< HEAD
     // DEBUG: Log detalhado para diagnóstico
     console.log('=== DEBUG SUBMIT ===');
     console.log('activeStep:', activeStep, 'STEPS.length - 1:', STEPS.length - 1);
@@ -262,10 +273,20 @@ export function CreateOrderWizard({
     const isValid = await validateFormExplicitly();
     if (!isValid) {
       console.error('Formulário inválido - submit cancelado');
+=======
+    if (activeStep !== STEPS.length - 1 || !isReadyToSubmit) {
+      log.warn('Submit bloqueado:', { activeStep, isReadyToSubmit, expectedStep: STEPS.length - 1 });
+      return;
+    }
+
+    const isValid = await validateFormExplicitly();
+    if (!isValid) {
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       return;
     }
 
     try {
+<<<<<<< HEAD
       console.log('Transformando payload...');
       const payload = transformFormToApiPayload(data);
       console.log('Payload transformado:', payload);
@@ -274,6 +295,11 @@ export function CreateOrderWizard({
       const ok = await onSubmit(payload);
       console.log('Resultado onSubmit:', ok);
       
+=======
+      const payload = transformFormToApiPayload(data);
+      const ok = await onSubmit(payload);
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
       if (ok) {
         // Limpa o rascunho após sucesso
         localStorage.removeItem(STORAGE_KEY);
@@ -281,9 +307,13 @@ export function CreateOrderWizard({
         setIsReadyToSubmit(false);
       }
     } catch (error) {
+<<<<<<< HEAD
       // Erro é tratado pelo componente pai
       console.error('Erro ao salvar pedido:', error);
       console.error('Stack trace:', error instanceof Error ? error.stack : 'N/A');
+=======
+      log.error('Erro ao salvar pedido:', error);
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     }
   };
 
@@ -306,6 +336,7 @@ export function CreateOrderWizard({
   // Validação explícita do formulário com feedback detalhado
   const validateFormExplicitly = async (): Promise<boolean> => {
     const formData = getValues();
+<<<<<<< HEAD
     console.log('=== Validando formulário explicitamente ===');
     console.log('Form data para validação:', formData);
     
@@ -329,6 +360,19 @@ export function CreateOrderWizard({
     }
     
     console.log('Validação passou com sucesso!');
+=======
+    const validationResult = pedidoFormSchema.safeParse(formData);
+
+    if (!validationResult.success) {
+      log.warn('Validação falhou:', validationResult.error.flatten());
+      validationResult.error.errors.forEach(err => {
+        const fieldPath = err.path.join('.') as FieldPath<PedidoFormData>;
+        setError(fieldPath, { type: 'manual', message: err.message });
+      });
+      return false;
+    }
+
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
     return true;
   };
 
@@ -454,7 +498,10 @@ export function CreateOrderWizard({
                       variant="contained"
                       color="primary"
                       disabled={isSubmitting || !isReadyToSubmit}
+<<<<<<< HEAD
                       onClick={() => console.log('Botão Salvar clicado! isReadyToSubmit:', isReadyToSubmit)}
+=======
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
                       startIcon={
                         isSubmitting ? (
                           <CircularProgress size={20} color="inherit" />
@@ -520,7 +567,10 @@ export function CreateOrderWizard({
                         type="submit"
                         size="small"
                         disabled={isSubmitting || !isReadyToSubmit}
+<<<<<<< HEAD
                         onClick={() => console.log('Botão Concluir clicado! isReadyToSubmit:', isReadyToSubmit)}
+=======
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
                         startIcon={
                           isSubmitting ? (
                             <CircularProgress size={16} color="inherit" />

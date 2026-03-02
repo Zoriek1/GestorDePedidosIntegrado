@@ -371,6 +371,27 @@ def check_ssl_status():
     else:
         click.echo("[AVISO] Certificados SSL não encontrados")
         click.echo("Execute: flask cli ssl generate")
+<<<<<<< HEAD
+=======
+
+
+@cli.command("hash-password")
+@click.argument("password")
+def hash_password_command(password):
+    """Gera hash bcrypt para uso em ADMIN_PASSWORD_HASH.
+
+    Exemplo: flask cli hash-password minha_senha
+    """
+    try:
+        import bcrypt as _bcrypt
+
+        hashed = _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt())
+        click.echo("\nHash gerado (copie para ADMIN_PASSWORD_HASH no .env):")
+        click.echo(hashed.decode("utf-8"))
+        click.echo()
+    except ImportError:
+        click.echo("[ERRO] bcrypt não instalado. Execute: pip install bcrypt", err=True)
+>>>>>>> cc8c9d5527969b86d44bbf8a302e541906c0fa14
 
 
 # Registrar comandos no Flask CLI

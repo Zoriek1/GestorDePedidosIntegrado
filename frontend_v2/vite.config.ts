@@ -200,7 +200,6 @@ export default defineConfig(({ mode }) => {
             'query-vendor': ['@tanstack/react-query'],
             'form-vendor': ['react-hook-form', '@hookform/resolvers', 'zod'],
             'date-vendor': ['date-fns', 'dayjs'],
-            'map-vendor': ['leaflet', 'react-leaflet'],
           }
         },
         // Limitar paralelismo para evitar sobrecarga (apenas em desenvolvimento local)

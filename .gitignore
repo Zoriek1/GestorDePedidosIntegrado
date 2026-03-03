@@ -87,8 +87,11 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-<<<<<<< HEAD
 .env
 .env.local.backup.*
-=======
->>>>>>> 820148135f9613c5d6daf72630e5bbef932f01ae
+
+# Backups e arquivos temporários de deploy
+*.sql
+*.deb
+*.bak.*
+*.bad.*

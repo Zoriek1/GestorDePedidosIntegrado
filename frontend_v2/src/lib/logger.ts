@@ -6,8 +6,19 @@
 const isDevelopment = import.meta.env.DEV;
 
 /**
- * Logger condicional - apenas em desenvolvimento
+ * Factory para criar logger com prefixo de módulo
  */
+export function createLogger(module: string) {
+  const prefix = `[${module}]`;
+  return {
+    log: (...args: unknown[]) => logger.log(prefix, ...args),
+    debug: (...args: unknown[]) => logger.debug(prefix, ...args),
+    warn: (...args: unknown[]) => logger.warn(prefix, ...args),
+    error: (...args: unknown[]) => logger.error(prefix, ...args),
+    info: (...args: unknown[]) => logger.info(prefix, ...args),
+  };
+}
+
 export const logger = {
   log: (...args: unknown[]) => {
     if (isDevelopment) {

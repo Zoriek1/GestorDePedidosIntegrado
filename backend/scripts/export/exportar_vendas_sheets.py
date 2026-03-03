@@ -625,6 +625,12 @@ def exportar_vendas():
 
             for dia in range(1, num_dias + 1):
                 data_dia = date(ano, mes, dia)
+
+                if data_dia > hoje:
+                    # Dia futuro: deixar em branco para não poluir a planilha
+                    totais_data.append(["", ""])
+                    continue
+
                 dia_semana = data_dia.weekday()
 
                 if dia_semana == 6:  # Domingo

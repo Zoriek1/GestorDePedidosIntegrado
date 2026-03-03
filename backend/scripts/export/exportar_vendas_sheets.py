@@ -26,14 +26,8 @@ TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
 # Adiciona o diretÃ³rio backend ao path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials  # noqa: E402
-except ImportError:
-    print("Instalando dependÃªncias...")
-    os.system("pip install gspread google-auth")
-    import gspread
-    from google.oauth2.service_account import Credentials  # noqa: E402
+import gspread
+from google.oauth2.service_account import Credentials  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.models.pedido import Pedido  # noqa: E402

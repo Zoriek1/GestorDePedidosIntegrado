@@ -527,9 +527,9 @@ def map_nuvemshop_order_to_pedido_data(
         telefone = "0000000000"
         telefone_missing = True
 
-    # Formatar produtos com " + " entre eles e detalhes para observações
+    # Formatar produtos com " + " entre eles
     produtos = order.get("products") or []
-    produto, produto_detalhado = _format_produtos_detalhado(produtos)
+    produto, _ = _format_produtos_detalhado(produtos)
 
     _currency = _safe_str(order.get("currency")) or "BRL"
     # Para pedidos pendentes, total_paid_by_customer é "0" ou "0.00".
@@ -645,62 +645,20 @@ def map_nuvemshop_order_to_pedido_data(
     # Extrair complemento do endereço (floor, apartment, etc)
     complemento = _extract_address_complement(shipping_address)
 
-    # Extrair detalhes financeiros
-    financial_details = _extract_financial_details(order)
+    # Mensagem do cartão: note (mensagem do cliente) tem prioridade sobre owner_note (nota interna)
+    nota_cliente = _safe_str(order.get("note")) or None
+    nota_interna = _safe_str(order.get("owner_note")) or None
+    mensagem_cartao = nota_cliente or nota_interna or None
 
-    # Extrair informações extras do cliente
-    customer_extras = _extract_customer_extras(order, customer, shipping_address)
-
-    # IMPORTANTE: owner_note vai para mensagem (cartão), não para observações
-    # note (observações do cliente) continua nas observações
-    mensagem_cartao = _safe_str(order.get("owner_note")) or None
-
-    observacoes_parts = [
-        f"NUVEMSHOP order_id={_safe_str(order.get('id'))}",
-        f"order_number={_safe_str(order.get('number'))}",
-        f"order_token={_safe_str(order.get('token'))}",
-    ]
-
-    if shipping_option_text:
-        observacoes_parts.append(f"shipping_option={shipping_option_text}")
-
-    # Note (observações do cliente) - vai para observações
-    if order.get("note"):
-        observacoes_parts.append(f"note={_safe_str(order.get('note'))}")
-
-    # Complemento do endereço
-    if complemento:
-        observacoes_parts.append(f"complemento={complemento}")
-
-    # Detalhes dos produtos (SKU, preços individuais)
-    if produto_detalhado:
-        observacoes_parts.append(f"produtos_detalhados={produto_detalhado}")
-
-    # Detalhes financeiros (descontos, taxas)
-    if financial_details:
-        observacoes_parts.append(financial_details)
-
-    # Informações extras do cliente (CPF, email, estado)
-    if customer_extras:
-        observacoes_parts.append(customer_extras)
+    # Observações: apenas avisos operacionais relevantes (sem metadados técnicos)
+    observacoes_parts = []
 
     if telefone_missing:
-        observacoes_parts.append("telefone ausente no pedido (fallback usado)")
+        observacoes_parts.append("Telefone ausente no pedido")
     if schedule_pending:
-        observacoes_parts.append(
-            "IMPORTADO NUVEMSHOP/HUAAPPS: data de entrega nao disponivel na API; revisar dia_entrega"
-        )
-    elif custom_field_date or custom_field_time:
-        info = []
-        if custom_field_date:
-            info.append("dia_entrega")
-        if custom_field_time:
-            info.append("horario")
-        observacoes_parts.append(
-            f"{'/'.join(info)} via custom_field={_safe_str(custom_field_name)}"
-        )
+        observacoes_parts.append("Data de entrega não disponível; revisar dia_entrega")
 
-    observacoes = " | ".join([p for p in observacoes_parts if p])
+    observacoes = " | ".join([p for p in observacoes_parts if p]) or None
 
     # Montar obs_entrega incluindo complemento (floor/apt) + shipping option.
     # O complemento contem dados cruciais para o entregador:
@@ -729,7 +687,7 @@ def map_nuvemshop_order_to_pedido_data(
         "cidade": _safe_str(shipping_address.get("city")) or None,
         "endereco": None,
         "obs_entrega": obs_entrega,
-        "mensagem": mensagem_cartao,  # owner_note vai para mensagem (cartão)
+        "mensagem": mensagem_cartao,
         "pagamento": pagamento or None,
         "observacoes": observacoes,
         "status_pagamento": status_pagamento,

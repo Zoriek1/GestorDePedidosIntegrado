@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Serviço de Cálculo de Rotas usando Google Directions API.
+Serviço de Cálculo de Rotas usando Google Routes API v2.
 
 Provider primário para distância/duração de rotas.
 Fallback: GraphHopper → OpenRouteService → Haversine.
@@ -13,16 +13,27 @@ import requests
 # Tipo: (lat, lon)
 Coord = Tuple[float, float]
 
-DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
+ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
+
+
+def _parse_duration_seconds(duration_str: str) -> float:
+    """Converte duração no formato '600s' para minutos."""
+    try:
+        return int(str(duration_str).rstrip("s")) / 60
+    except (ValueError, TypeError):
+        return 0.0
 
 
 class GoogleRoutesService:
-    """Cálculo de rotas via Google Directions API."""
+    """Cálculo de rotas via Google Routes API v2."""
 
     DEBUG = True
 
     def __init__(self):
         self.api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+
+    def _make_waypoint(self, coord: Coord) -> Dict:
+        return {"location": {"latLng": {"latitude": coord[0], "longitude": coord[1]}}}
 
     # ------------------------------------------------------------------
     # Rota simples A → B
@@ -49,30 +60,32 @@ class GoogleRoutesService:
             return None
 
         try:
-            params = {
-                "origin": f"{origem[0]},{origem[1]}",
-                "destination": f"{destino[0]},{destino[1]}",
-                "mode": "driving",
-                "language": "pt-BR",
-                "key": self.api_key,
+            payload = {
+                "origin": self._make_waypoint(origem),
+                "destination": self._make_waypoint(destino),
+                "travelMode": "DRIVE",
+                "languageCode": "pt-BR",
+            }
+            headers = {
+                "X-Goog-Api-Key": self.api_key,
+                "X-Goog-FieldMask": "routes.duration,routes.distanceMeters",
             }
 
             if self.DEBUG:
-                print(f"[GoogleRoutes] Rota: {params['origin']} → {params['destination']}")
+                print(f"[GoogleRoutes] Rota: {origem} → {destino}")
 
-            resp = requests.get(DIRECTIONS_URL, params=params, timeout=15)
+            resp = requests.post(ROUTES_URL, json=payload, headers=headers, timeout=15)
             data = resp.json()
 
-            if data.get("status") != "OK":
+            routes = data.get("routes") or []
+            if not routes:
                 if self.DEBUG:
-                    print(f"[GoogleRoutes] Erro: {data.get('status')} - {data.get('error_message', '')}")
+                    print(f"[GoogleRoutes] Sem rota retornada: {data.get('error', {})}")
                 return None
 
-            route = data["routes"][0]
-            leg = route["legs"][0]
-
-            distancia_km = round(leg["distance"]["value"] / 1000, 2)
-            duracao_min = round(leg["duration"]["value"] / 60, 1)
+            route = routes[0]
+            distancia_km = round(route["distanceMeters"] / 1000, 2)
+            duracao_min = round(_parse_duration_seconds(route["duration"]), 1)
 
             if self.DEBUG:
                 print(f"[GoogleRoutes] ✓ {distancia_km} km, {duracao_min} min")
@@ -82,7 +95,7 @@ class GoogleRoutesService:
                 "duracao_min": duracao_min,
                 "coords_origem": origem,
                 "coords_destino": destino,
-                "metodo": "google_directions",
+                "metodo": "google_routes",
             }
 
         except requests.exceptions.Timeout:
@@ -105,9 +118,9 @@ class GoogleRoutesService:
         retornar_origem: bool = True,
     ) -> Optional[Dict]:
         """
-        Calcula rota otimizada com múltiplos waypoints via Google Directions.
+        Calcula rota otimizada com múltiplos waypoints via Google Routes API v2.
 
-        Google otimiza a ordem automaticamente com optimize:true.
+        Google otimiza a ordem automaticamente com optimizeWaypointOrder=true.
 
         Args:
             origem: (lat, lon) da floricultura
@@ -127,50 +140,47 @@ class GoogleRoutesService:
             return None
 
         try:
-            origin_str = f"{origem[0]},{origem[1]}"
-            destination_str = origin_str if retornar_origem else f"{waypoints[-1][0]},{waypoints[-1][1]}"
+            destino = origem if retornar_origem else waypoints[-1]
+            intermediates = waypoints if retornar_origem else waypoints[:-1]
 
-            # Waypoints com optimize:true para Google reordenar
-            wp_list = waypoints if retornar_origem else waypoints[:-1]
-            waypoints_str = "optimize:true|" + "|".join(
-                f"{w[0]},{w[1]}" for w in wp_list
-            )
-
-            params = {
-                "origin": origin_str,
-                "destination": destination_str,
-                "waypoints": waypoints_str,
-                "mode": "driving",
-                "language": "pt-BR",
-                "key": self.api_key,
+            payload = {
+                "origin": self._make_waypoint(origem),
+                "destination": self._make_waypoint(destino),
+                "intermediates": [self._make_waypoint(w) for w in intermediates],
+                "travelMode": "DRIVE",
+                "languageCode": "pt-BR",
+                "optimizeWaypointOrder": True,
+            }
+            headers = {
+                "X-Goog-Api-Key": self.api_key,
+                "X-Goog-FieldMask": (
+                    "routes.duration,routes.distanceMeters,"
+                    "routes.legs,routes.optimizedIntermediateWaypointIndex"
+                ),
             }
 
             if self.DEBUG:
                 print(f"[GoogleRoutes] Rota otimizada: {len(waypoints)} paradas")
 
-            resp = requests.get(DIRECTIONS_URL, params=params, timeout=20)
+            resp = requests.post(ROUTES_URL, json=payload, headers=headers, timeout=20)
             data = resp.json()
 
-            if data.get("status") != "OK":
+            routes = data.get("routes") or []
+            if not routes:
                 if self.DEBUG:
-                    print(f"[GoogleRoutes] Erro: {data.get('status')} - {data.get('error_message', '')}")
+                    print(f"[GoogleRoutes] Sem rota retornada: {data.get('error', {})}")
                 return None
 
-            route = data["routes"][0]
-            waypoint_order = route.get("waypoint_order", list(range(len(wp_list))))
+            route = routes[0]
+            waypoint_order = route.get(
+                "optimizedIntermediateWaypointIndex", list(range(len(intermediates)))
+            )
 
-            # Somar distância e duração de todas as legs
-            distancia_total = 0
-            duracao_total = 0
-            for leg in route["legs"]:
-                distancia_total += leg["distance"]["value"]
-                duracao_total += leg["duration"]["value"]
-
-            distancia_km = round(distancia_total / 1000, 2)
-            duracao_min = round(duracao_total / 60, 1)
+            distancia_km = round(route["distanceMeters"] / 1000, 2)
+            duracao_min = round(_parse_duration_seconds(route["duration"]), 1)
 
             # Reordenar waypoints conforme Google otimizou
-            sequencia_otimizada = [wp_list[i] for i in waypoint_order]
+            sequencia_otimizada = [intermediates[i] for i in waypoint_order]
 
             if self.DEBUG:
                 print(
@@ -184,7 +194,7 @@ class GoogleRoutesService:
                 "sequencia_otimizada": sequencia_otimizada,
                 "waypoint_order": waypoint_order,
                 "num_waypoints": len(waypoints),
-                "metodo": "google_directions",
+                "metodo": "google_routes",
             }
 
         except requests.exceptions.Timeout:
@@ -199,4 +209,3 @@ class GoogleRoutesService:
 
 # Instância global
 google_routes_service = GoogleRoutesService()
-

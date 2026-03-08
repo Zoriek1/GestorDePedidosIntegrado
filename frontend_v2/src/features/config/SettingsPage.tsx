@@ -1,13 +1,105 @@
-import React, { Suspense } from 'react';
-import { Box, Typography, Tabs, Tab, Paper } from '@mui/material';
-import { LocalShipping } from '@mui/icons-material';
+import React, { Suspense, useState } from 'react';
+import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
+import { LocalShipping, Build, Payment, Calculate } from '@mui/icons-material';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { Loading } from '../../components/common/Loading';
+import { DailyFreightDialog } from '../pedidos/components/DailyFreightDialog';
+import { createApiRequest } from '../../api/http';
+import { useAuth } from '../auth/authStore';
+import { useToast } from '../../components/system/useToast';
+import { useConfirm } from '../../components/system/useConfirm';
+
+function BatchActionsTab() {
+  const { getAuthHeader } = useAuth();
+  const { success, error: showError } = useToast();
+  const confirm = useConfirm();
+  const [freightDialogOpen, setFreightDialogOpen] = useState(false);
+
+  const handleBatchMarkPaid = async () => {
+    const confirmed = await confirm({
+      title: 'Marcar todos como Pago',
+      description: 'Todos os pedidos com pagamento Pendente ou sem status de pagamento serão marcados como "Pago". Deseja continuar?',
+      confirmColor: 'primary',
+      confirmText: 'Marcar como Pago',
+    });
+    if (!confirmed) return;
+    try {
+      const apiRequest = createApiRequest(getAuthHeader);
+      const res = await apiRequest<{ message?: string }>('/pedidos/batch-mark-paid', {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(res.message);
+      success(res.data.message || 'Pedidos atualizados');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Erro ao marcar pedidos como pagos');
+    }
+  };
+
+  const handleBatchRecalcTaxa = async () => {
+    const confirmed = await confirm({
+      title: 'Recalcular taxas de entrega',
+      description: 'A taxa de entrega de todos os pedidos com distância registrada será recalculada com base nas faixas atuais. Deseja continuar?',
+      confirmColor: 'primary',
+      confirmText: 'Recalcular',
+    });
+    if (!confirmed) return;
+    try {
+      const apiRequest = createApiRequest(getAuthHeader);
+      const res = await apiRequest<{ message?: string }>('/pedidos/batch-recalc-taxa', {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(res.message);
+      success(res.data.message || 'Taxas recalculadas');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Erro ao recalcular taxas');
+    }
+  };
+
+  return (
+    <Box>
+      <Typography variant="subtitle1" gutterBottom>
+        Ações em lote sobre pedidos
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Operações administrativas que afetam múltiplos pedidos de uma vez.
+      </Typography>
+
+      <Stack spacing={2} sx={{ maxWidth: 400 }}>
+        <Button
+          variant="outlined"
+          startIcon={<Payment />}
+          onClick={handleBatchMarkPaid}
+          fullWidth
+        >
+          Marcar todos como Pago
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<Calculate />}
+          onClick={handleBatchRecalcTaxa}
+          fullWidth
+        >
+          Recalcular taxas de entrega
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<LocalShipping />}
+          onClick={() => setFreightDialogOpen(true)}
+          fullWidth
+        >
+          Frete do dia
+        </Button>
+      </Stack>
+
+      <DailyFreightDialog open={freightDialogOpen} onClose={() => setFreightDialogOpen(false)} />
+    </Box>
+  );
+}
 
 export default function SettingsPage() {
   const [tabValue, setTabValue] = React.useState(0);
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
@@ -32,12 +124,14 @@ export default function SettingsPage() {
           scrollButtons="auto"
         >
           <Tab icon={<LocalShipping />} label="Taxa de Entrega" iconPosition="start" />
+          <Tab icon={<Build />} label="Ações em Lote" iconPosition="start" />
         </Tabs>
       </Paper>
 
       <Box sx={{ mt: 2 }}>
         <Suspense fallback={<Loading />}>
           {tabValue === 0 && <TaxaEntregaSettings />}
+          {tabValue === 1 && <BatchActionsTab />}
         </Suspense>
       </Box>
     </Box>

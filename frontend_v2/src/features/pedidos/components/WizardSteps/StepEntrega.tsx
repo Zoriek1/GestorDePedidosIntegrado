@@ -262,6 +262,41 @@ export function StepEntrega() {
               </Grid>
             </Grid>
 
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <Controller
+                  name="quadra"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Quadra"
+                      placeholder="Ex: 5"
+                      fullWidth
+                      error={!!errors.quadra}
+                      helperText={errors.quadra?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <Controller
+                  name="lote"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Lote"
+                      placeholder="Ex: 12"
+                      fullWidth
+                      error={!!errors.lote}
+                      helperText={errors.lote?.message}
+                    />
+                  )}
+                />
+              </Grid>
+            </Grid>
+
             {/* Endereço Completo */}
             <Controller
               name="endereco"
@@ -286,6 +321,8 @@ export function StepEntrega() {
               onClick={() => {
                 const rua = watch('rua') || '';
                 const numero = watch('numero') || '';
+                const quadra = watch('quadra') || '';
+                const lote = watch('lote') || '';
                 const bairro = watch('bairro') || '';
                 const cidade = watch('cidade') || '';
                 const cep = watch('cep') || '';
@@ -298,6 +335,8 @@ export function StepEntrega() {
                     partes.push(rua);
                   }
                 }
+                if (quadra) partes.push(`Qd ${quadra}`);
+                if (lote) partes.push(`Lt ${lote}`);
                 if (bairro) partes.push(bairro);
                 if (cidade) partes.push(cidade);
                 if (cep) partes.push(`CEP: ${cep}`);

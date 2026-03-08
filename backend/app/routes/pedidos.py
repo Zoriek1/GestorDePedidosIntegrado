@@ -269,6 +269,104 @@ def exportar_planilha():
         return error_response("Erro ao exportar planilha", 500, details={"error": str(e)})
 
 
+@pedidos_bp.route("/batch-mark-paid", methods=["POST"])
+@requires_any_role("admin")
+def batch_mark_paid():
+    """Marca todos os pedidos com pagamento Pendente/null como Pago"""
+    try:
+        from app import db
+        from app.models import Pedido
+
+        count = (
+            Pedido.query.filter(
+                (Pedido.status_pagamento.is_(None)) | (Pedido.status_pagamento == "Pendente")
+            )
+            .filter(Pedido.deleted_at.is_(None))
+            .update(
+                {"status_pagamento": "Pago", "updated_at": datetime_now_brazil()},
+                synchronize_session="fetch",
+            )
+        )
+        db.session.commit()
+        return success_response(message=f"{count} pedidos marcados como Pago")
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return error_response("Erro ao marcar pedidos como pagos", 500, details={"error": str(e)})
+
+
+@pedidos_bp.route("/batch-recalc-taxa", methods=["POST"])
+@requires_any_role("admin")
+def batch_recalc_taxa():
+    """Recalcula taxa_entrega de todos os pedidos com distancia_km usando faixas atuais"""
+    try:
+        from app import db
+        from app.models import Pedido
+        from app.services.taxa_entrega import TaxaEntregaService
+
+        service = TaxaEntregaService()
+        pedidos = Pedido.query.filter(
+            Pedido.distancia_km.isnot(None),
+            Pedido.deleted_at.is_(None),
+        ).all()
+
+        count = 0
+        for p in pedidos:
+            nova_taxa = service.calcular_taxa(p.distancia_km)
+            if nova_taxa != p.taxa_entrega:
+                p.taxa_entrega = nova_taxa
+                p.updated_at = datetime_now_brazil()
+                count += 1
+
+        db.session.commit()
+        return success_response(
+            message=f"{count} pedidos atualizados de {len(pedidos)} com distância"
+        )
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return error_response("Erro ao recalcular taxas", 500, details={"error": str(e)})
+
+
+@pedidos_bp.route("/daily-freight", methods=["GET"])
+def daily_freight():
+    """Retorna lista de entregas e soma de taxa_entrega para uma data"""
+    try:
+        from datetime import date as date_type
+
+        from app.models import Pedido
+
+        date_str = request.args.get("date")
+        if not date_str:
+            date_str = date_type.today().isoformat()
+
+        pedidos = Pedido.query.filter(
+            Pedido.dia_entrega == date_str,
+            Pedido.tipo_pedido == "Entrega",
+            Pedido.deleted_at.is_(None),
+        ).all()
+
+        items = [
+            {
+                "id": p.id,
+                "cliente": p.cliente,
+                "endereco": p.endereco,
+                "taxa_entrega": p.taxa_entrega or 0,
+                "status": p.status,
+            }
+            for p in pedidos
+        ]
+        total = sum(i["taxa_entrega"] for i in items)
+
+        return success_response(
+            {"items": items, "total": total, "date": date_str, "count": len(items)}
+        )
+    except Exception as e:
+        return error_response("Erro ao buscar frete do dia", 500, details={"error": str(e)})
+
+
 @pedidos_bp.route("", methods=["POST"])
 @requires_any_role("admin", "atendente")
 def criar_pedido():

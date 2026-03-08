@@ -20,7 +20,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route } from '@mui/icons-material';
+import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route, LocalShipping, Payment, Calculate } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
@@ -37,6 +37,7 @@ import { useConfirm } from '../../components/system/useConfirm';
 import { OrdersKPIGrid } from './components/OrdersKPIGrid';
 import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
 import { OrdersPagination } from './components/OrdersPagination';
+import { DailyFreightDialog } from './components/DailyFreightDialog';
 
 export default function OrdersPage() {
   const theme = useTheme();
@@ -214,6 +215,50 @@ export default function OrdersPage() {
     setFilterMenuAnchor(null);
   };
 
+  const [freightDialogOpen, setFreightDialogOpen] = useState(false);
+
+  const handleBatchMarkPaid = async () => {
+    const confirmed = await confirm({
+      title: 'Marcar todos como Pago',
+      description: 'Todos os pedidos com pagamento Pendente ou sem status de pagamento serão marcados como "Pago". Deseja continuar?',
+      confirmColor: 'primary',
+      confirmText: 'Marcar como Pago',
+    });
+    if (!confirmed) return;
+    try {
+      const apiRequest = createApiRequest(getAuthHeader);
+      const res = await apiRequest<{ message?: string }>('/pedidos/batch-mark-paid', {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(res.message);
+      success(res.data.message || 'Pedidos atualizados');
+      handleRefresh();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Erro ao marcar pedidos como pagos');
+    }
+  };
+
+  const handleBatchRecalcTaxa = async () => {
+    const confirmed = await confirm({
+      title: 'Recalcular taxas de entrega',
+      description: 'A taxa de entrega de todos os pedidos com distância registrada será recalculada com base nas faixas atuais. Deseja continuar?',
+      confirmColor: 'primary',
+      confirmText: 'Recalcular',
+    });
+    if (!confirmed) return;
+    try {
+      const apiRequest = createApiRequest(getAuthHeader);
+      const res = await apiRequest<{ message?: string }>('/pedidos/batch-recalc-taxa', {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(res.message);
+      success(res.data.message || 'Taxas recalculadas');
+      handleRefresh();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Erro ao recalcular taxas');
+    }
+  };
+
   return (
     <Box>
       {(!navigator.onLine &&
@@ -338,17 +383,46 @@ export default function OrdersPage() {
                   <Folder sx={{ mr: 1.5 }} />
                   Fontes
                 </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setFreightDialogOpen(true);
+                    handleFilterMenuClose();
+                  }}
+                >
+                  <LocalShipping sx={{ mr: 1.5 }} />
+                  Frete do dia
+                </MenuItem>
                 <Divider />
                 {isAdmin && (
-                  <MenuItem 
-                    onClick={() => {
-                      handleOcultarConcluidos();
-                    }}
-                    disabled={ocultarConcluidos.isPending}
-                  >
-                    <DeleteSweep sx={{ mr: 1.5 }} />
-                    {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
-                  </MenuItem>
+                  <>
+                    <MenuItem 
+                      onClick={() => {
+                        handleOcultarConcluidos();
+                      }}
+                      disabled={ocultarConcluidos.isPending}
+                    >
+                      <DeleteSweep sx={{ mr: 1.5 }} />
+                      {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleBatchMarkPaid();
+                        handleFilterMenuClose();
+                      }}
+                    >
+                      <Payment sx={{ mr: 1.5 }} />
+                      Marcar pagos
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleBatchRecalcTaxa();
+                        handleFilterMenuClose();
+                      }}
+                    >
+                      <Calculate sx={{ mr: 1.5 }} />
+                      Recalc. taxas
+                    </MenuItem>
+                  </>
                 )}
               </Menu>
               <Tooltip title="Atualizar dados">
@@ -410,6 +484,25 @@ export default function OrdersPage() {
                   </span>
                 </Tooltip>
               )}
+              {isAdmin && (
+                <>
+                  <Tooltip title="Marcar todos os pedidos pendentes como pagos">
+                    <Button variant="outlined" size="small" startIcon={<Payment />} onClick={handleBatchMarkPaid}>
+                      Marcar pagos
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Recalcular taxa de entrega com faixas atuais">
+                    <Button variant="outlined" size="small" startIcon={<Calculate />} onClick={handleBatchRecalcTaxa}>
+                      Recalc. taxas
+                    </Button>
+                  </Tooltip>
+                </>
+              )}
+              <Tooltip title="Ver resumo de frete do dia">
+                <Button variant="outlined" size="small" startIcon={<LocalShipping />} onClick={() => setFreightDialogOpen(true)}>
+                  Frete do dia
+                </Button>
+              </Tooltip>
               <Tooltip title="Atualizar dados">
                 <IconButton
                   onClick={handleRefresh}
@@ -551,6 +644,8 @@ export default function OrdersPage() {
           </Typography>
         </Box>
       )}
+
+      <DailyFreightDialog open={freightDialogOpen} onClose={() => setFreightDialogOpen(false)} />
     </Box>
   );
 }

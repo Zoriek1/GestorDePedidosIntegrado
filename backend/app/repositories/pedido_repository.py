@@ -246,10 +246,15 @@ class PedidoRepository(BaseRepository):
         status_anterior = pedido.status
         status_pagamento_anterior = pedido.status_pagamento
 
-        # Atualizar status
-        pedido_atualizado = self.update(
-            pedido, status=novo_status, updated_at=datetime_now_brazil()
-        )
+        # Auto-pagar ao concluir se pagamento pendente
+        update_fields = {"status": novo_status, "updated_at": datetime_now_brazil()}
+        if novo_status == "concluido" and (
+            not pedido.status_pagamento
+            or pedido.status_pagamento.upper() == "PENDENTE"
+        ):
+            update_fields["status_pagamento"] = "Pago"
+
+        pedido_atualizado = self.update(pedido, **update_fields)
 
         # Hook: Verificar se mudou para Purchase (status_pagamento = Realizado ou Parcial)
         # Não verificar status="concluido" porque pode agendar pedido para ano que vem

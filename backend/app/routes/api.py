@@ -557,6 +557,12 @@ def atualizar_status(pedido_id):
         pedido.status = novo_status
         pedido.updated_at = datetime_now_brazil()
 
+        if novo_status == "concluido" and (
+            not pedido.status_pagamento
+            or pedido.status_pagamento.upper() == "PENDENTE"
+        ):
+            pedido.status_pagamento = "Pago"
+
         db.session.commit()
 
         return jsonify(

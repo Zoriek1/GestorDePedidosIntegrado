@@ -13,7 +13,6 @@ export function SalesChannelDonut({ vendas }: SalesChannelDonutProps) {
   const data = agruparPorCanal(vendas).map((item) => ({
     name: item.canal,
     value: item.total,
-    percent: item.percentual,
   }));
 
   if (data.length === 0) {

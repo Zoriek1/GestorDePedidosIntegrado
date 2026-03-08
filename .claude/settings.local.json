@@ -3,7 +3,11 @@
     "allow": [
       "Bash(python -c:*)",
       "Bash(npm install)",
-      "Bash(npx tsc --noEmit -p tsconfig.app.json)"
+      "Bash(npx tsc --noEmit -p tsconfig.app.json)",
+      "Bash(python -m pytest tests/test_google_credentials_setup.py -v)",
+      "Bash(npm run test -- src/features/pedidos/__tests__/schemas.test.ts)",
+      "Bash(python -m pytest tests/test_export_sheets.py -v)",
+      "Bash(xargs grep -l \"goomer\\\\|Goomer\")"
     ]
   }
 }

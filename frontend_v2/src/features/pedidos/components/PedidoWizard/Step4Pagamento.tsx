@@ -35,10 +35,9 @@ export function Step4Pagamento() {
   const produto = useWatch({ control, name: 'produto' });
   const diaEntrega = useWatch({ control, name: 'dia_entrega' });
 
-  // Calcula o total
+  // valor já é o total cobrado (inclui entrega). taxa_entrega é apenas informativo.
   const valorFloat = parseCurrencyToFloat(valorProduto) || 0;
   const taxaFloat = parseCurrencyToFloat(taxaEntrega) || 0;
-  const total = valorFloat + taxaFloat;
 
   return (
     <Box>
@@ -173,33 +172,24 @@ export function Step4Pagamento() {
             <Divider sx={{ my: 1 }} />
 
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
-                Valor do Produto:
-              </Typography>
-              <Typography variant="body2">
-                {valorFloat > 0 ? formatCurrency(valorFloat) : '-'}
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
-                Taxa de Entrega:
-              </Typography>
-              <Typography variant="body2">
-                {taxaFloat > 0 ? formatCurrency(taxaFloat) : 'Grátis'}
-              </Typography>
-            </Box>
-
-            <Divider sx={{ my: 1 }} />
-
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
               <Typography variant="subtitle1" fontWeight="bold" color="primary.main">
                 TOTAL:
               </Typography>
               <Typography variant="subtitle1" fontWeight="bold" color="primary.main">
-                {formatCurrency(total)}
+                {valorFloat > 0 ? formatCurrency(valorFloat) : '-'}
               </Typography>
             </Box>
+
+            {taxaFloat > 0 && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Taxa de Entrega (operacional):
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {formatCurrency(taxaFloat)}
+                </Typography>
+              </Box>
+            )}
           </Stack>
         </Paper>
       </Stack>

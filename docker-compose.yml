@@ -41,6 +41,9 @@ services:
       NUVEMSHOP_CLIENT_SECRET: ${NUVEMSHOP_CLIENT_SECRET:-}
       NUVEMSHOP_USER_AGENT: ${NUVEMSHOP_USER_AGENT:-}
       NUVEMSHOP_PUBLIC_BASE_URL: ${NUVEMSHOP_PUBLIC_BASE_URL:-}
+      # Google Credentials (Sheets export + Drive backup)
+      # Cole o conteúdo do google_credentials.json como string JSON em uma linha no .env
+      GOOGLE_CREDENTIALS_JSON: ${GOOGLE_CREDENTIALS_JSON:-}
       # Google Maps Platform (geocodificação e rotas)
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
     volumes:

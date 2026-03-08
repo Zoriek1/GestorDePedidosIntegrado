@@ -115,6 +115,8 @@ export const pedidoFormSchema = z.object({
 
   rua: z.string().max(200).optional(),
   numero: z.string().max(20).optional(),
+  quadra: z.string().max(50).optional(),
+  lote: z.string().max(50).optional(),
   complemento: z.string().max(100).optional(), // Novo: será mapeado para observacoes
   bairro: z.string().max(100).optional(),
   cidade: z.string().max(100).optional(),
@@ -226,6 +228,8 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   cep: '',
   rua: '',
   numero: '',
+  quadra: '',
+  lote: '',
   complemento: '',
   bairro: '',
   cidade: '',
@@ -316,6 +320,8 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     const parts = [
       formData.rua,
       formData.numero ? `nº ${formData.numero}` : null,
+      formData.quadra ? `Qd ${formData.quadra}` : null,
+      formData.lote ? `Lt ${formData.lote}` : null,
       formData.complemento ? formData.complemento : null,
       formData.bairro,
       formData.cidade,
@@ -389,6 +395,8 @@ export const step2Schema = z.object({
   cep: pedidoFormSchema.shape.cep,
   rua: pedidoFormSchema.shape.rua,
   numero: pedidoFormSchema.shape.numero,
+  quadra: pedidoFormSchema.shape.quadra,
+  lote: pedidoFormSchema.shape.lote,
   complemento: pedidoFormSchema.shape.complemento,
   bairro: pedidoFormSchema.shape.bairro,
   cidade: pedidoFormSchema.shape.cidade,

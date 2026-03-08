@@ -42,6 +42,9 @@ def create_app(config=None):
 
         app.config.from_object(BaseConfig)
 
+    # 1.1 Credenciais Google (escreve arquivo a partir de env var se necessário)
+    _setup_google_credentials(app)
+
     # 2. Extensões (ANTES de importar models)
     init_extensions(app)
 
@@ -115,6 +118,39 @@ def create_app(config=None):
         print(f"[AVISO] Fila de taxa de entrega não iniciada: {e}")
 
     return app
+
+
+def _setup_google_credentials(app):
+    """
+    Escreve google_credentials.json a partir da variável de ambiente GOOGLE_CREDENTIALS_JSON.
+
+    Útil no Docker/VPS onde o arquivo não está no repositório (gitignore).
+    Se GOOGLE_CREDENTIALS_JSON estiver definida e o arquivo não existir, cria-o.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
+    if not creds_json:
+        return
+
+    creds_path_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if not creds_path_str:
+        creds_path = Path(app.root_path).parent / "user" / "config" / "google_credentials.json"
+    else:
+        creds_path = Path(creds_path_str)
+
+    if creds_path.exists():
+        return  # Arquivo já existe, não sobrescrever
+
+    try:
+        parsed = json.loads(creds_json)
+        creds_path.parent.mkdir(parents=True, exist_ok=True)
+        creds_path.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
+        print(f"[GOOGLE] google_credentials.json criado em {creds_path}")
+    except Exception as e:
+        print(f"[AVISO] Falha ao criar google_credentials.json a partir de GOOGLE_CREDENTIALS_JSON: {e}")
 
 
 def register_cli_commands(app):

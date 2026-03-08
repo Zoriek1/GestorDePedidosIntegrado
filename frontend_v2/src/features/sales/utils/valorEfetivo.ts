@@ -1,17 +1,19 @@
 /**
  * Helper para cálculo de valor efetivo baseado no status de pagamento
- * 
+ *
  * Regras:
  * - PENDENTE: 0% do valor_total
  * - PARCIAL ou contém "50%": 50% do valor_total
  * - PAGO ou REALIZADO: 100% do valor_total
  * - Outros/Null: 0% (assumir não pago)
- * 
- * IMPORTANTE: valor já é o total cobrado (inclui entrega).
- * taxa_entrega é apenas informativo e não deve ser subtraído.
- * 
+ *
+ * Semântica dos campos:
+ * - valor = total cobrado do cliente (inclui frete cobrado ao cliente)
+ * - taxa_entrega = custo pago ao entregador (custo operacional da entrega)
+ * - valor - taxa_entrega = receita líquida após pagar o entregador
+ *
  * Fórmula:
- * valor_total = parseFloat(valor || '0')  // valor já inclui entrega
+ * valor_total = parseFloat(valor || '0')
  * valor_efetivo = valor_total * percentual_pagamento
  */
 
@@ -162,9 +164,10 @@ export function calcularValorRecebidoPedido(pedido: Pedido): number {
 }
 
 /**
- * Calcula valor efetivo (valor bruto - frete)
+ * Receita líquida do pedido: total cobrado do cliente menos o custo pago ao entregador.
+ * valor = total do cliente (inclui frete cobrado); taxa_entrega = custo ao entregador.
  * @param pedido - Objeto Pedido completo
- * @returns Valor efetivo (bruto - frete)
+ * @returns Receita líquida (valor - taxa_entrega)
  */
 export function calcularValorEfetivoComFrete(pedido: Pedido): number {
   const valorBruto = calcularValorBrutoPedido(pedido);

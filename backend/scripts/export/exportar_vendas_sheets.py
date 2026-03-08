@@ -497,7 +497,8 @@ def exportar_vendas():
             return False
 
         # 3. Só busca pedidos se a planilha existe
-        # Busca pedidos do mês atual (por data do created_at, evita problema de timezone)
+        # Filtra por created_at (data de venda), pois a planilha é métrica de vendas —
+        # o que foi vendido no dia, não quando será entregue.
         primeiro_dia = date(ano, mes, 1)
         _, ultimo = calendar.monthrange(ano, mes)
         ultimo_dia = date(ano, mes, ultimo)
@@ -540,7 +541,7 @@ def exportar_vendas():
             if not aba:
                 continue
 
-            # Dia no fuso Brasil (mesmo critério do filtro por mês)
+            # Dia da venda no fuso Brasil (mesmo critério do filtro por mês)
             data_br = _created_at_date_brazil(pedido.created_at)
             dia = data_br.day if data_br else None
             if dia is None:
@@ -619,19 +620,16 @@ def exportar_vendas():
 
             for dia in range(1, num_dias + 1):
                 data_dia = date(ano, mes, dia)
-
-                if data_dia > hoje:
-                    # Dia futuro: deixar em branco para não poluir a planilha
-                    totais_data.append(["", ""])
-                    continue
-
                 dia_semana = data_dia.weekday()
 
                 if dia_semana == 6:  # Domingo
                     totais_data.append(["DOMINGO", "-"])
                 else:
                     total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
-                    totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace(".", ",")])
+                    if total_dia > 0:
+                        totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace(".", ",")])
+                    else:
+                        totais_data.append([str(dia), "-"])
 
             # Atualizar totais com retry
             retry_google_operation(

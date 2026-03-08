@@ -233,6 +233,42 @@ export function Step2Entrega() {
               </Grid>
             </Grid>
 
+            {/* Quadra e Lote - opcionais para loteamentos */}
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <Controller
+                  name="quadra"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Quadra"
+                      placeholder="Ex: 5"
+                      fullWidth
+                      error={!!errors.quadra}
+                      helperText={errors.quadra?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <Controller
+                  name="lote"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Lote"
+                      placeholder="Ex: 12"
+                      fullWidth
+                      error={!!errors.lote}
+                      helperText={errors.lote?.message}
+                    />
+                  )}
+                />
+              </Grid>
+            </Grid>
+
             <Controller
               name="obs_entrega"
               control={control}

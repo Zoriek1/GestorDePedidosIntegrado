@@ -60,7 +60,7 @@ describe('orderToForm', () => {
   it('converte valor string para moeda formatada', () => {
     const pedido = makePedido({ valor: '150.00' });
     const form = orderToForm(pedido);
-    expect(form.valor).toBeTruthy();
+    expect(form.valor).toMatch(/R\$\s*150,00/);
   });
 
   it('define cliente_modo como "busca" quando cliente_id presente', () => {

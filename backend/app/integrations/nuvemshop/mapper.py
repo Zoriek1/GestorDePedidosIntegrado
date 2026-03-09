@@ -40,7 +40,9 @@ def _map_storefront_to_canal(storefront: str) -> str:
     return STOREFRONT_TO_CANAL_MAP.get(storefront.lower(), "Site")
 
 
-def _extract_address_complement(shipping_address: Dict[str, Any]) -> Optional[str]:
+def _extract_address_complement(
+    shipping_address: Dict[str, Any], order: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
     """Extrai complemento/andar do endereço de entrega."""
     complement_parts = []
 
@@ -50,7 +52,72 @@ def _extract_address_complement(shipping_address: Dict[str, Any]) -> Optional[st
         if value:
             complement_parts.append(value)
 
+    # Site: alguns enderecos chegam com quadra/lote em qualquer campo textual do shipping_address.
+    qd_lt = _extract_qd_lt_from_address_payload(shipping_address, order)
+    if qd_lt:
+        normalized_existing = " | ".join(complement_parts).upper()
+        if qd_lt not in normalized_existing:
+            complement_parts.append(qd_lt)
+
     return "; ".join(complement_parts) if complement_parts else None
+
+
+def _extract_qd_lt_from_address_payload(
+    shipping_address: Dict[str, Any], order: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
+    """Extrai padrao QD/LT de campos textuais do payload de endereco."""
+    if not isinstance(shipping_address, dict):
+        return None
+
+    candidates = []
+    for key in (
+        "address",
+        "number",
+        "locality",
+        "reference",
+        "between_streets",
+        "floor",
+        "complement",
+        "apartment",
+        "suite",
+    ):
+        value = shipping_address.get(key)
+        if value is not None:
+            candidates.append(_safe_str(value))
+
+    candidates_text = " | ".join([c for c in candidates if c])
+    if order:
+        candidates_text = " | ".join(
+            [
+                candidates_text,
+                _safe_str(order.get("note")),
+                _safe_str(order.get("owner_note")),
+            ]
+        )
+    if not candidates_text:
+        return None
+
+    quadra_match = re.search(r"\b(?:QD|QUADRA)\s*[:\-]?\s*([A-Z0-9\-\/]+)\b", candidates_text, re.I)
+    lote_match = re.search(r"\b(?:LT|LOTE)\s*[:\-]?\s*([A-Z0-9\-\/]+)\b", candidates_text, re.I)
+    if not (quadra_match and lote_match):
+        return None
+
+    quadra = quadra_match.group(1).upper()
+    lote = lote_match.group(1).upper()
+    return f"QD {quadra} LT {lote}"
+
+
+def _clean_bairro_from_qd_lt(value: str) -> Optional[str]:
+    """Remove trechos de QD/LT do bairro quando vierem misturados no mesmo campo."""
+    bairro = _safe_str(value)
+    if not bairro:
+        return None
+
+    bairro = re.sub(r"\b(?:QD|QUADRA)\s*[:\-]?\s*[A-Z0-9\-\/]+\b", "", bairro, flags=re.I)
+    bairro = re.sub(r"\b(?:LT|LOTE)\s*[:\-]?\s*[A-Z0-9\-\/]+\b", "", bairro, flags=re.I)
+    bairro = re.sub(r"\s*[,;\-]\s*", " ", bairro)
+    bairro = re.sub(r"\s+", " ", bairro).strip()
+    return bairro or None
 
 
 def _format_produtos_detalhado(produtos: list) -> Tuple[str, str]:
@@ -643,7 +710,7 @@ def map_nuvemshop_order_to_pedido_data(
     frete_cobrado, desconto_frete, frete_liquido = _extract_shipping_costs(order)
 
     # Extrair complemento do endereço (floor, apartment, etc)
-    complemento = _extract_address_complement(shipping_address)
+    complemento = _extract_address_complement(shipping_address, order=order)
 
     # Mensagem do cartão: note (mensagem do cliente) tem prioridade sobre owner_note (nota interna)
     nota_cliente = _safe_str(order.get("note")) or None
@@ -683,7 +750,7 @@ def map_nuvemshop_order_to_pedido_data(
         "rua": _safe_str(shipping_address.get("address")) or None,
         "numero": _safe_str(shipping_address.get("number")) or None,
         "complemento": complemento or None,
-        "bairro": _safe_str(shipping_address.get("locality")) or None,
+        "bairro": _clean_bairro_from_qd_lt(_safe_str(shipping_address.get("locality"))),
         "cidade": _safe_str(shipping_address.get("city")) or None,
         "endereco": None,
         "obs_entrega": obs_entrega,

@@ -4,6 +4,9 @@ Testes de Integração - Validação de que repositories e schemas funcionam jun
 """
 from datetime import date
 
+import pytest
+from marshmallow import ValidationError
+
 from app.models import Pedido
 from app.repositories.cliente_repository import ClienteRepository
 from app.repositories.pedido_repository import PedidoRepository
@@ -141,3 +144,45 @@ class TestIntegration:
         assert len(resultados) == 1
         assert total == 1
         assert resultados[0].cliente == "John Doe"
+
+    def test_pedido_create_schema_rejeita_status_invalido(self):
+        """Valida que status fora da enum é rejeitado pelo schema."""
+        schema = PedidoCreateSchema()
+        data = {
+            "cliente": "John Doe",
+            "telefone_cliente": "11987654321",
+            "destinatario": "Jane Doe",
+            "produto": "Roses",
+            "dia_entrega": "2024-12-31",
+            "horario": "10:00",
+            "status": "invalido",
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            schema.load(data)
+
+        assert "status" in exc_info.value.messages
+
+    def test_pedido_update_schema_rejeita_intervalo_invalido(self):
+        """Valida que intervalo com fim antes do início é rejeitado."""
+        schema = PedidoUpdateSchema()
+
+        with pytest.raises(ValidationError) as exc_info:
+            schema.load({"horario": "10:00 - 09:00"})
+
+        assert "horario" in exc_info.value.messages
+
+    def test_cliente_create_schema_rejeita_telefone_curto(self):
+        """Valida regras mínimas de telefone no schema de cliente."""
+        schema = ClienteCreateSchema()
+
+        with pytest.raises(ValidationError) as exc_info:
+            schema.load(
+                {
+                    "nome": "John Doe",
+                    "telefone": "123",
+                    "email": "john@example.com",
+                }
+            )
+
+        assert "telefone" in exc_info.value.messages

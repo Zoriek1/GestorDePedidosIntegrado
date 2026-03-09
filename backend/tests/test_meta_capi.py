@@ -679,3 +679,61 @@ class TestMetaCapiOutboxRepository:
             assert len(failed_retryable) == 1
             assert failed_retryable[0].id == outboxes[0].id
             assert failed_retryable[0].error_type == "retryable"
+
+
+def test_meta_capi_verbose_summary():
+    """Resumo verbose para inspeção manual com pytest -s."""
+    with patch.dict(
+        os.environ,
+        {
+            "META_PIXEL_ID": "test_pixel_123",
+            "META_CAPI_ACCESS_TOKEN": "test_token_abc",
+            "META_CAPI_USE_GATEWAY": "false",
+        },
+    ):
+        from app.services.meta_capi import MetaConversionsApiService
+
+        service = MetaConversionsApiService()
+
+        normalized_phone = service.normalize_phone_br_e164("(62) 99988-7766")
+        normalized_fn = service.normalize_fn("João Silva")
+        hashed_fn = service.hash_sha256(normalized_fn)
+        valid_fbc = "fb.1.1612345678901.AbCdEfGhIjKlMnOpQrStUvWxYz"
+        valid_fbp = "fb.1.1612345678901.1234567890"
+
+        event = {
+            "event_name": "Purchase",
+            "event_time": int(time.time()),
+            "event_id": "order_verbose_1",
+            "action_source": "website",
+            "user_data": {"fbc": valid_fbc, "fbp": valid_fbp},
+            "custom_data": {
+                "value": 100.0,
+                "currency": "BRL",
+                "city": "Goiania",
+                "state": "GO",
+                "zip_code": "74000000",
+            },
+        }
+        sanitized = service.sanitize_event_payload(event)
+        retryable = service.classify_error({}, 429)
+        permanent = service.classify_error({}, 401)
+
+        print("=== META CAPI VERBOSE SUMMARY ===")
+        print(f"normalized_phone={normalized_phone}")
+        print(f"normalized_fn={normalized_fn}")
+        print(f"hashed_fn_prefix={hashed_fn[:12]}")
+        print(f"is_valid_fbc={service.is_valid_fbc(valid_fbc)}")
+        print(f"is_valid_fbp={service.is_valid_fbp(valid_fbp)}")
+        print(f"sanitized_user_data_keys={sorted(list(sanitized.get('user_data', {}).keys()))}")
+        print(f"classify_429={retryable}")
+        print(f"classify_401={permanent}")
+
+        assert normalized_phone == "+5562999887766"
+        assert normalized_fn == "joao"
+        assert len(hashed_fn) == 64
+        assert service.is_valid_fbc(valid_fbc) is True
+        assert service.is_valid_fbp(valid_fbp) is True
+        assert "ct" in sanitized["user_data"]
+        assert retryable == ("retryable", True)
+        assert permanent == ("permanent", False)

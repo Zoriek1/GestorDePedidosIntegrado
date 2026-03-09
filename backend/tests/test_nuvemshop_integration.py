@@ -214,6 +214,67 @@ def test_map_order_frete_extraction():
     assert pedido_data["frete_liquido_cliente"] is None or pedido_data["frete_liquido_cliente"] == 0
 
 
+def test_map_order_extracts_qd_lt_from_site_json():
+    """Extrai QD/LT do JSON do site e move para complemento."""
+    order = {
+        "id": 321,
+        "number": 654,
+        "token": "abc",
+        "contact_name": "Maria",
+        "contact_phone": "+55 (62) 99999-9999",
+        "created_at": "2025-01-01T10:00:00+0000",
+        "currency": "BRL",
+        "total": "100.00",
+        "storefront": "store",
+        "shipping_option": "Entrega Agendada",
+        "shipping_address": {
+            "name": "Joao",
+            "address": "Rua A",
+            "number": "10",
+            "locality": "Setor Bueno QD 12 LT 7",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Buque", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+
+    assert pedido_data["complemento"] == "QD 12 LT 7"
+    assert pedido_data["bairro"] == "Setor Bueno"
+
+
+def test_map_order_extracts_qd_lt_from_note_when_missing_in_address():
+    """Quando QD/LT nao vem no endereco, tenta extrair da observacao do pedido."""
+    order = {
+        "id": 322,
+        "number": 655,
+        "token": "abc",
+        "contact_name": "Maria",
+        "contact_phone": "+55 (62) 99999-9999",
+        "created_at": "2025-01-01T10:00:00+0000",
+        "currency": "BRL",
+        "total": "100.00",
+        "storefront": "store",
+        "shipping_option": "Entrega Agendada",
+        "note": "Endereco confirmado: QD 5 LT 22",
+        "shipping_address": {
+            "name": "Joao",
+            "address": "Rua A",
+            "number": "10",
+            "locality": "Setor Bueno",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Buque", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+
+    assert pedido_data["complemento"] == "QD 5 LT 22"
+    assert pedido_data["bairro"] == "Setor Bueno"
+
+
 def test_case_146_sentinela():
     """
     Caso sentinela #146 (order_id=1891180096) - Pedido Nuvemshop/Huapps.
@@ -773,3 +834,49 @@ def test_update_does_not_overwrite_good_data(session):
     # Destinatario e valor já estavam bons, não devem mudar
     assert pedido.destinatario == "Destinatario OK"
     assert "200" in (pedido.valor or "")
+
+
+def test_nuvemshop_mapper_verbose():
+    """Resumo verbose do mapper para inspeção manual com pytest -s."""
+    order = {
+        "id": 303,
+        "number": 303,
+        "token": "verbose-token",
+        "contact_name": "Cliente Verbose",
+        "contact_phone": "+55 (62) 98888-7777",
+        "created_at": "2026-03-01T10:00:00+0000",
+        "currency": "BRL",
+        "total": "159.90",
+        "payment_status": "paid",
+        "storefront": "store",
+        "shipping_option": "Entrega Agendada (Huapps) - Tarde (13:00 - 18:00)",
+        "shipping_address": {
+            "name": "Destinatário Verbose",
+            "address": "Rua das Palmeiras",
+            "number": "100",
+            "locality": "Centro",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Buquê Verbose", "quantity": 1}],
+    }
+
+    pedido_data, schedule_pending, shipping_option_text, agendamento_source = (
+        map_nuvemshop_order_to_pedido_data(order)
+    )
+
+    print("=== NUVEMSHOP VERBOSE SUMMARY ===")
+    print(f"order_id={order['id']}, number={order['number']}")
+    print(f"shipping_option={shipping_option_text}")
+    print(f"dia_entrega={pedido_data.get('dia_entrega')}")
+    print(f"horario={pedido_data.get('horario')}")
+    print(f"plataforma={pedido_data.get('plataforma')}, canal={pedido_data.get('canal')}")
+    print(f"valor={pedido_data.get('valor')}, status_pagamento={pedido_data.get('status_pagamento')}")
+    print(f"schedule_pending={schedule_pending}, agendamento_source={agendamento_source}")
+
+    assert pedido_data["plataforma"] == "Nuvemshop"
+    assert pedido_data["canal"] == "Site"
+    assert pedido_data["horario"] == "13:00 - 18:00"
+    assert pedido_data["status_pagamento"] == "Pago"
+    assert "159" in (pedido_data["valor"] or "")
+    assert schedule_pending is True

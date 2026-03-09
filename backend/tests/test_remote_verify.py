@@ -89,44 +89,27 @@ class TestRemoteVerify(unittest.TestCase):
 
     def test_copy_and_verify_size_mismatch(self):
         """Testa falha quando tamanho não bate"""
-        # Criar arquivo de origem
+        from unittest.mock import patch
+
         test_content = b"Test content"
         self.source_file.write_bytes(test_content)
 
-        # Criar arquivo de destino com tamanho diferente ANTES de chamar copy_and_verify_remote
-        # (a função copia primeiro, então precisamos criar um arquivo diferente no destino)
-        dest_file = self.dest_dir / self.source_file.name
-        dest_file.write_bytes(test_content + b"extra")  # Tamanho diferente
+        def copy_with_wrong_size(src, dst):
+            # Simula cópia mal-sucedida: destino existe, mas com tamanho diferente.
+            Path(dst).write_bytes(b"x")
+            return str(dst)
 
-        # A função vai copiar novamente, mas vamos verificar se detecta o problema
-        # Na verdade, a função copia primeiro, então o teste precisa ser diferente
-        # Vamos testar que a função detecta quando o arquivo já existe com tamanho errado
-        # Mas como a função copia primeiro, vamos testar de outra forma:
-        # Criar arquivo no destino com nome diferente, depois copiar com nome igual
-        wrong_file = self.dest_dir / "wrong.db"
-        wrong_file.write_bytes(test_content + b"extra")
+        with patch("scripts.backup.remote_verify.shutil.copy2", side_effect=copy_with_wrong_size):
+            success, error = copy_and_verify_remote(
+                source=self.source_file,
+                dest_dir=self.dest_dir,
+                check_hash=False,
+                stability_wait_seconds=0,
+            )
 
-        # Agora copiar arquivo correto
-        success, error = copy_and_verify_remote(
-            source=self.source_file,
-            dest_dir=self.dest_dir,
-            check_hash=False,
-            stability_wait_seconds=0,
-        )
-
-        # Deve ter sucesso porque copia o arquivo correto
-        self.assertTrue(success)
-
-        # Para testar tamanho diferente, precisamos modificar DEPOIS da cópia
-        # Mas a função verifica imediatamente. Vamos testar de forma diferente:
-        # Criar arquivo maior no destino antes
-        dest_file.write_bytes(test_content + b"extra" * 10)
-
-        # Agora a função vai copiar e sobrescrever, mas vamos verificar se detecta
-        # Na verdade, a função copia primeiro, então o arquivo será sobrescrito
-        # O teste real seria modificar o arquivo durante a verificação, mas isso é difícil
-        # Vamos ajustar o teste para verificar que a função detecta quando arquivo não existe
-        # ou quando há problema na cópia
+        self.assertFalse(success)
+        self.assertIsNotNone(error)
+        self.assertIn("tamanho diferente", error.lower())
 
     def test_calculate_file_hash(self):
         """Testa cálculo de hash SHA-256"""

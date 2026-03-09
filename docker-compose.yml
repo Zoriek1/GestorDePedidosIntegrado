@@ -41,6 +41,14 @@ services:
       NUVEMSHOP_CLIENT_SECRET: ${NUVEMSHOP_CLIENT_SECRET:-}
       NUVEMSHOP_USER_AGENT: ${NUVEMSHOP_USER_AGENT:-}
       NUVEMSHOP_PUBLIC_BASE_URL: ${NUVEMSHOP_PUBLIC_BASE_URL:-}
+      # Meta CAPI (obrigatório para envio de eventos)
+      META_PIXEL_ID: ${META_PIXEL_ID:-}
+      META_CAPI_ACCESS_TOKEN: ${META_CAPI_ACCESS_TOKEN:-}
+      META_CAPI_API_VERSION: ${META_CAPI_API_VERSION:-v21.0}
+      META_TEST_EVENT_CODE: ${META_TEST_EVENT_CODE:-}
+      META_CAPI_USE_GATEWAY: ${META_CAPI_USE_GATEWAY:-false}
+      META_CAPI_GATEWAY_DOMAIN: ${META_CAPI_GATEWAY_DOMAIN:-gestaopedidos.planteumaflor.online}
+      META_CAPI_GATEWAY_ENDPOINT: ${META_CAPI_GATEWAY_ENDPOINT:-}
       # Google Credentials (Sheets export + Drive backup)
       # Cole o conteúdo do google_credentials.json como string JSON em uma linha no .env
       GOOGLE_CREDENTIALS_JSON: ${GOOGLE_CREDENTIALS_JSON:-}

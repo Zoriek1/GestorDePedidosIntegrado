@@ -201,3 +201,29 @@ def test_totais_mes_completo_com_vendas_em_alguns_dias():
     assert "100" in totais[4][1]   # dia 5
     assert "250" in totais[9][1]   # dia 10 (200 + 50)
     assert "75" in totais[19][1]   # dia 20
+
+
+def test_export_sheets_verbose_summary():
+    """Resumo verbose para inspeção manual com pytest -s."""
+    aba_whatsapp = identificar_aba("WhatsApp")
+    aba_site = identificar_aba("Site")
+    aba_nuvemshop = identificar_aba("Nuvemshop")
+    valor_brl = parse_valor("R$ 150,00")
+    valor_decimal = parse_valor("65,00")
+    dt_utc = datetime(2026, 3, 1, 1, 0, 0, tzinfo=ZoneInfo("UTC"))
+    dt_brasil = _created_at_date_brazil(dt_utc)
+
+    print("=== EXPORT SHEETS VERBOSE SUMMARY ===")
+    print(f"aba_whatsapp={aba_whatsapp}")
+    print(f"aba_site={aba_site}")
+    print(f"aba_nuvemshop={aba_nuvemshop}")
+    print(f"parse_valor_R$150={valor_brl}")
+    print(f"parse_valor_65,00={valor_decimal}")
+    print(f"created_at_brazil={dt_brasil}")
+
+    assert aba_whatsapp == ABA_WHATSAPP
+    assert aba_site == ABA_SITE
+    assert aba_nuvemshop == ABA_SITE
+    assert valor_brl == pytest.approx(150.0, abs=0.001)
+    assert valor_decimal == pytest.approx(65.0, abs=0.001)
+    assert dt_brasil == date(2026, 2, 28)

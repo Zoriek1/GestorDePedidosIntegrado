@@ -325,8 +325,8 @@ class TestBackupIntegration:
         except (PermissionError, FileNotFoundError):
             pass
 
-    def test_backup_and_stats(self, app):
-        """Cria backup e verifica estatísticas"""
+    def test_creates_required_directories(self, app):
+        """Garante a criação dos diretórios necessários para backup."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 

@@ -621,15 +621,13 @@ def exportar_vendas():
             for dia in range(1, num_dias + 1):
                 data_dia = date(ano, mes, dia)
                 dia_semana = data_dia.weekday()
+                total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
 
-                if dia_semana == 6:  # Domingo
-                    totais_data.append(["DOMINGO", "-"])
-                else:
-                    total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
-                    if total_dia > 0:
-                        totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace(".", ",")])
-                    else:
-                        totais_data.append([str(dia), "-"])
+                # Domingo precisa continuar aparecendo visualmente como "DOMINGO",
+                # mas não pode perder vendas do dia.
+                dia_label = "DOMINGO" if dia_semana == 6 else str(dia)
+                total_label = f"R$ {total_dia:.2f}".replace(".", ",") if total_dia > 0 else "-"
+                totais_data.append([dia_label, total_label])
 
             # Atualizar totais com retry
             retry_google_operation(

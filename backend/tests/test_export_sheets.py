@@ -132,15 +132,13 @@ def _simular_totais(ano, mes, pedidos_aba):
     for dia in range(1, num_dias + 1):
         data_dia = date(ano, mes, dia)
         dia_semana = data_dia.weekday()
+        total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
 
-        if dia_semana == 6:  # Domingo
-            totais_data.append(["DOMINGO", "-"])
+        dia_label = "DOMINGO" if dia_semana == 6 else str(dia)
+        if total_dia > 0:
+            totais_data.append([dia_label, f"R$ {total_dia:.2f}".replace(".", ",")])
         else:
-            total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
-            if total_dia > 0:
-                totais_data.append([str(dia), f"R$ {total_dia:.2f}".replace(".", ",")])
-            else:
-                totais_data.append([str(dia), "-"])
+            totais_data.append([dia_label, "-"])
 
     return totais_data, num_dias
 
@@ -178,6 +176,16 @@ def test_totais_domingo_recebe_label_correto():
     totais, _ = _simular_totais(2026, 3, {})
     linha_dia1 = totais[0]  # dia 1
     assert linha_dia1 == ["DOMINGO", "-"]
+
+
+def test_totais_domingo_com_venda_mostra_total():
+    """Domingo com venda deve mostrar valor, sem perder faturamento."""
+    # 1º março de 2026 é domingo
+    pedidos_aba = {1: [{"valor": 100.0}, {"valor": 50.0}]}
+    totais, _ = _simular_totais(2026, 3, pedidos_aba)
+    linha_dia1 = totais[0]
+    assert linha_dia1[0] == "DOMINGO"
+    assert "150" in linha_dia1[1]
 
 
 def test_totais_nao_ha_celulas_vazias():

@@ -5,7 +5,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { useFormContext, Controller } from 'react-hook-form';
+import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import {
   Box,
   TextField,
@@ -33,6 +33,8 @@ import {
   FormHelperText,
   FormControlLabel,
   Button,
+  Checkbox,
+  Collapse,
 } from '@mui/material';
 import { MinimalCheckbox } from '../../../../components/uiverse/MinimalCheckbox/MinimalCheckbox';
 
@@ -47,6 +49,8 @@ export function StepCliente() {
     watch,
     formState: { errors },
   } = useFormContext<PedidoFormData>();
+
+  const origemAnuncio = useWatch({ control, name: 'origem_anuncio' });
 
   const [inputValue, setInputValue] = useState('');
   const [mesmoQueCliente, setMesmoQueCliente] = useState(false);
@@ -381,6 +385,44 @@ export function StepCliente() {
             </FormControl>
           )}
         />
+
+        {/* Origem: anúncio Meta Ads */}
+        <Controller
+          name="origem_anuncio"
+          control={control}
+          render={({ field }) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={field.value ?? false}
+                  onChange={(e) => {
+                    field.onChange(e.target.checked);
+                    if (!e.target.checked) setValue('fbclid', '');
+                  }}
+                />
+              }
+              label="Pedido vindo de anúncio?"
+            />
+          )}
+        />
+
+        <Collapse in={origemAnuncio}>
+          <Controller
+            name="fbclid"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Facebook Click ID (fbclid)"
+                placeholder="Ex: AbCdEfGhIjKlMnOpQrStUvWxYz"
+                fullWidth
+                required={origemAnuncio}
+                error={!!errors.fbclid}
+                helperText={errors.fbclid?.message || 'Cole o fbclid da mensagem do WhatsApp'}
+              />
+            )}
+          />
+        </Collapse>
       </Stack>
     </Box>
   );

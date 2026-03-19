@@ -21,6 +21,7 @@ export interface Lead {
   sck: string | null;
   phone: string | null;
   fbclid: string | null;
+  fbp: string | null;
   ip_address: string | null;
   created_at: string | null;
 }

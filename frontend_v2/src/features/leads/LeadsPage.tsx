@@ -70,6 +70,7 @@ export default function LeadsPage() {
           telefone_cliente: lead.phone ?? '',
           origem_anuncio: !!lead.fbclid,
           fbclid: lead.fbclid ?? '',
+          fbp: lead.fbp ?? '',
         },
       },
     });
@@ -152,6 +153,7 @@ export default function LeadsPage() {
               <TableCell>Evento</TableCell>
               <TableCell>Telefone</TableCell>
               <TableCell>fbclid</TableCell>
+              <TableCell>fbp</TableCell>
               <TableCell>Origem</TableCell>
               <TableCell>Campanha</TableCell>
               <TableCell>Conteúdo</TableCell>
@@ -163,7 +165,7 @@ export default function LeadsPage() {
           <TableBody>
             {leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={11} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
                     Nenhum lead encontrado
                   </Typography>
@@ -177,6 +179,9 @@ export default function LeadsPage() {
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
                   <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {lead.fbclid ?? '—'}
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {lead.fbp ?? '—'}
                   </TableCell>
                   <TableCell>
                     {lead.utm_source ? (

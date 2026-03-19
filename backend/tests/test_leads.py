@@ -16,6 +16,7 @@ def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
         "utm_term": "flores-presente",
         "phone": "(31) 98888-7777",
         "fbclid": "fbclid-from-url",
+        "fbp": "fb.1.1700000000.abc123xyz987",
     }
 
     r1 = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
@@ -35,6 +36,7 @@ def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
     assert lead is not None
     assert lead.phone == "31988887777"
     assert lead.fbclid == "fbclid-from-url"
+    assert lead.fbp == "fb.1.1700000000.abc123xyz987"
 
 
 def test_cria_lead_text_plain_sendbeacon(client, session):
@@ -89,3 +91,40 @@ def test_cria_lead_lendo_fbclid_de_fbc(client, session):
     lead = session.query(Lead).first()
     assert lead is not None
     assert lead.fbclid == "fbclid-extraido"
+
+
+def test_realcase_landing_fbclid_fbp_preserva_campos(client, session):
+    payload = {
+        "event": "whatsapp_click",
+        "url": "https://lpb.planteumaflor.com/?utm_source=facebook&utm_medium=cpc&utm_campaign=mae&fbclid=IwARreal123",
+        "utm_source": "facebook",
+        "utm_medium": "cpc",
+        "utm_campaign": "mae",
+        "phone": "+55 (62) 99999-0000",
+        "fbclid": "IwARreal123",
+        "fbp": "fb.1.1711111111111.555666777888",
+    }
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.phone == "5562999990000"
+    assert lead.fbclid == "IwARreal123"
+    assert lead.fbp == "fb.1.1711111111111.555666777888"
+
+
+def test_realcase_fbc_sem_fbclid_extrai_clickid(client, session):
+    payload = {
+        "event": "whatsapp_click",
+        "url": "https://lpb.planteumaflor.com/",
+        "fbc": "fb.1.1711111111111.IwARfbcOnly987",
+        "fbp": "fb.1.1711111111111.999000111222",
+    }
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.fbclid == "IwARfbcOnly987"
+    assert lead.fbp == "fb.1.1711111111111.999000111222"

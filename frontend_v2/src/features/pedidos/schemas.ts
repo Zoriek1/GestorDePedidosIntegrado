@@ -162,6 +162,7 @@ export const pedidoFormSchema = z.object({
   // Atribuição de anúncio (Meta Ads)
   origem_anuncio: z.boolean().default(false),
   fbclid: z.string().max(255).optional(),
+  fbp: z.string().max(255).optional(),
 
 }).superRefine((data, ctx) => {
   // fbclid obrigatório quando pedido vem de anúncio
@@ -258,6 +259,7 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   observacoes: '',
   origem_anuncio: false,
   fbclid: '',
+  fbp: '',
 };
 
 // ============================================================================
@@ -387,6 +389,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     fbc: formData.fbclid?.trim()
       ? `fb.1.${Date.now()}.${formData.fbclid.trim()}`
       : undefined,
+    fbp: formData.fbp?.trim() || undefined,
   };
 }
 

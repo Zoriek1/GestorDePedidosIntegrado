@@ -2,7 +2,7 @@
 """
 Modelo de Lead UTM — rastreia cliques vindos da landing page (lpb.planteumaflor.com)
 
-Dados de atribuição (UTMs, fbclid, referrer, IP) ficam SOMENTE nesta tabela.
+Dados de atribuição (UTMs, fbclid/fbp, referrer, IP) ficam SOMENTE nesta tabela.
 Para consultar a origem de um pedido criado a partir de um lead, cruze pelo campo
 ``phone`` (telefone) e/ou ``fbclid`` entre as tabelas ``leads`` e ``pedidos``.
 
@@ -35,6 +35,7 @@ class Lead(db.Model):
     sck = db.Column(db.String(200))
     phone = db.Column(db.String(30), index=True)
     fbclid = db.Column(db.String(255), index=True)
+    fbp = db.Column(db.String(255))
     ip_address = db.Column(db.String(45))
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, index=True)
 
@@ -54,6 +55,7 @@ class Lead(db.Model):
             "sck": self.sck,
             "phone": self.phone,
             "fbclid": self.fbclid,
+            "fbp": self.fbp,
             "ip_address": self.ip_address,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

@@ -28,6 +28,7 @@ ALLOWED_FIELDS = (
     "sck",
     "phone",
     "fbclid",
+    "fbp",
 )
 
 
@@ -88,6 +89,11 @@ def _extract_fbclid(data: dict) -> str | None:
     return None
 
 
+def _normalize_fbp(value: object) -> str | None:
+    # _fbp costuma ter formato fb.1.<ts>.<random>; preservar valor bruto.
+    return _clip(value, 255)
+
+
 @leads_bp.route("", methods=["POST"])
 @leads_bp.route("/", methods=["POST"])
 def criar_lead():
@@ -112,6 +118,7 @@ def criar_lead():
         sck=_clip(data.get("sck"), 200),
         phone=_normalize_phone(data.get("phone") or data.get("telefone")),
         fbclid=_extract_fbclid(data),
+        fbp=_normalize_fbp(data.get("fbp")),
     )
 
     try:

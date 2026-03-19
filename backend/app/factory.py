@@ -59,6 +59,7 @@ def create_app(config=None):
         from app.routes.config import config_bp
         from app.routes.develop.backup import backup_admin_bp
         from app.routes.integrations.nuvemshop import nuvemshop_bp
+        from app.routes.leads import leads_bp
         from app.routes.meta_gateway import meta_gateway_bp
         from app.routes.notifications import notifications_bp
         from app.routes.pedidos import pedidos_bp
@@ -76,6 +77,7 @@ def create_app(config=None):
         app.register_blueprint(backup_admin_bp)
         app.register_blueprint(nuvemshop_bp)
         app.register_blueprint(notifications_bp)
+        app.register_blueprint(leads_bp)
 
         # Registrar Meta Gateway (deve vir antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)

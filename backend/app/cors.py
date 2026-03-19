@@ -65,6 +65,8 @@ def get_allowed_origins():
         f"https://{local_ip}:3000",
         # Cloudflare Tunnel (produção)
         "https://gestaopedidos.planteumaflor.online",
+        # Landing page (leads UTM)
+        "https://lpb.planteumaflor.com",
     ]
 
     # Permitir HTTP apenas para localhost (desenvolvimento)

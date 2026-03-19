@@ -160,6 +160,7 @@ export function AppShell({ children }: AppShellProps) {
                   <MenuItem onClick={() => handleNavigate('/clientes')}>Clientes</MenuItem>
                   <MenuItem onClick={() => handleNavigate('/fontes-pedido')}>Fontes</MenuItem>
                   <MenuItem onClick={() => handleNavigate('/integracoes/nuvemshop')}>Nuvemshop</MenuItem>
+                  <MenuItem onClick={() => handleNavigate('/leads')}>Leads UTM</MenuItem>
                 </>
               )}
               <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
@@ -225,6 +226,9 @@ export function AppShell({ children }: AppShellProps) {
                 </Button>
                 <Button color="inherit" onClick={() => handleNavigate('/integracoes/nuvemshop')} sx={{ textTransform: 'none' }}>
                   Nuvemshop
+                </Button>
+                <Button color="inherit" onClick={() => handleNavigate('/leads')} sx={{ textTransform: 'none' }}>
+                  Leads
                 </Button>
               </>
             )}

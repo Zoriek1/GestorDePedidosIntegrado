@@ -2,7 +2,8 @@
  * Leads UTM - Listagem de cliques da landing page
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -21,9 +22,12 @@ import {
   Select,
   FormControl,
   InputLabel,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/Campaign';
-import { useLeads, type LeadsFilters } from '../../api/endpoints/leads';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import { useLeads, type LeadsFilters, type Lead } from '../../api/endpoints/leads';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 
@@ -55,8 +59,21 @@ function sourceColor(source: string | null): 'primary' | 'secondary' | 'success'
 }
 
 export default function LeadsPage() {
+  const navigate = useNavigate();
   const [filters, setFilters] = useState<LeadsFilters>({ page: 1, per_page: 25 });
   const { data, isLoading, error, refetch } = useLeads(filters);
+
+  const handleCreateOrder = useCallback((lead: Lead) => {
+    navigate('/pedidos/novo', {
+      state: {
+        prefillData: {
+          telefone_cliente: lead.phone ?? '',
+          origem_anuncio: !!lead.fbclid,
+          fbclid: lead.fbclid ?? '',
+        },
+      },
+    });
+  }, [navigate]);
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
@@ -133,17 +150,20 @@ export default function LeadsPage() {
             <TableRow>
               <TableCell>Data</TableCell>
               <TableCell>Evento</TableCell>
+              <TableCell>Telefone</TableCell>
+              <TableCell>fbclid</TableCell>
               <TableCell>Origem</TableCell>
               <TableCell>Campanha</TableCell>
               <TableCell>Conteúdo</TableCell>
               <TableCell>Meio</TableCell>
               <TableCell>IP</TableCell>
+              <TableCell align="center">Ação</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={10} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
                     Nenhum lead encontrado
                   </Typography>
@@ -154,6 +174,10 @@ export default function LeadsPage() {
                 <TableRow key={lead.id} hover>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
                   <TableCell>{lead.event ?? '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
+                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {lead.fbclid ?? '—'}
+                  </TableCell>
                   <TableCell>
                     {lead.utm_source ? (
                       <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} />
@@ -163,6 +187,13 @@ export default function LeadsPage() {
                   <TableCell>{lead.utm_content ?? '—'}</TableCell>
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{lead.ip_address ?? '—'}</TableCell>
+                  <TableCell align="center">
+                    <Tooltip title="Criar pedido a partir deste lead">
+                      <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
+                        <AddShoppingCartIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
                 </TableRow>
               ))
             )}

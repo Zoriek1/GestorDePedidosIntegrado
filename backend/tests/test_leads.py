@@ -14,6 +14,8 @@ def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
         "utm_campaign": "buques-maio",
         "utm_content": "video-arranjo-rosa",
         "utm_term": "flores-presente",
+        "phone": "(31) 98888-7777",
+        "fbclid": "fbclid-from-url",
     }
 
     r1 = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
@@ -29,6 +31,10 @@ def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
     assert data2["duplicated"] is True
 
     assert session.query(Lead).count() == 1
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.phone == "31988887777"
+    assert lead.fbclid == "fbclid-from-url"
 
 
 def test_cria_lead_text_plain_sendbeacon(client, session):
@@ -74,3 +80,12 @@ def test_cria_lead_trailing_slash(client, session):
     r = client.post("/api/leads/", json=payload, headers={"User-Agent": "pytest"})
     assert r.status_code == 201
     assert session.query(Lead).count() == 1
+
+
+def test_cria_lead_lendo_fbclid_de_fbc(client, session):
+    payload = {"event": "whatsapp_click", "fbc": "fb.1.1700000000.fbclid-extraido"}
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.fbclid == "fbclid-extraido"

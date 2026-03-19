@@ -19,6 +19,8 @@ export interface Lead {
   utm_term: string | null;
   src: string | null;
   sck: string | null;
+  phone: string | null;
+  fbclid: string | null;
   ip_address: string | null;
   created_at: string | null;
 }

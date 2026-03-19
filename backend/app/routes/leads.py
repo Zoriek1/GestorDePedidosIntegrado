@@ -26,6 +26,8 @@ ALLOWED_FIELDS = (
     "utm_term",
     "src",
     "sck",
+    "phone",
+    "fbclid",
 )
 
 
@@ -61,6 +63,31 @@ def _build_dedup_key(payload: dict, ip_address: str | None) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
+def _normalize_phone(value: object) -> str | None:
+    raw = _clip(value, 50)
+    if raw is None:
+        return None
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return digits[:30] if digits else None
+
+
+def _extract_fbclid(data: dict) -> str | None:
+    fbclid = _clip(data.get("fbclid"), 255)
+    if fbclid:
+        return fbclid
+
+    # Compatibilidade: alguns fluxos enviam fbc no formato fb.1.<ts>.<fbclid>
+    fbc = _clip(data.get("fbc"), 255)
+    if not fbc:
+        return None
+
+    parts = fbc.split(".")
+    if len(parts) >= 4:
+        candidate = parts[-1].strip()
+        return candidate[:255] if candidate else None
+    return None
+
+
 @leads_bp.route("", methods=["POST"])
 @leads_bp.route("/", methods=["POST"])
 def criar_lead():
@@ -83,6 +110,8 @@ def criar_lead():
         utm_term=_clip(data.get("utm_term"), 100),
         src=_clip(data.get("src"), 100),
         sck=_clip(data.get("sck"), 200),
+        phone=_normalize_phone(data.get("phone") or data.get("telefone")),
+        fbclid=_extract_fbclid(data),
     )
 
     try:

@@ -417,6 +417,10 @@ def criar_pedido():
 
         quantidade_raw = data.get("quantidade", 1)
 
+        # Meta Pixel parameters (fbc vem já no formato fb.1.{ts}.{fbclid})
+        fbc = data.get("fbc", "").strip() if data.get("fbc") else None
+        fbp = data.get("fbp", "").strip() if data.get("fbp") else None
+
         # Validação de campos obrigatórios
         campos_obrigatorios = {
             "telefone_cliente": telefone_cliente,
@@ -560,6 +564,8 @@ def criar_pedido():
             status="agendado",
             quantidade=quantidade,
             cliente_id=cliente_id_int,
+            fbc=fbc,
+            fbp=fbp,
         )
 
         db.session.add(pedido)
@@ -735,6 +741,15 @@ def atualizar_pedido(pedido_id):
         if "status" in data:
             track_change("status", pedido.status, data["status"])
             pedido.status = data["status"]
+
+        if "fbc" in data:
+            new_fbc = data["fbc"].strip() if data["fbc"] else None
+            track_change("fbc", pedido.fbc, new_fbc)
+            pedido.fbc = new_fbc
+        if "fbp" in data:
+            new_fbp = data["fbp"].strip() if data["fbp"] else None
+            track_change("fbp", pedido.fbp, new_fbp)
+            pedido.fbp = new_fbp
 
         pedido.updated_at = datetime_now_brazil()
 

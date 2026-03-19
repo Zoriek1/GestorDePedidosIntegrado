@@ -159,7 +159,19 @@ export const pedidoFormSchema = z.object({
 
   observacoes: z.string().max(1000).optional(),
 
+  // Atribuição de anúncio (Meta Ads)
+  origem_anuncio: z.boolean().default(false),
+  fbclid: z.string().max(255).optional(),
+
 }).superRefine((data, ctx) => {
+  // fbclid obrigatório quando pedido vem de anúncio
+  if (data.origem_anuncio && (!data.fbclid || data.fbclid.trim() === '')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'fbclid é obrigatório para pedidos vindos de anúncio',
+      path: ['fbclid'],
+    });
+  }
   // Validação condicional: cliente existente requer cliente_id
   if (data.cliente_modo === 'busca' && !data.cliente_id) {
     ctx.addIssue({
@@ -244,6 +256,8 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   pagamento: '',
   status_pagamento: 'Pendente',
   observacoes: '',
+  origem_anuncio: false,
+  fbclid: '',
 };
 
 // ============================================================================
@@ -370,6 +384,9 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     observacoes: observacoesFinal,
     quantidade: formData.quantidade ?? 1,
     fonte_pedido_id: formData.fonte_pedido_id || undefined,
+    fbc: formData.fbclid?.trim()
+      ? `fb.1.${Date.now()}.${formData.fbclid.trim()}`
+      : undefined,
   };
 }
 
@@ -378,12 +395,22 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
 // ============================================================================
 
 /** Schema parcial para Step 1 - Cliente */
-export const step1Schema = pedidoFormSchema.pick({
-  cliente: true,
-  cliente_modo: true,
-  telefone_cliente: true,
-  cliente_id: true,
-  fonte_pedido_id: true,
+export const step1Schema = z.object({
+  cliente: pedidoFormSchema.shape.cliente,
+  cliente_modo: pedidoFormSchema.shape.cliente_modo,
+  telefone_cliente: pedidoFormSchema.shape.telefone_cliente,
+  cliente_id: pedidoFormSchema.shape.cliente_id,
+  fonte_pedido_id: pedidoFormSchema.shape.fonte_pedido_id,
+  origem_anuncio: pedidoFormSchema.shape.origem_anuncio,
+  fbclid: pedidoFormSchema.shape.fbclid,
+}).superRefine((data, ctx) => {
+  if (data.origem_anuncio && (!data.fbclid || data.fbclid.trim() === '')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'fbclid é obrigatório para pedidos vindos de anúncio',
+      path: ['fbclid'],
+    });
+  }
 });
 
 /** Schema parcial para Step 2 - Entrega */

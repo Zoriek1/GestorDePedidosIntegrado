@@ -3,12 +3,15 @@
  * Quem está fazendo o pedido (remetente)
  */
 
-import { useFormContext, Controller } from 'react-hook-form';
+import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import {
   Box,
   TextField,
   Typography,
   Stack,
+  FormControlLabel,
+  Checkbox,
+  Collapse,
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import { PhoneInput } from '../../../../components/form';
@@ -17,8 +20,11 @@ import type { PedidoFormData } from '../../schemas';
 export function Step1Cliente() {
   const {
     control,
+    setValue,
     formState: { errors },
   } = useFormContext<PedidoFormData>();
+
+  const origemAnuncio = useWatch({ control, name: 'origem_anuncio' });
 
   return (
     <Box>
@@ -67,6 +73,44 @@ export function Step1Cliente() {
             />
           )}
         />
+
+        {/* Origem: anúncio Meta Ads */}
+        <Controller
+          name="origem_anuncio"
+          control={control}
+          render={({ field }) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={field.value ?? false}
+                  onChange={(e) => {
+                    field.onChange(e.target.checked);
+                    if (!e.target.checked) setValue('fbclid', '');
+                  }}
+                />
+              }
+              label="Pedido vindo de anúncio?"
+            />
+          )}
+        />
+
+        <Collapse in={origemAnuncio}>
+          <Controller
+            name="fbclid"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Facebook Click ID (fbclid)"
+                placeholder="Ex: AbCdEfGhIjKlMnOpQrStUvWxYz"
+                fullWidth
+                required={origemAnuncio}
+                error={!!errors.fbclid}
+                helperText={errors.fbclid?.message || 'Cole o fbclid da mensagem do WhatsApp'}
+              />
+            )}
+          />
+        </Collapse>
       </Stack>
     </Box>
   );

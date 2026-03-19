@@ -45,17 +45,13 @@ def resolve_lead_for_pedido(pedido: Pedido) -> Tuple[Optional[Lead], str]:
     fbclid = extract_fbclid_from_fbc(pedido.fbc)
 
     if phone:
-        leads_phone = (
-            Lead.query.filter(Lead.phone == phone).order_by(Lead.created_at.desc()).all()
-        )
+        leads_phone = Lead.query.filter(Lead.phone == phone).order_by(Lead.created_at.desc()).all()
         for lead in leads_phone:
             if lead.sck:
                 return lead, "sck"
 
     if fbclid:
-        lead = (
-            Lead.query.filter(Lead.fbclid == fbclid).order_by(Lead.created_at.desc()).first()
-        )
+        lead = Lead.query.filter(Lead.fbclid == fbclid).order_by(Lead.created_at.desc()).first()
         if lead:
             return lead, "fbclid"
 

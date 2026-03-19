@@ -12,7 +12,7 @@ import requests
 from zoneinfo import ZoneInfo
 
 from app.models.lead import Lead
-from app.models.pedido import Pedido, TIMEZONE_BRASIL, datetime_now_brazil
+from app.models.pedido import TIMEZONE_BRASIL, Pedido, datetime_now_brazil
 
 UTC = ZoneInfo("UTC")
 

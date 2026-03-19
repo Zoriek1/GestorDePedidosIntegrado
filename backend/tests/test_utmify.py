@@ -3,12 +3,11 @@
 from datetime import date, datetime
 from unittest.mock import patch
 
-import pytest
 import requests
 from zoneinfo import ZoneInfo
 
 from app.models.lead import Lead
-from app.models.pedido import Pedido, TIMEZONE_BRASIL
+from app.models.pedido import TIMEZONE_BRASIL, Pedido
 
 
 class TestUtmifyApiHelpers:

@@ -155,7 +155,7 @@ jobs:
           port: ${{ secrets.VPS_PORT }}
           script: |
             set -e
-            cd ${{ secrets.VPS_DEPLOY_PATH }}
+            cd "${{ secrets.VPS_DEPLOY_PATH }}"
             git pull origin main
             docker compose up -d --build
             docker image prune -f

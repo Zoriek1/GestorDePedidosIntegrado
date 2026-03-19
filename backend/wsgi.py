@@ -44,53 +44,8 @@ app = create_app(
     }
 )
 
-# --- Scheduler Meta CAPI (23:00 BRT) ---
-import threading
-import time as _time
-import datetime as _datetime
-
-try:
-    from zoneinfo import ZoneInfo as _ZI
-except ImportError:
-    from backports.zoneinfo import ZoneInfo as _ZI
-
-_BRAZIL_TZ = _ZI("America/Sao_Paulo")
-_meta_last_run: dict = {"date": None}
-
-
-def _run_meta_daily_send() -> None:
-    """Executa SendDailyPurchasesToMetaCommand com contexto Flask."""
-    try:
-        with app.app_context():
-            from app.commands.send_daily_purchases_to_meta_command import (
-                SendDailyPurchasesToMetaCommand,
-            )
-            result = SendDailyPurchasesToMetaCommand().execute()
-            print(f"[META_SCHEDULER] Envio concluído: {result}", flush=True)
-    except Exception as exc:
-        print(f"[META_SCHEDULER] Erro no envio diário: {exc}", flush=True)
-
-
-def _meta_scheduler_loop() -> None:
-    """Loop que verifica às 23:00 BRT e dispara o envio diário."""
-    print("[META_SCHEDULER] Iniciado — aguardando 23:00 BRT.", flush=True)
-    while True:
-        now_brt = _datetime.datetime.now(_BRAZIL_TZ)
-        today = now_brt.date()
-        if now_brt.hour == 23 and now_brt.minute == 0 and _meta_last_run["date"] != today:
-            _meta_last_run["date"] = today
-            print(f"[META_SCHEDULER] Disparando envio às {now_brt.strftime('%H:%M')} BRT", flush=True)
-            _run_meta_daily_send()
-        _time.sleep(30)
-
-
-_meta_thread = threading.Thread(
-    target=_meta_scheduler_loop,
-    daemon=True,
-    name="MetaCAPIScheduler",
-)
-_meta_thread.start()
-# --- Fim Scheduler ---
+# Meta CAPI scheduler agora roda como serviço Docker separado (meta-scheduler).
+# Ver meta_scheduler_entrypoint.py e docker-compose.yml.
 
 
 # Para execução direta (python wsgi.py)

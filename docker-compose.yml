@@ -55,10 +55,33 @@ services:
       # Google Maps Platform (geocodificação e rotas)
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
     volumes:
-      # Montamos apenas a pasta backend para evitar confusão de caminhos
       - ./backend:/app/backend
     ports:
       - "5000:5000"
+
+  meta-scheduler:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLASK_ENV: production
+      APP_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gestor}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-gestor_pedidos}
+      SECRET_KEY: ${SECRET_KEY:?Defina SECRET_KEY no .env}
+      META_PIXEL_ID: ${META_PIXEL_ID:-}
+      META_CAPI_ACCESS_TOKEN: ${META_CAPI_ACCESS_TOKEN:-}
+      META_CAPI_API_VERSION: ${META_CAPI_API_VERSION:-v21.0}
+      META_TEST_EVENT_CODE: ${META_TEST_EVENT_CODE:-}
+      META_CAPI_USE_GATEWAY: ${META_CAPI_USE_GATEWAY:-false}
+      META_CAPI_GATEWAY_DOMAIN: ${META_CAPI_GATEWAY_DOMAIN:-gestaopedidos.planteumaflor.online}
+      META_CAPI_GATEWAY_ENDPOINT: ${META_CAPI_GATEWAY_ENDPOINT:-}
+      META_SCHEDULER_HOUR: ${META_SCHEDULER_HOUR:-23}
+    volumes:
+      - ./backend:/app/backend
+    command: ["python", "meta_scheduler_entrypoint.py"]
 
 volumes:
   postgres_data:

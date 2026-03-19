@@ -148,7 +148,6 @@ export async function request<T = unknown>(
 
   // IMPORTANT: não permitir que options.headers sobrescreva o header mergeado
   // (caso contrário, POST/PUT com headers custom perde Authorization)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { headers: _ignoredHeaders, ...restOptions } = options as RequestInit & { timeoutMs?: number };
   const config: RequestInit = {
     method,

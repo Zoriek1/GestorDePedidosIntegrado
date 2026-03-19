@@ -141,7 +141,7 @@ jobs:
   deploy:
     name: Deploy VPS
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 45
     needs: [backend, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
@@ -153,6 +153,8 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
+          command_timeout: 40m
+          script_stop: true
           script: |
             set -e
             cd "${{ secrets.VPS_DEPLOY_PATH }}"

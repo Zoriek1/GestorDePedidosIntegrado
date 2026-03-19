@@ -62,8 +62,9 @@ def run_daily_send() -> None:
 
 
 def main() -> None:
+    now_brt = datetime.datetime.now(BRAZIL_TZ)
     print(
-        f"[META_SCHEDULER] Iniciado — aguardando {HOUR:02d}:{MINUTE:02d} BRT.",
+        f"[META_SCHEDULER] Processo ativo desde {now_brt.isoformat()} — disparo diário às {HOUR:02d}:{MINUTE:02d} BRT.",
         flush=True,
     )
 

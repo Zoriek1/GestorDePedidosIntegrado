@@ -66,6 +66,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    entrypoint: ["python", "meta_scheduler_entrypoint.py"]
     environment:
       FLASK_ENV: production
       APP_ENV: production
@@ -81,7 +82,6 @@ services:
       META_SCHEDULER_HOUR: ${META_SCHEDULER_HOUR:-23}
     volumes:
       - ./backend:/app/backend
-    command: ["python", "meta_scheduler_entrypoint.py"]
 
 volumes:
   postgres_data:

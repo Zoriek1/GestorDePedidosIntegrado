@@ -8,7 +8,7 @@ import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createLogger } from '../../../../lib/logger';
 
-const log = createLogger('PedidoWizard');
+const _log = createLogger('PedidoWizard');
 import {
   Box,
   Stepper,

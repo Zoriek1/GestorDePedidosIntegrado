@@ -861,9 +861,12 @@ def test_nuvemshop_mapper_verbose():
         "products": [{"name": "Buquê Verbose", "quantity": 1}],
     }
 
-    pedido_data, schedule_pending, shipping_option_text, agendamento_source = (
-        map_nuvemshop_order_to_pedido_data(order)
-    )
+    (
+        pedido_data,
+        schedule_pending,
+        shipping_option_text,
+        agendamento_source,
+    ) = map_nuvemshop_order_to_pedido_data(order)
 
     print("=== NUVEMSHOP VERBOSE SUMMARY ===")
     print(f"order_id={order['id']}, number={order['number']}")
@@ -871,7 +874,9 @@ def test_nuvemshop_mapper_verbose():
     print(f"dia_entrega={pedido_data.get('dia_entrega')}")
     print(f"horario={pedido_data.get('horario')}")
     print(f"plataforma={pedido_data.get('plataforma')}, canal={pedido_data.get('canal')}")
-    print(f"valor={pedido_data.get('valor')}, status_pagamento={pedido_data.get('status_pagamento')}")
+    print(
+        f"valor={pedido_data.get('valor')}, status_pagamento={pedido_data.get('status_pagamento')}"
+    )
     print(f"schedule_pending={schedule_pending}, agendamento_source={agendamento_source}")
 
     assert pedido_data["plataforma"] == "Nuvemshop"

@@ -558,8 +558,7 @@ def atualizar_status(pedido_id):
         pedido.updated_at = datetime_now_brazil()
 
         if novo_status == "concluido" and (
-            not pedido.status_pagamento
-            or pedido.status_pagamento.upper() == "PENDENTE"
+            not pedido.status_pagamento or pedido.status_pagamento.upper() == "PENDENTE"
         ):
             pedido.status_pagamento = "Pago"
 
@@ -1730,6 +1729,7 @@ def obter_rota_otimizada(rota_id):
         graphhopper_key = os.environ.get("GRAPHHOPPER_API_KEY", "")
         graphhopper_maps_url = None
         google_maps_url = None
+        google_maps_step_by_step = []
 
         # Coletar coordenadas dos pedidos se waypoints não estiverem salvos
         waypoints_coords = rota.get_waypoints_coords()

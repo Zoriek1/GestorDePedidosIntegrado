@@ -5,7 +5,7 @@
 
 import { createLogger } from '../logger';
 
-const log = createLogger('clipboard');
+const _log = createLogger('clipboard');
 
 /**
  * Copies text to clipboard

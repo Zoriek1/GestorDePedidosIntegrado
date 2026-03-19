@@ -230,10 +230,7 @@ def gerar_rota_maps():
         origem = (origem_lonlat[1], origem_lonlat[0])  # (lat, lon)
 
         # Buscar pedidos mantendo a ordem recebida
-        pedidos_map = {
-            p.id: p
-            for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()
-        }
+        pedidos_map = {p.id: p for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()}
 
         stops = []
         sem_coords = []
@@ -245,12 +242,15 @@ def gerar_rota_maps():
                 continue
             if pedido.coords_lat and pedido.coords_lon:
                 stops.append((pedido.coords_lat, pedido.coords_lon))
-                pedidos_na_rota.append({
-                    "id": pedido.id,
-                    "cliente": pedido.cliente or "",
-                    "destinatario": pedido.destinatario or "",
-                    "endereco": pedido.endereco or f"{pedido.rua or ''} {pedido.numero or ''}".strip(),
-                })
+                pedidos_na_rota.append(
+                    {
+                        "id": pedido.id,
+                        "cliente": pedido.cliente or "",
+                        "destinatario": pedido.destinatario or "",
+                        "endereco": pedido.endereco
+                        or f"{pedido.rua or ''} {pedido.numero or ''}".strip(),
+                    }
+                )
             else:
                 sem_coords.append(pid)
 
@@ -264,12 +264,14 @@ def gerar_rota_maps():
         google_url = build_google_maps_url(origem, stops, return_to_origin=True)
         step_urls = build_step_by_step_urls(origem, stops, return_to_origin=True)
 
-        return success_response({
-            "google_maps_url": google_url,
-            "google_maps_step_by_step": step_urls,
-            "pedidos": pedidos_na_rota,
-            "sem_coords": sem_coords,
-        })
+        return success_response(
+            {
+                "google_maps_url": google_url,
+                "google_maps_step_by_step": step_urls,
+                "pedidos": pedidos_na_rota,
+                "sem_coords": sem_coords,
+            }
+        )
 
     except Exception as e:
         return error_response(f"Erro ao gerar rota: {str(e)}", 500)

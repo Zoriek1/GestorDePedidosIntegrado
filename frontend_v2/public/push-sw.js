@@ -5,8 +5,6 @@
  * It listens for `push` and `notificationclick` events.
  */
 
-/* eslint-disable no-restricted-globals */
-
 // --- Push Event ---
 self.addEventListener('push', (event) => {
   if (!event.data) return;

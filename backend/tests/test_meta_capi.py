@@ -725,7 +725,7 @@ def test_meta_capi_verbose_summary():
         print(f"hashed_fn_prefix={hashed_fn[:12]}")
         print(f"is_valid_fbc={service.is_valid_fbc(valid_fbc)}")
         print(f"is_valid_fbp={service.is_valid_fbp(valid_fbp)}")
-        print(f"sanitized_user_data_keys={sorted(list(sanitized.get('user_data', {}).keys()))}")
+        print(f"sanitized_user_data_keys={sorted(sanitized.get('user_data', {}).keys())}")
         print(f"classify_429={retryable}")
         print(f"classify_401={permanent}")
 

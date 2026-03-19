@@ -77,9 +77,7 @@ def main():
         (TABLE, f"ix_{TABLE}_address_hash"),
     )
     if not cur.fetchone():
-        cur.execute(
-            f"CREATE INDEX ix_{TABLE}_address_hash ON {TABLE} (address_hash)"
-        )
+        cur.execute(f"CREATE INDEX ix_{TABLE}_address_hash ON {TABLE} (address_hash)")
         print(f"[OK]   Índice ix_{TABLE}_address_hash criado")
 
     cur.close()
@@ -89,4 +87,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

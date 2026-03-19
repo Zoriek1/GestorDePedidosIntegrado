@@ -249,8 +249,7 @@ class PedidoRepository(BaseRepository):
         # Auto-pagar ao concluir se pagamento pendente
         update_fields = {"status": novo_status, "updated_at": datetime_now_brazil()}
         if novo_status == "concluido" and (
-            not pedido.status_pagamento
-            or pedido.status_pagamento.upper() == "PENDENTE"
+            not pedido.status_pagamento or pedido.status_pagamento.upper() == "PENDENTE"
         ):
             update_fields["status_pagamento"] = "Pago"
 

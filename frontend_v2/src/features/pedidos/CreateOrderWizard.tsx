@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createLogger } from '../../lib/logger';
 
-const log = createLogger('CreateOrderWizard');
+const _log = createLogger('CreateOrderWizard');
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {

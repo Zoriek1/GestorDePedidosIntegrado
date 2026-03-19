@@ -150,7 +150,9 @@ def _setup_google_credentials(app):
         creds_path.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
         print(f"[GOOGLE] google_credentials.json criado em {creds_path}")
     except Exception as e:
-        print(f"[AVISO] Falha ao criar google_credentials.json a partir de GOOGLE_CREDENTIALS_JSON: {e}")
+        print(
+            f"[AVISO] Falha ao criar google_credentials.json a partir de GOOGLE_CREDENTIALS_JSON: {e}"
+        )
 
 
 def register_cli_commands(app):

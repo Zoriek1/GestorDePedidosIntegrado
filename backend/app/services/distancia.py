@@ -866,7 +866,9 @@ class DistanciaService:
 
             if resultado_g:
                 if self.DEBUG:
-                    print(f"[DEBUG] ✓ Sucesso com Google Directions: {resultado_g['distancia_km']} km")
+                    print(
+                        f"[DEBUG] ✓ Sucesso com Google Directions: {resultado_g['distancia_km']} km"
+                    )
                 return {
                     "distancia_km": resultado_g["distancia_km"],
                     "duracao_min": resultado_g["duracao_min"],
@@ -1197,6 +1199,7 @@ class DistanciaService:
             print(f"[DEBUG] Cache check falhou: {e}")
             try:
                 from app import db
+
                 db.session.rollback()
             except Exception:
                 pass
@@ -1283,6 +1286,7 @@ class DistanciaService:
             bairro = pedido.get("bairro", "")
             cidade = pedido.get("cidade", "")
             cep = pedido.get("cep", "")
+            cliente_id = pedido.get("cliente_id")
 
             # Validar campos mínimos
             if not rua or not bairro:

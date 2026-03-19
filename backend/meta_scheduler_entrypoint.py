@@ -11,10 +11,10 @@ Variáveis de ambiente opcionais:
   META_SCHEDULER_HOUR  — hora do disparo (default: 23)
   META_SCHEDULER_MINUTE — minuto do disparo (default: 0)
 """
+import datetime
 import os
 import sys
 import time
-import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv

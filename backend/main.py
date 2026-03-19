@@ -4,10 +4,8 @@ Plante Uma Flor v3.0 - PWA
 Inicialização do servidor Flask
 """
 import configparser
-import json
 import os
 import sys
-import time
 from pathlib import Path
 
 # Carregar variáveis de ambiente do arquivo .env
@@ -25,6 +23,7 @@ if sys.platform == "win32":
 
 from app import create_app  # noqa: E402
 from app.config import config  # noqa: E402
+from app.middleware import log_debug  # noqa: E402
 from app.utils.backup_helper import create_backup  # noqa: E402
 
 

@@ -60,7 +60,7 @@ export default function OrdersPage() {
   const { getAuthHeader, getUserRole } = useAuth();
   const { success, error: showError, info } = useToast();
   const confirm = useConfirm();
-  const gerarRotaMaps = useGerarRotaMaps();
+  const _gerarRotaMaps = useGerarRotaMaps();
   
   const userRole = getUserRole() || 'admin'; // Default para admin se não especificado
   const isAdmin = userRole === 'admin';

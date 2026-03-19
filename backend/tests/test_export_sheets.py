@@ -77,7 +77,7 @@ def test_identificar_aba_fonte_desconhecida_retorna_none():
         ("", 0.0),
         (None, 0.0),
         ("150.00", 150.0),  # formato com ponto (sem vírgula)
-        ("abc", 0.0),       # inválido → 0.0
+        ("abc", 0.0),  # inválido → 0.0
     ],
 )
 def test_parse_valor(entrada, esperado):
@@ -206,9 +206,9 @@ def test_totais_mes_completo_com_vendas_em_alguns_dias():
     totais, num_dias = _simular_totais(2026, 3, pedidos_aba)
     assert len(totais) == num_dias
     # Verificar dias com venda
-    assert "100" in totais[4][1]   # dia 5
-    assert "250" in totais[9][1]   # dia 10 (200 + 50)
-    assert "75" in totais[19][1]   # dia 20
+    assert "100" in totais[4][1]  # dia 5
+    assert "250" in totais[9][1]  # dia 10 (200 + 50)
+    assert "75" in totais[19][1]  # dia 20
 
 
 def test_export_sheets_verbose_summary():

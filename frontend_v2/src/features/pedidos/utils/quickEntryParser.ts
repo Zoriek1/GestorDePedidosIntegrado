@@ -6,7 +6,7 @@
 
 import { createLogger } from '../../../lib/logger';
 
-const log = createLogger('QuickEntryParser');
+const _log = createLogger('QuickEntryParser');
 
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';

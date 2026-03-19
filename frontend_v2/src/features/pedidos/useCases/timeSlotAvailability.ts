@@ -6,7 +6,7 @@
 
 import { createLogger } from '../../../lib/logger';
 
-const log = createLogger('TimeSlotAvailability');
+const _log = createLogger('TimeSlotAvailability');
 
 import { createApiRequest } from '../../../api/http';
 import type { Pedido, PedidosResponse } from '../../../api/endpoints/pedidos';

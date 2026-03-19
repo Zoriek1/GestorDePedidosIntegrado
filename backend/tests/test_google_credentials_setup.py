@@ -8,8 +8,6 @@ GOOGLE_CREDENTIALS_JSON quando o arquivo ainda não existe no container/VPS.
 import json
 import types
 
-import pytest
-
 
 def make_app(root_path: str):
     """Cria um mock mínimo de Flask app para os testes."""
@@ -92,9 +90,9 @@ def test_nao_levanta_excecao_com_json_invalido(tmp_path, monkeypatch, capsys):
     assert not creds_path.exists(), "Arquivo não deve ser criado com JSON inválido"
 
     captured = capsys.readouterr()
-    assert "AVISO" in captured.out or "Falha" in captured.out, (
-        "Deve imprimir aviso sobre JSON inválido"
-    )
+    assert (
+        "AVISO" in captured.out or "Falha" in captured.out
+    ), "Deve imprimir aviso sobre JSON inválido"
 
 
 def test_cria_diretorios_pai_se_necessario(tmp_path, monkeypatch):
@@ -128,6 +126,6 @@ def test_imprime_confirmacao_ao_criar_arquivo(tmp_path, monkeypatch, capsys):
     _setup_google_credentials(make_app(str(tmp_path)))
 
     captured = capsys.readouterr()
-    assert "GOOGLE" in captured.out or "google_credentials" in captured.out, (
-        "Deve imprimir confirmação de criação"
-    )
+    assert (
+        "GOOGLE" in captured.out or "google_credentials" in captured.out
+    ), "Deve imprimir confirmação de criação"

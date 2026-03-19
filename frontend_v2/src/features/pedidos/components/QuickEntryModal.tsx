@@ -8,7 +8,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createLogger } from '../../../lib/logger';
 
-const log = createLogger('QuickEntryModal');
+const _log = createLogger('QuickEntryModal');
 import {
   Dialog,
   DialogTitle,

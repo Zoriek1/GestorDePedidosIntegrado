@@ -15,7 +15,7 @@ import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
 import { createLogger } from '../../lib/logger';
 
-const log = createLogger('Push');
+const _log = createLogger('Push');
 
 /** Converte base64url para Uint8Array (necessário para applicationServerKey). */
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

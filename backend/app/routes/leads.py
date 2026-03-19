@@ -62,6 +62,7 @@ def _build_dedup_key(payload: dict, ip_address: str | None) -> str:
 
 
 @leads_bp.route("", methods=["POST"])
+@leads_bp.route("/", methods=["POST"])
 def criar_lead():
     """Recebe dados UTM da landing page (aceita application/json e text/plain via sendBeacon)."""
     data = request.get_json(force=True, silent=True) or {}

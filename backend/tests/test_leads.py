@@ -67,3 +67,10 @@ def test_dedup_por_sck_prioriza_mesmo_com_payload_diferente(client, session):
     assert r2.get_json()["duplicated"] is True
 
     assert session.query(Lead).count() == 1
+
+
+def test_cria_lead_trailing_slash(client, session):
+    payload = {"event": "whatsapp_click", "utm_source": "facebook"}
+    r = client.post("/api/leads/", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+    assert session.query(Lead).count() == 1

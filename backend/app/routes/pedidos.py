@@ -777,6 +777,13 @@ def atualizar_pedido(pedido_id):
             # Não falhar a atualização se houver erro na outbox
             print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
 
+        try:
+            from app.utils.utmify_helper import send_utmify_if_purchase
+
+            send_utmify_if_purchase(pedido, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
+
         return success_response(
             {"pedido": pedido.to_dict()}, message="Pedido atualizado com sucesso"
         )

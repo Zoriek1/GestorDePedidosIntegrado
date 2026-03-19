@@ -265,6 +265,13 @@ class PedidoRepository(BaseRepository):
             # Não falhar a atualização de status se houver erro na outbox
             print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
 
+        try:
+            from app.utils.utmify_helper import send_utmify_if_purchase
+
+            send_utmify_if_purchase(pedido_atualizado, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
+
         return pedido_atualizado
 
     def buscar_atrasados(self) -> List[Pedido]:

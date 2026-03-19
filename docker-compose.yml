@@ -49,6 +49,13 @@ services:
       META_CAPI_USE_GATEWAY: ${META_CAPI_USE_GATEWAY:-false}
       META_CAPI_GATEWAY_DOMAIN: ${META_CAPI_GATEWAY_DOMAIN:-gestaopedidos.planteumaflor.online}
       META_CAPI_GATEWAY_ENDPOINT: ${META_CAPI_GATEWAY_ENDPOINT:-}
+      # UTMify (API de pedidos / conversões)
+      UTMIFY_ENABLED: ${UTMIFY_ENABLED:-false}
+      UTMIFY_API_TOKEN: ${UTMIFY_API_TOKEN:-}
+      UTMIFY_POSTBACK_URL: ${UTMIFY_POSTBACK_URL:-https://api.utmify.com.br/api-credentials/orders}
+      UTMIFY_PLATFORM: ${UTMIFY_PLATFORM:-WhatsAppManual}
+      UTMIFY_TIMEOUT_SECONDS: ${UTMIFY_TIMEOUT_SECONDS:-5}
+      UTMIFY_IS_TEST: ${UTMIFY_IS_TEST:-false}
       # Google Credentials (Sheets export + Drive backup)
       # Cole o conteúdo do google_credentials.json como string JSON em uma linha no .env
       GOOGLE_CREDENTIALS_JSON: ${GOOGLE_CREDENTIALS_JSON:-}

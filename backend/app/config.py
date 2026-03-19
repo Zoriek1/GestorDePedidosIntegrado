@@ -108,6 +108,16 @@ class BaseConfig:
     NUVEMSHOP_USER_AGENT = os.environ.get("NUVEMSHOP_USER_AGENT") or ""
     NUVEMSHOP_PUBLIC_BASE_URL = os.environ.get("NUVEMSHOP_PUBLIC_BASE_URL") or ""
 
+    # UTMify API (vendas WhatsApp / manual — Integrações > Credenciais de API)
+    UTMIFY_ENABLED = os.environ.get("UTMIFY_ENABLED", "false").lower() == "true"
+    UTMIFY_API_TOKEN = os.environ.get("UTMIFY_API_TOKEN", "").strip()
+    UTMIFY_POSTBACK_URL = os.environ.get(
+        "UTMIFY_POSTBACK_URL", "https://api.utmify.com.br/api-credentials/orders"
+    ).strip()
+    UTMIFY_PLATFORM = os.environ.get("UTMIFY_PLATFORM", "WhatsAppManual").strip()
+    UTMIFY_TIMEOUT_SECONDS = float(os.environ.get("UTMIFY_TIMEOUT_SECONDS", "5"))
+    UTMIFY_IS_TEST = os.environ.get("UTMIFY_IS_TEST", "false").lower() == "true"
+
     # Ambiente
     FLASK_ENV = os.environ.get("FLASK_ENV") or os.environ.get("ENVIRONMENT") or "development"
     APP_ENV = os.environ.get("APP_ENV") or os.environ.get("ENVIRONMENT") or "development"

@@ -41,7 +41,7 @@ export interface LeadsFilters {
 
 export function useLeads(filters: LeadsFilters = {}) {
   const { getAuthHeader } = useAuth();
-  const api = createApiRequest(getAuthHeader);
+  const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<LeadsResponse>({
     queryKey: ['leads', filters],
@@ -55,8 +55,12 @@ export function useLeads(filters: LeadsFilters = {}) {
       if (filters.date_to) params.set('date_to', filters.date_to);
 
       const qs = params.toString();
-      const url = `/leads${qs ? `?${qs}` : ''}`;
-      return api.get<LeadsResponse>(url);
+      const endpoint = `/leads${qs ? `?${qs}` : ''}`;
+      const response = await apiRequest<LeadsResponse>(endpoint);
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao carregar leads');
+      }
+      return response.data as LeadsResponse;
     },
   });
 }

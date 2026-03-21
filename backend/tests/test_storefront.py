@@ -67,27 +67,21 @@ class TestBuildSummary:
         return {"price": str(price), "promotional_price": str(promo) if promo else None}
 
     def test_produto_com_preco_unico(self):
-        products = [
-            self._product(10, [self._variant(50), self._variant(50)])
-        ]
+        products = [self._product(10, [self._variant(50), self._variant(50)])]
         summary = _build_summary(products)
         assert "10" in summary
         assert summary["10"]["minPrice"] == pytest.approx(50.0)
         assert summary["10"]["hasDifferentPrices"] is False
 
     def test_produto_com_precos_diferentes(self):
-        products = [
-            self._product(20, [self._variant(30), self._variant(50), self._variant(80)])
-        ]
+        products = [self._product(20, [self._variant(30), self._variant(50), self._variant(80)])]
         summary = _build_summary(products)
         assert summary["20"]["minPrice"] == pytest.approx(30.0)
         assert summary["20"]["hasDifferentPrices"] is True
 
     def test_produto_com_preco_promocional(self):
         # Uma variante com promo 40, outra sem promo em 70
-        products = [
-            self._product(30, [self._variant(70, promo=40), self._variant(70)])
-        ]
+        products = [self._product(30, [self._variant(70, promo=40), self._variant(70)])]
         summary = _build_summary(products)
         # preços efetivos: [40, 70] → diferentes, min=40
         assert summary["30"]["minPrice"] == pytest.approx(40.0)

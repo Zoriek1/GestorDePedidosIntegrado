@@ -42,6 +42,7 @@ def _cache_set(key: str, data) -> None:
 # Helpers de extração de preço
 # ---------------------------------------------------------------------------
 
+
 def _variant_price(variant: dict) -> float | None:
     """Retorna o preço efetivo de uma variante (promocional > normal)."""
     for field in ("promotional_price", "price"):
@@ -110,6 +111,7 @@ def _fetch_all_products(client: NuvemshopClient) -> list:
 # Endpoints
 # ---------------------------------------------------------------------------
 
+
 def _cors_response(response):
     """Adiciona headers CORS abertos (dados públicos de preço da loja)."""
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -138,9 +140,7 @@ def get_produtos_variantes():
         store = NuvemshopStore.query.filter_by(store_id=str(store_id), active=True).first()
     else:
         store = (
-            NuvemshopStore.query.filter_by(active=True)
-            .order_by(NuvemshopStore.id.desc())
-            .first()
+            NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
         )
 
     if not store:

@@ -608,16 +608,14 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
                     f"[{timestamp}] {request.method:6s} {request.path:30s} {response.status_code:3d} {duration_ms:7.2f} ms"
                 )
             else:
-                # Prod: logger estruturado (sem PII)
+                # Prod: logger estruturado
                 logger = logging.getLogger("request_timing")
                 logger.info(
-                    "Request completed",
-                    extra={
-                        "method": request.method,
-                        "path": request.path,
-                        "status": response.status_code,
-                        "duration_ms": round(duration_ms, 2),
-                    },
+                    "%s %s %d %.0fms",
+                    request.method,
+                    request.path,
+                    response.status_code,
+                    duration_ms,
                 )
 
         # Log de acesso (arquivo)

@@ -64,6 +64,7 @@ def create_app(config=None):
         from app.routes.notifications import notifications_bp
         from app.routes.pedidos import pedidos_bp
         from app.routes.rotas import rotas_bp
+        from app.routes.storefront import storefront_bp
 
         # Registrar blueprints existentes (mantidos para compatibilidade)
         app.register_blueprint(api_bp)
@@ -81,6 +82,9 @@ def create_app(config=None):
 
         # Registrar Meta Gateway (deve vir antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)
+
+        # Storefront: endpoints públicos para scripts Nuvemshop (CORS *)
+        app.register_blueprint(storefront_bp)
 
         # Criar tabelas (APÓS todos os models serem importados)
         init_database(app)

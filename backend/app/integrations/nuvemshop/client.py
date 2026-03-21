@@ -79,6 +79,37 @@ class NuvemshopClient:
         response.raise_for_status()
         return response.json()
 
+    def list_products(
+        self,
+        fields: Optional[str] = None,
+        per_page: int = 200,
+        page: int = 1,
+    ) -> list:
+        """
+        Lista produtos da loja Nuvemshop com suporte a paginação.
+
+        Args:
+            fields: Campos a retornar (ex: "id,variants") — reduz payload
+            per_page: Itens por página (máx 200)
+            page: Número da página
+
+        Returns:
+            Lista de produtos
+        """
+        params: Dict[str, Any] = {"per_page": per_page, "page": page}
+        if fields:
+            params["fields"] = fields
+
+        response = requests.get(
+            self._url("/products"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        result = response.json()
+        return result if isinstance(result, list) else []
+
     def list_orders(
         self,
         limit: Optional[int] = None,

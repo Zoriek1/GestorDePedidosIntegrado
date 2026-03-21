@@ -33,7 +33,7 @@ logging.getLogger("waitress").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 # Carregar variáveis de ambiente do arquivo .env
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(env_path)

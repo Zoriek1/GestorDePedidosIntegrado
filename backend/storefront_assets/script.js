@@ -1053,15 +1053,21 @@
     return match ? match[1] : null;
   }
 
+  function watchCardPrice(card, minPrice) {
+    // Observa apenas o container de preço deste card (data-store="product-item-price-*").
+    // Quando o Nuvemshop resetar o preço (quickshop init, troca de variante, etc.),
+    // reaplicamos "A partir de:" instantaneamente — sem escanear todos os cards.
+    const container = card.querySelector('[data-store^="product-item-price-"]');
+    if (!container) return;
+    const obs = new MutationObserver(function () {
+      applyStartingFromOnCard(card, minPrice);
+    });
+    obs.observe(container, { childList: true, subtree: true, characterData: true });
+  }
+
   async function enhanceSingleCard(card, allowSizeBadges) {
     if (!card || !card.isConnected) return null;
-
-    if (card.getAttribute("data-tn-enhanced")) {
-      // Card já processado — verifica se o Nuvemshop resetou o preço e reaplica.
-      const storedPrice = parseFloat(card.getAttribute("data-tn-from-price") || "");
-      if (storedPrice > 0) applyStartingFromOnCard(card, storedPrice);
-      return null;
-    }
+    if (card.getAttribute("data-tn-enhanced")) return null;
 
     let data = null;
     let source = "none";
@@ -1110,6 +1116,7 @@
     if (data.hasDifferentPrices) {
       applyStartingFromOnCard(card, data.minPrice);
       card.setAttribute("data-tn-from-price", String(data.minPrice));
+      watchCardPrice(card, data.minPrice);
       appliedStartingFrom = true;
     }
 

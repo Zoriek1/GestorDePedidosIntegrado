@@ -18,6 +18,21 @@ if sys.platform == "win32":
         sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True
     )
 
+# Configurar logging antes de qualquer import da app (garante captura pelo Docker)
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+    force=True,
+)
+# Reduzir verbosidade de libs externas
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
+logging.getLogger("waitress").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
 # Carregar variáveis de ambiente do arquivo .env
 from dotenv import load_dotenv
 

@@ -145,8 +145,8 @@ def nuvemshop_install():
         )
 
     redirect_uri = _build_public_url("/api/integrations/nuvemshop/oauth/callback")
-    # Precisamos de write_notifications para criar/gerenciar webhooks via API.
-    scope = "read_orders,write_notifications"
+    # Precisamos de write_notifications para webhooks e read_products para listar variantes.
+    scope = "read_orders,write_notifications,read_products"
     authorize_url = (
         f"https://www.tiendanube.com/apps/{Config.NUVEMSHOP_APP_ID}/authorize"
         f"?redirect_uri={redirect_uri}&scope={scope}"

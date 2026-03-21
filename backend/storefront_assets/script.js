@@ -981,14 +981,13 @@
     const priceNode = findPriceNode(card);
     if (!priceNode) return;
 
-    // Já aplicado — o MutationObserver re-executa essa função; nada a fazer.
-    if (priceNode.getAttribute("data-tn-from-applied") === "true") return;
+    // Já aplicado E prefixo ainda presente — nada a fazer.
+    // Se o Nuvemshop re-renderizar o nó de preço (data-store="product-item-price-*"),
+    // o span .tn-from-prefix some mas data-tn-from-applied fica no atributo do nó
+    // sobrevivente. Verificar os dois garante reaplicação nesse caso.
+    if (priceNode.getAttribute("data-tn-from-applied") === "true" &&
+        priceNode.querySelector(".tn-from-prefix")) return;
 
-    // Replica o padrão do template Twig de listagem (snipplets/grid/item.tpl):
-    //   <span class="price-from">A partir de: </span>{{ product.price | money }}
-    // O JS nativo do Nuvemshop gerencia preços apenas via #price_display (ID).
-    // Os .js-price-display de cards de listagem não têm esse ID, portanto nunca
-    // são sobrescritos pelo linkedstore-v2.
     priceNode.textContent = "";
     const prefixEl = document.createElement("span");
     prefixEl.className = "tn-from-prefix";
@@ -1048,14 +1047,26 @@
     if (!existing) card.appendChild(wrap);
   }
 
+  function extractPidFromUrl(url) {
+    if (!url) return null;
+    const match = url.match(/\/(?:produto|produtos|product|products|p)\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
   async function enhanceSingleCard(card, allowSizeBadges) {
     if (!card || !card.isConnected) return null;
-    if (card.getAttribute("data-tn-enhanced")) return null;
+
+    if (card.getAttribute("data-tn-enhanced")) {
+      // Card já processado — verifica se o Nuvemshop resetou o preço e reaplica.
+      const storedPrice = parseFloat(card.getAttribute("data-tn-from-price") || "");
+      if (storedPrice > 0) applyStartingFromOnCard(card, storedPrice);
+      return null;
+    }
 
     let data = null;
     let source = "none";
     const url = getCardLink(card);
-    const pid = card.getAttribute("data-product-id");
+    const pid = card.getAttribute("data-product-id") || extractPidFromUrl(url);
 
     // 1. Tenta localStorage pelo product ID — mais rápido que re-parsear atributos.
     if (pid) {
@@ -1098,6 +1109,7 @@
     let appliedStartingFrom = false;
     if (data.hasDifferentPrices) {
       applyStartingFromOnCard(card, data.minPrice);
+      card.setAttribute("data-tn-from-price", String(data.minPrice));
       appliedStartingFrom = true;
     }
 

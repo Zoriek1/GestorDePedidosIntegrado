@@ -166,13 +166,13 @@
       const raw = variant[field];
       if (raw == null || raw === "") continue;
       const cents = parsePrice(raw);
-      if (typeof cents === "number" && Number.isFinite(cents)) return cents / 100;
+      if (typeof cents === "number" && Number.isFinite(cents) && cents > 0) return cents / 100;
     }
 
     const numericFields = ["promotional_price_number", "price_number"];
     for (const field of numericFields) {
       const n = parsePrice(variant[field]);
-      if (typeof n === "number" && Number.isFinite(n)) return n;
+      if (typeof n === "number" && Number.isFinite(n) && n > 0) return n;
     }
 
     const textFields = [
@@ -185,7 +185,7 @@
     ];
     for (const field of textFields) {
       const n = parsePrice(variant[field]);
-      if (typeof n === "number" && Number.isFinite(n)) return n;
+      if (typeof n === "number" && Number.isFinite(n) && n > 0) return n;
     }
 
     return null;

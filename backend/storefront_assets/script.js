@@ -1054,15 +1054,19 @@
   }
 
   function watchCardPrice(card, minPrice) {
-    // Observa apenas o container de preço deste card (data-store="product-item-price-*").
-    // Quando o Nuvemshop resetar o preço (quickshop init, troca de variante, etc.),
-    // reaplicamos "A partir de:" instantaneamente — sem escanear todos os cards.
-    const container = card.querySelector('[data-store^="product-item-price-"]');
-    if (!container) return;
+    // Observa o card inteiro (não o container de preço) porque o Nuvemshop
+    // pode substituir o próprio elemento data-store="product-item-price-*",
+    // invalidando observers no nó removido.
+    // Debounce de 50ms evita chamadas em rajada.
+    let timer = null;
     const obs = new MutationObserver(function () {
-      applyStartingFromOnCard(card, minPrice);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        timer = null;
+        applyStartingFromOnCard(card, minPrice);
+      }, 50);
     });
-    obs.observe(container, { childList: true, subtree: true, characterData: true });
+    obs.observe(card, { childList: true, subtree: true, characterData: true });
   }
 
   async function enhanceSingleCard(card, allowSizeBadges) {

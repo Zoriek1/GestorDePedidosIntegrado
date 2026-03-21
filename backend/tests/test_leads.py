@@ -119,9 +119,19 @@ def test_realcase_landing_fbclid_fbp_preserva_campos(client, session):
 
 def test_listar_leads_default_filtra_whatsapp_click(client, session):
     """GET /api/leads sem param event retorna apenas whatsapp_click."""
-    client.post("/api/leads", json={"event": "whatsapp_click", "utm_source": "fb"}, headers={"User-Agent": "pytest"})
-    client.post("/api/leads", json={"event": "page_view", "utm_source": "fb"}, headers={"User-Agent": "pytest"})
-    client.post("/api/leads", json={"event": "scroll", "utm_source": "fb"}, headers={"User-Agent": "pytest"})
+    client.post(
+        "/api/leads",
+        json={"event": "whatsapp_click", "utm_source": "fb"},
+        headers={"User-Agent": "pytest"},
+    )
+    client.post(
+        "/api/leads",
+        json={"event": "page_view", "utm_source": "fb"},
+        headers={"User-Agent": "pytest"},
+    )
+    client.post(
+        "/api/leads", json={"event": "scroll", "utm_source": "fb"}, headers={"User-Agent": "pytest"}
+    )
 
     r = client.get("/api/leads", headers=_ADMIN_AUTH)
     assert r.status_code == 200

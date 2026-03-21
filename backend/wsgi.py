@@ -2,6 +2,7 @@
 """
 WSGI entry point para produção com Waitress
 """
+import logging
 import os
 import sys
 from pathlib import Path
@@ -19,8 +20,6 @@ if sys.platform == "win32":
     )
 
 # Configurar logging antes de qualquer import da app (garante captura pelo Docker)
-import logging
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",

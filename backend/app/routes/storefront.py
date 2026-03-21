@@ -9,8 +9,9 @@ Cache: in-memory com TTL de 5 minutos (evita hammer na API Nuvemshop)
 
 import logging
 import time
+from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, make_response, request, send_from_directory
 
 from app.config import Config
 from app.integrations.nuvemshop.client import NuvemshopClient
@@ -19,6 +20,8 @@ from app.models.nuvemshop_store import NuvemshopStore
 logger = logging.getLogger(__name__)
 
 storefront_bp = Blueprint("storefront", __name__, url_prefix="/storefront")
+
+_ASSETS_DIR = Path(__file__).parent.parent.parent / "storefront_assets"
 
 # ---------------------------------------------------------------------------
 # Cache in-memory simples (por store_id)
@@ -174,3 +177,13 @@ def get_produtos_variantes():
     except Exception as exc:
         logger.exception("[storefront] erro ao buscar produtos")
         return _cors_response(jsonify({"error": str(exc)})), 502
+
+
+@storefront_bp.route("/storefront-script.js", methods=["GET"])
+def get_storefront_script():
+    """Serve o script.js do storefront com CORS aberto."""
+    response = make_response(send_from_directory(_ASSETS_DIR, "script.js"))
+    response.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response

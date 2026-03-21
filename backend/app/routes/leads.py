@@ -143,6 +143,10 @@ def listar_leads():
 
     query = Lead.query.order_by(Lead.created_at.desc())
 
+    event = request.args.get("event", "whatsapp_click")
+    if event and event != "all":
+        query = query.filter(Lead.event == event)
+
     utm_source = request.args.get("utm_source")
     if utm_source:
         query = query.filter(Lead.utm_source == utm_source)

@@ -27,11 +27,19 @@ import {
 } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import { useLeads, type LeadsFilters, type Lead } from '../../api/endpoints/leads';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 
 const SOURCE_OPTIONS = ['', 'facebook', 'google', 'instagram', 'tiktok', 'direto'];
+
+function buildWhatsAppUrl(phone: string): string | null {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${full}`;
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -60,7 +68,7 @@ function sourceColor(source: string | null): 'primary' | 'secondary' | 'success'
 
 export default function LeadsPage() {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<LeadsFilters>({ page: 1, per_page: 25 });
+  const [filters, setFilters] = useState<LeadsFilters>({ page: 1, per_page: 25, event: 'whatsapp_click' });
   const { data, isLoading, error, refetch } = useLeads(filters);
 
   const handleCreateOrder = useCallback((lead: Lead) => {
@@ -95,6 +103,20 @@ export default function LeadsPage() {
       {/* Filtros */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+          <FormControl size="small" sx={{ minWidth: 170 }}>
+            <InputLabel>Evento</InputLabel>
+            <Select
+              value={filters.event ?? 'whatsapp_click'}
+              label="Evento"
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, event: e.target.value || undefined, page: 1 }))
+              }
+            >
+              <MenuItem value="whatsapp_click">WhatsApp cliques</MenuItem>
+              <MenuItem value="all">Todos</MenuItem>
+            </Select>
+          </FormControl>
+
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <InputLabel>Origem</InputLabel>
             <Select
@@ -193,11 +215,35 @@ export default function LeadsPage() {
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{lead.ip_address ?? '—'}</TableCell>
                   <TableCell align="center">
-                    <Tooltip title="Criar pedido a partir deste lead">
-                      <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
-                        <AddShoppingCartIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    <Stack direction="row" spacing={0.5} justifyContent="center">
+                      {lead.phone ? (
+                        <Tooltip title="Chamar no WhatsApp">
+                          <IconButton
+                            size="small"
+                            color="success"
+                            component="a"
+                            href={buildWhatsAppUrl(lead.phone) ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <WhatsAppIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title="Sem telefone">
+                          <span>
+                            <IconButton size="small" disabled>
+                              <WhatsAppIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      )}
+                      <Tooltip title="Criar pedido a partir deste lead">
+                        <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
+                          <AddShoppingCartIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))

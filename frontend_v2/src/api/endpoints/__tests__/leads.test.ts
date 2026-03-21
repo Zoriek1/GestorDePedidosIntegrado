@@ -75,4 +75,20 @@ describe('useLeads', () => {
       expect(capturedEndpoint).toContain('utm_source=facebook');
     });
   });
+
+  it('repassa event na query string', async () => {
+    let capturedEndpoint = '';
+    mockCreateApiRequest.mockImplementation(() => async (endpoint: string) => {
+      capturedEndpoint = endpoint;
+      return { ok: true, success: true, data: fakeResponse, status: 200, requestId: 'test' };
+    });
+
+    renderHook(() => useLeads({ event: 'whatsapp_click' }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(capturedEndpoint).toContain('event=whatsapp_click');
+    });
+  });
 });

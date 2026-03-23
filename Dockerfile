@@ -1,25 +1,38 @@
 # Plante Uma Flor - Deploy VPS
-# Multi-stage: frontend build + backend
+# Targets:
+#   backend     — API + SPA (Vite no build ou dist pré-compilado em docker/prebuilt-dist/)
+#   scheduler   — meta-scheduler apenas Python (sem Node)
 
-# Stage 1: Build frontend
-FROM node:20-alpine AS frontend-build
+# ---------------------------------------------------------------------------
+# Estágio: assets do frontend (Vite na VPS OU cópia de docker/prebuilt-dist/)
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS frontend-assets
 WORKDIR /build/frontend_v2
 
-COPY frontend_v2/package.json frontend_v2/package-lock.json ./
-RUN npm ci
+ARG USE_PREBUILT_DIST=0
+COPY docker/prebuilt-dist /prebuilt
 
+COPY frontend_v2/package.json frontend_v2/package-lock.json ./
 COPY frontend_v2/ ./
-# API relativa para funcionar tanto por IP:5000 quanto por tunnel (https://dominio)
+
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ARG VITE_GOOGLE_MAPS_API_KEY
 ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
-RUN npm run build
 
-# Stage 2: Backend
-FROM python:3.11-slim
-# Estrutura: /app/backend (código), /app/frontend_v2/dist (static)
-# static.py: parent.parent.parent = /app
+# Com USE_PREBUILT_DIST=1 e index.html vindo do CI, não roda Vite na VPS.
+RUN if [ "$USE_PREBUILT_DIST" = "1" ] && [ -f /prebuilt/index.html ]; then \
+      echo "frontend-assets: usando prebuilt (docker/prebuilt-dist)"; \
+      rm -rf dist && mkdir -p dist && cp -a /prebuilt/. dist/; \
+    else \
+      echo "frontend-assets: npm ci + vite build"; \
+      npm ci && npm run build; \
+    fi
+
+# ---------------------------------------------------------------------------
+# Target: meta-scheduler (sem frontend / sem Node)
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS scheduler
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,7 +43,27 @@ COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 COPY backend/ ./backend/
-COPY --from=frontend-build /build/frontend_v2/dist ./frontend_v2/dist
+
+ENV PYTHONPATH=/app/backend
+WORKDIR /app/backend
+
+# entrypoint definido no docker-compose.yml
+
+# ---------------------------------------------------------------------------
+# Target: backend (API + static SPA)
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS backend
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt ./backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+COPY backend/ ./backend/
+COPY --from=frontend-assets /build/frontend_v2/dist ./frontend_v2/dist
 
 ENV PYTHONPATH=/app/backend
 ENV FLASK_APP=wsgi:app

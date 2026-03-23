@@ -6,7 +6,11 @@ Guia para rodar o Gestor de Pedidos em uma VPS. Inclui Docker com PostgreSQL, ex
 
 ## 1. Docker
 
-**Implementado:** `Dockerfile` (multi-stage) e `docker-compose.yml` na raiz.
+**Implementado:** `Dockerfile` (multi-stage, targets `backend` e `scheduler`) e `docker-compose.yml` na raiz.
+
+**Deploy via GitHub Actions (push `main`):** o job de frontend gera `dist/` e o deploy copia para `docker/prebuilt-dist/` na VPS e sobe os containers com `USE_PREBUILT_DIST=1` (sem rodar Vite de novo na VPS). Configure o secret opcional `VITE_GOOGLE_MAPS_API_KEY` no repositório se o build precisar da mesma chave que em produção.
+
+**Diagnóstico de picos RAM/CPU:** [DEPLOY_DIAGNOSTICS.md](./DEPLOY_DIAGNOSTICS.md).
 
 **Onde usar:**
 - **`Dockerfile`** — na raiz do repositório ou em `backend/` (se o build do frontend for em estágio separado).
@@ -98,11 +102,16 @@ Se o login não funcionar pelo domínio e funcionar por IP:5000, confira que o t
 
 ## 5. Build do frontend no deploy
 
-**Implementado:** Docker faz build automático no estágio 1 do Dockerfile. Sem Docker: `cd frontend_v2 && npm ci && npm run build`.
+**Implementado:** Três caminhos possíveis:
+
+1. **CI + VPS (padrão):** GitHub Actions faz `npm run build` no runner, envia o `dist/` para `docker/prebuilt-dist/` na VPS e o Docker usa `USE_PREBUILT_DIST=1` (sem segundo Vite na VPS).
+2. **Só Docker na VPS:** `USE_PREBUILT_DIST=0` (default): o estágio `frontend-assets` do `Dockerfile` roda `npm ci` + `npm run build` no build da imagem.
+3. **Script manual:** na raiz, `./deploy.sh` — build local do frontend, copia para `docker/prebuilt-dist/` e `docker compose` com `USE_PREBUILT_DIST=1`.
 
 **Onde usar:**
-- **Script de deploy** (local ou CI): após clone/checkout, rodar `cd frontend_v2 && npm ci && npm run build`.
-- **Docker:** estágio de build que rode o mesmo e copie `frontend_v2/dist` para o contexto do backend (path esperado em `backend/app/static.py`).
+- **CI:** [.github/workflows/ci.yml](../.github/workflows/ci.yml).
+- **Docker:** `docker/prebuilt-dist/` (conteúdo do `dist/`; só `.gitkeep` versionado) + arg `USE_PREBUILT_DIST`.
+- **Sem Docker:** `cd frontend_v2 && npm ci && npm run build` e servir `dist/` conforme [PRODUCTION.md](../frontend_v2/docs/PRODUCTION.md).
 
 **Como usar:**
 - O backend serve o SPA de `Path(__file__).parent.parent.parent / "frontend_v2" / "dist"` (em `backend/app/static.py`). Ou seja, a estrutura esperada é: repositório contém `backend/` e `frontend_v2/dist/` na mesma raiz.

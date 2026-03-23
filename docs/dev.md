@@ -269,11 +269,12 @@ black --check .
 
 ### CI/CD
 
-O projeto inclui GitHub Actions workflow que:
-- Executa linting (ruff)
-- Verifica formatação (black)
-- Roda testes (pytest)
-- Testa em múltiplas versões do Python (3.8, 3.9, 3.10, 3.11)
+O projeto inclui GitHub Actions workflow (`.github/workflows/ci.yml`) que:
+- **Backend:** ruff, black, pytest (unit; integration opcional).
+- **Frontend:** ESLint, testes Vitest, `npm run build`, upload do `dist/` como artefato.
+- **Deploy (push `main`):** SSH na VPS — `git pull`, cópia do `dist/` para `docker/prebuilt-dist/`, `docker compose up -d --build` com `USE_PREBUILT_DIST=1` (sem segundo Vite na VPS).
+
+Ver também `docs/DEPLOY_VPS.md` e `docs/DEPLOY_DIAGNOSTICS.md`.
 
 ---
 
@@ -673,11 +674,12 @@ black --check .
 
 ### CI/CD
 
-O projeto inclui GitHub Actions workflow que:
-- Executa linting (ruff)
-- Verifica formatação (black)
-- Roda testes (pytest)
-- Testa em múltiplas versões do Python (3.8, 3.9, 3.10, 3.11)
+O projeto inclui GitHub Actions workflow (`.github/workflows/ci.yml`) que:
+- **Backend:** ruff, black, pytest (unit; integration opcional).
+- **Frontend:** ESLint, testes Vitest, `npm run build`, upload do `dist/` como artefato.
+- **Deploy (push `main`):** SSH na VPS — `git pull`, cópia do `dist/` para `docker/prebuilt-dist/`, `docker compose up -d --build` com `USE_PREBUILT_DIST=1` (sem segundo Vite na VPS).
+
+Ver também `docs/DEPLOY_VPS.md` e `docs/DEPLOY_DIAGNOSTICS.md`.
 
 ---
 

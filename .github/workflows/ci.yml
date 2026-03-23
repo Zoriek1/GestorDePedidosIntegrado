@@ -6,6 +6,8 @@ name: CI
 #   VPS_SSH_KEY      -- chave privada SSH (conteudo de ~/.ssh/id_ed25519)
 #   VPS_PORT         -- porta SSH (ex: 22)
 #   VPS_DEPLOY_PATH  -- caminho do projeto na VPS (ex: /home/deploy/Gestor-de-Pedidos-WEB-PUF)
+# Opcional (recomendado se usar Google Maps no frontend em produção):
+#   VITE_GOOGLE_MAPS_API_KEY -- mesmo valor que no .env da VPS (build do artefato no CI)
 
 on:
   push:
@@ -136,7 +138,15 @@ jobs:
         working-directory: frontend_v2
         env:
           VITE_API_BASE_URL: /api
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: npm run build
+
+      - name: Upload frontend dist (deploy VPS sem 2º Vite)
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend_v2/dist/
+          retention-days: 2
 
   deploy:
     name: Deploy VPS
@@ -146,17 +156,47 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Deploy via SSH
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ci-frontend-dist
+
+      - name: Git pull e limpar docker/prebuilt-dist
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          command_timeout: 40m
+          port: ${{ secrets.VPS_PORT || '22' }}
           script: |
             set -e
             cd "${{ secrets.VPS_DEPLOY_PATH }}"
             git pull origin main
+            mkdir -p docker/prebuilt-dist
+            find docker/prebuilt-dist -mindepth 1 -delete
+
+      - name: Copiar dist para VPS (prebuilt)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          source: "ci-frontend-dist/"
+          target: "${{ secrets.VPS_DEPLOY_PATH }}/docker/prebuilt-dist"
+
+      - name: Docker compose (USE_PREBUILT_DIST=1)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          command_timeout: 40m
+          script: |
+            set -e
+            cd "${{ secrets.VPS_DEPLOY_PATH }}"
+            export USE_PREBUILT_DIST=1
             docker compose up -d --build
             docker image prune -f

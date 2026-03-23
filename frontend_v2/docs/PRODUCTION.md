@@ -95,6 +95,13 @@ Measure-Command { vite build }          # Vite apenas
 
 ## Deploy
 
+### VPS com Docker (repositório raiz)
+
+- **Automático (GitHub Actions em `main`):** o frontend é compilado no CI; o `dist/` é copiado para `docker/prebuilt-dist/` na VPS e a imagem `backend` usa `USE_PREBUILT_DIST=1` (evita segundo `npm run build` na VPS). Secret opcional `VITE_GOOGLE_MAPS_API_KEY` no GitHub deve coincidir com a chave usada em produção se o Maps for embutido no bundle.
+- **Manual:** na raiz do repo, `./deploy.sh` (build local + compose com prebuilt) ou `docker compose up -d --build` com `USE_PREBUILT_DIST=0` para compilar o frontend dentro do Docker.
+- **meta-scheduler:** imagem separada (`target: scheduler`), sem estágio Node — ver `Dockerfile` e `docker-compose.yml` na raiz.
+- Diagnóstico de deploy: [docs/DEPLOY_DIAGNOSTICS.md](../../docs/DEPLOY_DIAGNOSTICS.md).
+
 ### Servir Build Estático
 
 #### Opção 1: Usando serve

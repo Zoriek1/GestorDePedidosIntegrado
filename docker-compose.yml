@@ -1,5 +1,8 @@
 # Plante Uma Flor - Deploy VPS
 # Uso: cp .env.example .env && docker compose up -d
+#
+# USE_PREBUILT_DIST=1 — usa docker/prebuilt-dist/ (ex.: deploy via CI) e não roda Vite na VPS.
+# meta-scheduler usa target scheduler (imagem sem Node).
 
 services:
   db:
@@ -20,7 +23,10 @@ services:
   backend:
     build:
       context: .
+      target: backend
       args:
+        USE_PREBUILT_DIST: ${USE_PREBUILT_DIST:-0}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
         VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
     restart: unless-stopped
     depends_on:
@@ -69,6 +75,7 @@ services:
   meta-scheduler:
     build:
       context: .
+      target: scheduler
     restart: unless-stopped
     depends_on:
       db:

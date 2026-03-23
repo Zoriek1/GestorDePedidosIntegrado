@@ -1,24 +1,29 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Deploy manual na VPS (fora do GitHub Actions).
+# Alinha ao fluxo do CI: um build Vite local e Docker com USE_PREBUILT_DIST=1
+# (menos RAM/CPU na VPS do que npm dentro do container).
+#
+# Pré-requisitos: Node 20+, Docker Compose v2, estar na raiz do repositório.
+# Variáveis Vite: exporte VITE_GOOGLE_MAPS_API_KEY antes se necessário (igual ao .env de produção).
 
-echo "Starting deploy process..."
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
 
-# 1. Entra na pasta do frontend e gera os arquivos estáticos
-echo "📦 Building Frontend..."
+echo "📦 Build do frontend → docker/prebuilt-dist/"
 cd frontend_v2
-npm install --silent
+npm ci --no-audit --no-fund
+export VITE_API_BASE_URL="${VITE_API_BASE_URL:-/api}"
 npm run build
-cd ..
+cd "$ROOT"
 
-# 2. Garante que os arquivos do build estão no lugar que o Flask espera
-# (Ajuste 'backend/static' para a pasta que seu Flask usa)
-echo "🚚 Moving static files..."
-cp -r frontend_v2/dist/* backend/static/ 2>/dev/null || cp -r frontend_v2/build/* backend/static/
+mkdir -p docker/prebuilt-dist
+find docker/prebuilt-dist -mindepth 1 -delete
+cp -a frontend_v2/dist/. docker/prebuilt-dist/
 
-# 3. Reinicia os containers para aplicar mudanças de código Python ou ENV
-echo "🔄 Restarting Containers..."
-docker compose up -d
-
-# 4. Limpa lixos do Docker para não encher o disco da VPS
+echo "🐳 docker compose (USE_PREBUILT_DIST=1)"
+export USE_PREBUILT_DIST=1
+docker compose up -d --build
 docker image prune -f
 
-echo "✅ Deploy Finished! Site updated."
+echo "✅ Deploy concluído."

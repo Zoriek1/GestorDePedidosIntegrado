@@ -90,6 +90,10 @@ yarn-error.log*
 .env
 .env.local.backup.*
 
+# Dist enviado pelo CI para Docker (não versionar conteúdo; só .gitkeep)
+docker/prebuilt-dist/*
+!docker/prebuilt-dist/.gitkeep
+
 # Backups e arquivos temporários de deploy
 *.sql
 *.deb

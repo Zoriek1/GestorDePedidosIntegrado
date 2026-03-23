@@ -15,6 +15,9 @@ from app.models.lead import Lead
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 
+# Eventos considerados “principais” na listagem quando não há filtro explícito
+DEFAULT_KEY_EVENTS = ("modal_open", "whatsapp_click", "site_click")
+
 ALLOWED_FIELDS = (
     "event",
     "url",
@@ -143,9 +146,19 @@ def listar_leads():
 
     query = Lead.query.order_by(Lead.created_at.desc())
 
-    event = request.args.get("event", "whatsapp_click")
-    if event and event != "all":
-        query = query.filter(Lead.event == event)
+    events_param = (request.args.get("events") or "").strip()
+    event_param = request.args.get("event")
+
+    if events_param:
+        parts = [e.strip() for e in events_param.split(",") if e.strip()]
+        if parts:
+            query = query.filter(Lead.event.in_(parts))
+    elif event_param == "all":
+        pass
+    elif event_param:
+        query = query.filter(Lead.event == event_param)
+    else:
+        query = query.filter(Lead.event.in_(DEFAULT_KEY_EVENTS))
 
     utm_source = request.args.get("utm_source")
     if utm_source:

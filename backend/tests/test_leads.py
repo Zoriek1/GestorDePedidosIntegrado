@@ -117,8 +117,8 @@ def test_realcase_landing_fbclid_fbp_preserva_campos(client, session):
     assert lead.fbp == "fb.1.1711111111111.555666777888"
 
 
-def test_listar_leads_default_filtra_whatsapp_click(client, session):
-    """GET /api/leads sem param event retorna apenas whatsapp_click."""
+def test_listar_leads_default_filtra_eventos_principais(client, session):
+    """GET /api/leads sem params retorna só eventos principais (exclui page_view, scroll)."""
     client.post(
         "/api/leads",
         json={"event": "whatsapp_click", "utm_source": "fb"},
@@ -161,6 +161,18 @@ def test_listar_leads_event_especifico(client, session):
     data = r.get_json()
     assert data["total"] == 1
     assert data["leads"][0]["event"] == "page_view"
+
+
+def test_listar_leads_events_param_lista(client, session):
+    """GET /api/leads?events=a,b filtra por vários eventos."""
+    client.post("/api/leads", json={"event": "modal_open"}, headers={"User-Agent": "pytest"})
+    client.post("/api/leads", json={"event": "whatsapp_click"}, headers={"User-Agent": "pytest"})
+    client.post("/api/leads", json={"event": "page_view"}, headers={"User-Agent": "pytest"})
+
+    r = client.get("/api/leads?events=modal_open,whatsapp_click", headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["total"] == 2
 
 
 def test_realcase_fbc_sem_fbclid_extrai_clickid(client, session):

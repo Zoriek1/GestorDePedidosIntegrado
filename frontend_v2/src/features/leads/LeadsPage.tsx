@@ -34,6 +34,15 @@ import { ErrorState } from '../../components/common/ErrorState';
 
 const SOURCE_OPTIONS = ['', 'facebook', 'google', 'instagram', 'tiktok', 'direto'];
 
+/** Mesmo conjunto que o backend usa como padrão (DEFAULT_KEY_EVENTS) */
+const DEFAULT_KEY_EVENTS = 'modal_open,whatsapp_click,site_click';
+
+const EVENT_LABELS: Record<string, string> = {
+  modal_open: 'Modal open',
+  whatsapp_click: 'WhatsApp Click',
+  site_click: 'Site Click',
+};
+
 function buildWhatsAppUrl(phone: string): string | null {
   const digits = phone.replace(/\D/g, '');
   if (digits.length < 10) return null;
@@ -45,6 +54,7 @@ function formatDate(iso: string | null): string {
   if (!iso) return '—';
   try {
     return new Date(iso).toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
       day: '2-digit',
       month: '2-digit',
       year: '2-digit',
@@ -54,6 +64,18 @@ function formatDate(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+function formatEventLabel(raw: string | null): string {
+  if (!raw) return '—';
+  return EVENT_LABELS[raw] ?? raw.replace(/_/g, ' ');
+}
+
+function eventFilterToSelectValue(f: LeadsFilters): string {
+  if (f.events === DEFAULT_KEY_EVENTS) return 'key';
+  if (f.event === 'all') return 'all';
+  if (f.event) return f.event;
+  return 'key';
 }
 
 function sourceColor(source: string | null): 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default' {
@@ -68,7 +90,11 @@ function sourceColor(source: string | null): 'primary' | 'secondary' | 'success'
 
 export default function LeadsPage() {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<LeadsFilters>({ page: 1, per_page: 25, event: 'whatsapp_click' });
+  const [filters, setFilters] = useState<LeadsFilters>({
+    page: 1,
+    per_page: 25,
+    events: DEFAULT_KEY_EVENTS,
+  });
   const { data, isLoading, error, refetch } = useLeads(filters);
 
   const handleCreateOrder = useCallback((lead: Lead) => {
@@ -106,13 +132,32 @@ export default function LeadsPage() {
           <FormControl size="small" sx={{ minWidth: 170 }}>
             <InputLabel>Evento</InputLabel>
             <Select
-              value={filters.event ?? 'whatsapp_click'}
+              value={eventFilterToSelectValue(filters)}
               label="Evento"
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, event: e.target.value || undefined, page: 1 }))
-              }
+              onChange={(e) => {
+                const v = e.target.value;
+                setFilters((prev) => {
+                  const next: LeadsFilters = { ...prev, page: 1 };
+                  if (v === 'key') {
+                    delete next.event;
+                    next.events = DEFAULT_KEY_EVENTS;
+                    return next;
+                  }
+                  if (v === 'all') {
+                    delete next.events;
+                    next.event = 'all';
+                    return next;
+                  }
+                  delete next.events;
+                  next.event = v;
+                  return next;
+                });
+              }}
             >
-              <MenuItem value="whatsapp_click">WhatsApp cliques</MenuItem>
+              <MenuItem value="key">Principais (modal, WhatsApp, site)</MenuItem>
+              <MenuItem value="modal_open">{EVENT_LABELS.modal_open}</MenuItem>
+              <MenuItem value="whatsapp_click">{EVENT_LABELS.whatsapp_click}</MenuItem>
+              <MenuItem value="site_click">{EVENT_LABELS.site_click}</MenuItem>
               <MenuItem value="all">Todos</MenuItem>
             </Select>
           </FormControl>
@@ -197,7 +242,7 @@ export default function LeadsPage() {
               leads.map((lead) => (
                 <TableRow key={lead.id} hover>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
-                  <TableCell>{lead.event ?? '—'}</TableCell>
+                  <TableCell>{formatEventLabel(lead.event)}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
                   <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {lead.fbclid ?? '—'}

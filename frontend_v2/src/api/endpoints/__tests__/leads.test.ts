@@ -91,4 +91,21 @@ describe('useLeads', () => {
       expect(capturedEndpoint).toContain('event=whatsapp_click');
     });
   });
+
+  it('repassa events na query string (prioridade sobre event)', async () => {
+    let capturedEndpoint = '';
+    mockCreateApiRequest.mockImplementation(() => async (endpoint: string) => {
+      capturedEndpoint = endpoint;
+      return { ok: true, success: true, data: fakeResponse, status: 200, requestId: 'test' };
+    });
+
+    renderHook(
+      () => useLeads({ events: 'modal_open,whatsapp_click,site_click' }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(capturedEndpoint).toContain('events=modal_open%2Cwhatsapp_click%2Csite_click');
+    });
+  });
 });

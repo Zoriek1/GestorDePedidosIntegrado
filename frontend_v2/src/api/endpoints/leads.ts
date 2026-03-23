@@ -36,7 +36,10 @@ export interface LeadsResponse {
 export interface LeadsFilters {
   page?: number;
   per_page?: number;
+  /** Um único evento, ou `all` para não filtrar por evento */
   event?: string;
+  /** Vários eventos separados por vírgula (ex.: modal_open,whatsapp_click,site_click) */
+  events?: string;
   utm_source?: string;
   utm_campaign?: string;
   date_from?: string;
@@ -53,7 +56,11 @@ export function useLeads(filters: LeadsFilters = {}) {
       const params = new URLSearchParams();
       if (filters.page) params.set('page', String(filters.page));
       if (filters.per_page) params.set('per_page', String(filters.per_page));
-      if (filters.event) params.set('event', filters.event);
+      if (filters.events) {
+        params.set('events', filters.events);
+      } else if (filters.event) {
+        params.set('event', filters.event);
+      }
       if (filters.utm_source) params.set('utm_source', filters.utm_source);
       if (filters.utm_campaign) params.set('utm_campaign', filters.utm_campaign);
       if (filters.date_from) params.set('date_from', filters.date_from);

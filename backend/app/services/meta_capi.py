@@ -6,6 +6,7 @@ Envia eventos Purchase para Meta com normalização, hashing e retry
 import hashlib
 import os
 import re
+import time
 import unicodedata
 from typing import Dict, List, Optional, Tuple
 
@@ -163,6 +164,12 @@ class MetaConversionsApiService:
         normalized = re.sub(r"[^\w]", "", normalized)
         return normalized
 
+    def normalize_email(self, email: str) -> str:
+        """Normaliza email para hashing conforme boas prÃ¡ticas da Meta."""
+        if not email:
+            return ""
+        return email.strip().lower()
+
     def maybe_hash(self, value: str, normalize_fn=None) -> str:
         """
         Aplica hash se valor não estiver em formato SHA-256 hex.
@@ -186,6 +193,29 @@ class MetaConversionsApiService:
         if not value:
             return False
         return bool(re.fullmatch(r"fb\.1\.\d+\.\d+", value.strip()))
+
+    def build_fbc_from_fbclid(
+        self, fbclid: str, timestamp_source: Optional[object] = None
+    ) -> Optional[str]:
+        """ConstrÃ³i um valor fbc a partir do fbclid quando necessÃ¡rio."""
+        if not fbclid:
+            return None
+
+        fbclid_clean = str(fbclid).strip()
+        if not fbclid_clean:
+            return None
+
+        ts = int(time.time())
+        if timestamp_source is not None:
+            try:
+                if hasattr(timestamp_source, "timestamp"):
+                    ts = int(timestamp_source.timestamp())
+                else:
+                    ts = int(timestamp_source)
+            except Exception:
+                ts = int(time.time())
+
+        return f"fb.1.{ts}.{fbclid_clean}"
 
     def parse_brl_money(self, valor_str: str) -> float:
         """
@@ -232,6 +262,35 @@ class MetaConversionsApiService:
             # Default: other (quando não dá para distinguir)
             return "other"
 
+    def resolve_lead_for_purchase(self, pedido: Pedido):
+        """Reaproveita o mesmo match de lead usado no fluxo da UTMify."""
+        try:
+            from app.utils.utmify_helper import resolve_lead_for_pedido
+
+            lead, _match = resolve_lead_for_pedido(pedido)
+            return lead
+        except Exception:
+            return None
+
+    def build_external_id(self, pedido: Pedido, lead=None) -> str:
+        """Gera external_id estável com o melhor identificador disponível."""
+        if getattr(pedido, "cliente_id", None):
+            return f"cliente:{pedido.cliente_id}"
+
+        cliente_rel = getattr(pedido, "cliente_rel", None)
+        email = self.normalize_email(getattr(cliente_rel, "email", "") or "")
+        if email:
+            return f"email:{email}"
+
+        phone_digits = re.sub(r"[^\d]", "", pedido.telefone_cliente or "")
+        if phone_digits:
+            return f"phone:{phone_digits}"
+
+        if lead and getattr(lead, "fbclid", None):
+            return f"fbclid:{str(lead.fbclid).strip()}"
+
+        return f"order:{pedido.id}"
+
     def build_purchase_event(self, pedido: Pedido) -> Dict:
         """
         Monta payload do evento Purchase para Meta
@@ -256,6 +315,8 @@ class MetaConversionsApiService:
 
         # Determinar action_source
         action_source = self.determine_action_source(pedido)
+        lead = self.resolve_lead_for_purchase(pedido)
+        cliente_rel = getattr(pedido, "cliente_rel", None)
 
         # Obter valor total
         valor_total = pedido.total_pago()
@@ -273,15 +334,12 @@ class MetaConversionsApiService:
         }
 
         # Validar event_time (Meta não aceita timestamps no futuro)
-        import time
-
         now_timestamp = int(time.time())
         max_past = now_timestamp - (7 * 24 * 60 * 60)  # 7 dias no passado
 
-        if event_time > now_timestamp:
+        if event_time > now_timestamp or event_time < max_past:
             # Se evento está no futuro, usar timestamp atual
             event_time = now_timestamp
-        elif event_time < max_past:
             # Se evento está muito no passado, usar timestamp atual
             event_time = now_timestamp
 
@@ -324,6 +382,10 @@ class MetaConversionsApiService:
         if fn_hash:
             event["user_data"]["fn"] = [fn_hash]
 
+        email_normalized = self.normalize_email(getattr(cliente_rel, "email", "") or "")
+        if email_normalized:
+            event["user_data"]["em"] = [self.hash_sha256(email_normalized)]
+
         # País fixo (Brasil) - enviar hash conforme especificação CAPI
         country_hash = self.maybe_hash("br", normalize_fn=self.normalize_generic)
         if country_hash:
@@ -333,17 +395,26 @@ class MetaConversionsApiService:
         # fbc: Facebook Click ID (vem do parâmetro fbclid na URL quando usuário clica em anúncio)
         # fbp: Facebook Browser ID (vem do cookie _fbp criado pelo Pixel do Facebook)
         # IMPORTANTE: Esses valores são case-sensitive e não devem ser normalizados
-        if hasattr(pedido, "fbc") and pedido.fbc and self.is_valid_fbc(pedido.fbc):
-            event["user_data"]["fbc"] = pedido.fbc
-        if hasattr(pedido, "fbp") and pedido.fbp and self.is_valid_fbp(pedido.fbp):
-            event["user_data"]["fbp"] = pedido.fbp
+        lead_fbc = self.build_fbc_from_fbclid(
+            getattr(lead, "fbclid", None), getattr(lead, "created_at", None)
+        )
+        for fbc_candidate in [getattr(pedido, "fbc", None), lead_fbc]:
+            if fbc_candidate and self.is_valid_fbc(fbc_candidate):
+                event["user_data"]["fbc"] = fbc_candidate
+                break
+        for fbp_candidate in [getattr(pedido, "fbp", None), getattr(lead, "fbp", None)]:
+            if fbp_candidate and self.is_valid_fbp(fbp_candidate):
+                event["user_data"]["fbp"] = fbp_candidate
+                break
+        if lead and getattr(lead, "ip_address", None):
+            event["user_data"]["client_ip_address"] = lead.ip_address
+        if lead and getattr(lead, "url", None):
+            event["event_source_url"] = lead.url
 
         # Se user_data estiver vazio (sem ph e fn), usar hash do order_id como fallback
         # Isso garante que sempre teremos pelo menos um campo além de country
-        if not phone_hash and not fn_hash:
-            # Usar external_id como fallback (hash do order_id)
-            external_id_hash = self.hash_sha256(str(pedido.id))
-            event["user_data"]["external_id"] = [external_id_hash]
+        external_id_hash = self.hash_sha256(self.build_external_id(pedido, lead))
+        event["user_data"]["external_id"] = [external_id_hash]
 
         # Adicionar dados de localização (se disponíveis) após garantir user_data
         if user_location:
@@ -360,13 +431,12 @@ class MetaConversionsApiService:
             "event_time": event.get("event_time"),
             "event_id": event.get("event_id"),
             "action_source": event.get("action_source"),
+            "event_source_url": event.get("event_source_url"),
             "user_data": dict(event.get("user_data") or {}),
             "custom_data": dict(event.get("custom_data") or {}),
         }
 
         # Normalizar e validar event_time (segundos Unix, dentro de 7 dias)
-        import time
-
         now_timestamp = int(time.time())
         max_past = now_timestamp - (7 * 24 * 60 * 60)
         event_time = sanitized.get("event_time")

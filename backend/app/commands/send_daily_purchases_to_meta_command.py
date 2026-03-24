@@ -16,6 +16,7 @@ from app.models.pedido import Pedido, datetime_now_brazil
 from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 from app.repositories.pedido_repository import PedidoRepository
 from app.services.meta_capi import MetaConversionsApiService
+from app.utils.meta_capi_helper import should_skip_purchase_for_meta_capi
 
 # Timezone do Brasil
 TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
@@ -138,7 +139,7 @@ class SendDailyPurchasesToMetaCommand:
             .all()
         )
 
-        return pedidos
+        return [pedido for pedido in pedidos if not should_skip_purchase_for_meta_capi(pedido)]
 
     def _process_pending_batch(self, stats: dict, limit: int = 50):
         """
@@ -188,6 +189,16 @@ class SendDailyPurchasesToMetaCommand:
 
         for entry in batch:
             try:
+                pedido = Pedido.query.get(entry.order_id)
+                if pedido and should_skip_purchase_for_meta_capi(pedido):
+                    reason = "Ignorado por origem site/nuvemshop"
+                    print(f"[META_CAPI] {reason}: pedido #{pedido.id}")
+                    self.outbox_repo.mark_failed(
+                        entry.id, reason, 0, "permanent", entry.attempts
+                    )
+                    stats["failed_permanent"] += 1
+                    continue
+
                 # Parse payload JSON
                 payload = json.loads(entry.payload_json)
                 event = {
@@ -195,6 +206,7 @@ class SendDailyPurchasesToMetaCommand:
                     "event_time": payload["event_time"],
                     "event_id": payload["event_id"],
                     "action_source": payload["action_source"],
+                    "event_source_url": payload.get("event_source_url"),
                     "user_data": payload.get("user_data", {}),
                     "custom_data": payload["custom_data"],
                 }

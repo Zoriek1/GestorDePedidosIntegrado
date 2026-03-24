@@ -51,6 +51,11 @@ class MetaCapiOutboxRepository(BaseRepository):
         if existing:
             return None
 
+        from app.utils.meta_capi_helper import should_skip_purchase_for_meta_capi
+
+        if should_skip_purchase_for_meta_capi(pedido):
+            return None
+
         # Montar evento
         event = self.service.build_purchase_event(pedido)
 
@@ -61,6 +66,7 @@ class MetaCapiOutboxRepository(BaseRepository):
             "event_time": event["event_time"],
             "event_id": event["event_id"],
             "action_source": event["action_source"],
+            "event_source_url": event.get("event_source_url"),
             "custom_data": event["custom_data"],
             # user_data já contém apenas hashes
             "user_data": event.get("user_data", {}),

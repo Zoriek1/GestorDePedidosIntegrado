@@ -7,6 +7,28 @@ from app.models.pedido import Pedido
 from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 
 
+def _normalize_source_text(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def should_skip_purchase_for_meta_capi(pedido: Pedido) -> bool:
+    """
+    Evita duplicação quando a compra já tem tracking próprio.
+    """
+    fonte_rel = _normalize_source_text(getattr(getattr(pedido, "fonte_pedido_rel", None), "nome", ""))
+    fonte_legacy = _normalize_source_text(getattr(pedido, "fonte_pedido", ""))
+    plataforma = _normalize_source_text(getattr(pedido, "plataforma", ""))
+    canal = _normalize_source_text(getattr(pedido, "canal", ""))
+
+    if fonte_rel == "site" or fonte_legacy == "site" or canal == "site":
+        return True
+
+    if plataforma == "nuvemshop":
+        return True
+
+    return False
+
+
 def create_outbox_if_purchase(
     pedido: Pedido, status_anterior: str = None, status_pagamento_anterior: str = None
 ) -> bool:
@@ -28,6 +50,10 @@ def create_outbox_if_purchase(
 
     status_pagamento_upper = pedido.status_pagamento.upper().strip()
     if status_pagamento_upper not in ["PAGO", "PARCIAL"]:
+        return False
+
+    if should_skip_purchase_for_meta_capi(pedido):
+        print(f"[META_CAPI] Ignorando pedido #{pedido.id} por origem site/nuvemshop")
         return False
 
     # Se status_pagamento_anterior fornecido, verificar se realmente mudou

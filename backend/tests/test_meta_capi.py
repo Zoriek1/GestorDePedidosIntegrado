@@ -6,6 +6,7 @@ Testa normalização de dados, hashing, sanitização de payload e fluxo de outb
 import os
 import sys
 import time
+from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -300,6 +301,144 @@ class TestMetaCapiServiceSanitization:
         # fbc válido deve ser mantido
         assert result["user_data"]["fbc"] == valid_fbc
 
+    def test_sanitize_preserves_event_source_url_and_client_ip(self, service):
+        """Mantém campos úteis não-hashados usados pelo CAPI."""
+        event = {
+            "event_name": "Purchase",
+            "event_time": int(time.time()),
+            "event_id": "order_123",
+            "action_source": "website",
+            "event_source_url": "https://lpb.planteumaflor.com/oferta",
+            "user_data": {"client_ip_address": "203.0.113.10"},
+            "custom_data": {"value": 100.0, "currency": "BRL"},
+        }
+
+        result = service.sanitize_event_payload(event)
+
+        assert result["event_source_url"] == "https://lpb.planteumaflor.com/oferta"
+        assert result["user_data"]["client_ip_address"] == "203.0.113.10"
+
+
+class TestMetaCapiPurchaseEnrichment:
+    """Testes de enriquecimento do Purchase com dados já disponíveis no sistema."""
+
+    def test_build_purchase_event_enriches_with_lead_and_cliente(self, app):
+        with patch.dict(
+            os.environ,
+            {
+                "META_PIXEL_ID": "test_pixel_123",
+                "META_CAPI_ACCESS_TOKEN": "test_token_abc",
+                "META_CAPI_USE_GATEWAY": "false",
+            },
+        ):
+            from app import db
+            from app.models.cliente import Cliente
+            from app.models.lead import Lead
+            from app.models.pedido import Pedido
+            from app.services.meta_capi import MetaConversionsApiService
+
+            with app.app_context():
+                cliente = Cliente(
+                    nome="Maria Flor",
+                    telefone="62999990000",
+                    email="Maria@Teste.com",
+                )
+                db.session.add(cliente)
+                db.session.commit()
+
+                lead = Lead(
+                    dedup_key="lead-meta-1",
+                    phone="62999990000",
+                    fbclid="IwARabc123",
+                    fbp="fb.1.1711111111111.555666777888",
+                    ip_address="203.0.113.42",
+                    url="https://lpb.planteumaflor.com/oferta?fbclid=IwARabc123",
+                    created_at=datetime(2025, 1, 5, 12, 0, 0, tzinfo=timezone.utc),
+                )
+                db.session.add(lead)
+                db.session.commit()
+
+                pedido = Pedido(
+                    cliente="Maria Flor",
+                    telefone_cliente="(62) 99999-0000",
+                    destinatario="Cliente Final",
+                    tipo_pedido="Entrega",
+                    produto="Buquê Premium",
+                    valor="150,00",
+                    dia_entrega=date.today(),
+                    horario="10:00",
+                    cidade="Goiânia",
+                    cep="74000-000",
+                    status="confirmado",
+                    status_pagamento="Pago",
+                    cliente_id=cliente.id,
+                )
+                db.session.add(pedido)
+                db.session.commit()
+
+                service = MetaConversionsApiService()
+                event = service.build_purchase_event(pedido)
+
+                assert event["event_name"] == "Purchase"
+                assert event["event_source_url"] == lead.url
+                assert event["user_data"]["fbp"] == lead.fbp
+                assert event["user_data"]["fbc"] == "fb.1.1736078400.IwARabc123"
+                assert event["user_data"]["client_ip_address"] == "203.0.113.42"
+                assert event["user_data"]["em"] == [
+                    service.hash_sha256(service.normalize_email("Maria@Teste.com"))
+                ]
+                assert event["user_data"]["external_id"] == [
+                    service.hash_sha256(f"cliente:{cliente.id}")
+                ]
+
+
+class TestMetaCapiSourceFilter:
+    def test_should_skip_site_and_nuvemshop(self, app):
+        from app.utils.meta_capi_helper import should_skip_purchase_for_meta_capi
+        from app.models.pedido import Pedido
+
+        with app.app_context():
+            pedido_site = Pedido(
+                cliente="Cliente Site",
+                telefone_cliente="62999990000",
+                destinatario="Destinatário",
+                tipo_pedido="Entrega",
+                produto="Buquê",
+                dia_entrega=date.today(),
+                horario="10:00",
+                cidade="Goiânia",
+                status_pagamento="Pago",
+                fonte_pedido="Site",
+            )
+            pedido_nuvemshop = Pedido(
+                cliente="Cliente Nuvem",
+                telefone_cliente="62999990001",
+                destinatario="Destinatário",
+                tipo_pedido="Entrega",
+                produto="Buquê",
+                dia_entrega=date.today(),
+                horario="10:00",
+                cidade="Goiânia",
+                status_pagamento="Pago",
+                plataforma="Nuvemshop",
+            )
+            pedido_manual = Pedido(
+                cliente="Cliente Manual",
+                telefone_cliente="62999990002",
+                destinatario="Destinatário",
+                tipo_pedido="Entrega",
+                produto="Buquê",
+                dia_entrega=date.today(),
+                horario="10:00",
+                cidade="Goiânia",
+                status_pagamento="Pago",
+                fonte_pedido="WhatsApp",
+            )
+
+            assert should_skip_purchase_for_meta_capi(pedido_site) is True
+            assert should_skip_purchase_for_meta_capi(pedido_nuvemshop) is True
+            assert should_skip_purchase_for_meta_capi(pedido_manual) is False
+
 
 class TestMetaCapiServiceErrorClassification:
     """Testes de classificação de erros"""
@@ -564,6 +703,26 @@ class TestMetaCapiOutboxRepository:
 
             assert outbox1 is not None
             assert outbox2 is None  # Duplicata retorna None
+
+    def test_create_from_pedido_skips_site_and_nuvemshop(self, app):
+        """Não cria outbox para pedidos que já têm tracking próprio."""
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+
+        with app.app_context():
+            pedido_site = self._create_test_pedido(cliente="Cliente Site", telefone="62999887760")
+            pedido_site.fonte_pedido = "Site"
+
+            pedido_nuvem = self._create_test_pedido(cliente="Cliente Nuvem", telefone="62999887761")
+            pedido_nuvem.plataforma = "Nuvemshop"
+
+            db.session.add_all([pedido_site, pedido_nuvem])
+            db.session.commit()
+
+            repo = MetaCapiOutboxRepository()
+
+            assert repo.create_from_pedido(pedido_site) is None
+            assert repo.create_from_pedido(pedido_nuvem) is None
 
     def test_get_pending(self, app):
         """Busca outbox pendentes"""

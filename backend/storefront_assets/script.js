@@ -977,75 +977,77 @@
     return { primary: "#111111", background: "#ffffff" };
   }
 
-  function applyStartingFromOnCard(card, minPrice) {
-    const priceNode = findPriceNode(card);
-    if (!priceNode) return;
+  // Desativado: "A partir de:" nos cards da listagem/home (Nuvemshop).
+  // function applyStartingFromOnCard(card, minPrice) {
+  //   const priceNode = findPriceNode(card);
+  //   if (!priceNode) return;
 
-    // Já aplicado E prefixo ainda presente — nada a fazer.
-    // Se o Nuvemshop re-renderizar o nó de preço (data-store="product-item-price-*"),
-    // o span .tn-from-prefix some mas data-tn-from-applied fica no atributo do nó
-    // sobrevivente. Verificar os dois garante reaplicação nesse caso.
-    if (priceNode.getAttribute("data-tn-from-applied") === "true" &&
-        priceNode.querySelector(".tn-from-prefix")) return;
+  //   // Já aplicado E prefixo ainda presente — nada a fazer.
+  //   // Se o Nuvemshop re-renderizar o nó de preço (data-store="product-item-price-*"),
+  //   // o span .tn-from-prefix some mas data-tn-from-applied fica no atributo do nó
+  //   // sobrevivente. Verificar os dois garante reaplicação nesse caso.
+  //   if (priceNode.getAttribute("data-tn-from-applied") === "true" &&
+  //       priceNode.querySelector(".tn-from-prefix")) return;
 
-    priceNode.textContent = "";
-    const prefixEl = document.createElement("span");
-    prefixEl.className = "tn-from-prefix";
-    prefixEl.textContent = "A partir de: ";
-    prefixEl.style.cssText = "font-weight:700;";
-    priceNode.appendChild(prefixEl);
-    priceNode.appendChild(document.createTextNode(formatBRL(minPrice)));
-    priceNode.setAttribute("data-tn-from-applied", "true");
-  }
+  //   priceNode.textContent = "";
+  //   const prefixEl = document.createElement("span");
+  //   prefixEl.className = "tn-from-prefix";
+  //   prefixEl.textContent = "A partir de: ";
+  //   prefixEl.style.cssText = "font-weight:700;";
+  //   priceNode.appendChild(prefixEl);
+  //   priceNode.appendChild(document.createTextNode(formatBRL(minPrice)));
+  //   priceNode.setAttribute("data-tn-from-applied", "true");
+  // }
 
-  function upsertSizeBadges(card, sizeValues) {
-    const shouldShow = Array.isArray(sizeValues) && sizeValues.length >= 2;
-    const existing = card.querySelector(".tn-size-badges");
+  // Desativado: badges sobre a foto do produto na listagem/home (Nuvemshop).
+  // function upsertSizeBadges(card, sizeValues) {
+  //   const shouldShow = Array.isArray(sizeValues) && sizeValues.length >= 2;
+  //   const existing = card.querySelector(".tn-size-badges");
 
-    if (!shouldShow) {
-      if (existing) existing.remove();
-      return;
-    }
+  //   if (!shouldShow) {
+  //     if (existing) existing.remove();
+  //     return;
+  //   }
 
-    const style = window.getComputedStyle(card);
-    if (style.position === "static") {
-      card.style.position = "relative";
-    }
+  //   const style = window.getComputedStyle(card);
+  //   if (style.position === "static") {
+  //     card.style.position = "relative";
+  //   }
 
-    const wrap = existing || document.createElement("div");
-    wrap.className = "tn-size-badges";
-    wrap.setAttribute(
-      "style",
-      "position:absolute;top:8px;right:8px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;z-index:4;pointer-events:none;"
-    );
+  //   const wrap = existing || document.createElement("div");
+  //   wrap.className = "tn-size-badges";
+  //   wrap.setAttribute(
+  //     "style",
+  //     "position:absolute;top:8px;right:8px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;z-index:4;pointer-events:none;"
+  //   );
 
-    wrap.textContent = "";
+  //   wrap.textContent = "";
 
-    const colors = getBadgeColors();
-    const values = sizeValues.slice(0, CONFIG.maxBadgesPerCard);
+  //   const colors = getBadgeColors();
+  //   const values = sizeValues.slice(0, CONFIG.maxBadgesPerCard);
 
-    for (const value of values) {
-      const badge = document.createElement("span");
-      badge.textContent = value;
-      badge.setAttribute(
-        "style",
-        `display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;line-height:1.2;background:${colors.primary};color:${colors.background};max-width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`
-      );
-      wrap.appendChild(badge);
-    }
+  //   for (const value of values) {
+  //     const badge = document.createElement("span");
+  //     badge.textContent = value;
+  //     badge.setAttribute(
+  //       "style",
+  //       `display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;line-height:1.2;background:${colors.primary};color:${colors.background};max-width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`
+  //     );
+  //     wrap.appendChild(badge);
+  //   }
 
-    if (sizeValues.length > CONFIG.maxBadgesPerCard) {
-      const extra = document.createElement("span");
-      extra.textContent = `+${sizeValues.length - CONFIG.maxBadgesPerCard}`;
-      extra.setAttribute(
-        "style",
-        `display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;line-height:1.2;background:${colors.primary};color:${colors.background};`
-      );
-      wrap.appendChild(extra);
-    }
+  //   if (sizeValues.length > CONFIG.maxBadgesPerCard) {
+  //     const extra = document.createElement("span");
+  //     extra.textContent = `+${sizeValues.length - CONFIG.maxBadgesPerCard}`;
+  //     extra.setAttribute(
+  //       "style",
+  //       `display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;line-height:1.2;background:${colors.primary};color:${colors.background};`
+  //     );
+  //     wrap.appendChild(extra);
+  //   }
 
-    if (!existing) card.appendChild(wrap);
-  }
+  //   if (!existing) card.appendChild(wrap);
+  // }
 
   function extractPidFromUrl(url) {
     if (!url) return null;
@@ -1053,21 +1055,22 @@
     return match ? match[1] : null;
   }
 
-  function watchCardPrice(card, minPrice) {
-    // Observa o card inteiro (não o container de preço) porque o Nuvemshop
-    // pode substituir o próprio elemento data-store="product-item-price-*",
-    // invalidando observers no nó removido.
-    // Debounce de 50ms evita chamadas em rajada.
-    let timer = null;
-    const obs = new MutationObserver(function () {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(function () {
-        timer = null;
-        applyStartingFromOnCard(card, minPrice);
-      }, 50);
-    });
-    obs.observe(card, { childList: true, subtree: true, characterData: true });
-  }
+  // Desativado junto com applyStartingFromOnCard (listagem/home).
+  // function watchCardPrice(card, minPrice) {
+  //   // Observa o card inteiro (não o container de preço) porque o Nuvemshop
+  //   // pode substituir o próprio elemento data-store="product-item-price-*",
+  //   // invalidando observers no nó removido.
+  //   // Debounce de 50ms evita chamadas em rajada.
+  //   let timer = null;
+  //   const obs = new MutationObserver(function () {
+  //     if (timer) clearTimeout(timer);
+  //     timer = setTimeout(function () {
+  //       timer = null;
+  //       applyStartingFromOnCard(card, minPrice);
+  //     }, 50);
+  //   });
+  //   obs.observe(card, { childList: true, subtree: true, characterData: true });
+  // }
 
   async function enhanceSingleCard(card, allowSizeBadges) {
     if (!card || !card.isConnected) return null;
@@ -1117,18 +1120,20 @@
     }
 
     let appliedStartingFrom = false;
-    if (data.hasDifferentPrices) {
-      applyStartingFromOnCard(card, data.minPrice);
-      card.setAttribute("data-tn-from-price", String(data.minPrice));
-      watchCardPrice(card, data.minPrice);
-      appliedStartingFrom = true;
-    }
+    // Desativado: "A partir de:" nos cards da listagem/home (Nuvemshop).
+    // if (data.hasDifferentPrices) {
+    //   applyStartingFromOnCard(card, data.minPrice);
+    //   card.setAttribute("data-tn-from-price", String(data.minPrice));
+    //   watchCardPrice(card, data.minPrice);
+    //   appliedStartingFrom = true;
+    // }
 
     const hasSizes = Array.isArray(data.sizeValues) && data.sizeValues.length >= 2;
 
-    if (allowSizeBadges) {
-      upsertSizeBadges(card, data.sizeValues);
-    }
+    // Desativado: badges sobre a foto do produto na listagem/home (Nuvemshop).
+    // if (allowSizeBadges) {
+    //   upsertSizeBadges(card, data.sizeValues);
+    // }
 
     debugLog("card processado", {
       url: url || null,

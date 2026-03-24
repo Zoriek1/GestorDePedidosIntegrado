@@ -43,6 +43,12 @@ const EVENT_LABELS: Record<string, string> = {
   site_click: 'Site Click',
 };
 
+const LEAD_STATUS_LABELS: Record<string, string> = {
+  pendente_whatsapp: 'Pendente WhatsApp',
+  whatsapp_iniciado: 'WhatsApp iniciado',
+  compra_realizada: 'Compra realizada',
+};
+
 function buildWhatsAppUrl(phone: string): string | null {
   const digits = phone.replace(/\D/g, '');
   if (digits.length < 10) return null;
@@ -86,6 +92,36 @@ function sourceColor(source: string | null): 'primary' | 'secondary' | 'success'
     case 'tiktok': return 'warning';
     default: return 'default';
   }
+}
+
+function tokenValidColor(valid: boolean | null): 'success' | 'error' | 'default' {
+  if (valid === true) return 'success';
+  if (valid === false) return 'error';
+  return 'default';
+}
+
+function tokenValidLabel(valid: boolean | null): string {
+  if (valid === true) return 'Válido';
+  if (valid === false) return 'Inválido';
+  return '—';
+}
+
+function leadStatusColor(status: string | null): 'warning' | 'info' | 'success' | 'default' {
+  switch (status) {
+    case 'pendente_whatsapp':
+      return 'warning';
+    case 'whatsapp_iniciado':
+      return 'info';
+    case 'compra_realizada':
+      return 'success';
+    default:
+      return 'default';
+  }
+}
+
+function leadStatusLabel(status: string | null): string {
+  if (!status) return '—';
+  return LEAD_STATUS_LABELS[status] ?? status;
 }
 
 export default function LeadsPage() {
@@ -216,9 +252,13 @@ export default function LeadsPage() {
         <Table size="small">
           <TableHead>
             <TableRow>
+              <TableCell align="center">Ação</TableCell>
               <TableCell>Data</TableCell>
-              <TableCell>Evento</TableCell>
+              <TableCell>Status</TableCell>
               <TableCell>Telefone</TableCell>
+              <TableCell>Código WhatsApp</TableCell>
+              <TableCell>Token válido</TableCell>
+              <TableCell>Evento</TableCell>
               <TableCell>fbclid</TableCell>
               <TableCell>fbp</TableCell>
               <TableCell>Origem</TableCell>
@@ -226,13 +266,12 @@ export default function LeadsPage() {
               <TableCell>Conteúdo</TableCell>
               <TableCell>Meio</TableCell>
               <TableCell>IP</TableCell>
-              <TableCell align="center">Ação</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} align="center">
+                <TableCell colSpan={14} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
                     Nenhum lead encontrado
                   </Typography>
@@ -241,24 +280,6 @@ export default function LeadsPage() {
             ) : (
               leads.map((lead) => (
                 <TableRow key={lead.id} hover>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
-                  <TableCell>{formatEventLabel(lead.event)}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
-                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {lead.fbclid ?? '—'}
-                  </TableCell>
-                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {lead.fbp ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    {lead.utm_source ? (
-                      <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} />
-                    ) : '—'}
-                  </TableCell>
-                  <TableCell>{lead.utm_campaign ?? '—'}</TableCell>
-                  <TableCell>{lead.utm_content ?? '—'}</TableCell>
-                  <TableCell>{lead.utm_medium ?? '—'}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{lead.ip_address ?? '—'}</TableCell>
                   <TableCell align="center">
                     <Stack direction="row" spacing={0.5} justifyContent="center">
                       {lead.phone ? (
@@ -290,6 +311,43 @@ export default function LeadsPage() {
                       </Tooltip>
                     </Stack>
                   </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      color={leadStatusColor(lead.status)}
+                      label={leadStatusLabel(lead.status)}
+                      variant={lead.status ? 'filled' : 'outlined'}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                    {lead.token_rastreio ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      color={tokenValidColor(lead.token_valido)}
+                      label={tokenValidLabel(lead.token_valido)}
+                      variant={lead.token_valido === null ? 'outlined' : 'filled'}
+                    />
+                  </TableCell>
+                  <TableCell>{formatEventLabel(lead.event)}</TableCell>
+                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {lead.fbclid ?? '—'}
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {lead.fbp ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    {lead.utm_source ? (
+                      <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} />
+                    ) : '—'}
+                  </TableCell>
+                  <TableCell>{lead.utm_campaign ?? '—'}</TableCell>
+                  <TableCell>{lead.utm_content ?? '—'}</TableCell>
+                  <TableCell>{lead.utm_medium ?? '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{lead.ip_address ?? '—'}</TableCell>
                 </TableRow>
               ))
             )}

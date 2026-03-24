@@ -177,6 +177,7 @@ export interface CreatePedidoPayload {
   status_pagamento?: string;
   fonte_pedido?: string;
   fonte_pedido_id?: number;
+  codigo_whatsapp?: string;
   quantidade?: number;
   cliente_id?: number;
 }
@@ -407,4 +408,3 @@ export function useCalcularDistanciasLote() {
     },
   });
 }
-

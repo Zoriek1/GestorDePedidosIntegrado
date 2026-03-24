@@ -33,7 +33,10 @@ class Lead(db.Model):
     utm_term = db.Column(db.String(100))
     src = db.Column(db.String(100))
     sck = db.Column(db.String(200))
-    phone = db.Column(db.String(30), index=True)
+    phone = db.Column(db.String(30), index=True, nullable=True)
+    token_rastreio = db.Column(db.String(64), index=True, nullable=True)
+    token_valido = db.Column(db.Boolean, nullable=True, default=False)
+    status = db.Column(db.String(50), index=True, nullable=True, default="pendente_whatsapp")
     fbclid = db.Column(db.String(255), index=True)
     fbp = db.Column(db.String(255))
     ip_address = db.Column(db.String(45))
@@ -54,6 +57,9 @@ class Lead(db.Model):
             "src": self.src,
             "sck": self.sck,
             "phone": self.phone,
+            "token_rastreio": self.token_rastreio,
+            "token_valido": self.token_valido,
+            "status": self.status,
             "fbclid": self.fbclid,
             "fbp": self.fbp,
             "ip_address": self.ip_address,

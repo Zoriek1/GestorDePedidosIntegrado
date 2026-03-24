@@ -295,6 +295,24 @@ export function StepCliente() {
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
+            <Controller
+              name="codigo_whatsapp"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  label="Código do WhatsApp (Opcional)"
+                  placeholder="Ex: A3F9"
+                  fullWidth
+                  value={field.value ?? ''}
+                  error={!!errors.codigo_whatsapp}
+                  helperText={errors.codigo_whatsapp?.message || 'Use o código exibido na mensagem do cliente'}
+                />
+              )}
+            />
+          </Grid>
+
+          <Grid size={{ xs: 12, md: 6 }}>
             {/* Destinatário com Checkbox "Mesmo que o cliente" */}
             <Box>
               <Controller
@@ -429,4 +447,3 @@ export function StepCliente() {
 }
 
 export default StepCliente;
-

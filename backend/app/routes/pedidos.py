@@ -12,6 +12,7 @@ from flask import Blueprint, g, request
 # Command Pattern Imports
 from app.commands.gerar_comprovante_command import GerarComprovanteCommand
 from app.middleware import requires_any_role, requires_edit_auth, requires_role
+from app.models.lead import Lead
 from app.models.pedido import datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
@@ -25,6 +26,11 @@ from app.schemas.pedido_schema import (
 from app.utils.destructive_action_guard import (
     ensure_backup_before_destructive_action,
 )
+from app.utils.tracking_token import (
+    extract_tracking_token_from_text,
+    is_tracking_token_valid,
+    normalize_tracking_token,
+)
 
 pedidos_bp = Blueprint("pedidos", __name__, url_prefix="/api/pedidos")
 
@@ -32,6 +38,50 @@ pedido_repo = PedidoRepository()
 pedido_schema = PedidoSchema()
 pedido_create_schema = PedidoCreateSchema()
 pedido_update_schema = PedidoUpdateSchema()
+
+
+def _normalize_whatsapp_code(value: object) -> str | None:
+    return normalize_tracking_token(value)
+
+
+def _extract_whatsapp_token_from_payload(data: dict) -> str | None:
+    token = _normalize_whatsapp_code(data.get("codigo_whatsapp") or data.get("token_rastreio"))
+    if token:
+        return token
+
+    for key in ("whatsapp_message", "mensagem_whatsapp", "raw_message", "mensagem", "observacoes"):
+        candidate = extract_tracking_token_from_text(data.get(key))
+        if candidate:
+            return candidate
+    return None
+
+
+def _link_lead_by_whatsapp_code(codigo_whatsapp: str | None, telefone_cliente: str | None) -> Lead | None:
+    """
+    Faz o casamento do lead anônimo com o telefone real do pedido.
+    Não lança erro para não bloquear criação/edição de pedido.
+    """
+    if not codigo_whatsapp or not telefone_cliente:
+        return None
+    if not is_tracking_token_valid(codigo_whatsapp):
+        return None
+
+    telefone_digits = re.sub(r"[^\d]", "", telefone_cliente)
+    if not telefone_digits:
+        return None
+
+    leads = (
+        Lead.query.filter(Lead.token_rastreio == codigo_whatsapp)
+        .order_by(Lead.created_at.desc())
+        .all()
+    )
+    for lead in leads:
+        if lead.status == "compra_realizada":
+            continue
+        lead.phone = telefone_digits
+        lead.status = "compra_realizada"
+        return lead
+    return None
 
 
 @pedidos_bp.route("", methods=["GET"])
@@ -414,6 +464,7 @@ def criar_pedido():
         pagamento = data.get("pagamento", "").strip()
         observacoes = data.get("observacoes", "").strip()
         status_pagamento = data.get("status_pagamento", "").strip()
+        codigo_whatsapp = _extract_whatsapp_token_from_payload(data)
 
         quantidade_raw = data.get("quantidade", 1)
 
@@ -569,7 +620,23 @@ def criar_pedido():
         )
 
         db.session.add(pedido)
+        _link_lead_by_whatsapp_code(codigo_whatsapp, telefone_cliente)
         db.session.commit()
+
+        # Hook de Purchase (mantém regra atual: status_pagamento=Pago/Parcial)
+        try:
+            from app.utils.meta_capi_helper import create_outbox_if_purchase
+
+            create_outbox_if_purchase(pedido, status_anterior=None, status_pagamento_anterior=None)
+        except Exception as e:
+            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido.id}: {e}")
+
+        try:
+            from app.utils.utmify_helper import send_utmify_if_purchase
+
+            send_utmify_if_purchase(pedido, status_anterior=None, status_pagamento_anterior=None)
+        except Exception as e:
+            print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido.id}: {e}")
 
         # Inserir na tabela auxiliar da fonte (se houver)
         if fonte_pedido_id_int:
@@ -642,6 +709,7 @@ def atualizar_pedido(pedido_id):
             return error_response("Pedido não encontrado", 404, details={"pedido_id": pedido_id})
 
         data = request.get_json() or {}
+        codigo_whatsapp = _extract_whatsapp_token_from_payload(data)
 
         # Verificar se pedido tem external_ref (importado de plataforma externa)
         external_ref = PedidoExternalRef.query.filter_by(pedido_id=pedido_id).first()
@@ -764,6 +832,9 @@ def atualizar_pedido(pedido_id):
                     field_value=str(field_value) if field_value is not None else None,
                     edited_by=actor,
                 )
+
+        if codigo_whatsapp:
+            _link_lead_by_whatsapp_code(codigo_whatsapp, pedido.telefone_cliente)
 
         db.session.commit()
 

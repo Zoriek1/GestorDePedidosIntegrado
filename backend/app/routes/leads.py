@@ -12,6 +12,11 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.middleware import requires_any_role
 from app.models.lead import Lead
+from app.utils.tracking_token import (
+    extract_tracking_token_from_text,
+    is_tracking_token_valid,
+    normalize_tracking_token,
+)
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 
@@ -29,6 +34,8 @@ ALLOWED_FIELDS = (
     "utm_term",
     "src",
     "sck",
+    "token_rastreio",
+    "destination_url",
     "phone",
     "fbclid",
     "fbp",
@@ -97,20 +104,47 @@ def _normalize_fbp(value: object) -> str | None:
     return _clip(value, 255)
 
 
+def _parse_request_payload() -> dict:
+    """
+    Aceita JSON com Content-Type padrão e também text/plain (sendBeacon).
+    """
+    data = request.get_json(force=True, silent=True)
+    if isinstance(data, dict):
+        return data
+
+    raw = request.get_data(as_text=True) or ""
+    raw = raw.strip()
+    if not raw:
+        return {}
+
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 @leads_bp.route("", methods=["POST"])
 @leads_bp.route("/", methods=["POST"])
 def criar_lead():
     """Recebe dados UTM da landing page (aceita application/json e text/plain via sendBeacon)."""
-    data = request.get_json(force=True, silent=True) or {}
+    data = _parse_request_payload()
 
     ip_address = _get_ip_address()
     dedup_key = _build_dedup_key(data, ip_address)
+    token_rastreio = normalize_tracking_token(data.get("token_rastreio"))
+    if not token_rastreio:
+        token_rastreio = extract_tracking_token_from_text(data.get("destination_url") or data.get("url"))
+    token_valido = is_tracking_token_valid(token_rastreio)
+    incoming_phone = _normalize_phone(data.get("phone") or data.get("telefone"))
+    phone = None if token_rastreio else incoming_phone
+    status = _clip(data.get("status"), 50) or "pendente_whatsapp"
 
     lead = Lead(
         dedup_key=dedup_key,
         ip_address=ip_address,
         event=_clip(data.get("event"), 50),
-        url=_clip(data.get("url"), 10_000),
+        url=_clip(data.get("url") or data.get("destination_url"), 10_000),
         referrer=_clip(data.get("referrer"), 10_000),
         utm_source=_clip(data.get("utm_source"), 100),
         utm_medium=_clip(data.get("utm_medium"), 100),
@@ -119,7 +153,10 @@ def criar_lead():
         utm_term=_clip(data.get("utm_term"), 100),
         src=_clip(data.get("src"), 100),
         sck=_clip(data.get("sck"), 200),
-        phone=_normalize_phone(data.get("phone") or data.get("telefone")),
+        phone=phone,
+        token_rastreio=token_rastreio,
+        token_valido=token_valido,
+        status=status,
         fbclid=_extract_fbclid(data),
         fbp=_normalize_fbp(data.get("fbp")),
     )
@@ -127,14 +164,74 @@ def criar_lead():
     try:
         db.session.add(lead)
         db.session.commit()
-        return jsonify({"ok": True, "id": lead.id, "duplicated": False}), 201
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "id": lead.id,
+                    "duplicated": False,
+                    "token_valido": token_valido,
+                }
+            ),
+            201,
+        )
     except IntegrityError:
         db.session.rollback()
         existing = Lead.query.filter(Lead.dedup_key == dedup_key).first()
         return (
-            jsonify({"ok": True, "id": existing.id if existing else None, "duplicated": True}),
+            jsonify(
+                {
+                    "ok": True,
+                    "id": existing.id if existing else None,
+                    "duplicated": True,
+                    "token_valido": token_valido,
+                }
+            ),
             200,
         )
+
+
+@leads_bp.route("/whatsapp-start", methods=["POST"])
+def marcar_whatsapp_iniciado():
+    """
+    Marca lead como whatsapp_iniciado quando recebemos mensagem com código [Cod: XXXXXXX...].
+    """
+    data = _parse_request_payload()
+
+    token = normalize_tracking_token(data.get("token_rastreio"))
+    if not token:
+        for key in ("message", "message_text", "text", "raw_message", "destination_url", "url"):
+            token = extract_tracking_token_from_text(data.get(key))
+            if token:
+                break
+
+    token_valido = is_tracking_token_valid(token)
+    if not token:
+        return jsonify({"ok": True, "found": False, "token": None, "token_valido": False}), 200
+    if not token_valido:
+        return jsonify({"ok": True, "found": False, "token": token, "token_valido": False}), 200
+
+    lead = Lead.query.filter(Lead.token_rastreio == token).order_by(Lead.created_at.desc()).first()
+    if not lead:
+        return jsonify({"ok": True, "found": False, "token": token, "token_valido": True}), 200
+
+    if lead.status != "compra_realizada":
+        lead.status = "whatsapp_iniciado"
+        db.session.commit()
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "found": True,
+                "token": token,
+                "token_valido": True,
+                "lead_id": lead.id,
+                "status": lead.status,
+            }
+        ),
+        200,
+    )
 
 
 @leads_bp.route("", methods=["GET"])

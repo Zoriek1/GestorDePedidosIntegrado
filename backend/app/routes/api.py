@@ -37,6 +37,12 @@ def criar_pedido():
     MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
     Mantido aqui apenas para compatibilidade durante transição
     """
+    # Proxy para a implementação nova para evitar divergência entre rotas duplicadas.
+    from app.routes.pedidos import criar_pedido as criar_pedido_v2
+
+    handler = getattr(criar_pedido_v2, "__wrapped__", criar_pedido_v2)
+    return handler()
+
     try:
         data = request.get_json()
 
@@ -654,6 +660,11 @@ def atualizar_pedido(pedido_id):
     MIGRADO: Este endpoint foi movido para app/routes/pedidos.py
     Mantido aqui apenas para compatibilidade durante transição
     """
+    from app.routes.pedidos import atualizar_pedido as atualizar_pedido_v2
+
+    handler = getattr(atualizar_pedido_v2, "__wrapped__", atualizar_pedido_v2)
+    return handler(pedido_id)
+
     try:
         print(f"[API] Atualizando pedido {pedido_id}")
         pedido = Pedido.query.get(pedido_id)

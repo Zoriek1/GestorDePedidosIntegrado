@@ -5,6 +5,9 @@ import json
 from app.models.lead import Lead
 
 _ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').decode()}"}
+_VALID_TOKEN = "A3F9B7K20K"
+_SECOND_VALID_TOKEN = "B7K2L9M1S0"
+_INVALID_TOKEN = "A3F9B7K2ZZ"
 
 
 def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
@@ -189,3 +192,118 @@ def test_realcase_fbc_sem_fbclid_extrai_clickid(client, session):
     assert lead is not None
     assert lead.fbclid == "IwARfbcOnly987"
     assert lead.fbp == "fb.1.1711111111111.999000111222"
+
+
+def test_cria_lead_anonimo_com_token_rastreio(client, session):
+    payload = {
+        "event": "whatsapp_click",
+        "token_rastreio": _VALID_TOKEN.lower(),
+        "phone": "+55 (62) 99999-0000",
+        "fbclid": "IwARtoken123",
+        "fbp": "fb.1.1711111111111.555666777888",
+    }
+
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.token_rastreio == _VALID_TOKEN
+    assert lead.phone is None
+    assert lead.token_valido is True
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_token_rastreio_repetido_retorna_duplicado(client, session):
+    payload = {
+        "event": "whatsapp_click",
+        "token_rastreio": _VALID_TOKEN,
+        "fbclid": "IwARtoken123",
+        "fbp": "fb.1.1711111111111.555666777888",
+    }
+
+    r1 = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r1.status_code == 201
+    first_id = r1.get_json()["id"]
+
+    r2 = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r2.status_code == 200
+    data2 = r2.get_json()
+    assert data2["duplicated"] is True
+    assert data2["id"] == first_id
+    assert session.query(Lead).count() == 1
+
+
+def test_token_invalido_persiste_token_valido_false(client, session):
+    payload = {
+        "event": "whatsapp_click",
+        "token_rastreio": _INVALID_TOKEN,
+        "status": "pendente_whatsapp",
+    }
+
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+    data = r.get_json()
+    assert data["token_valido"] is False
+
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.token_rastreio == _INVALID_TOKEN
+    assert lead.token_valido is False
+
+
+def test_extrai_token_de_destination_url(client, session):
+    payload = {
+        "event": "whatsapp_click",
+        "destination_url": f"https://wa.me/5562999990000?text=Ol%C3%A1%20[Cod:%20{_VALID_TOKEN}]",
+        "status": "pendente_whatsapp",
+    }
+
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+    data = r.get_json()
+    assert data["token_valido"] is True
+
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.token_rastreio == _VALID_TOKEN
+    assert lead.token_valido is True
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_whatsapp_start_atualiza_status_sem_sobrescrever_compra_realizada(client, session):
+    lead = Lead(
+        dedup_key="lead-whatsapp-start",
+        token_rastreio=_SECOND_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    lead_compra = Lead(
+        dedup_key="lead-whatsapp-start-compra",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="compra_realizada",
+    )
+    session.add_all([lead, lead_compra])
+    session.commit()
+
+    r1 = client.post("/api/leads/whatsapp-start", json={"message": f"Olá [Cod: {_SECOND_VALID_TOKEN}]"})
+    assert r1.status_code == 200
+    data1 = r1.get_json()
+    assert data1["ok"] is True
+    assert data1["found"] is True
+    assert data1["token_valido"] is True
+    assert data1["status"] == "whatsapp_iniciado"
+
+    session.refresh(lead)
+    assert lead.status == "whatsapp_iniciado"
+
+    r2 = client.post("/api/leads/whatsapp-start", json={"token_rastreio": _VALID_TOKEN})
+    assert r2.status_code == 200
+    data2 = r2.get_json()
+    assert data2["ok"] is True
+    assert data2["found"] is True
+    assert data2["status"] == "compra_realizada"
+
+    session.refresh(lead_compra)
+    assert lead_compra.status == "compra_realizada"

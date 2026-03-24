@@ -20,6 +20,9 @@ export interface Lead {
   src: string | null;
   sck: string | null;
   phone: string | null;
+  token_rastreio: string | null;
+  token_valido: boolean | null;
+  status: string | null;
   fbclid: string | null;
   fbp: string | null;
   ip_address: string | null;

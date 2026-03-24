@@ -129,6 +129,11 @@ describe('transformFormToApiPayload — quadra e lote', () => {
     // Quando endereco já vem preenchido, não recompõe
     expect(payload.endereco).toBe('Endereço manual');
   });
+
+  it('normaliza codigo_whatsapp para maiúsculo no payload', () => {
+    const payload = transformFormToApiPayload(makeFormData({ codigo_whatsapp: ' a3f9b7k20k ' }));
+    expect(payload.codigo_whatsapp).toBe('A3F9B7K20K');
+  });
 });
 
 // ---------------------------------------------------------------------------

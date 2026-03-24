@@ -310,3 +310,15 @@ class TestStorefrontEndpoint:
 
         resp = client.get("/storefront/produtos-variantes")
         assert resp.status_code == 502
+
+    def test_serve_nuvemshop_legado_js(self, client):
+        resp = client.get("/storefront/nuvemshop-legado.js")
+        assert resp.status_code == 200
+        assert "application/javascript" in (resp.headers.get("Content-Type") or "")
+        assert b"nuvemshop-legado-v1" in resp.data
+
+    def test_alias_storefront_script_js(self, client):
+        r1 = client.get("/storefront/nuvemshop-legado.js")
+        r2 = client.get("/storefront/storefront-script.js")
+        assert r1.status_code == 200 and r2.status_code == 200
+        assert r1.data == r2.data

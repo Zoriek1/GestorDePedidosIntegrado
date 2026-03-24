@@ -179,11 +179,22 @@ def get_produtos_variantes():
         return _cors_response(jsonify({"error": str(exc)})), 502
 
 
-@storefront_bp.route("/storefront-script.js", methods=["GET"])
-def get_storefront_script():
-    """Serve o script.js do storefront com CORS aberto."""
-    response = make_response(send_from_directory(_ASSETS_DIR, "script.js"))
+def _serve_storefront_js():
+    """Serve o bundle JS do storefront (Nuvemshop legado) com CORS aberto."""
+    response = make_response(send_from_directory(_ASSETS_DIR, "nuvemshop-legado.js"))
     response.headers["Content-Type"] = "application/javascript; charset=utf-8"
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Cache-Control"] = "public, max-age=300"
     return response
+
+
+@storefront_bp.route("/nuvemshop-legado.js", methods=["GET"])
+def get_nuvemshop_legado_script():
+    """URL preferida para o script injetado na loja."""
+    return _serve_storefront_js()
+
+
+@storefront_bp.route("/storefront-script.js", methods=["GET"])
+def get_storefront_script():
+    """Alias legado; mesmo ficheiro que /nuvemshop-legado.js."""
+    return _serve_storefront_js()

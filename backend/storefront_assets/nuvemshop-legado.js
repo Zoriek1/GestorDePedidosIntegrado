@@ -93,23 +93,20 @@
 
     return { get, set };
   })();
-  const APP_SIGNATURE = "aparitrde-home-v2";
-  window.__APARITRDE_BOOT__ = APP_SIGNATURE;
-  if (window.console && typeof window.console.log === "function") {
-    window.console.log("[aparitrde] boot", APP_SIGNATURE);
-  }
-
+  const APP_SIGNATURE = "nuvemshop-legado-v1";
+  window.__NUVEMSHOP_LEGADO_BOOT__ = APP_SIGNATURE;
+  // Logs só com window.__NUVEMSHOP_LEGADO_DEBUG__ = true (ou legado __APARITRDE_DEBUG__)
   function isDebugEnabled() {
-    return !!window.__APARITRDE_DEBUG__;
+    return !!(window.__NUVEMSHOP_LEGADO_DEBUG__ || window.__APARITRDE_DEBUG__);
   }
 
   function debugLog(message, payload) {
     if (!isDebugEnabled() || !window.console || typeof window.console.log !== "function") return;
     if (typeof payload === "undefined") {
-      window.console.log("[aparitrde]", message);
+      window.console.log("[nuvemshop-legado]", message);
       return;
     }
-    window.console.log("[aparitrde]", message, payload);
+    window.console.log("[nuvemshop-legado]", message, payload);
   }
 
   function normalizeText(value) {
@@ -1271,9 +1268,9 @@
   }
 
   function init() {
-    window.__APARITRDE_LOADED__ = APP_SIGNATURE;
-    if (window.console && typeof window.console.log === "function") {
-      window.console.log("[aparitrde] loaded", APP_SIGNATURE);
+    window.__NUVEMSHOP_LEGADO_LOADED__ = APP_SIGNATURE;
+    if (isDebugEnabled() && window.console && typeof window.console.log === "function") {
+      window.console.log("[nuvemshop-legado] loaded", APP_SIGNATURE);
     }
 
     if (isProductPage()) {
@@ -1298,9 +1295,9 @@
   try {
     init();
   } catch (error) {
-    window.__APARITRDE_ERROR__ = error && error.message ? error.message : String(error);
-    if (window.console && typeof window.console.error === "function") {
-      window.console.error("[aparitrde] init error", error);
+    window.__NUVEMSHOP_LEGADO_ERROR__ = error && error.message ? error.message : String(error);
+    if (isDebugEnabled() && window.console && typeof window.console.error === "function") {
+      window.console.error("[nuvemshop-legado] init error", error);
     }
   }
 })();

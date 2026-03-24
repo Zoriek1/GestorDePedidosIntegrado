@@ -394,8 +394,8 @@ class TestMetaCapiPurchaseEnrichment:
 
 class TestMetaCapiSourceFilter:
     def test_should_skip_site_and_nuvemshop(self, app):
-        from app.utils.meta_capi_helper import should_skip_purchase_for_meta_capi
         from app.models.pedido import Pedido
+        from app.utils.meta_capi_helper import should_skip_purchase_for_meta_capi
 
         with app.app_context():
             pedido_site = Pedido(

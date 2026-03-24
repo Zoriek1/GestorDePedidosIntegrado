@@ -193,9 +193,7 @@ class SendDailyPurchasesToMetaCommand:
                 if pedido and should_skip_purchase_for_meta_capi(pedido):
                     reason = "Ignorado por origem site/nuvemshop"
                     print(f"[META_CAPI] {reason}: pedido #{pedido.id}")
-                    self.outbox_repo.mark_failed(
-                        entry.id, reason, 0, "permanent", entry.attempts
-                    )
+                    self.outbox_repo.mark_failed(entry.id, reason, 0, "permanent", entry.attempts)
                     stats["failed_permanent"] += 1
                     continue
 

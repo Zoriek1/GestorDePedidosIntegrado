@@ -44,26 +44,17 @@ jobs:
           pip install -r requirements.txt
           pip install tzdata
 
-      - name: Auto-fix lint + format
+      # Aplica correções no runner e valida. O branch no GitHub não é alterado;
+      # para persistir estilo no repo, use pre-commit ou rode ruff/black antes do push.
+      - name: Lint + format (ruff fix + black)
         working-directory: backend
         run: |
-          ruff check --fix --exit-zero .
+          ruff check --fix .
           black .
 
       - name: Verify lint + format
         working-directory: backend
         run: |
-          DIRTY=$(git diff --name-only -- .)
-          if [ -n "$DIRTY" ]; then
-            echo "::warning::Auto-fix corrigiu arquivos. Mostrando diff:"
-            git diff -- .
-            echo ""
-            echo "Arquivos corrigidos automaticamente:"
-            echo "$DIRTY"
-            echo ""
-            echo "Rode localmente: ruff check --fix . && black ."
-            exit 1
-          fi
           ruff check .
           black --check .
 
@@ -113,21 +104,10 @@ jobs:
         continue-on-error: true
         run: npm run type-check
 
-      - name: Auto-fix lint (ESLint)
-        working-directory: frontend_v2
-        run: npm run lint:fix || true
-
-      - name: Verify lint (ESLint)
+      - name: Lint (ESLint fix + verify)
         working-directory: frontend_v2
         run: |
-          DIRTY=$(git diff --name-only -- .)
-          if [ -n "$DIRTY" ]; then
-            echo "::warning::ESLint auto-fix corrigiu arquivos. Mostrando diff:"
-            git diff -- .
-            echo ""
-            echo "Rode localmente: npm run lint:fix"
-            exit 1
-          fi
+          npm run lint:fix
           npm run lint
 
       - name: Unit tests

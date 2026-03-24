@@ -15,7 +15,9 @@ def should_skip_purchase_for_meta_capi(pedido: Pedido) -> bool:
     """
     Evita duplicação quando a compra já tem tracking próprio.
     """
-    fonte_rel = _normalize_source_text(getattr(getattr(pedido, "fonte_pedido_rel", None), "nome", ""))
+    fonte_rel = _normalize_source_text(
+        getattr(getattr(pedido, "fonte_pedido_rel", None), "nome", "")
+    )
     fonte_legacy = _normalize_source_text(getattr(pedido, "fonte_pedido", ""))
     plataforma = _normalize_source_text(getattr(pedido, "plataforma", ""))
     canal = _normalize_source_text(getattr(pedido, "canal", ""))

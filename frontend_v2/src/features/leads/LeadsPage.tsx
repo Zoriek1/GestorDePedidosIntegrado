@@ -24,13 +24,19 @@ import {
   InputLabel,
   IconButton,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import { useLeads, type LeadsFilters, type Lead } from '../../api/endpoints/leads';
+import { useLeads, useUpdateLeadPhone, type LeadsFilters, type Lead } from '../../api/endpoints/leads';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
+import { useToast } from '../../components/system/useToast';
 
 const SOURCE_OPTIONS = ['', 'facebook', 'google', 'instagram', 'tiktok', 'direto'];
 
@@ -106,6 +112,10 @@ function tokenValidLabel(valid: boolean | null): string {
   return '—';
 }
 
+function shouldShowTokenFields(lead: Lead): boolean {
+  return lead.event === 'whatsapp_click' || !!lead.token_rastreio;
+}
+
 function leadStatusColor(status: string | null): 'warning' | 'info' | 'success' | 'default' {
   switch (status) {
     case 'pendente_whatsapp':
@@ -126,12 +136,16 @@ function leadStatusLabel(status: string | null): string {
 
 export default function LeadsPage() {
   const navigate = useNavigate();
+  const { success, error: showError } = useToast();
   const [filters, setFilters] = useState<LeadsFilters>({
     page: 1,
     per_page: 25,
     events: DEFAULT_KEY_EVENTS,
   });
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [manualPhone, setManualPhone] = useState('');
   const { data, isLoading, error, refetch } = useLeads(filters);
+  const updateLeadPhone = useUpdateLeadPhone();
 
   const handleCreateOrder = useCallback((lead: Lead) => {
     navigate('/pedidos/novo', {
@@ -145,6 +159,35 @@ export default function LeadsPage() {
       },
     });
   }, [navigate]);
+
+  const handleOpenPhoneDialog = useCallback((lead: Lead) => {
+    setEditingLead(lead);
+    setManualPhone(lead.phone ?? '');
+  }, []);
+
+  const handleClosePhoneDialog = useCallback(() => {
+    setEditingLead(null);
+    setManualPhone('');
+  }, []);
+
+  const handleSavePhone = useCallback(async () => {
+    if (!editingLead) return;
+
+    const digits = manualPhone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      showError('Informe um telefone válido com DDD');
+      return;
+    }
+
+    try {
+      await updateLeadPhone.mutateAsync({ id: editingLead.id, phone: manualPhone });
+      success('Telefone do lead atualizado');
+      handleClosePhoneDialog();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao atualizar telefone';
+      showError(message);
+    }
+  }, [editingLead, handleClosePhoneDialog, manualPhone, showError, success, updateLeadPhone]);
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
@@ -313,24 +356,41 @@ export default function LeadsPage() {
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
                   <TableCell>
-                    <Chip
-                      size="small"
-                      color={leadStatusColor(lead.status)}
-                      label={leadStatusLabel(lead.status)}
-                      variant={lead.status ? 'filled' : 'outlined'}
-                    />
+                    {lead.status === 'pendente_whatsapp' ? (
+                      <Tooltip title="Clique para informar o número correto">
+                        <Chip
+                          size="small"
+                          color="warning"
+                          label={leadStatusLabel(lead.status)}
+                          variant="filled"
+                          clickable
+                          onClick={() => handleOpenPhoneDialog(lead)}
+                        />
+                      </Tooltip>
+                    ) : (
+                      <Chip
+                        size="small"
+                        color={leadStatusColor(lead.status)}
+                        label={leadStatusLabel(lead.status)}
+                        variant={lead.status ? 'filled' : 'outlined'}
+                      />
+                    )}
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
                     {lead.token_rastreio ?? '—'}
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      size="small"
-                      color={tokenValidColor(lead.token_valido)}
-                      label={tokenValidLabel(lead.token_valido)}
-                      variant={lead.token_valido === null ? 'outlined' : 'filled'}
-                    />
+                    {shouldShowTokenFields(lead) ? (
+                      <Chip
+                        size="small"
+                        color={tokenValidColor(lead.token_valido)}
+                        label={tokenValidLabel(lead.token_valido)}
+                        variant={lead.token_valido === null ? 'outlined' : 'filled'}
+                      />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>{formatEventLabel(lead.event)}</TableCell>
                   <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -368,6 +428,27 @@ export default function LeadsPage() {
           labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
         />
       </TableContainer>
+
+      <Dialog open={!!editingLead} onClose={handleClosePhoneDialog} fullWidth maxWidth="xs">
+        <DialogTitle>Atualizar WhatsApp do lead</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Telefone/WhatsApp"
+            placeholder="(62) 99999-0000"
+            fullWidth
+            value={manualPhone}
+            onChange={(e) => setManualPhone(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePhoneDialog} disabled={updateLeadPhone.isPending}>Cancelar</Button>
+          <Button onClick={handleSavePhone} variant="contained" disabled={updateLeadPhone.isPending}>
+            Salvar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

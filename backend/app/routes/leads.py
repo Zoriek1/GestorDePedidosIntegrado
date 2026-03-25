@@ -22,6 +22,7 @@ leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 
 # Eventos considerados “principais” na listagem quando não há filtro explícito
 DEFAULT_KEY_EVENTS = ("modal_open", "whatsapp_click", "site_click")
+WHATSAPP_EVENT = "whatsapp_click"
 
 ALLOWED_FIELDS = (
     "event",
@@ -104,6 +105,20 @@ def _normalize_fbp(value: object) -> str | None:
     return _clip(value, 255)
 
 
+def _is_whatsapp_event(event: str | None) -> bool:
+    return (event or "").strip().lower() == WHATSAPP_EVENT
+
+
+def _serialize_lead(lead: Lead) -> dict:
+    payload = lead.to_dict()
+    if not _is_whatsapp_event(payload.get("event")):
+        payload["token_rastreio"] = None
+        payload["token_valido"] = None
+        if payload.get("status") == "pendente_whatsapp":
+            payload["status"] = None
+    return payload
+
+
 def _parse_request_payload() -> dict:
     """
     Aceita JSON com Content-Type padrão e também text/plain (sendBeacon).
@@ -132,18 +147,31 @@ def criar_lead():
 
     ip_address = _get_ip_address()
     dedup_key = _build_dedup_key(data, ip_address)
-    token_rastreio = normalize_tracking_token(data.get("token_rastreio"))
-    if not token_rastreio:
-        token_rastreio = extract_tracking_token_from_text(data.get("destination_url") or data.get("url"))
-    token_valido = is_tracking_token_valid(token_rastreio)
+    event = _clip(data.get("event"), 50)
+    is_whatsapp = _is_whatsapp_event(event)
+
+    token_rastreio = None
+    token_valido = None
+    if is_whatsapp:
+        token_rastreio = normalize_tracking_token(data.get("token_rastreio"))
+        if not token_rastreio:
+            token_rastreio = extract_tracking_token_from_text(
+                data.get("destination_url") or data.get("url")
+            )
+        token_valido = is_tracking_token_valid(token_rastreio)
+
     incoming_phone = _normalize_phone(data.get("phone") or data.get("telefone"))
     phone = None if token_rastreio else incoming_phone
-    status = _clip(data.get("status"), 50) or "pendente_whatsapp"
+    status = _clip(data.get("status"), 50)
+    if is_whatsapp:
+        status = status or "pendente_whatsapp"
+    elif not status or status == "pendente_whatsapp":
+        status = ""
 
     lead = Lead(
         dedup_key=dedup_key,
         ip_address=ip_address,
-        event=_clip(data.get("event"), 50),
+        event=event,
         url=_clip(data.get("url") or data.get("destination_url"), 10_000),
         referrer=_clip(data.get("referrer"), 10_000),
         utm_source=_clip(data.get("utm_source"), 100),
@@ -234,6 +262,32 @@ def marcar_whatsapp_iniciado():
     )
 
 
+@leads_bp.route("/<int:lead_id>/phone", methods=["PATCH"])
+@requires_any_role("admin", "atendente")
+def atualizar_telefone_lead(lead_id: int):
+    """Atualiza o telefone de um lead e destrava status pendente de WhatsApp."""
+    data = _parse_request_payload()
+    phone = _normalize_phone(
+        data.get("phone") or data.get("telefone") or data.get("telefone_cliente")
+    )
+    if not phone:
+        return jsonify({"ok": False, "error": "Telefone é obrigatório"}), 400
+
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
+
+    lead.phone = phone
+    if _is_whatsapp_event(lead.event):
+        if lead.status != "compra_realizada":
+            lead.status = "whatsapp_iniciado"
+    elif lead.status == "pendente_whatsapp":
+        lead.status = None
+
+    db.session.commit()
+    return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
+
+
 @leads_bp.route("", methods=["GET"])
 @requires_any_role("admin")
 def listar_leads():
@@ -283,7 +337,7 @@ def listar_leads():
 
     return jsonify(
         {
-            "leads": [lead.to_dict() for lead in pagination.items],
+            "leads": [_serialize_lead(lead) for lead in pagination.items],
             "total": pagination.total,
             "page": pagination.page,
             "pages": pagination.pages,

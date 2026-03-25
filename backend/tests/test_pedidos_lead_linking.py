@@ -2,6 +2,7 @@
 import base64
 from datetime import date
 
+from app.models.cliente import Cliente
 from app.models.lead import Lead
 from app.models.pedido import Pedido
 
@@ -89,3 +90,26 @@ def test_codigo_whatsapp_inexistente_nao_bloqueia_criacao_pedido(client, session
     r = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
     assert r.status_code == 201
     assert session.query(Lead).count() == 0
+
+
+def test_criar_pedido_aceita_cliente_id_numerico(client, session):
+    cliente = Cliente(nome="Cliente ID", telefone="62999991111")
+    session.add(cliente)
+    session.commit()
+
+    payload = {
+        "cliente": "Cliente ID",
+        "cliente_id": cliente.id,
+        "telefone_cliente": "(62) 99999-1111",
+        "destinatario": "Destinatário",
+        "tipo_pedido": "Entrega",
+        "produto": "Buquê",
+        "dia_entrega": date.today().isoformat(),
+        "horario": "15:00",
+    }
+
+    r = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
+    assert r.status_code == 201
+    data = r.get_json()
+    assert data["success"] is True
+    assert data["pedido"]["cliente_id"] == cliente.id

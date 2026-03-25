@@ -252,6 +252,27 @@ def test_token_invalido_persiste_token_valido_false(client, session):
     assert lead.token_valido is False
 
 
+def test_evento_nao_whatsapp_nao_persiste_token_invalido(client, session):
+    payload = {
+        "event": "site_click",
+        "token_rastreio": _INVALID_TOKEN,
+        "destination_url": f"https://site.exemplo.com/?text=[Cod:%20{_VALID_TOKEN}]",
+        "status": "pendente_whatsapp",
+    }
+
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
+    assert r.status_code == 201
+    data = r.get_json()
+    assert data["token_valido"] is None
+
+    lead = session.query(Lead).first()
+    assert lead is not None
+    assert lead.event == "site_click"
+    assert lead.token_rastreio is None
+    assert lead.token_valido is None
+    assert lead.status in (None, "")
+
+
 def test_extrai_token_de_destination_url(client, session):
     payload = {
         "event": "whatsapp_click",
@@ -307,3 +328,29 @@ def test_whatsapp_start_atualiza_status_sem_sobrescrever_compra_realizada(client
 
     session.refresh(lead_compra)
     assert lead_compra.status == "compra_realizada"
+
+
+def test_patch_phone_atualiza_lead_pendente_whatsapp(client, session):
+    lead = Lead(
+        dedup_key="lead-phone-manual",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/phone",
+        json={"phone": "(62) 98888-7777"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+
+    session.refresh(lead)
+    assert lead.phone == "62988887777"
+    assert lead.status == "whatsapp_iniciado"

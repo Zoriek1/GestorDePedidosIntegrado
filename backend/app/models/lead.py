@@ -35,7 +35,7 @@ class Lead(db.Model):
     sck = db.Column(db.String(200))
     phone = db.Column(db.String(30), index=True, nullable=True)
     token_rastreio = db.Column(db.String(64), index=True, nullable=True)
-    token_valido = db.Column(db.Boolean, nullable=True, default=False)
+    token_valido = db.Column(db.Boolean, nullable=True)
     status = db.Column(db.String(50), index=True, nullable=True, default="pendente_whatsapp")
     fbclid = db.Column(db.String(255), index=True)
     fbp = db.Column(db.String(255))

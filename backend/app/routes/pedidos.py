@@ -40,6 +40,23 @@ pedido_create_schema = PedidoCreateSchema()
 pedido_update_schema = PedidoUpdateSchema()
 
 
+def _clean_str(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
+def _normalize_optional_id(value: object) -> object | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    return value
+
+
 def _normalize_whatsapp_code(value: object) -> str | None:
     return normalize_tracking_token(value)
 
@@ -437,40 +454,42 @@ def criar_pedido():
             return error_response("Nenhum dado fornecido", 400)
 
         # Extração de dados (preservar lógica exata)
-        cliente = data.get("cliente", "").strip()
-        telefone_cliente_raw = data.get("telefone_cliente", data.get("telefone", "")).strip()
+        cliente = _clean_str(data.get("cliente"))
+        telefone_cliente_raw = _clean_str(data.get("telefone_cliente", data.get("telefone", "")))
         # Remover formatação do telefone (máscara deve existir apenas no frontend)
         telefone_cliente = re.sub(r"[^\d]", "", telefone_cliente_raw)
-        destinatario = data.get("destinatario", "").strip()
+        destinatario = _clean_str(data.get("destinatario"))
         tipo_pedido = data.get("tipo_pedido", "Entrega")
         fonte_pedido_id = data.get("fonte_pedido_id")
-        fonte_pedido = data.get("fonte_pedido", "").strip()
+        fonte_pedido = _clean_str(data.get("fonte_pedido"))
 
-        produto = data.get("produto", "").strip()
-        flores_cor = data.get("flores_cor", "").strip()
-        valor = data.get("valor", "").strip()
-        horario = data.get("horario", data.get("hora_entrega", "")).strip()
-        dia_entrega_str = data.get("dia_entrega", data.get("data_entrega", "")).strip()
+        produto = _clean_str(data.get("produto"))
+        flores_cor = _clean_str(data.get("flores_cor"))
+        valor = _clean_str(data.get("valor"))
+        horario = _clean_str(data.get("horario", data.get("hora_entrega", "")))
+        dia_entrega_str = _clean_str(data.get("dia_entrega", data.get("data_entrega", "")))
 
-        cep = data.get("cep", "").strip()
-        rua = data.get("rua", "").strip()
-        numero = data.get("numero", "").strip()
-        bairro = data.get("bairro", "").strip()
-        cidade = data.get("cidade", "").strip()
-        endereco = data.get("endereco", "").strip()
-        obs_entrega = data.get("obs_entrega", "").strip()
+        cep = _clean_str(data.get("cep"))
+        rua = _clean_str(data.get("rua"))
+        numero = _clean_str(data.get("numero"))
+        bairro = _clean_str(data.get("bairro"))
+        cidade = _clean_str(data.get("cidade"))
+        endereco = _clean_str(data.get("endereco"))
+        obs_entrega = _clean_str(data.get("obs_entrega"))
 
-        mensagem = data.get("mensagem", "").strip()
-        pagamento = data.get("pagamento", "").strip()
-        observacoes = data.get("observacoes", "").strip()
-        status_pagamento = data.get("status_pagamento", "").strip()
+        mensagem = _clean_str(data.get("mensagem"))
+        pagamento = _clean_str(data.get("pagamento"))
+        observacoes = _clean_str(data.get("observacoes"))
+        status_pagamento = _clean_str(data.get("status_pagamento"))
         codigo_whatsapp = _extract_whatsapp_token_from_payload(data)
 
         quantidade_raw = data.get("quantidade", 1)
 
         # Meta Pixel parameters (fbc vem já no formato fb.1.{ts}.{fbclid})
-        fbc = data.get("fbc", "").strip() if data.get("fbc") else None
-        fbp = data.get("fbp", "").strip() if data.get("fbp") else None
+        fbc_raw = _clean_str(data.get("fbc"))
+        fbp_raw = _clean_str(data.get("fbp"))
+        fbc = fbc_raw or None
+        fbp = fbp_raw or None
 
         # Validação de campos obrigatórios
         campos_obrigatorios = {
@@ -555,7 +574,7 @@ def criar_pedido():
             )
 
         # Gerenciar cliente_id
-        cliente_id = data.get("cliente_id", "").strip()
+        cliente_id = _normalize_optional_id(data.get("cliente_id"))
         if not cliente_id and cliente and telefone_cliente:
             cliente_existente = Cliente.buscar_por_telefone(telefone_cliente)
             if cliente_existente:
@@ -574,7 +593,10 @@ def criar_pedido():
                 except Exception:
                     cliente_id = None
 
-        cliente_id_int = int(cliente_id) if cliente_id else None
+        try:
+            cliente_id_int = int(cliente_id) if cliente_id is not None else None
+        except (ValueError, TypeError):
+            cliente_id_int = None
 
         # Processar fonte_pedido_id
         fonte_pedido_id_int = None
@@ -728,7 +750,7 @@ def atualizar_pedido(pedido_id):
             track_change("cliente", pedido.cliente, data["cliente"])
             pedido.cliente = data["cliente"]
         if "telefone_cliente" in data:
-            telefone_raw = data["telefone_cliente"].strip()
+            telefone_raw = _clean_str(data["telefone_cliente"])
             new_telefone = re.sub(r"[^\d]", "", telefone_raw)
             track_change("telefone_cliente", pedido.telefone_cliente, new_telefone)
             pedido.telefone_cliente = new_telefone
@@ -811,11 +833,11 @@ def atualizar_pedido(pedido_id):
             pedido.status = data["status"]
 
         if "fbc" in data:
-            new_fbc = data["fbc"].strip() if data["fbc"] else None
+            new_fbc = _clean_str(data["fbc"]) or None
             track_change("fbc", pedido.fbc, new_fbc)
             pedido.fbc = new_fbc
         if "fbp" in data:
-            new_fbp = data["fbp"].strip() if data["fbp"] else None
+            new_fbp = _clean_str(data["fbp"]) or None
             track_change("fbp", pedido.fbp, new_fbp)
             pedido.fbp = new_fbp
 

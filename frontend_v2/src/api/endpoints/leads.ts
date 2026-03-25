@@ -3,7 +3,7 @@
  * React Query hooks para listar leads da landing page
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 
@@ -76,6 +76,36 @@ export function useLeads(filters: LeadsFilters = {}) {
         throw new Error(response.message ?? 'Erro ao carregar leads');
       }
       return response.data as LeadsResponse;
+    },
+  });
+}
+
+interface UpdateLeadPhoneResponse {
+  ok: boolean;
+  lead: Lead;
+}
+
+export function useUpdateLeadPhone() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, phone }: { id: number; phone: string }) => {
+      const response = await apiRequest<UpdateLeadPhoneResponse>(`/leads/${id}/phone`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      });
+
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao atualizar telefone do lead');
+      }
+
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
   });
 }

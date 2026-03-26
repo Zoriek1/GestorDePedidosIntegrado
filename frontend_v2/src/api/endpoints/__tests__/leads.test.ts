@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useLeads, type LeadsResponse } from '../leads';
+import { useLeads, useUpdateLeadStatus, type LeadsResponse } from '../leads';
 
 vi.mock('../../http', () => ({ createApiRequest: vi.fn() }));
 vi.mock('../../../features/auth/authStore', () => ({
@@ -107,5 +107,34 @@ describe('useLeads', () => {
     await waitFor(() => {
       expect(capturedEndpoint).toContain('events=modal_open%2Cwhatsapp_click%2Csite_click');
     });
+  });
+});
+
+describe('useUpdateLeadStatus', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('PATCH /leads/:id/status com body JSON', async () => {
+    const captured = { endpoint: '', method: '', body: '' };
+    mockCreateApiRequest.mockImplementation(() => async (endpoint: string, init?: RequestInit) => {
+      captured.endpoint = endpoint;
+      captured.method = (init?.method as string) || 'GET';
+      captured.body = (init?.body as string) || '';
+      return {
+        ok: true,
+        success: true,
+        data: { ok: true, lead: { id: 42, status: 'nao_entrou_em_contato' } },
+        status: 200,
+        requestId: 'test',
+      };
+    });
+
+    const { result } = renderHook(() => useUpdateLeadStatus(), { wrapper: createWrapper() });
+    await result.current.mutateAsync({ id: 42, status: 'nao_entrou_em_contato' });
+
+    expect(captured.endpoint).toBe('/leads/42/status');
+    expect(captured.method).toBe('PATCH');
+    expect(captured.body).toBe(JSON.stringify({ status: 'nao_entrou_em_contato' }));
   });
 });

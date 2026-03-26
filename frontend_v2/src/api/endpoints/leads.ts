@@ -85,6 +85,36 @@ interface UpdateLeadPhoneResponse {
   lead: Lead;
 }
 
+interface UpdateLeadStatusResponse {
+  ok: boolean;
+  lead: Lead;
+}
+
+export function useUpdateLeadStatus() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const response = await apiRequest<UpdateLeadStatusResponse>(`/leads/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao atualizar status do lead');
+      }
+
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
 export function useUpdateLeadPhone() {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);

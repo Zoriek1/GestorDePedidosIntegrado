@@ -7,6 +7,33 @@ from app.models.pedido import Pedido
 from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 
 
+def try_flush_pending_meta_capi_for_order(order_id: int) -> None:
+    """
+    Envia imediatamente o registro pending da outbox para a Meta (se existir).
+    Falhas não propagam: o agendador diário continua como fallback.
+    """
+    try:
+        from app.commands.send_daily_purchases_to_meta_command import (
+            SendDailyPurchasesToMetaCommand,
+        )
+
+        repo = MetaCapiOutboxRepository()
+        entry = repo.get_by_order_id(order_id)
+        if not entry or entry.status != "pending":
+            return
+
+        cmd = SendDailyPurchasesToMetaCommand()
+        stats = {
+            "sent_success": 0,
+            "sent_failed": 0,
+            "failed_permanent": 0,
+            "errors": [],
+        }
+        cmd._send_batch([entry], stats)
+    except Exception as e:
+        print(f"[AVISO] Meta CAPI envio imediato falhou para pedido #{order_id}: {e}")
+
+
 def _normalize_source_text(value: str | None) -> str:
     return (value or "").strip().lower()
 
@@ -73,6 +100,7 @@ def create_outbox_if_purchase(
         if not existing:
             outbox_repo.create_from_pedido(pedido)
             print(f"[META_CAPI] Outbox criada para pedido #{pedido.id}")
+            try_flush_pending_meta_capi_for_order(pedido.id)
             return True
         return False
     except Exception as e:

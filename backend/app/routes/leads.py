@@ -262,6 +262,44 @@ def marcar_whatsapp_iniciado():
     )
 
 
+@leads_bp.route("/<int:lead_id>/status", methods=["PATCH"])
+@requires_any_role("admin", "atendente")
+def atualizar_status_lead(lead_id: int):
+    """
+    Atualiza status operacional do lead (ex.: marcar como não entrou em contato).
+    Transições válidas são explícitas para evitar estados inconsistentes.
+    """
+    data = _parse_request_payload()
+    new_status = _clip(data.get("status"), 50)
+    if not new_status:
+        return jsonify({"ok": False, "error": "status é obrigatório"}), 400
+
+    if new_status != "nao_entrou_em_contato":
+        return jsonify({"ok": False, "error": "Status não suportado"}), 400
+
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
+
+    if not _is_whatsapp_event(lead.event):
+        return jsonify({"ok": False, "error": "Ação disponível apenas para leads WhatsApp"}), 400
+
+    if lead.status != "pendente_whatsapp":
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Só é possível marcar a partir de Pendente WhatsApp",
+                }
+            ),
+            400,
+        )
+
+    lead.status = new_status
+    db.session.commit()
+    return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
+
+
 @leads_bp.route("/<int:lead_id>/phone", methods=["PATCH"])
 @requires_any_role("admin", "atendente")
 def atualizar_telefone_lead(lead_id: int):

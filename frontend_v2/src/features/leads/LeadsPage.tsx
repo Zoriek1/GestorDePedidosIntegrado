@@ -2,7 +2,7 @@
  * Leads UTM - Listagem de cliques da landing page
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -29,11 +29,19 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Menu,
 } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import { useLeads, useUpdateLeadPhone, type LeadsFilters, type Lead } from '../../api/endpoints/leads';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import {
+  useLeads,
+  useUpdateLeadPhone,
+  useUpdateLeadStatus,
+  type LeadsFilters,
+  type Lead,
+} from '../../api/endpoints/leads';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
@@ -53,6 +61,7 @@ const LEAD_STATUS_LABELS: Record<string, string> = {
   pendente_whatsapp: 'Pendente WhatsApp',
   whatsapp_iniciado: 'WhatsApp iniciado',
   compra_realizada: 'Compra realizada',
+  nao_entrou_em_contato: 'Não entrou em contato',
 };
 
 function buildWhatsAppUrl(phone: string): string | null {
@@ -144,8 +153,11 @@ export default function LeadsPage() {
   });
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [manualPhone, setManualPhone] = useState('');
+  const [statusMenuAnchor, setStatusMenuAnchor] = useState<null | HTMLElement>(null);
+  const [statusMenuLead, setStatusMenuLead] = useState<Lead | null>(null);
   const { data, isLoading, error, refetch } = useLeads(filters);
   const updateLeadPhone = useUpdateLeadPhone();
+  const updateLeadStatus = useUpdateLeadStatus();
 
   const handleCreateOrder = useCallback((lead: Lead) => {
     navigate('/pedidos/novo', {
@@ -188,6 +200,29 @@ export default function LeadsPage() {
       showError(message);
     }
   }, [editingLead, handleClosePhoneDialog, manualPhone, showError, success, updateLeadPhone]);
+
+  const handleOpenStatusMenu = useCallback((event: MouseEvent<HTMLElement>, lead: Lead) => {
+    event.stopPropagation();
+    setStatusMenuAnchor(event.currentTarget);
+    setStatusMenuLead(lead);
+  }, []);
+
+  const handleCloseStatusMenu = useCallback(() => {
+    setStatusMenuAnchor(null);
+    setStatusMenuLead(null);
+  }, []);
+
+  const handleMarkNoContact = useCallback(async () => {
+    if (!statusMenuLead) return;
+    try {
+      await updateLeadStatus.mutateAsync({ id: statusMenuLead.id, status: 'nao_entrou_em_contato' });
+      success('Lead marcado como não entrou em contato');
+      handleCloseStatusMenu();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao atualizar status';
+      showError(message);
+    }
+  }, [handleCloseStatusMenu, showError, statusMenuLead, success, updateLeadStatus]);
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
@@ -296,7 +331,7 @@ export default function LeadsPage() {
           <TableHead>
             <TableRow>
               <TableCell align="center">Ação</TableCell>
-              <TableCell>Data</TableCell>
+              <TableCell>Data (BRT)</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Telefone</TableCell>
               <TableCell>Código WhatsApp</TableCell>
@@ -357,16 +392,27 @@ export default function LeadsPage() {
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
                   <TableCell>
                     {lead.status === 'pendente_whatsapp' ? (
-                      <Tooltip title="Clique para informar o número correto">
-                        <Chip
-                          size="small"
-                          color="warning"
-                          label={leadStatusLabel(lead.status)}
-                          variant="filled"
-                          clickable
-                          onClick={() => handleOpenPhoneDialog(lead)}
-                        />
-                      </Tooltip>
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Tooltip title="Clique para informar o número correto">
+                          <Chip
+                            size="small"
+                            color="warning"
+                            label={leadStatusLabel(lead.status)}
+                            variant="filled"
+                            clickable
+                            onClick={() => handleOpenPhoneDialog(lead)}
+                          />
+                        </Tooltip>
+                        <Tooltip title="Outras ações">
+                          <IconButton
+                            size="small"
+                            aria-label="Ações do status"
+                            onClick={(e) => handleOpenStatusMenu(e, lead)}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
                     ) : (
                       <Chip
                         size="small"
@@ -449,6 +495,23 @@ export default function LeadsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Menu
+        anchorEl={statusMenuAnchor}
+        open={Boolean(statusMenuAnchor)}
+        onClose={handleCloseStatusMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => {
+            void handleMarkNoContact();
+          }}
+          disabled={updateLeadStatus.isPending}
+        >
+          Não entrou em contato
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

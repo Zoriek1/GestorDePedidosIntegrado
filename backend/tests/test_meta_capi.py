@@ -704,6 +704,29 @@ class TestMetaCapiOutboxRepository:
             assert outbox1 is not None
             assert outbox2 is None  # Duplicata retorna None
 
+    def test_create_outbox_if_purchase_envia_imediatamente_quando_ok(self, app):
+        """Após criar outbox, tenta envio HTTP imediato (mock) e marca como sent."""
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from app.utils.meta_capi_helper import create_outbox_if_purchase
+
+        with app.app_context():
+            pedido = self._create_test_pedido()
+            db.session.add(pedido)
+            db.session.commit()
+
+            success_response = {"_status_code": 200, "events_received": 1, "fbtrace_id": "t1"}
+            with patch(
+                "app.services.meta_capi.MetaConversionsApiService.send_events",
+                return_value=success_response,
+            ):
+                created = create_outbox_if_purchase(pedido, None, None)
+                assert created is True
+
+            ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
+            assert ob is not None
+            assert ob.status == "sent"
+
     def test_create_from_pedido_skips_site_and_nuvemshop(self, app):
         """Não cria outbox para pedidos que já têm tracking próprio."""
         from app import db

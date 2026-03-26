@@ -354,3 +354,66 @@ def test_patch_phone_atualiza_lead_pendente_whatsapp(client, session):
     session.refresh(lead)
     assert lead.phone == "62988887777"
     assert lead.status == "whatsapp_iniciado"
+
+
+def test_patch_status_nao_entrou_em_contato(client, session):
+    lead = Lead(
+        dedup_key="lead-status-no-contact",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "nao_entrou_em_contato"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    assert data["lead"]["status"] == "nao_entrou_em_contato"
+
+    session.refresh(lead)
+    assert lead.status == "nao_entrou_em_contato"
+
+
+def test_patch_status_rejeita_se_nao_pendente_whatsapp(client, session):
+    lead = Lead(
+        dedup_key="lead-status-wrong",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "nao_entrou_em_contato"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 400
+    session.refresh(lead)
+    assert lead.status == "whatsapp_iniciado"
+
+
+def test_patch_status_rejeita_evento_nao_whatsapp(client, session):
+    lead = Lead(
+        dedup_key="lead-status-site",
+        event="site_click",
+        status="",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "nao_entrou_em_contato"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 400

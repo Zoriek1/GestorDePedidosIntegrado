@@ -93,22 +93,22 @@ def dedup_whatsapp_click_leads(dry_run: bool = False):
         ids_to_delete: list[int] = []
         groups_with_dupes = 0
 
-        for (person_key, window_start), group in groups.items():
+        for (person_key, _), group in groups.items():
             if len(group) <= 1:
                 continue
 
             groups_with_dupes += 1
             label = person_key[:16] + ("..." if len(person_key) > 16 else "")
 
-            with_phone = [l for l in group if l.phone]
+            with_phone = [row for row in group if row.phone]
 
             if with_phone:
                 keep = with_phone[0]   # mais antigo com phone vinculado
-                to_delete = [l for l in group if l.id != keep.id]
+                to_delete = [row for row in group if row.id != keep.id]
                 print(
                     f"  {prefix}[PHONE] {label}: {len(group)} eventos "
                     f"→ manter id={keep.id} phone={keep.phone} "
-                    f"| deletar ids={[l.id for l in to_delete]}"
+                    f"| deletar ids={[row.id for row in to_delete]}"
                 )
             else:
                 keep = group[0]        # mais antigo (primeiro token gerado)
@@ -116,10 +116,10 @@ def dedup_whatsapp_click_leads(dry_run: bool = False):
                 print(
                     f"  {prefix}[TOKEN] {label}: {len(group)} eventos "
                     f"→ manter id={keep.id} token={keep.token_rastreio} "
-                    f"| deletar ids={[l.id for l in to_delete]}"
+                    f"| deletar ids={[row.id for row in to_delete]}"
                 )
 
-            ids_to_delete.extend(l.id for l in to_delete)
+            ids_to_delete.extend(row.id for row in to_delete)
 
         # ------------------------------------------------------------------
         # 4. Relatório e execução

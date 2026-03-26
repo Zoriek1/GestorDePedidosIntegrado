@@ -42,11 +42,19 @@ import {
   type LeadsFilters,
   type Lead,
 } from '../../api/endpoints/leads';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
 
 const SOURCE_OPTIONS = ['', 'facebook', 'google', 'instagram', 'tiktok', 'direto'];
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const TZ_BR = 'America/Sao_Paulo';
 
 /** Mesmo conjunto que o backend usa como padrão (DEFAULT_KEY_EVENTS) */
 const DEFAULT_KEY_EVENTS = 'modal_open,whatsapp_click,site_click';
@@ -71,17 +79,20 @@ function buildWhatsAppUrl(phone: string): string | null {
   return `https://wa.me/${full}`;
 }
 
+/** ISO com fuso → instante absoluto; sem fuso → horário de parede em BRT (como o backend grava). */
+function isoStringHasOffset(iso: string): boolean {
+  return /(Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim());
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const trimmed = iso.trim();
+    const d = isoStringHasOffset(trimmed)
+      ? dayjs(trimmed).tz(TZ_BR)
+      : dayjs.tz(trimmed.replace(' ', 'T'), TZ_BR);
+    if (!d.isValid()) return iso;
+    return d.format('DD/MM/YY[,] HH:mm');
   } catch {
     return iso;
   }

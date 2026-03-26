@@ -79,7 +79,7 @@ function buildWhatsAppUrl(phone: string): string | null {
   return `https://wa.me/${full}`;
 }
 
-/** ISO com fuso → instante absoluto; sem fuso → horário de parede em BRT (como o backend grava). */
+/** ISO com fuso → instante absoluto. Sem fuso: Postgres/SQLAlchemy costuma devolver UTC naive — não tratar como BRT. */
 function isoStringHasOffset(iso: string): boolean {
   return /(Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim());
 }
@@ -87,10 +87,10 @@ function isoStringHasOffset(iso: string): boolean {
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
   try {
-    const trimmed = iso.trim();
-    const d = isoStringHasOffset(trimmed)
-      ? dayjs(trimmed).tz(TZ_BR)
-      : dayjs.tz(trimmed.replace(' ', 'T'), TZ_BR);
+    const normalized = iso.trim().replace(' ', 'T');
+    const d = isoStringHasOffset(normalized)
+      ? dayjs(normalized).tz(TZ_BR)
+      : dayjs.utc(normalized).tz(TZ_BR);
     if (!d.isValid()) return iso;
     return d.format('DD/MM/YY[,] HH:mm');
   } catch {

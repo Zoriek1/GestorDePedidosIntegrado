@@ -142,7 +142,7 @@ jobs:
           name: frontend-dist
           path: ci-frontend-dist
 
-      - name: Git pull e limpar docker/prebuilt-dist
+      - name: Sincronizar repo com origin/main e limpar prebuilt-dist
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -152,7 +152,10 @@ jobs:
           script: |
             set -e
             cd "${{ secrets.VPS_DEPLOY_PATH }}"
-            git pull origin main
+            # git pull falha se houver mudança local em arquivos rastreados (ex.: docker-compose.yml).
+            # reset --hard alinha com o GitHub; .env e outros ignorados não são afetados.
+            git fetch origin main
+            git reset --hard origin/main
             mkdir -p docker/prebuilt-dist
             find docker/prebuilt-dist -mindepth 1 -delete
 

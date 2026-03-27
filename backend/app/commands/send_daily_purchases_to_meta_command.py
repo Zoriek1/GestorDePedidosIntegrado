@@ -99,7 +99,14 @@ class SendDailyPurchasesToMetaCommand:
             print("[META_CAPI] Processando outbox de leads (Contact/Lead)...")
             self._process_lead_outbox_batch(stats, limit=50)
 
-            print(f"[META_CAPI] Concluído. Stats: {stats}")
+            print(
+                "[META_CAPI] Ciclo completo — "
+                f"Purchase: enviados_ok={stats['sent_success']} falhas={stats['sent_failed']}; "
+                f"Lead (Contact/Lead): enviados_ok={stats['lead_sent_success']} "
+                f"falhas={stats['lead_sent_failed']}",
+                flush=True,
+            )
+            print(f"[META_CAPI] Stats detalhadas: {stats}", flush=True)
             return stats
 
         except Exception as e:

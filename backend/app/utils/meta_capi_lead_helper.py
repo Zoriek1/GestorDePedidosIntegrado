@@ -68,18 +68,32 @@ def try_flush_pending_meta_capi_lead_entries(entry_ids: list[int]) -> None:
 
         repo = MetaCapiLeadOutboxRepository()
         cmd = SendDailyPurchasesToMetaCommand()
+        # Chaves alinhadas a _send_lead_batch (lead_*), senão KeyError ao marcar sent/fail.
         stats = {
-            "sent_success": 0,
-            "sent_failed": 0,
-            "failed_permanent": 0,
             "errors": [],
+            "lead_sent_success": 0,
+            "lead_sent_failed": 0,
+            "lead_failed_retryable": 0,
+            "lead_failed_permanent": 0,
         }
         batch = []
         for eid in entry_ids:
             row = repo.get_by_id(eid)
             if row and row.status == "pending":
                 batch.append(row)
-        if batch:
-            cmd._send_lead_batch(batch, stats)
+        if not batch:
+            print(
+                "[META_CAPI_LEAD] Flush imediato: nenhum registro pending entre os ids "
+                f"{entry_ids} (já enviado, falhou ou não existe).",
+                flush=True,
+            )
+            return
+        cmd._send_lead_batch(batch, stats)
+        print(
+            "[META_CAPI_LEAD] Flush imediato completo — "
+            f"ok={stats['lead_sent_success']} falha={stats['lead_sent_failed']} "
+            f"(outbox_ids={entry_ids})",
+            flush=True,
+        )
     except Exception as e:
-        print(f"[AVISO] Meta CAPI lead flush imediato falhou: {e}")
+        print(f"[AVISO] Meta CAPI lead flush imediato falhou: {e}", flush=True)

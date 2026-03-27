@@ -56,7 +56,14 @@ def run_daily_send() -> None:
             )
 
             result = SendDailyPurchasesToMetaCommand().execute()
-            print(f"[META_SCHEDULER] Envio concluído: {result}", flush=True)
+            print(
+                "[META_SCHEDULER] Ciclo completo — "
+                f"Purchase ok={result.get('sent_success', 0)} falha={result.get('sent_failed', 0)} | "
+                f"Lead funil ok={result.get('lead_sent_success', 0)} "
+                f"falha={result.get('lead_sent_failed', 0)}",
+                flush=True,
+            )
+            print(f"[META_SCHEDULER] Stats completas: {result}", flush=True)
     except Exception as exc:
         print(f"[META_SCHEDULER] Erro no envio diário: {exc}", flush=True)
 

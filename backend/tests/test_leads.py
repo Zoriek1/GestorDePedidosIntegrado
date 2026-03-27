@@ -402,6 +402,64 @@ def test_patch_status_rejeita_se_nao_pendente_whatsapp(client, session):
     assert lead.status == "whatsapp_iniciado"
 
 
+def test_post_whatsapp_exige_meta_event_id_quando_funnel_ativo(client, monkeypatch):
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    r = client.post(
+        "/api/leads",
+        json={"event": "whatsapp_click", "utm_source": "fb"},
+        headers={"User-Agent": "pytest"},
+    )
+    assert r.status_code == 400
+    assert "meta_event_id_contact" in r.get_json().get("error", "")
+
+
+def test_post_whatsapp_com_meta_event_id_grava_outbox_contact(client, session, monkeypatch):
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    monkeypatch.setenv("META_PIXEL_ID", "1")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    r = client.post(
+        "/api/leads",
+        json={
+            "event": "whatsapp_click",
+            "utm_source": "fb",
+            "meta_event_id_contact": "contact_evt_abc12",
+            "fbp": "fb.1.1711111111111.555666777888",
+        },
+        headers={"User-Agent": "pytest-ua"},
+    )
+    assert r.status_code == 201
+    lead = session.query(Lead).first()
+    assert lead.meta_event_id_contact == "contact_evt_abc12"
+    rows = session.query(MetaCapiLeadOutbox).all()
+    assert len(rows) == 1
+    assert rows[0].funnel_stage == "contact"
+    assert rows[0].event_id == "contact_evt_abc12"
+
+
+def test_patch_phone_com_pixel_exige_meta_event_id_lead(client, session, monkeypatch):
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    lead = Lead(
+        dedup_key="px-req-lead-eid",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+        meta_event_id_contact="c1",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/phone",
+        json={"phone": "(62) 98888-7777", "meta_pixel_lead": True},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 400
+
+
 def test_patch_status_rejeita_evento_nao_whatsapp(client, session):
     lead = Lead(
         dedup_key="lead-status-site",

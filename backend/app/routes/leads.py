@@ -4,6 +4,7 @@ Rotas de Leads UTM — captura cliques da landing page e lista para o admin.
 """
 import hashlib
 import json
+import uuid
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
@@ -12,6 +13,15 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.middleware import requires_any_role
 from app.models.lead import Lead
+from app.models.pedido import datetime_now_brazil
+from app.repositories.meta_capi_lead_outbox_repository import MetaCapiLeadOutboxRepository
+from app.utils.meta_capi_lead_helper import (
+    extract_contact_event_id_from_payload,
+    extract_lead_stage_event_id_from_payload,
+    is_lead_funnel_enabled,
+    is_truthy_meta_pixel_lead,
+    try_flush_pending_meta_capi_lead_entries,
+)
 from app.utils.tracking_token import (
     extract_tracking_token_from_text,
     is_tracking_token_valid,
@@ -150,6 +160,28 @@ def criar_lead():
     event = _clip(data.get("event"), 50)
     is_whatsapp = _is_whatsapp_event(event)
 
+    client_ua = None
+    if is_whatsapp:
+        ua_raw = (request.headers.get("User-Agent") or "").strip()
+        client_ua = ua_raw[:512] if ua_raw else None
+
+    meta_event_id_contact = None
+    if is_whatsapp and is_lead_funnel_enabled():
+        meta_event_id_contact = extract_contact_event_id_from_payload(data)
+        if not meta_event_id_contact:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "meta_event_id_contact (ou capi_event_id) é obrigatório "
+                            "para whatsapp_click quando META_CAPI_LEAD_FUNNEL_ENABLED está ativo"
+                        ),
+                    }
+                ),
+                400,
+            )
+
     token_rastreio = None
     token_valido = None
     if is_whatsapp:
@@ -187,11 +219,29 @@ def criar_lead():
         status=status,
         fbclid=_extract_fbclid(data),
         fbp=_normalize_fbp(data.get("fbp")),
+        meta_event_id_contact=meta_event_id_contact,
+        client_user_agent=client_ua,
     )
 
     try:
         db.session.add(lead)
         db.session.commit()
+        flush_ids: list[int] = []
+        if is_lead_funnel_enabled() and is_whatsapp and meta_event_id_contact:
+            repo = MetaCapiLeadOutboxRepository()
+            row_c = repo.create_contact_from_lead(lead)
+            if row_c:
+                flush_ids.append(row_c.id)
+            if lead.phone:
+                if not lead.meta_event_id_lead:
+                    lead.meta_event_id_lead = str(uuid.uuid4())
+                    db.session.commit()
+                row_l = repo.create_lead_stage_from_lead(
+                    lead, event_time=datetime_now_brazil()
+                )
+                if row_l:
+                    flush_ids.append(row_l.id)
+        try_flush_pending_meta_capi_lead_entries(flush_ids)
         return (
             jsonify(
                 {
@@ -315,6 +365,31 @@ def atualizar_telefone_lead(lead_id: int):
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
 
+    phone_was_empty = not (lead.phone or "").strip()
+    if (
+        is_lead_funnel_enabled()
+        and _is_whatsapp_event(lead.event)
+        and phone_was_empty
+    ):
+        if is_truthy_meta_pixel_lead(data):
+            new_lead_eid = extract_lead_stage_event_id_from_payload(data)
+            if not new_lead_eid:
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": (
+                                "meta_event_id_lead é obrigatório quando "
+                                "meta_pixel_lead é verdadeiro"
+                            ),
+                        }
+                    ),
+                    400,
+                )
+        else:
+            new_lead_eid = str(uuid.uuid4())
+        lead.meta_event_id_lead = new_lead_eid
+
     lead.phone = phone
     if _is_whatsapp_event(lead.event):
         if lead.status != "compra_realizada":
@@ -323,6 +398,19 @@ def atualizar_telefone_lead(lead_id: int):
         lead.status = None
 
     db.session.commit()
+
+    flush_ids: list[int] = []
+    if (
+        is_lead_funnel_enabled()
+        and _is_whatsapp_event(lead.event)
+        and phone_was_empty
+    ):
+        repo = MetaCapiLeadOutboxRepository()
+        row_l = repo.create_lead_stage_from_lead(lead, event_time=datetime_now_brazil())
+        if row_l:
+            flush_ids.append(row_l.id)
+        try_flush_pending_meta_capi_lead_entries(flush_ids)
+
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
 

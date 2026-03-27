@@ -124,6 +124,60 @@ class TestMetaCapiServiceNormalization:
         assert result == expected
 
 
+class TestMetaCapiLeadFunnelPayload:
+    """Contact / Lead (funil landing) — valores e currency."""
+
+    @pytest.fixture
+    def service(self):
+        with patch.dict(
+            os.environ,
+            {
+                "META_PIXEL_ID": "test_pixel_123",
+                "META_CAPI_ACCESS_TOKEN": "test_token_abc",
+                "META_CAPI_USE_GATEWAY": "false",
+            },
+        ):
+            from app.services.meta_capi import MetaConversionsApiService
+
+            return MetaConversionsApiService()
+
+    def test_build_contact_and_lead_events(self, service):
+        from datetime import datetime, timezone
+
+        from app.models.lead import Lead
+
+        lead = Lead(
+            dedup_key="ut-meta-funnel",
+            meta_event_id_contact="contact_st_1",
+            url="https://lp.test/p",
+            fbclid="IwARx",
+            fbp="fb.1.1700000000.999",
+            ip_address="192.0.2.10",
+            client_user_agent="pytest-ua",
+            phone="62999887766",
+        )
+        lead.id = 7
+        lead.created_at = datetime(2025, 6, 1, 15, 0, 0, tzinfo=timezone.utc)
+
+        ce = service.build_contact_event_from_lead(lead)
+        assert ce["event_name"] == "Contact"
+        assert ce["event_id"] == "contact_st_1"
+        assert ce["action_source"] == "website"
+        assert ce["custom_data"]["value"] == 1.0
+        assert ce["custom_data"]["currency"] == "BRL"
+        assert ce["custom_data"]["lead_id"] == "7"
+        assert "ph" in ce["user_data"]
+
+        lead.meta_event_id_lead = "lead_st_2"
+        lead.updated_at = datetime(2025, 6, 1, 16, 0, 0, tzinfo=timezone.utc)
+        le = service.build_lead_event_from_lead(lead)
+        assert le["event_name"] == "Lead"
+        assert le["event_id"] == "lead_st_2"
+        assert le["custom_data"]["value"] == 15.0
+        assert le["custom_data"]["currency"] == "BRL"
+        assert "ph" in le["user_data"]
+
+
 class TestMetaCapiServiceValidation:
     """Testes de validação de fbc e fbp"""
 
@@ -378,11 +432,14 @@ class TestMetaCapiPurchaseEnrichment:
 
                 service = MetaConversionsApiService()
                 event = service.build_purchase_event(pedido)
+                expected_fbc = service.build_fbc_from_fbclid(
+                    lead.fbclid, lead.created_at
+                )
 
                 assert event["event_name"] == "Purchase"
                 assert event["event_source_url"] == lead.url
                 assert event["user_data"]["fbp"] == lead.fbp
-                assert event["user_data"]["fbc"] == "fb.1.1736078400.IwARabc123"
+                assert event["user_data"]["fbc"] == expected_fbc
                 assert event["user_data"]["client_ip_address"] == "203.0.113.42"
                 assert event["user_data"]["em"] == [
                     service.hash_sha256(service.normalize_email("Maria@Teste.com"))

@@ -160,3 +160,20 @@ O `event_time` esta no futuro. O sistema normaliza automaticamente para `now()`.
 ### Erro "Resource not found" ao acessar URL do Gateway
 Normal. O endpoint `/meta-gateway/{pixel_id}/events` e uma API, nao uma pagina web.
 Use GET para verificar status ou POST para enviar eventos.
+
+## Funil de leads (Contact + Lead)
+
+Quando `META_CAPI_LEAD_FUNNEL_ENABLED=true`:
+
+- **Contact** (clique WhatsApp na landing): `value=1`, `currency=BRL`. O Pixel gera `event_id` no browser; a landing envia em `POST /api/leads` como `meta_event_id_contact` (ou `capi_event_id`). O backend reutiliza o mesmo id na CAPI (dedup Pixel+CAPI neste estagio).
+- **Lead** (telefone salvo): `value=15`, `currency=BRL`, novo `event_id`. Se `PATCH /api/leads/<id>/phone` enviar `meta_pixel_lead=true`, o body deve incluir `meta_event_id_lead` (mesmo id do Pixel nesse browser). Sem Pixel no contexto, omita `meta_pixel_lead` (ou false): o backend gera UUID e envia CAPI-only.
+
+Modelos/outbox: `Lead.meta_event_id_contact`, `Lead.meta_event_id_lead`, tabela `meta_capi_lead_outbox` (stages `contact` | `lead`). O command diario (`SendDailyPurchasesToMetaCommand`) tambem processa essa fila.
+
+Migration: `python backend/scripts/migrations/add_meta_capi_lead_funnel.py`
+
+## Purchase: dedup Pixel + CAPI
+
+O servidor envia Purchase com `event_id` = `order_<pedido_id>` (ver `build_purchase_event`).
+
+**Checklist para a loja/checkout (Pixel fora deste repositorio):** ao disparar `Purchase` no browser, use o mesmo `event_id` que o backend (`order_` + id do pedido apos criacao), para a Meta deduplicar Pixel e CAPI na mesma conversao.

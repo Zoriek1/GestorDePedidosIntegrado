@@ -13,6 +13,7 @@ except ImportError:
 
 from app.config import Config
 from app.models.pedido import Pedido, datetime_now_brazil
+from app.repositories.meta_capi_lead_outbox_repository import MetaCapiLeadOutboxRepository
 from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 from app.repositories.pedido_repository import PedidoRepository
 from app.services.meta_capi import MetaConversionsApiService
@@ -37,6 +38,7 @@ class SendDailyPurchasesToMetaCommand:
     def __init__(self):
         self.pedido_repo = PedidoRepository()
         self.outbox_repo = MetaCapiOutboxRepository()
+        self.lead_outbox_repo = MetaCapiLeadOutboxRepository()
         self.service = MetaConversionsApiService()
 
     def execute(self) -> dict:
@@ -63,6 +65,12 @@ class SendDailyPurchasesToMetaCommand:
             "failed_permanent": 0,
             "failed_retryable": 0,
             "errors": [],
+            "lead_pending_processed": 0,
+            "lead_failed_retryable_processed": 0,
+            "lead_sent_success": 0,
+            "lead_sent_failed": 0,
+            "lead_failed_permanent": 0,
+            "lead_failed_retryable": 0,
         }
 
         try:
@@ -87,6 +95,9 @@ class SendDailyPurchasesToMetaCommand:
             # Fase 2: Processar pendentes e failed retryáveis
             print("[META_CAPI] Processando pendentes e failed retryáveis...")
             self._process_pending_batch(stats, limit=50)
+
+            print("[META_CAPI] Processando outbox de leads (Contact/Lead)...")
+            self._process_lead_outbox_batch(stats, limit=50)
 
             print(f"[META_CAPI] Concluído. Stats: {stats}")
             return stats
@@ -363,3 +374,90 @@ class SendDailyPurchasesToMetaCommand:
                         stats["failed_permanent"] += 1
 
             stats["errors"].append(f"Batch failed: {error_msg}")
+
+    def _process_lead_outbox_batch(self, stats: dict, limit: int = 50):
+        pending = self.lead_outbox_repo.get_pending(limit=limit)
+        stats["lead_pending_processed"] = len(pending)
+        failed_retryable = self.lead_outbox_repo.get_failed_retryable(limit=limit)
+        stats["lead_failed_retryable_processed"] = len(failed_retryable)
+        all_to_process = pending + failed_retryable
+        if not all_to_process:
+            print("[META_CAPI] Nenhum registro pendente na outbox de leads")
+            return
+        print(f"[META_CAPI] Processando {len(all_to_process)} registros (leads)...")
+        batch_size = 50
+        for i in range(0, len(all_to_process), batch_size):
+            batch = all_to_process[i : i + batch_size]
+            self._send_lead_batch(batch, stats)
+
+    def _send_lead_batch(self, batch: list, stats: dict):
+        events = []
+        outbox_map = {}
+
+        for entry in batch:
+            try:
+                payload = json.loads(entry.payload_json)
+                event = {
+                    "event_name": payload["event_name"],
+                    "event_time": payload["event_time"],
+                    "event_id": payload["event_id"],
+                    "action_source": payload["action_source"],
+                    "event_source_url": payload.get("event_source_url"),
+                    "user_data": payload.get("user_data", {}),
+                    "custom_data": payload["custom_data"],
+                }
+                events.append(self.service.sanitize_event_payload(event))
+                outbox_map[entry.event_id] = entry
+            except Exception as e:
+                error_msg = f"Erro ao parsear payload lead outbox #{entry.id}: {str(e)}"
+                print(f"[ERROR] {error_msg}")
+                stats["errors"].append(error_msg)
+                self.lead_outbox_repo.mark_failed(
+                    entry.id, error_msg, 0, "permanent", entry.attempts + 1
+                )
+                stats["lead_sent_failed"] += 1
+
+        if not events:
+            print("[META_CAPI] Nenhum evento lead válido para enviar no lote")
+            return
+
+        print(f"[META_CAPI] Enviando {len(events)} eventos (leads) para Meta...")
+        response = self.service.send_events(events)
+        status_code = response.get("_status_code", 200)
+        sent_at = datetime_now_brazil()
+
+        if status_code == 200 and "events_received" in response:
+            events_received = response.get("events_received", 0)
+            fbtrace_id = response.get("fbtrace_id", "")
+            print(
+                f"[META_CAPI] Leads: sucesso — {events_received} eventos (fbtrace_id: {fbtrace_id})"
+            )
+            for entry in batch:
+                if entry.event_id in outbox_map:
+                    self.lead_outbox_repo.mark_sent(entry.id, sent_at, response)
+                    stats["lead_sent_success"] += 1
+        else:
+            error_type, is_retryable = self.service.classify_error(response, status_code)
+            error_detail = response.get("details", response.get("error", {}))
+            meta_error = None
+            if isinstance(error_detail, dict) and "error" in error_detail:
+                meta_error = error_detail.get("error")
+            else:
+                meta_error = error_detail
+            if isinstance(meta_error, dict):
+                error_msg = meta_error.get("message", response.get("_error", "Erro desconhecido"))
+            else:
+                error_msg = response.get("_error") or str(meta_error) or "Erro desconhecido"
+            print(f"[META_CAPI] Erro leads {status_code}: {error_msg}")
+            for entry in batch:
+                if entry.event_id in outbox_map:
+                    new_attempts = entry.attempts + 1 if is_retryable else entry.attempts
+                    self.lead_outbox_repo.mark_failed(
+                        entry.id, error_msg, status_code, error_type, new_attempts
+                    )
+                    stats["lead_sent_failed"] += 1
+                    if is_retryable:
+                        stats["lead_failed_retryable"] += 1
+                    else:
+                        stats["lead_failed_permanent"] += 1
+            stats["errors"].append(f"Lead batch failed: {error_msg}")

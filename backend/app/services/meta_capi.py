@@ -422,6 +422,124 @@ class MetaConversionsApiService:
 
         return event
 
+    def _lead_external_id_hash(self, lead) -> str:
+        return self.hash_sha256(f"lead:{lead.id}")
+
+    def _lead_user_data_base(self, lead) -> Dict:
+        """fbc/fbp, IP, UA, país, external_id estável (sem PII em claro)."""
+        ud: Dict = {}
+        lead_fbc = self.build_fbc_from_fbclid(
+            getattr(lead, "fbclid", None), getattr(lead, "created_at", None)
+        )
+        if lead_fbc and self.is_valid_fbc(lead_fbc):
+            ud["fbc"] = lead_fbc
+        fbp = getattr(lead, "fbp", None)
+        if fbp and self.is_valid_fbp(fbp):
+            ud["fbp"] = fbp
+        if getattr(lead, "ip_address", None):
+            ud["client_ip_address"] = lead.ip_address
+        ua = getattr(lead, "client_user_agent", None)
+        if ua and str(ua).strip():
+            ud["client_user_agent"] = str(ua).strip()[:512]
+        country_hash = self.maybe_hash("br", normalize_fn=self.normalize_generic)
+        if country_hash:
+            ud["country"] = country_hash
+        ud["external_id"] = [self._lead_external_id_hash(lead)]
+        return ud
+
+    def build_contact_event_from_lead(self, lead) -> Dict:
+        """
+        Evento Contact (clique WhatsApp na landing). value=1, currency BRL.
+        event_id deve ser o mesmo enviado pelo Pixel (meta_event_id_contact).
+        """
+        from app.models.lead import Lead
+
+        if not isinstance(lead, Lead):
+            raise TypeError("lead deve ser instância de Lead")
+        eid = (getattr(lead, "meta_event_id_contact", None) or "").strip()
+        if not eid:
+            raise ValueError("meta_event_id_contact ausente no lead")
+        ts = lead.created_at.timestamp() if lead.created_at else time.time()
+        event_time = int(ts)
+        now_timestamp = int(time.time())
+        max_past = now_timestamp - (7 * 24 * 60 * 60)
+        if event_time > now_timestamp or event_time < max_past:
+            event_time = now_timestamp
+
+        user_data = self._lead_user_data_base(lead)
+        phone_raw = getattr(lead, "phone", None) or ""
+        if phone_raw:
+            try:
+                phone_norm = self.normalize_phone_br_e164(phone_raw)
+                user_data["ph"] = [self.hash_sha256(phone_norm)]
+            except ValueError:
+                pass
+
+        event = {
+            "event_name": "Contact",
+            "event_time": event_time,
+            "event_id": eid,
+            "action_source": "website",
+            "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
+            "user_data": user_data,
+            "custom_data": {
+                "value": 1.0,
+                "currency": "BRL",
+                "lead_id": str(lead.id),
+            },
+        }
+        return event
+
+    def build_lead_event_from_lead(self, lead, *, event_time_override: Optional[int] = None) -> Dict:
+        """
+        Evento Lead (telefone salvo). value=15, currency BRL.
+        event_id em meta_event_id_lead (novo em relação ao Contact).
+        """
+        from app.models.lead import Lead
+
+        if not isinstance(lead, Lead):
+            raise TypeError("lead deve ser instância de Lead")
+        eid = (getattr(lead, "meta_event_id_lead", None) or "").strip()
+        if not eid:
+            raise ValueError("meta_event_id_lead ausente no lead")
+        phone_raw = getattr(lead, "phone", None) or ""
+        if not phone_raw:
+            raise ValueError("lead sem telefone para evento Lead")
+
+        if event_time_override is not None:
+            event_time = int(event_time_override)
+        elif lead.updated_at:
+            event_time = int(lead.updated_at.timestamp())
+        elif lead.created_at:
+            event_time = int(lead.created_at.timestamp())
+        else:
+            event_time = int(time.time())
+        now_timestamp = int(time.time())
+        max_past = now_timestamp - (7 * 24 * 60 * 60)
+        if event_time > now_timestamp or event_time < max_past:
+            event_time = now_timestamp
+
+        phone_norm = self.normalize_phone_br_e164(phone_raw)
+        phone_hash = self.hash_sha256(phone_norm)
+
+        user_data = self._lead_user_data_base(lead)
+        user_data["ph"] = [phone_hash]
+
+        event = {
+            "event_name": "Lead",
+            "event_time": event_time,
+            "event_id": eid,
+            "action_source": "website",
+            "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
+            "user_data": user_data,
+            "custom_data": {
+                "value": 15.0,
+                "currency": "BRL",
+                "lead_id": str(lead.id),
+            },
+        }
+        return event
+
     def sanitize_event_payload(self, event: Dict) -> Dict:
         """
         Normaliza payload vindo da outbox para evitar parâmetros inválidos.

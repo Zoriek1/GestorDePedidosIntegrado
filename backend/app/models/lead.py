@@ -41,6 +41,10 @@ class Lead(db.Model):
     fbp = db.Column(db.String(255))
     ip_address = db.Column(db.String(45))
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, index=True)
+    # Meta Pixel/CAPI: mesmo event_id por estágio para dedup browser+servidor
+    meta_event_id_contact = db.Column(db.String(100), nullable=True, index=True)
+    meta_event_id_lead = db.Column(db.String(100), nullable=True, index=True)
+    client_user_agent = db.Column(db.String(512), nullable=True)
 
     def to_dict(self):
         return {
@@ -64,4 +68,6 @@ class Lead(db.Model):
             "fbp": self.fbp,
             "ip_address": self.ip_address,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "meta_event_id_contact": self.meta_event_id_contact,
+            "meta_event_id_lead": self.meta_event_id_lead,
         }

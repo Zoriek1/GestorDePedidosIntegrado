@@ -55,6 +55,8 @@ services:
       META_CAPI_USE_GATEWAY: ${META_CAPI_USE_GATEWAY:-false}
       META_CAPI_GATEWAY_DOMAIN: ${META_CAPI_GATEWAY_DOMAIN:-gestaopedidos.planteumaflor.online}
       META_CAPI_GATEWAY_ENDPOINT: ${META_CAPI_GATEWAY_ENDPOINT:-}
+      # Funil leads na CAPI (Contact + Lead); ver backend/docs/META_CAPI_OUTBOX.md
+      META_CAPI_LEAD_FUNNEL_ENABLED: ${META_CAPI_LEAD_FUNNEL_ENABLED:-false}
       # UTMify (API de pedidos / conversões)
       UTMIFY_ENABLED: ${UTMIFY_ENABLED:-false}
       UTMIFY_API_TOKEN: ${UTMIFY_API_TOKEN:-}
@@ -93,6 +95,7 @@ services:
       META_CAPI_USE_GATEWAY: ${META_CAPI_USE_GATEWAY:-false}
       META_CAPI_GATEWAY_DOMAIN: ${META_CAPI_GATEWAY_DOMAIN:-gestaopedidos.planteumaflor.online}
       META_CAPI_GATEWAY_ENDPOINT: ${META_CAPI_GATEWAY_ENDPOINT:-}
+      META_CAPI_LEAD_FUNNEL_ENABLED: ${META_CAPI_LEAD_FUNNEL_ENABLED:-false}
       META_SCHEDULER_HOUR: ${META_SCHEDULER_HOUR:-23}
     volumes:
       - ./backend:/app/backend

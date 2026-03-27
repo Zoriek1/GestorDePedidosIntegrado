@@ -45,6 +45,8 @@ export interface LeadsFilters {
   events?: string;
   utm_source?: string;
   utm_campaign?: string;
+  /** Filtra pelo código único de rastreio (token WhatsApp) */
+  token_rastreio?: string;
   date_from?: string;
   date_to?: string;
 }
@@ -66,6 +68,9 @@ export function useLeads(filters: LeadsFilters = {}) {
       }
       if (filters.utm_source) params.set('utm_source', filters.utm_source);
       if (filters.utm_campaign) params.set('utm_campaign', filters.utm_campaign);
+      if (filters.token_rastreio?.trim()) {
+        params.set('token_rastreio', filters.token_rastreio.trim());
+      }
       if (filters.date_from) params.set('date_from', filters.date_from);
       if (filters.date_to) params.set('date_to', filters.date_to);
 
@@ -96,11 +101,23 @@ export function useUpdateLeadStatus() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const response = await apiRequest<UpdateLeadStatusResponse>(`/leads/${id}/status`, {
+    mutationFn: async (input: { id?: number; token_rastreio?: string; status: string }) => {
+      const { id, token_rastreio, status } = input;
+      const path =
+        token_rastreio != null && token_rastreio.trim() !== ''
+          ? '/leads/by-token/status'
+          : `/leads/${id}/status`;
+      const body =
+        token_rastreio != null && token_rastreio.trim() !== ''
+          ? JSON.stringify({ token_rastreio: token_rastreio.trim(), status })
+          : JSON.stringify({ status });
+      if (!token_rastreio?.trim() && id == null) {
+        throw new Error('Informe o id do lead ou o token de rastreio');
+      }
+      const response = await apiRequest<UpdateLeadStatusResponse>(path, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body,
       });
 
       if (!response.ok) {
@@ -121,11 +138,23 @@ export function useUpdateLeadPhone() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, phone }: { id: number; phone: string }) => {
-      const response = await apiRequest<UpdateLeadPhoneResponse>(`/leads/${id}/phone`, {
+    mutationFn: async (input: { id?: number; token_rastreio?: string; phone: string }) => {
+      const { id, token_rastreio, phone } = input;
+      const path =
+        token_rastreio != null && token_rastreio.trim() !== ''
+          ? '/leads/by-token/phone'
+          : `/leads/${id}/phone`;
+      const body =
+        token_rastreio != null && token_rastreio.trim() !== ''
+          ? JSON.stringify({ token_rastreio: token_rastreio.trim(), phone })
+          : JSON.stringify({ phone });
+      if (!token_rastreio?.trim() && id == null) {
+        throw new Error('Informe o id do lead ou o token de rastreio');
+      }
+      const response = await apiRequest<UpdateLeadPhoneResponse>(path, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        body,
       });
 
       if (!response.ok) {

@@ -119,6 +119,30 @@ def _is_whatsapp_event(event: str | None) -> bool:
     return (event or "").strip().lower() == WHATSAPP_EVENT
 
 
+def _resolve_lead_by_token_payload(data: dict) -> tuple[Lead | None, tuple | None]:
+    """
+    Busca lead mais recente com este token_rastreio.
+    Retorna (lead, None) ou (None, (jsonify(...), status_code)).
+    """
+    token = normalize_tracking_token(data.get("token_rastreio"))
+    if not token:
+        return None, (
+            jsonify({"ok": False, "error": "token_rastreio é obrigatório"}),
+            400,
+        )
+    lead = (
+        Lead.query.filter(Lead.token_rastreio == token)
+        .order_by(Lead.created_at.desc(), Lead.id.desc())
+        .first()
+    )
+    if not lead:
+        return None, (
+            jsonify({"ok": False, "error": "Nenhum lead encontrado com este token"}),
+            404,
+        )
+    return lead, None
+
+
 def _serialize_lead(lead: Lead) -> dict:
     payload = lead.to_dict()
     if not _is_whatsapp_event(payload.get("event")):
@@ -289,7 +313,11 @@ def marcar_whatsapp_iniciado():
     if not token_valido:
         return jsonify({"ok": True, "found": False, "token": token, "token_valido": False}), 200
 
-    lead = Lead.query.filter(Lead.token_rastreio == token).order_by(Lead.created_at.desc()).first()
+    lead = (
+        Lead.query.filter(Lead.token_rastreio == token)
+        .order_by(Lead.created_at.desc(), Lead.id.desc())
+        .first()
+    )
     if not lead:
         return jsonify({"ok": True, "found": False, "token": token, "token_valido": True}), 200
 
@@ -312,24 +340,14 @@ def marcar_whatsapp_iniciado():
     )
 
 
-@leads_bp.route("/<int:lead_id>/status", methods=["PATCH"])
-@requires_any_role("admin", "atendente")
-def atualizar_status_lead(lead_id: int):
-    """
-    Atualiza status operacional do lead (ex.: marcar como não entrou em contato).
-    Transições válidas são explícitas para evitar estados inconsistentes.
-    """
-    data = _parse_request_payload()
+def _apply_lead_status_update(lead: Lead, data: dict):
+    """Mutação de status (nao_entrou_em_contato). Retorna (response, status_code)."""
     new_status = _clip(data.get("status"), 50)
     if not new_status:
         return jsonify({"ok": False, "error": "status é obrigatório"}), 400
 
     if new_status != "nao_entrou_em_contato":
         return jsonify({"ok": False, "error": "Status não suportado"}), 400
-
-    lead = db.session.get(Lead, lead_id)
-    if not lead:
-        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
 
     if not _is_whatsapp_event(lead.event):
         return jsonify({"ok": False, "error": "Ação disponível apenas para leads WhatsApp"}), 400
@@ -350,20 +368,38 @@ def atualizar_status_lead(lead_id: int):
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
 
-@leads_bp.route("/<int:lead_id>/phone", methods=["PATCH"])
+@leads_bp.route("/by-token/status", methods=["PATCH"])
 @requires_any_role("admin", "atendente")
-def atualizar_telefone_lead(lead_id: int):
-    """Atualiza o telefone de um lead e destrava status pendente de WhatsApp."""
+def atualizar_status_lead_por_token():
+    """Igual a PATCH /<id>/status, mas identifica o lead por token_rastreio no body."""
     data = _parse_request_payload()
+    lead, err = _resolve_lead_by_token_payload(data)
+    if err:
+        return err
+    return _apply_lead_status_update(lead, data)
+
+
+@leads_bp.route("/<int:lead_id>/status", methods=["PATCH"])
+@requires_any_role("admin", "atendente")
+def atualizar_status_lead(lead_id: int):
+    """
+    Atualiza status operacional do lead (ex.: marcar como não entrou em contato).
+    Transições válidas são explícitas para evitar estados inconsistentes.
+    """
+    data = _parse_request_payload()
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
+    return _apply_lead_status_update(lead, data)
+
+
+def _apply_lead_phone_update(lead: Lead, data: dict):
+    """Atualiza telefone + CAPI Lead quando aplicável. Retorna (response, status_code)."""
     phone = _normalize_phone(
         data.get("phone") or data.get("telefone") or data.get("telefone_cliente")
     )
     if not phone:
         return jsonify({"ok": False, "error": "Telefone é obrigatório"}), 400
-
-    lead = db.session.get(Lead, lead_id)
-    if not lead:
-        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
 
     phone_was_empty = not (lead.phone or "").strip()
     if (
@@ -414,6 +450,28 @@ def atualizar_telefone_lead(lead_id: int):
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
 
+@leads_bp.route("/by-token/phone", methods=["PATCH"])
+@requires_any_role("admin", "atendente")
+def atualizar_telefone_lead_por_token():
+    """Igual a PATCH /<id>/phone, mas identifica o lead por token_rastreio no body."""
+    data = _parse_request_payload()
+    lead, err = _resolve_lead_by_token_payload(data)
+    if err:
+        return err
+    return _apply_lead_phone_update(lead, data)
+
+
+@leads_bp.route("/<int:lead_id>/phone", methods=["PATCH"])
+@requires_any_role("admin", "atendente")
+def atualizar_telefone_lead(lead_id: int):
+    """Atualiza o telefone de um lead e destrava status pendente de WhatsApp."""
+    data = _parse_request_payload()
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
+    return _apply_lead_phone_update(lead, data)
+
+
 @leads_bp.route("", methods=["GET"])
 @requires_any_role("admin")
 def listar_leads():
@@ -444,6 +502,12 @@ def listar_leads():
     utm_campaign = request.args.get("utm_campaign")
     if utm_campaign:
         query = query.filter(Lead.utm_campaign == utm_campaign)
+
+    token_q = request.args.get("token_rastreio")
+    if token_q:
+        token_norm = normalize_tracking_token(token_q)
+        if token_norm:
+            query = query.filter(Lead.token_rastreio == token_norm)
 
     date_from = request.args.get("date_from")
     if date_from:

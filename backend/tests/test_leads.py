@@ -402,6 +402,129 @@ def test_patch_status_rejeita_se_nao_pendente_whatsapp(client, session):
     assert lead.status == "whatsapp_iniciado"
 
 
+def test_listar_leads_filtra_token_rastreio(client, session):
+    session.add(
+        Lead(
+            dedup_key="tok-a",
+            event="whatsapp_click",
+            token_rastreio=_VALID_TOKEN,
+            token_valido=True,
+        )
+    )
+    session.add(
+        Lead(
+            dedup_key="tok-b",
+            event="whatsapp_click",
+            token_rastreio=_SECOND_VALID_TOKEN,
+            token_valido=True,
+        )
+    )
+    session.commit()
+
+    r = client.get(
+        f"/api/leads?token_rastreio={_VALID_TOKEN}",
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["total"] == 1
+    assert data["leads"][0]["token_rastreio"] == _VALID_TOKEN
+
+
+def test_patch_phone_por_token_rastreio(client, session):
+    lead = Lead(
+        dedup_key="lead-phone-by-token",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/by-token/phone",
+        json={"token_rastreio": _VALID_TOKEN, "phone": "(62) 98888-7777"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.phone == "62988887777"
+    assert lead.status == "whatsapp_iniciado"
+
+
+def test_patch_status_por_token_rastreio(client, session):
+    lead = Lead(
+        dedup_key="lead-status-by-token",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/by-token/status",
+        json={"token_rastreio": _VALID_TOKEN, "status": "nao_entrou_em_contato"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.status == "nao_entrou_em_contato"
+
+
+def test_patch_phone_por_token_sem_token_400(client, session):
+    r = client.patch(
+        "/api/leads/by-token/phone",
+        json={"phone": "(62) 98888-7777"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 400
+
+
+def test_patch_phone_por_token_desconhecido_404(client, session):
+    r = client.patch(
+        "/api/leads/by-token/phone",
+        json={"token_rastreio": _INVALID_TOKEN, "phone": "(62) 98888-7777"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 404
+
+
+def test_patch_phone_por_token_usa_lead_mais_recente(client, session):
+    old = Lead(
+        dedup_key="dup-old",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    new = Lead(
+        dedup_key="dup-new",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add_all([old, new])
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/by-token/phone",
+        json={"token_rastreio": _VALID_TOKEN, "phone": "(62) 91111-2222"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(old)
+    session.refresh(new)
+    assert new.phone == "62911112222"
+    assert old.phone is None
+
+
 def test_post_whatsapp_exige_meta_event_id_quando_funnel_ativo(client, monkeypatch):
     monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
     r = client.post(

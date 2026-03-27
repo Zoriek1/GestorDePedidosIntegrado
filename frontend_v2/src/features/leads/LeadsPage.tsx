@@ -203,7 +203,11 @@ export default function LeadsPage() {
     }
 
     try {
-      await updateLeadPhone.mutateAsync({ id: editingLead.id, phone: manualPhone });
+      await updateLeadPhone.mutateAsync(
+        editingLead.token_rastreio
+          ? { token_rastreio: editingLead.token_rastreio, phone: manualPhone }
+          : { id: editingLead.id, phone: manualPhone },
+      );
       success('Telefone do lead atualizado');
       handleClosePhoneDialog();
     } catch (err) {
@@ -226,7 +230,11 @@ export default function LeadsPage() {
   const handleMarkNoContact = useCallback(async () => {
     if (!statusMenuLead) return;
     try {
-      await updateLeadStatus.mutateAsync({ id: statusMenuLead.id, status: 'nao_entrou_em_contato' });
+      await updateLeadStatus.mutateAsync(
+        statusMenuLead.token_rastreio
+          ? { token_rastreio: statusMenuLead.token_rastreio, status: 'nao_entrou_em_contato' }
+          : { id: statusMenuLead.id, status: 'nao_entrou_em_contato' },
+      );
       success('Lead marcado como não entrou em contato');
       handleCloseStatusMenu();
     } catch (err) {
@@ -310,6 +318,21 @@ export default function LeadsPage() {
             onChange={(e) =>
               setFilters((f) => ({ ...f, utm_campaign: e.target.value || undefined, page: 1 }))
             }
+          />
+
+          <TextField
+            size="small"
+            label="Código (token)"
+            placeholder="ex.: A3F9B7K20K"
+            value={filters.token_rastreio ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                token_rastreio: e.target.value.trim() || undefined,
+                page: 1,
+              }))
+            }
+            sx={{ minWidth: 160 }}
           />
 
           <TextField

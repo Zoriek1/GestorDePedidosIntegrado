@@ -2987,3 +2987,104 @@ def exportar_planilha():
             ),
             500,
         )
+
+
+@api_bp.route("/exportar-planilha-leads", methods=["POST"])
+@requires_edit_auth
+def exportar_planilha_leads():
+    """Exporta tabela leads para Google Sheets (planilha separada de VENDAS_*)."""
+    try:
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        backend_dir = Path(__file__).parent.parent.parent
+        script_path = backend_dir / "scripts" / "export" / "exportar_leads_sheets.py"
+
+        if not script_path.exists():
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Script não encontrado: {script_path}",
+                        "detalhes": "Arquivo exportar_leads_sheets.py não encontrado",
+                    }
+                ),
+                500,
+            )
+
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+
+        spec = importlib.util.spec_from_file_location("exportar_leads_sheets", str(script_path))
+        if spec is None or spec.loader is None:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Erro ao carregar módulo",
+                        "detalhes": "Não foi possível criar spec do módulo",
+                    }
+                ),
+                500,
+            )
+
+        module = importlib.util.module_from_spec(spec)
+        module.__file__ = str(script_path)
+        spec.loader.exec_module(module)
+
+        if not hasattr(module, "exportar_leads"):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Função exportar_leads não encontrada no módulo",
+                    }
+                ),
+                500,
+            )
+
+        resultado = module.exportar_leads()
+
+        if resultado:
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "Planilha de leads atualizada com sucesso!",
+                }
+            )
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Erro ao exportar leads. Verifique credenciais Google e se a planilha existe.",
+                }
+            ),
+            500,
+        )
+
+    except FileNotFoundError as e:
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Credenciais do Google não configuradas",
+                    "detalhes": str(e),
+                }
+            ),
+            400,
+        )
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Erro ao exportar planilha de leads",
+                    "detalhes": str(e),
+                }
+            ),
+            500,
+        )

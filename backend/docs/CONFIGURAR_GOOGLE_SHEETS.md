@@ -54,6 +54,19 @@ precisa ter acesso às planilhas.
 - Compartilhe a pasta com o email da Service Account (Editor)
 - As planilhas criadas pelo script ficarão nessa pasta
 
+### Planilha de leads (opcional, separada das vendas)
+
+- Crie uma planilha com o título **`Leads_GESTOR`** (ou outro nome e defina `GOOGLE_SHEETS_LEADS_DOCUMENT_NAME` no `.env`).
+- Compartilhe com a **mesma** Service Account como **Editor** (igual à planilha de vendas).
+- O script `scripts/export/exportar_leads_sheets.py` preenche só a aba **`Leads`** (cria a aba se não existir) e **não altera** as planilhas `VENDAS_*`.
+- Teste: `cd backend && python scripts/export/exportar_leads_sheets.py --teste`
+- Export: `python scripts/export/exportar_leads_sheets.py`
+- API (mesma autenticação que exportar vendas): `POST /api/exportar-planilha-leads`
+
+### Por que eu crio a planilha e a service account só “acessa”?
+
+A Service Account **não é um usuário Gmail**. Planilhas criadas só por ela ficam no Drive **dela**, que você não abre no navegador como conta normal. Por isso o fluxo mais simples é: **você cria a planilha na sua conta**, compartilha com o e-mail da SA (`client_email` do JSON), e o script **edita** o arquivo que já está no seu Drive. Tecnicamente dá para criar arquivo via API, mas aí o arquivo nasce no “Drive da robô”; trazer para o seu uso costuma exigir pasta compartilhada ou troca de proprietário — mais trabalhoso que criar uma vez e compartilhar.
+
 ## Passo 6: Instalar Dependências
 
 ```bash
@@ -64,7 +77,7 @@ pip install gspread google-auth
 
 ```bash
 cd backend
-python scripts/exportar_vendas_sheets.py --teste
+python scripts/export/exportar_vendas_sheets.py --teste
 ```
 
 ---

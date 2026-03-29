@@ -33,10 +33,10 @@ describe('orderToForm', () => {
     expect(form.fonte_pedido_id).toBe(2);
   });
 
-  it('usa fonte_pedido_id=1 como fallback quando ausente', () => {
+  it('retorna fonte_pedido_id=undefined quando ausente (sem fallback)', () => {
     const pedido = makePedido({ fonte_pedido_id: undefined });
     const form = orderToForm(pedido);
-    expect(form.fonte_pedido_id).toBe(1);
+    expect(form.fonte_pedido_id).toBeUndefined();
   });
 
   it('usa "Entrega" como fallback para tipo_pedido inválido', () => {

@@ -347,10 +347,24 @@ class MetaConversionsApiService:
         if valor_total <= 0:
             valor_total = 0.01  # Valor mínimo para não falhar
 
+        # Para Retirada sem endereço, usar endereço da loja como fallback
+        is_retirada = getattr(pedido, "tipo_pedido", "") == "Retirada"
+        cidade_efetiva = pedido.cidade
+        cep_efetivo = pedido.cep
+        if is_retirada and not cidade_efetiva:
+            endereco_loja = os.environ.get("ENDERECO_FLORICULTURA", "")
+            if endereco_loja:
+                partes = [p.strip() for p in endereco_loja.split(",")]
+                # Formato: Rua, Numero, Bairro, Cidade, Estado  (cidade = penúltimo)
+                if len(partes) >= 2:
+                    cidade_efetiva = partes[-2] if len(partes) >= 3 else partes[-1]
+        if is_retirada and not cep_efetivo:
+            cep_efetivo = os.environ.get("LOJA_CEP", "")
+
         # Dados de localização para user_data (apenas hashes)
         user_location = {}
-        if pedido.cidade:
-            city_hash = self.maybe_hash(pedido.cidade, normalize_fn=self.normalize_generic)
+        if cidade_efetiva:
+            city_hash = self.maybe_hash(cidade_efetiva, normalize_fn=self.normalize_generic)
             if city_hash:
                 user_location["ct"] = city_hash
 
@@ -358,8 +372,8 @@ class MetaConversionsApiService:
         if state_hash:
             user_location["st"] = state_hash
 
-        if pedido.cep:
-            cep_normalized = re.sub(r"[^\d]", "", pedido.cep)
+        if cep_efetivo:
+            cep_normalized = re.sub(r"[^\d]", "", cep_efetivo)
             if cep_normalized and len(cep_normalized) == 8:
                 zip_hash = self.maybe_hash(cep_normalized)
                 if zip_hash:

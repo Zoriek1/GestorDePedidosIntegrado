@@ -46,6 +46,8 @@ export interface Pedido {
   taxa_entrega?: number;
   coords_lat?: number;
   coords_lon?: number;
+  fbc?: string;
+  fbp?: string;
   created_at?: string;
   updated_at?: string;
   deleted_at?: string | null;

@@ -175,6 +175,7 @@ export default function LeadsPage() {
       state: {
         prefillData: {
           telefone_cliente: lead.phone ?? '',
+          codigo_whatsapp: lead.token_rastreio ?? '',
           origem_anuncio: !!lead.fbclid,
           fbclid: lead.fbclid ?? '',
           fbp: lead.fbp ?? '',

@@ -74,16 +74,12 @@ export default function CreateOrderPage() {
 
   // Efeito para processar prefillData na montagem (sem setState)
   useEffect(() => {
-    if (prefillData && prefillData.fonte_pedido_id && !prefillAppliedRef.current) {
+    if (prefillData && !prefillAppliedRef.current) {
       prefillAppliedRef.current = true;
-      console.log('=== Quick Entry Prefill ===');
-      console.log('Prefill data:', prefillData);
-      console.log('Warnings:', quickEntryWarnings);
-
-      // Limpar draft anterior para não misturar dados
+      // Limpar draft anterior para não misturar dados do lead com rascunho antigo
       clearLocalDraft();
     }
-  }, [prefillData, quickEntryWarnings, clearLocalDraft]);
+  }, [prefillData, clearLocalDraft]);
 
   useEffect(() => {
     const resetToken = locationState?.orderReset;
@@ -126,12 +122,13 @@ export default function CreateOrderPage() {
   }, []);
 
   const initialData = useMemo(() => {
-    // Se tem prefillData, usar ele como base (já inclui fonte_pedido_id)
     if (prefillData) {
-      console.log('Using prefillData as initialData:', prefillData);
-      return prefillData;
+      // Merge prefillData (lead) com fonte selecionada no modal
+      return {
+        ...prefillData,
+        ...(fonteSelecionada ? { fonte_pedido_id: fonteSelecionada } : {}),
+      };
     }
-    // Caso contrário, apenas fonte selecionada
     return fonteSelecionada ? { fonte_pedido_id: fonteSelecionada } : undefined;
   }, [fonteSelecionada, prefillData]);
 

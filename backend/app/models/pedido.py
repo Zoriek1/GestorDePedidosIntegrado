@@ -220,6 +220,8 @@ class Pedido(db.Model):
             "frete_liquido_cliente": self.frete_liquido_cliente,
             "coords_lat": self.coords_lat,
             "coords_lon": self.coords_lon,
+            "fbc": self.fbc or "",
+            "fbp": self.fbp or "",
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else "",
             "deleted_at": self.deleted_at.strftime("%Y-%m-%d %H:%M:%S")

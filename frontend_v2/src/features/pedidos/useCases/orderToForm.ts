@@ -25,11 +25,15 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     statusPagamento = pedido.status_pagamento as 'Pendente' | 'Pago' | 'Parcial';
   }
 
-  // Garantir que fonte_pedido_id existe e é válido
-  let fontePedidoId = pedido.fonte_pedido_id;
-  if (!fontePedidoId || fontePedidoId === 0) {
-    console.warn('Pedido sem fonte_pedido_id válida, usando 1 como fallback');
-    fontePedidoId = 1; // Fallback para fonte padrão (Site)
+  const fontePedidoId = pedido.fonte_pedido_id || undefined;
+
+  // Extrair fbclid do fbc salvo (formato: fb.1.{timestamp}.{fbclid})
+  let fbclid = '';
+  if (pedido.fbc) {
+    const parts = pedido.fbc.split('.');
+    if (parts.length >= 4) {
+      fbclid = parts.slice(3).join('.');
+    }
   }
 
   // Validar tipo_pedido - deve ser 'Entrega' ou 'Retirada'
@@ -83,6 +87,9 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     pagamento: pedido.pagamento || '',
     status_pagamento: statusPagamento,
     observacoes: pedido.observacoes || '',
+    origem_anuncio: !!pedido.fbc,
+    fbclid,
+    fbp: pedido.fbp || '',
   };
 
   console.log('FormData gerado:', formData);

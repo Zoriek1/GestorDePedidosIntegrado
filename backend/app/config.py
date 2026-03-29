@@ -73,6 +73,7 @@ class BaseConfig:
     GRAPHHOPPER_API_KEY = os.environ.get("GRAPHHOPPER_API_KEY") or ""
     OPENROUTE_API_KEY = os.environ.get("OPENROUTE_API_KEY") or ""
     ENDERECO_FLORICULTURA = os.environ.get("ENDERECO_FLORICULTURA") or ""
+    LOJA_CEP = os.environ.get("LOJA_CEP") or ""
 
     # Google Maps Platform (Geocoding + Address Validation)
     GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY") or ""

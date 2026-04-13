@@ -356,6 +356,32 @@ def test_patch_phone_atualiza_lead_pendente_whatsapp(client, session):
     assert lead.status == "whatsapp_iniciado"
 
 
+def test_patch_phone_atualiza_lead_nao_entrou_em_contato(client, session):
+    lead = Lead(
+        dedup_key="lead-phone-no-contact",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="nao_entrou_em_contato",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/phone",
+        json={"phone": "(62) 97777-6666"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+
+    session.refresh(lead)
+    assert lead.phone == "62977776666"
+    assert lead.status == "whatsapp_iniciado"
+
+
 def test_patch_status_nao_entrou_em_contato(client, session):
     lead = Lead(
         dedup_key="lead-status-no-contact",

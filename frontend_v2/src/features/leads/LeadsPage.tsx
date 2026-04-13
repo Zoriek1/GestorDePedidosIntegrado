@@ -154,6 +154,10 @@ function leadStatusLabel(status: string | null): string {
   return LEAD_STATUS_LABELS[status] ?? status;
 }
 
+function canEditLeadPhone(lead: Lead): boolean {
+  return lead.status === 'pendente_whatsapp' || lead.status === 'nao_entrou_em_contato';
+}
+
 export default function LeadsPage() {
   const navigate = useNavigate();
   const { success, error: showError } = useToast();
@@ -426,27 +430,29 @@ export default function LeadsPage() {
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
                   <TableCell>
-                    {lead.status === 'pendente_whatsapp' ? (
+                    {canEditLeadPhone(lead) ? (
                       <Stack direction="row" spacing={0.5} alignItems="center">
                         <Tooltip title="Clique para informar o número correto">
                           <Chip
                             size="small"
-                            color="warning"
+                            color={leadStatusColor(lead.status)}
                             label={leadStatusLabel(lead.status)}
                             variant="filled"
                             clickable
                             onClick={() => handleOpenPhoneDialog(lead)}
                           />
                         </Tooltip>
-                        <Tooltip title="Outras ações">
-                          <IconButton
-                            size="small"
-                            aria-label="Ações do status"
-                            onClick={(e) => handleOpenStatusMenu(e, lead)}
-                          >
-                            <MoreVertIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        {lead.status === 'pendente_whatsapp' ? (
+                          <Tooltip title="Outras ações">
+                            <IconButton
+                              size="small"
+                              aria-label="Ações do status"
+                              onClick={(e) => handleOpenStatusMenu(e, lead)}
+                            >
+                              <MoreVertIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
                       </Stack>
                     ) : (
                       <Chip

@@ -4,7 +4,7 @@ Mapeamento de Order (Nuvemshop) -> Pedido (sistema interno).
 
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from app.models.pedido import datetime_now_brazil
@@ -14,6 +14,7 @@ HUAAPPS_KEYWORD_MAP = {
     "dia inteiro": "08:00 - 18:00",
     "horario comercial": "08:00 - 18:00",
     "horário comercial": "08:00 - 18:00",
+    "comercial": "08:00 - 18:00",
     "manhã": "08:00 - 12:00",
     "manha": "08:00 - 12:00",
     "tarde": "13:00 - 18:00",
@@ -22,6 +23,9 @@ HUAAPPS_KEYWORD_MAP = {
 
 # Keywords que identificam frete expresso (entrega em ~1h)
 _EXPRESS_KEYWORDS = frozenset({"expresso", "expressa", "express"})
+_PICKUP_KEYWORDS = frozenset(
+    {"retirada", "retirar", "pickup", "pick up", "retire na loja", "retirada em loja"}
+)
 
 # Mapeamento de storefront da Nuvemshop para canal interno
 STOREFRONT_TO_CANAL_MAP = {
@@ -389,6 +393,11 @@ def _extract_time_interval(text: str) -> Optional[str]:
 
     # Normalizar espaços múltiplos
     text_normalized = re.sub(r"\s+", " ", text.strip())
+    lowered = text_normalized.lower()
+
+    # Expressa com marcador de duração (ex: "(01:00)") deve cair na regra dinâmica de 1h.
+    if _is_express_shipping(lowered) and re.search(r"\(\s*0?1:00\s*\)", lowered):
+        return None
 
     # Padrão 1: "13:00 18:00" ou "13:00-18:00" ou "13:00 - 18:00"
     times = re.findall(r"\b(\d{1,2}):(\d{2})\b", text_normalized)
@@ -398,7 +407,6 @@ def _extract_time_interval(text: str) -> Optional[str]:
         return f"{int(h1):02d}:{m1} - {int(h2):02d}:{m2}"
 
     # Padrão 2: Períodos textuais (manhã, tarde, noite, dia inteiro)
-    lowered = text_normalized.lower()
     for key, value in HUAAPPS_KEYWORD_MAP.items():
         if key in lowered:
             return value
@@ -433,6 +441,55 @@ def _compute_express_time_window(created_at: Optional[datetime]) -> str:
     return f"{start.hour:02d}:{start.minute:02d} - {end_hour:02d}:{end_min:02d}"
 
 
+def _is_pickup_shipping_text(text: str) -> bool:
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in _PICKUP_KEYWORDS)
+
+
+def _extract_shipping_lines_text(order: Dict[str, Any]) -> str:
+    shipping_lines = order.get("shipping_lines")
+    if not isinstance(shipping_lines, list):
+        return ""
+
+    candidates = []
+    for line in shipping_lines:
+        if not isinstance(line, dict):
+            continue
+        for key in (
+            "name",
+            "title",
+            "method",
+            "shipping_method",
+            "delivery_type",
+            "type",
+            "service_name",
+            "code",
+        ):
+            value = line.get(key)
+            if isinstance(value, str) and value.strip():
+                candidates.append(value.strip())
+    return " | ".join(candidates)
+
+
+def _is_pickup_order(order: Dict[str, Any], shipping_option_text: str) -> bool:
+    if _safe_str(order.get("shipping_pickup_type")).lower() == "pickup":
+        return True
+    return _is_pickup_shipping_text(shipping_option_text)
+
+
+def _resolve_brazil_delivery_date(created_at: Optional[datetime]) -> date:
+    if not created_at:
+        return datetime_now_brazil().date()
+
+    brazil_tz = datetime_now_brazil().tzinfo
+    normalized_dt = created_at
+    if normalized_dt.tzinfo is None:
+        normalized_dt = normalized_dt.replace(tzinfo=timezone.utc)
+    if brazil_tz:
+        normalized_dt = normalized_dt.astimezone(brazil_tz)
+    return normalized_dt.date()
+
+
 def _get_shipping_option_text(order: Dict[str, Any]) -> str:
     candidates = []
     for key in ("shipping_option", "shipping_option_name", "shipping_method", "shipping"):
@@ -444,6 +501,9 @@ def _get_shipping_option_text(order: Dict[str, Any]) -> str:
                 nested_val = value.get(nested_key)
                 if isinstance(nested_val, str) and nested_val.strip():
                     candidates.append(nested_val.strip())
+    shipping_lines_text = _extract_shipping_lines_text(order)
+    if shipping_lines_text:
+        candidates.append(shipping_lines_text)
     return " | ".join([c for c in candidates if c])
 
 
@@ -649,15 +709,12 @@ def map_nuvemshop_order_to_pedido_data(
     }
     status_pagamento = status_pagamento_map.get(payment_status, "Pendente")
 
-    tipo_pedido = "Entrega"
-    if _safe_str(order.get("shipping_pickup_type")).lower() == "pickup":
-        tipo_pedido = "Retirada"
-
     status = "agendado"
     if _safe_str(order.get("status")).lower() == "cancelled":
         status = "cancelado"
 
     shipping_option_text = _get_shipping_option_text(order)
+    tipo_pedido = "Retirada" if _is_pickup_order(order, shipping_option_text) else "Entrega"
     horario_from_shipping = _extract_time_interval(shipping_option_text)
 
     # Frete expresso: calcular janela dinâmica de 1h a partir do horário do pedido
@@ -665,38 +722,26 @@ def map_nuvemshop_order_to_pedido_data(
         created_at_express = _parse_datetime(order.get("created_at"))
         horario_from_shipping = _compute_express_time_window(created_at_express)
 
-    horario = horario_from_shipping
-    if not horario:
-        horario = "08:00 - 18:00"
-
     date_search_text = _collect_text_for_date_search(order, shipping_option_text)
-    dia_entrega = _extract_date_from_text(date_search_text)
+    shipping_date = _extract_date_from_text(date_search_text)
     custom_field_date, custom_field_time, custom_field_name = _extract_schedule_from_custom_fields(
         order
     )
 
-    # Rastrear origem do agendamento
-    agendamento_source = "shipping_option" if horario_from_shipping else None
-
-    if custom_field_date:
-        dia_entrega = custom_field_date
+    dia_entrega = custom_field_date or shipping_date
+    horario = custom_field_time or horario_from_shipping or "08:00 - 18:00"
+    if custom_field_date or custom_field_time:
         agendamento_source = (
             f"custom_field:{custom_field_name}" if custom_field_name else "custom_field"
         )
-    # Só sobrescrever horário se ele não veio do método de entrega (frete).
-    if custom_field_time and not horario_from_shipping:
-        horario = custom_field_time
-        if not agendamento_source or agendamento_source == "shipping_option":
-            agendamento_source = (
-                f"custom_field:{custom_field_name}" if custom_field_name else "custom_field"
-            )
+    elif shipping_date or horario_from_shipping:
+        agendamento_source = "shipping_option"
+    else:
+        agendamento_source = None
 
     created_at = _parse_datetime(order.get("created_at"))
     if not dia_entrega:
-        if created_at:
-            dia_entrega = created_at.date()
-        else:
-            dia_entrega = datetime_now_brazil().date()
+        dia_entrega = _resolve_brazil_delivery_date(created_at)
         schedule_pending = True
         agendamento_source = "fallback"
     else:

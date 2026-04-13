@@ -136,6 +136,155 @@ def test_map_order_huapps_separate_custom_fields():
     assert "custom_field" in (agendamento_source or "")
 
 
+def test_map_order_custom_fields_prioridade_sobre_frete():
+    """Quando custom_fields trouxer período, deve ter precedência sobre texto de frete."""
+    order = {
+        "id": 1905409828,
+        "number": 173,
+        "token": "abc",
+        "contact_name": "Cliente",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-20T10:00:00-0300",
+        "currency": "BRL",
+        "total": "134.80",
+        "shipping_option": "Entrega Agendada (Huapps) - Tarde (13:00 - 18:00)",
+        "custom_fields": [
+            {"name": "Data da Entrega", "value": "03/03/2026"},
+            {"name": "Período da Entrega", "value": "Manhã (09:00 - 12:00)"},
+        ],
+        "shipping_address": {
+            "name": "Destinatário",
+            "address": "Rua T 55",
+            "number": "930",
+            "locality": "Setor Bueno",
+            "city": "Goiânia",
+            "zipcode": "74215170",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+
+    pedido_data, schedule_pending, _, agendamento_source = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["dia_entrega"] == date(2026, 3, 3)
+    assert pedido_data["horario"] == "09:00 - 12:00"
+    assert schedule_pending is False
+    assert "custom_field" in (agendamento_source or "")
+
+
+def test_map_order_pickup_por_shipping_lines():
+    """Classifica retirada quando shipping_lines indicar pickup/retirada."""
+    order = {
+        "id": 1905409829,
+        "number": 174,
+        "token": "abc",
+        "contact_name": "Cliente",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-20T10:00:00-0300",
+        "currency": "BRL",
+        "total": "134.80",
+        "shipping_pickup_type": "ship",
+        "shipping_option": "Entrega Agendada (Huapps)",
+        "shipping_lines": [{"shipping_method": "Retirada na Loja - Centro"}],
+        "custom_fields": [{"name": "Data da Entrega", "value": "03/03/2026"}],
+        "shipping_address": {
+            "name": "Destinatário",
+            "address": "Rua T 55",
+            "number": "930",
+            "locality": "Setor Bueno",
+            "city": "Goiânia",
+            "zipcode": "74215170",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+
+    pedido_data, _, shipping_option_text, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["tipo_pedido"] == "Retirada"
+    assert "Retirada na Loja" in (shipping_option_text or "")
+
+
+def test_map_order_fallback_dia_entrega_usa_timezone_brasil():
+    """Fallback de dia_entrega deve considerar o dia civil em America/Sao_Paulo."""
+    order = {
+        "id": 1905409830,
+        "number": 175,
+        "token": "abc",
+        "contact_name": "Cliente",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-01T02:30:00+0000",
+        "currency": "BRL",
+        "total": "134.80",
+        "shipping_option": "Entrega Agendada (Huapps)",
+        "shipping_address": {
+            "name": "Destinatário",
+            "address": "Rua T 55",
+            "number": "930",
+            "locality": "Setor Bueno",
+            "city": "Goiânia",
+            "zipcode": "74215170",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+
+    pedido_data, schedule_pending, _, agendamento_source = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["dia_entrega"] == date(2026, 1, 31)
+    assert pedido_data["horario"] == "08:00 - 18:00"
+    assert schedule_pending is True
+    assert agendamento_source == "fallback"
+
+
+def test_map_order_shipping_option_comercial():
+    """Mapeia 'Comercial' para faixa padrão 08:00 - 18:00."""
+    order = {
+        "id": 1905409831,
+        "number": 176,
+        "token": "abc",
+        "contact_name": "Cliente",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-20T10:00:00-0300",
+        "currency": "BRL",
+        "total": "134.80",
+        "shipping_option": "Comercial (08:00 - 18:00) (18:00)",
+        "shipping_address": {
+            "name": "Destinatário",
+            "address": "Rua T 55",
+            "number": "930",
+            "locality": "Setor Bueno",
+            "city": "Goiânia",
+            "zipcode": "74215170",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["horario"] == "08:00 - 18:00"
+
+
+def test_map_order_shipping_option_expressa_um_hora():
+    """'Expressa (01:00)' usa janela dinâmica de 1h baseada no created_at."""
+    order = {
+        "id": 1905409832,
+        "number": 177,
+        "token": "abc",
+        "contact_name": "Cliente",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-20T10:23:00-0300",
+        "currency": "BRL",
+        "total": "134.80",
+        "shipping_option": "Expressa (01:00)",
+        "shipping_address": {
+            "name": "Destinatário",
+            "address": "Rua T 55",
+            "number": "930",
+            "locality": "Setor Bueno",
+            "city": "Goiânia",
+            "zipcode": "74215170",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["horario"] == "10:15 - 11:15"
+
+
 def test_map_order_storefront_to_canal():
     """Testa mapeamento de storefront para canal"""
     # Teste com storefront = "store" (Site)

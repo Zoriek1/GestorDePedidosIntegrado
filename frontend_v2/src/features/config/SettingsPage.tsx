@@ -10,6 +10,7 @@ import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
 import CustomersPage from '../customers/CustomersPage';
 import NuvemshopPage from '../integrations/NuvemshopPage';
+import FontesPage from '../fontes/FontesPage';
 
 function BatchActionsTab() {
   const { getAuthHeader } = useAuth();
@@ -130,6 +131,7 @@ export default function SettingsPage() {
         >
           <Tab icon={<LocalShipping />} label="Taxa de Entrega" iconPosition="start" />
           <Tab icon={<Build />} label="Ações em Lote" iconPosition="start" />
+          {!isEntregador && <Tab icon={<Build />} label="Fontes" iconPosition="start" />}
           {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
           {!isEntregador && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
         </Tabs>
@@ -139,8 +141,9 @@ export default function SettingsPage() {
         <Suspense fallback={<Loading />}>
           {tabValue === 0 && <TaxaEntregaSettings />}
           {tabValue === 1 && <BatchActionsTab />}
-          {!isEntregador && tabValue === 2 && <CustomersPage />}
-          {!isEntregador && tabValue === 3 && <NuvemshopPage />}
+          {!isEntregador && tabValue === 2 && <FontesPage />}
+          {!isEntregador && tabValue === 3 && <CustomersPage />}
+          {!isEntregador && tabValue === 4 && <NuvemshopPage />}
         </Suspense>
       </Box>
     </Box>

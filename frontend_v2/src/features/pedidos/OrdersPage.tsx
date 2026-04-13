@@ -20,9 +20,8 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Refresh, Folder, DeleteSweep, Sort, FileDownload, FilterList, Route } from '@mui/icons-material';
+import { Refresh, DeleteSweep, FileDownload, FilterList, Route } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
 import { useStats } from '../../api/endpoints/stats';
@@ -41,7 +40,6 @@ import { OrdersPagination } from './components/OrdersPagination';
 export default function OrdersPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const navigate = useNavigate();
   
   const [filters, setFilters] = useState<PedidosFilters>({
     status: '',
@@ -51,7 +49,6 @@ export default function OrdersPage() {
     page: 1,
     per_page: 20,
   });
-  const [sortByDistance, setSortByDistance] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
@@ -112,16 +109,6 @@ export default function OrdersPage() {
     // Para outros status, mostrar todos (exceto concluídos, mantendo consistência)
     return pedidosData.pedidos.filter((p) => p.status !== 'concluido');
   }, [pedidosData, filters.status]);
-
-  const sortedPedidos = useMemo(() => {
-    if (!visiblePedidos) return [];
-    if (!sortByDistance) return visiblePedidos;
-    return [...visiblePedidos].sort((a, b) => {
-      const da = a.distancia_km ?? Number.MAX_VALUE;
-      const db = b.distancia_km ?? Number.MAX_VALUE;
-      return da - db;
-    });
-  }, [visiblePedidos, sortByDistance]);
 
   const handleExportSheet = async () => {
     try {
@@ -313,30 +300,12 @@ export default function OrdersPage() {
               >
                 <MenuItem 
                   onClick={() => {
-                    setSortByDistance((prev) => !prev);
-                    handleFilterMenuClose();
-                  }}
-                >
-                  <Sort sx={{ mr: 1.5 }} />
-                  {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
-                </MenuItem>
-                <MenuItem 
-                  onClick={() => {
                     handleExportSheet();
                     handleFilterMenuClose();
                   }}
                 >
                   <FileDownload sx={{ mr: 1.5 }} />
                   Exportar planilha
-                </MenuItem>
-                <MenuItem 
-                  onClick={() => {
-                    navigate('/fontes-pedido');
-                    handleFilterMenuClose();
-                  }}
-                >
-                  <Folder sx={{ mr: 1.5 }} />
-                  Fontes
                 </MenuItem>
                 <Divider />
                 {isAdmin && (
@@ -364,16 +333,6 @@ export default function OrdersPage() {
           ) : (
             /* Desktop: Botões completos */
             <>
-              <Tooltip title={sortByDistance ? 'Voltar para ordem padrão' : 'Ordenar pedidos por distância da origem'}>
-                <Button 
-                  variant="outlined" 
-                  size="small" 
-                  startIcon={<Sort />}
-                  onClick={() => setSortByDistance((prev) => !prev)}
-                >
-                  {sortByDistance ? 'Ordem padrão' : 'Ordenar por distância'}
-                </Button>
-              </Tooltip>
               <Tooltip title="Exportar lista de pedidos para planilha Excel">
                 <Button 
                   variant="outlined" 
@@ -382,16 +341,6 @@ export default function OrdersPage() {
                   onClick={handleExportSheet}
                 >
                   Exportar planilha
-                </Button>
-              </Tooltip>
-              <Tooltip title="Gerenciar fontes de pedido (Catálogo, Site, WhatsApp)">
-                <Button 
-                  variant="outlined" 
-                  size="small" 
-                  startIcon={<Folder />} 
-                  onClick={() => navigate('/fontes-pedido')}
-                >
-                  Fontes
                 </Button>
               </Tooltip>
               {isAdmin && (
@@ -517,7 +466,7 @@ export default function OrdersPage() {
       ) : pedidosData && typeof pedidosData === 'object' && 'pedidos' in pedidosData && pedidosData.pedidos ? (
         <>
           <OrderList
-            pedidos={sortedPedidos}
+            pedidos={visiblePedidos}
             onOrderClick={handleOrderClick}
             selectionMode={selectionMode}
             selectedIds={selectedIds}

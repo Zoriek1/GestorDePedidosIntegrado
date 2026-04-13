@@ -157,9 +157,7 @@ export function AppShell({ children }: AppShellProps) {
               {!isEntregador && (
                 <>
                   <MenuItem onClick={() => handleNavigate('/vendas')}>Vendas</MenuItem>
-                  <MenuItem onClick={() => handleNavigate('/clientes')}>Clientes</MenuItem>
                   <MenuItem onClick={() => handleNavigate('/fontes-pedido')}>Fontes</MenuItem>
-                  <MenuItem onClick={() => handleNavigate('/integracoes/nuvemshop')}>Nuvemshop</MenuItem>
                   <MenuItem onClick={() => handleNavigate('/leads')}>Leads UTM</MenuItem>
                 </>
               )}
@@ -218,14 +216,8 @@ export function AppShell({ children }: AppShellProps) {
                 <Button color="inherit" onClick={() => handleNavigate('/vendas')} sx={{ textTransform: 'none' }}>
                   Vendas
                 </Button>
-                <Button color="inherit" onClick={() => handleNavigate('/clientes')} sx={{ textTransform: 'none' }}>
-                  Clientes
-                </Button>
                 <Button color="inherit" onClick={() => handleNavigate('/fontes-pedido')} sx={{ textTransform: 'none' }}>
                   Fontes
-                </Button>
-                <Button color="inherit" onClick={() => handleNavigate('/integracoes/nuvemshop')} sx={{ textTransform: 'none' }}>
-                  Nuvemshop
                 </Button>
                 <Button color="inherit" onClick={() => handleNavigate('/leads')} sx={{ textTransform: 'none' }}>
                   Leads

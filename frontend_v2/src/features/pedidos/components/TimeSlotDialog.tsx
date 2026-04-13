@@ -428,6 +428,11 @@ interface SlotButtonProps {
 }
 
 function SlotButton({ slot, isSelected, onClick }: SlotButtonProps) {
+  const occupancyLabel =
+    slot.count === 0
+      ? `Livre / ${slot.maxCount} max`
+      : `${slot.count} pedido${slot.count !== 1 ? 's' : ''} / ${slot.maxCount} max`;
+
   const getButtonStyles = (status: SlotStatus, selected: boolean) => {
     const baseStyles = {
       width: '100%',
@@ -520,7 +525,7 @@ function SlotButton({ slot, isSelected, onClick }: SlotButtonProps) {
         </Typography>
       </Box>
       <Typography variant="caption" display="block" sx={{ opacity: 0.8, mt: 0.5 }}>
-        {slot.count} pedido{slot.count !== 1 ? 's' : ''} / {slot.maxCount} max
+        {occupancyLabel}
       </Typography>
     </Box>
   );

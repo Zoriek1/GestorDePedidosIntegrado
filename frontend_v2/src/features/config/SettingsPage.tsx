@@ -1,6 +1,6 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
-import { LocalShipping, Build, Payment, Calculate } from '@mui/icons-material';
+import { LocalShipping, Build, Payment, Calculate, Group, Storefront } from '@mui/icons-material';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { Loading } from '../../components/common/Loading';
 import { DailyFreightDialog } from '../pedidos/components/DailyFreightDialog';
@@ -8,6 +8,8 @@ import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
 import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
+import CustomersPage from '../customers/CustomersPage';
+import NuvemshopPage from '../integrations/NuvemshopPage';
 
 function BatchActionsTab() {
   const { getAuthHeader } = useAuth();
@@ -97,7 +99,10 @@ function BatchActionsTab() {
 }
 
 export default function SettingsPage() {
+  const { getCredentials } = useAuth();
   const [tabValue, setTabValue] = React.useState(0);
+  const userRole = getCredentials()?.role || 'admin';
+  const isEntregador = userRole === 'entregador';
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -125,6 +130,8 @@ export default function SettingsPage() {
         >
           <Tab icon={<LocalShipping />} label="Taxa de Entrega" iconPosition="start" />
           <Tab icon={<Build />} label="Ações em Lote" iconPosition="start" />
+          {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
+          {!isEntregador && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
         </Tabs>
       </Paper>
 
@@ -132,6 +139,8 @@ export default function SettingsPage() {
         <Suspense fallback={<Loading />}>
           {tabValue === 0 && <TaxaEntregaSettings />}
           {tabValue === 1 && <BatchActionsTab />}
+          {!isEntregador && tabValue === 2 && <CustomersPage />}
+          {!isEntregador && tabValue === 3 && <NuvemshopPage />}
         </Suspense>
       </Box>
     </Box>

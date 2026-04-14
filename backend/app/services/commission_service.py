@@ -36,6 +36,26 @@ def get_monday(ref_date) -> date:
     return ref_date - __import__("datetime").timedelta(days=ref_date.weekday())
 
 
+def get_due_date_for_commission(dia_entrega: date, payment_day: int) -> date:
+    """
+    Calcula a due_date de uma comissão usando a lógica PgtDay:
+
+    - Se dia_entrega < PgtDay desta semana  → receber neste PgtDay
+    - Se dia_entrega >= PgtDay desta semana → receber no próximo PgtDay
+
+    payment_day: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex, 5=Sáb, 6=Dom
+    """
+    from datetime import timedelta
+
+    monday = dia_entrega - timedelta(days=dia_entrega.weekday())
+    pgt_this_week = monday + timedelta(days=payment_day)
+
+    if dia_entrega < pgt_this_week:
+        return pgt_this_week
+    else:
+        return pgt_this_week + timedelta(weeks=1)
+
+
 def generate_commission(pedido, vendedor_id: int) -> None:
     """
     Gera entry de comissão no ledger ao fechar um pedido.
@@ -84,8 +104,19 @@ def generate_commission(pedido, vendedor_id: int) -> None:
     if commission_amount <= 0:
         return
 
-    # 6. Semana de referência (usa data de entrega ou hoje)
-    week_ref = get_monday(pedido.dia_entrega)
+    # 6. Semana de referência e due_date com lógica PgtDay
+    ref_date = pedido.dia_entrega if isinstance(pedido.dia_entrega, date) else date.today()
+    week_ref = get_monday(ref_date)
+
+    # Buscar payment_day do vendedor para calcular PgtDay
+    due_date = None
+    payroll_configs = user_repo.get_payroll_configs(vendedor_id)
+    semanal_config = next(
+        (c for c in payroll_configs if c.frequency == "semanal" and c.payment_day is not None),
+        None,
+    )
+    if semanal_config is not None:
+        due_date = get_due_date_for_commission(ref_date, semanal_config.payment_day)
 
     # 7. Criar entry
     category = f"comissao_{source}"
@@ -97,6 +128,7 @@ def generate_commission(pedido, vendedor_id: int) -> None:
         description=f"Comissão {config.rate * 100:.0f}% — Pedido #{pedido.id}",
         pedido_id=pedido.id,
         week_ref=week_ref,
+        due_date=due_date,
         created_by=vendedor_id,
     )
     db.session.add(entry)

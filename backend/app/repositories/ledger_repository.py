@@ -5,7 +5,7 @@ LedgerRepository — CRUD e queries do ledger de recebíveis
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app import db
 from app.models.ledger_entry import LedgerEntry
@@ -44,7 +44,16 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
     # ------------------------------------------------------------------
 
     def get_balance(self, user_id: int) -> dict:
-        """Retorna saldo devedor separando créditos confirmados e pendentes."""
+        """
+        Retorna saldo devedor separando:
+        - confirmed_credits: créditos já confirmados (recebidos)
+        - overdue_credits: pendentes com due_date < hoje (atrasados)
+        - pending_credits: pendentes com due_date >= hoje ou sem due_date (futuros)
+        - total_debits: débitos (pagamentos realizados)
+        - balance: total_credits - total_debits
+        """
+        today = date.today()
+
         confirmed_credits = (
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
@@ -54,24 +63,42 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             )
             .scalar()
         )
+
+        # Atrasado: pendente e due_date já passou
+        overdue_credits = (
+            db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
+            .filter(
+                LedgerEntry.user_id == user_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.status == "pendente",
+                LedgerEntry.due_date < today,
+            )
+            .scalar()
+        )
+
+        # Pendente futuro: due_date >= hoje ou sem due_date
         pending_credits = (
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
                 LedgerEntry.user_id == user_id,
                 LedgerEntry.type == "CREDIT",
                 LedgerEntry.status == "pendente",
+                or_(LedgerEntry.due_date >= today, LedgerEntry.due_date.is_(None)),
             )
             .scalar()
         )
+
         debits = (
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(LedgerEntry.user_id == user_id, LedgerEntry.type == "DEBIT")
             .scalar()
         )
-        total_credits = float(confirmed_credits) + float(pending_credits)
+
+        total_credits = float(confirmed_credits) + float(overdue_credits) + float(pending_credits)
         return {
             "total_credits": round(total_credits, 2),
             "confirmed_credits": round(float(confirmed_credits), 2),
+            "overdue_credits": round(float(overdue_credits), 2),
             "pending_credits": round(float(pending_credits), 2),
             "total_debits": round(float(debits), 2),
             "balance": round(total_credits - float(debits), 2),

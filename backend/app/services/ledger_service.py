@@ -117,6 +117,110 @@ def get_balance(user_id: int) -> dict:
     return LedgerRepository().get_balance(user_id)
 
 
+def get_period_summary(user_id: int) -> dict:
+    """
+    Retorna recebíveis agrupados por período de pagamento (semana).
+
+    Cada período contém:
+    - week_ref: segunda-feira da semana (YYYY-MM-DD)
+    - pgt_day: data prevista de pagamento (due_date do período)
+    - total_credit: soma de créditos do período
+    - confirmed: soma confirmada
+    - pending: soma pendente (inclui atrasado)
+    - is_overdue: True se pgt_day < hoje e ainda há pendente
+    - status: "atrasado" | "pendente" | "confirmado" | "futuro"
+    - entries: lista de lançamentos do período
+    """
+    from collections import defaultdict
+
+    from app.models.ledger_entry import LedgerEntry
+    from app.repositories.user_repository import UserRepository
+
+    today = date.today()
+
+    # Buscar payment_day do vendedor
+    user_repo = UserRepository()
+    payroll_configs = user_repo.get_payroll_configs(user_id)
+    semanal_config = next(
+        (c for c in payroll_configs if c.frequency == "semanal" and c.payment_day is not None),
+        None,
+    )
+
+    # Todos os lançamentos do vendedor ordenados por semana
+    entries = (
+        LedgerEntry.query.filter_by(user_id=user_id)
+        .order_by(LedgerEntry.week_ref.desc(), LedgerEntry.created_at.asc())
+        .all()
+    )
+
+    # Agrupar por week_ref
+    weeks: dict = defaultdict(lambda: {
+        "entries": [],
+        "total_credit": 0.0,
+        "total_debit": 0.0,
+        "confirmed": 0.0,
+        "pending": 0.0,
+        "pgt_day": None,
+    })
+
+    for entry in entries:
+        key = entry.week_ref.isoformat() if entry.week_ref else "sem_semana"
+        group = weeks[key]
+        group["entries"].append(entry.to_dict())
+
+        # Calcular pgt_day do grupo a partir do semanal_config se ainda não definido
+        if group["pgt_day"] is None:
+            if entry.due_date:
+                group["pgt_day"] = entry.due_date.isoformat()
+            elif entry.week_ref and semanal_config:
+                pgt = entry.week_ref + timedelta(days=semanal_config.payment_day)
+                group["pgt_day"] = pgt.isoformat()
+
+        if entry.type == "CREDIT":
+            group["total_credit"] = round(group["total_credit"] + entry.amount, 2)
+            if entry.status == "confirmado":
+                group["confirmed"] = round(group["confirmed"] + entry.amount, 2)
+            else:
+                group["pending"] = round(group["pending"] + entry.amount, 2)
+        else:
+            group["total_debit"] = round(group["total_debit"] + entry.amount, 2)
+
+    # Montar resultado com status calculado
+    result = []
+    for week_key, group in sorted(weeks.items(), reverse=True):
+        pgt_day_date = date.fromisoformat(group["pgt_day"]) if group["pgt_day"] else None
+        has_pending = group["pending"] > 0
+        is_overdue = pgt_day_date is not None and pgt_day_date < today and has_pending
+
+        if is_overdue:
+            status = "atrasado"
+        elif has_pending and pgt_day_date and pgt_day_date >= today:
+            status = "pendente"
+        elif has_pending:
+            status = "pendente"
+        elif group["confirmed"] > 0:
+            status = "confirmado"
+        else:
+            status = "futuro"
+
+        result.append({
+            "week_ref": week_key,
+            "pgt_day": group["pgt_day"],
+            "total_credit": group["total_credit"],
+            "total_debit": group["total_debit"],
+            "confirmed": group["confirmed"],
+            "pending": group["pending"],
+            "is_overdue": is_overdue,
+            "status": status,
+            "entries": group["entries"],
+        })
+
+    return {
+        "periods": result,
+        "today": today.isoformat(),
+    }
+
+
 def create_manual_entry(
     user_id: int,
     entry_type: str,

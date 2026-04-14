@@ -155,6 +155,21 @@ def generate_weekly():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/ledger/periods — recebíveis agrupados por período (semana)
+# ---------------------------------------------------------------------------
+@ledger_bp.route("/periods", methods=["GET"])
+@require_auth(roles=["admin", "vendedor"])
+def get_periods():
+    try:
+        user_id, err = _resolve_user_id()
+        if err:
+            return err
+        result = ledger_service.get_period_summary(user_id)
+        return success_response(result)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
 # GET /api/ledger/summary — saldo de todos os vendedores (admin)
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/summary", methods=["GET"])

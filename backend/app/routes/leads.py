@@ -369,7 +369,7 @@ def _apply_lead_status_update(lead: Lead, data: dict):
 
 
 @leads_bp.route("/by-token/status", methods=["PATCH"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def atualizar_status_lead_por_token():
     """Igual a PATCH /<id>/status, mas identifica o lead por token_rastreio no body."""
     data = _parse_request_payload()
@@ -380,7 +380,7 @@ def atualizar_status_lead_por_token():
 
 
 @leads_bp.route("/<int:lead_id>/status", methods=["PATCH"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def atualizar_status_lead(lead_id: int):
     """
     Atualiza status operacional do lead (ex.: marcar como não entrou em contato).
@@ -451,7 +451,7 @@ def _apply_lead_phone_update(lead: Lead, data: dict):
 
 
 @leads_bp.route("/by-token/phone", methods=["PATCH"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def atualizar_telefone_lead_por_token():
     """Igual a PATCH /<id>/phone, mas identifica o lead por token_rastreio no body."""
     data = _parse_request_payload()
@@ -462,7 +462,7 @@ def atualizar_telefone_lead_por_token():
 
 
 @leads_bp.route("/<int:lead_id>/phone", methods=["PATCH"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def atualizar_telefone_lead(lead_id: int):
     """Atualiza o telefone de um lead e destrava status pendente de WhatsApp."""
     data = _parse_request_payload()
@@ -473,7 +473,7 @@ def atualizar_telefone_lead(lead_id: int):
 
 
 @leads_bp.route("", methods=["GET"])
-@requires_any_role("admin")
+@requires_any_role("admin", "vendedor")
 def listar_leads():
     """Lista leads com paginação e filtros opcionais."""
     page = request.args.get("page", 1, type=int)

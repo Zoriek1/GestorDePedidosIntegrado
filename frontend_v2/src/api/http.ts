@@ -202,7 +202,9 @@ export async function request<T = unknown>(
       // ser deslogados por rotas JWT-only retornarem 401.
       if (response.status === 401) {
         try {
-          const hasJwt = !!sessionStorage.getItem('puf_jwt');
+          const hasJwt =
+            !!sessionStorage.getItem('puf_jwt') ||
+            !!localStorage.getItem('puf_jwt');
           if (hasJwt) {
             window.dispatchEvent(new CustomEvent('puf_auth_invalid'));
           }

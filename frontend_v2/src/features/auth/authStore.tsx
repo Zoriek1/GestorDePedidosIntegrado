@@ -2,7 +2,7 @@
  * Auth Store — JWT (módulo Recebíveis) com fallback Basic Auth (env-var users legado)
  *
  * Prioridade de auth:
- *   1. JWT Bearer token (usuários DB) — token em sessionStorage (memória por aba)
+ *   1. JWT Bearer token (usuários DB) — session/localStorage conforme "Lembrar-me"
  *   2. Basic Auth (usuários env-var legado) — fallback durante transição
  */
 
@@ -12,9 +12,10 @@ import { createLogger } from '../../lib/logger';
 
 const log = createLogger('AuthStore');
 
-// JWT armazenado em sessionStorage (não localStorage — mais seguro contra XSS entre abas)
+// JWT: sessionStorage (sem lembrar) ou localStorage (lembrar-me)
 const JWT_KEY = 'puf_jwt';
 const JWT_USER_KEY = 'puf_jwt_user';
+const JWT_REMEMBER_KEY = 'puf_jwt_remember';
 // Legado: Basic Auth
 const STORAGE_KEY = 'plante_uma_flor_auth';
 const SESSION_KEY = 'plante_uma_flor_auth_session';
@@ -62,7 +63,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // ---------------------------------------------------------------------------
 function readJwtToken(): string | null {
   try {
-    return sessionStorage.getItem(JWT_KEY);
+    return sessionStorage.getItem(JWT_KEY) || localStorage.getItem(JWT_KEY);
   } catch {
     return null;
   }
@@ -70,19 +71,30 @@ function readJwtToken(): string | null {
 
 function readJwtUser(): AuthUser | null {
   try {
-    const raw = sessionStorage.getItem(JWT_USER_KEY);
+    const raw = sessionStorage.getItem(JWT_USER_KEY) || localStorage.getItem(JWT_USER_KEY);
     return raw ? (JSON.parse(raw) as AuthUser) : null;
   } catch {
     return null;
   }
 }
 
-function writeJwt(token: string, user: AuthUser): void {
+function writeJwt(token: string, user: AuthUser, remember: boolean): void {
   try {
-    sessionStorage.setItem(JWT_KEY, token);
-    sessionStorage.setItem(JWT_USER_KEY, JSON.stringify(user));
+    if (remember) {
+      localStorage.setItem(JWT_KEY, token);
+      localStorage.setItem(JWT_USER_KEY, JSON.stringify(user));
+      localStorage.setItem(JWT_REMEMBER_KEY, '1');
+      sessionStorage.removeItem(JWT_KEY);
+      sessionStorage.removeItem(JWT_USER_KEY);
+    } else {
+      sessionStorage.setItem(JWT_KEY, token);
+      sessionStorage.setItem(JWT_USER_KEY, JSON.stringify(user));
+      sessionStorage.setItem(JWT_REMEMBER_KEY, '0');
+      localStorage.removeItem(JWT_KEY);
+      localStorage.removeItem(JWT_USER_KEY);
+    }
   } catch {
-    // sessionStorage pode estar bloqueado em modo privado
+    // storage pode estar indisponível
   }
 }
 
@@ -90,6 +102,10 @@ function clearJwt(): void {
   try {
     sessionStorage.removeItem(JWT_KEY);
     sessionStorage.removeItem(JWT_USER_KEY);
+    sessionStorage.removeItem(JWT_REMEMBER_KEY);
+    localStorage.removeItem(JWT_KEY);
+    localStorage.removeItem(JWT_USER_KEY);
+    localStorage.removeItem(JWT_REMEMBER_KEY);
   } catch { /* empty */ }
 }
 
@@ -231,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role: data.role ?? 'vendedor',
             email: username,
           };
-          writeJwt(data.access_token, user);
+          writeJwt(data.access_token, user, remember);
           setJwtToken(data.access_token);
           setJwtUser(user);
           clearLegacyCreds();

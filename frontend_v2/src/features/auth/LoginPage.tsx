@@ -18,7 +18,6 @@ import {
 import {
   Visibility,
   VisibilityOff,
-  LocalFlorist,
   LockOutlined,
   PersonOutline,
 } from '@mui/icons-material';
@@ -151,28 +150,27 @@ export default function LoginPage() {
           className="animate__animated animate__fadeInLeft"
           sx={{ textAlign: 'center', color: 'white', zIndex: 1 }}
         >
+          {/* Logo em container branco arredondado */}
           <Box
             sx={{
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 88,
-              height: 88,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.15)',
-              mb: 3,
-              backdropFilter: 'blur(8px)',
+              bgcolor: 'white',
+              borderRadius: 4,
+              px: 4,
+              py: 2.5,
+              mb: 5,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
             }}
           >
-            <LocalFlorist sx={{ fontSize: 48, color: 'white' }} />
+            <Box
+              component="img"
+              src="/logo.png"
+              alt="Plante uma Flor"
+              sx={{ width: 220, height: 'auto', display: 'block' }}
+            />
           </Box>
-
-          <Typography
-            variant="h3"
-            sx={{ fontWeight: 800, mb: 1, letterSpacing: '-0.5px', color: 'white' }}
-          >
-            Plante uma Flor
-          </Typography>
 
           <Typography
             variant="body1"
@@ -220,17 +218,14 @@ export default function LoginPage() {
         {/* Logo mobile */}
         <Box
           className="animate__animated animate__fadeInDown"
-          sx={{
-            display: { xs: 'flex', md: 'none' },
-            alignItems: 'center',
-            gap: 1.5,
-            mb: 4,
-          }}
+          sx={{ display: { xs: 'flex', md: 'none' }, mb: 4 }}
         >
-          <LocalFlorist sx={{ fontSize: 32, color: 'primary.main' }} />
-          <Typography variant="h5" sx={{ fontWeight: 800, color: 'primary.main' }}>
-            Plante uma Flor
-          </Typography>
+          <Box
+            component="img"
+            src="/logo.png"
+            alt="Plante uma Flor"
+            sx={{ width: 180, height: 'auto' }}
+          />
         </Box>
 
         <Box

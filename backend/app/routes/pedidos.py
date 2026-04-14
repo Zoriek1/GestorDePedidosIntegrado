@@ -73,6 +73,31 @@ def _extract_whatsapp_token_from_payload(data: dict) -> str | None:
     return None
 
 
+def _get_current_vendedor_id() -> int | None:
+    """
+    Retorna o user_id do vendedor autenticado independente do método de auth.
+    - JWT: lê de request.current_user
+    - Basic Auth: busca User por email ou nome no banco
+    Retorna None se não for vendedor ou não encontrar.
+    """
+    current_user = getattr(request, "current_user", None)
+    if current_user:
+        return current_user.get("user_id")
+
+    # Basic Auth: authenticated_user contém email ou nome
+    authenticated_user = getattr(request, "authenticated_user", None)
+    if authenticated_user:
+        from app.models.user import User as _User
+        u = _User.query.filter(
+            _User.is_active == True,
+        ).filter(
+            (_User.email == authenticated_user) | (_User.name == authenticated_user)
+        ).first()
+        return u.id if u else None
+
+    return None
+
+
 def _link_lead_by_whatsapp_code(codigo_whatsapp: str | None, telefone_cliente: str | None) -> Lead | None:
     """
     Faz o casamento do lead anônimo com o telefone real do pedido.
@@ -611,13 +636,13 @@ def criar_pedido():
                 fonte_pedido_id_int = fonte.id
 
         # Determinar vendedor_id:
-        # - vendedor JWT: auto-atribuir o próprio ID
-        # - admin (JWT ou Basic Auth): aceitar vendedor_id do body (opcional)
+        # - vendedor (JWT ou Basic Auth): auto-atribuir o próprio ID
+        # - admin: aceitar vendedor_id do body (opcional)
         current_user = getattr(request, "current_user", None)
         user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
         vendedor_id_final = None
-        if user_role == "vendedor" and current_user:
-            vendedor_id_final = current_user.get("user_id")
+        if user_role == "vendedor":
+            vendedor_id_final = _get_current_vendedor_id()
         elif user_role == "admin":
             try:
                 vendedor_id_final = int(data["vendedor_id"]) if data.get("vendedor_id") else None
@@ -864,8 +889,8 @@ def atualizar_pedido(pedido_id):
                 pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
             except (ValueError, TypeError):
                 pass
-        elif user_role == "vendedor" and current_user and pedido.vendedor_id is None:
-            pedido.vendedor_id = current_user.get("user_id")
+        elif user_role == "vendedor" and pedido.vendedor_id is None:
+            pedido.vendedor_id = _get_current_vendedor_id()
 
         pedido.updated_at = datetime_now_brazil()
 

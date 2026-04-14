@@ -89,7 +89,7 @@ def _get_current_vendedor_id() -> int | None:
     if authenticated_user:
         from app.models.user import User as _User
         u = _User.query.filter(
-            _User.is_active == True,
+            _User.is_active.is_(True),
         ).filter(
             (_User.email == authenticated_user) | (_User.name == authenticated_user)
         ).first()

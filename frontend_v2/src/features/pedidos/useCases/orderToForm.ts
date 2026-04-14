@@ -90,6 +90,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     origem_anuncio: !!pedido.fbc,
     fbclid,
     fbp: pedido.fbp || '',
+    vendedor_id: pedido.vendedor_id ?? undefined,
   };
 
   console.log('FormData gerado:', formData);

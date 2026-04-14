@@ -42,6 +42,7 @@ export interface Pedido {
   oculto: boolean;
   impresso: boolean;
   cliente_id?: number;
+  vendedor_id?: number;
   distancia_km?: number;
   taxa_entrega?: number;
   coords_lat?: number;

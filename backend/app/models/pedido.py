@@ -112,6 +112,13 @@ class Pedido(db.Model):
         index=True,
         comment="ID do cliente (sistema novo)",
     )
+    vendedor_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+        comment="Vendedor responsável pela venda (módulo recebíveis)",
+    )
     fonte_pedido_rel = db.relationship(
         "FontePedido", backref="pedidos", lazy="joined", foreign_keys=[fonte_pedido_id]
     )
@@ -212,6 +219,7 @@ class Pedido(db.Model):
             "oculto": self.oculto or False,
             "impresso": self.impresso or False,
             "cliente_id": self.cliente_id,
+            "vendedor_id": self.vendedor_id,
             "distancia_km": self.distancia_km,
             "taxa_entrega": self.taxa_entrega,
             # Frete (vindo da Order API)

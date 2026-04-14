@@ -136,16 +136,33 @@ def requires_auth(f):
 def requires_edit_auth(f):
     """
     Decorator para proteger apenas rotas críticas de edição (criar/deletar pedidos)
-    Permite acesso livre para visualização e atualização de status
+    Aceita JWT Bearer (módulo Recebíveis) ou HTTP Basic Auth (legado).
     """
 
     @wraps(f)
     def decorated(*args, **kwargs):
+        from flask import jsonify
+
+        # --- Tentar JWT Bearer primeiro ---
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            try:
+                from app.services.auth_service import decode_token, extract_bearer_token
+
+                token = extract_bearer_token(auth_header)
+                payload = decode_token(token) if token else None
+                if payload:
+                    request.authenticated_user = payload.get("email", "")
+                    request.user_role = payload.get("role", "")
+                    request.current_user = payload
+                    return f(*args, **kwargs)
+            except Exception:
+                pass
+
+        # --- Fallback: HTTP Basic Auth ---
         auth = request.authorization
 
         if not auth:
-            from flask import jsonify
-
             return (
                 jsonify(
                     {
@@ -159,8 +176,6 @@ def requires_edit_auth(f):
 
         is_authenticated, role = check_auth(auth.username, auth.password)
         if not is_authenticated:
-            from flask import jsonify
-
             return (
                 jsonify(
                     {
@@ -172,13 +187,11 @@ def requires_edit_auth(f):
                 401,
             )
 
-        # Armazenar usuário autenticado no request
         request.authenticated_user = auth.username
         request.user_role = role
 
         return f(*args, **kwargs)
 
-    # Marcar função com tipo de autenticação (para dump_routes.py)
     decorated._auth = "edit"
     return decorated
 
@@ -234,47 +247,60 @@ def has_permission(role: str, permission: str) -> bool:
 
 def requires_role(required_role: str):
     """
-    Decorator para verificar se o usuário tem um papel específico
-
-    Args:
-        required_role: Papel necessário (admin, atendente, entregador)
+    Decorator para verificar se o usuário tem um papel específico.
+    Aceita JWT Bearer (módulo Recebíveis) ou HTTP Basic Auth (legado).
     """
 
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
+            from flask import jsonify
+
+            # --- Tentar JWT Bearer primeiro ---
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.lower().startswith("bearer "):
+                try:
+                    from app.services.auth_service import decode_token, extract_bearer_token
+
+                    token = extract_bearer_token(auth_header)
+                    payload = decode_token(token) if token else None
+                    if payload:
+                        role = payload.get("role", "")
+                        if role != required_role:
+                            return (
+                                jsonify(
+                                    {
+                                        "error": "Acesso negado",
+                                        "message": f"Esta operação requer papel '{required_role}'",
+                                        "user_role": role,
+                                    }
+                                ),
+                                403,
+                            )
+                        request.authenticated_user = payload.get("email", "")
+                        request.user_role = role
+                        request.current_user = payload
+                        return f(*args, **kwargs)
+                except Exception:
+                    pass
+
+            # --- Fallback: HTTP Basic Auth ---
             auth = request.authorization
 
             if not auth:
-                from flask import jsonify
-
                 return (
-                    jsonify(
-                        {
-                            "error": "Acesso negado",
-                            "message": "Autenticação necessária",
-                        }
-                    ),
+                    jsonify({"error": "Acesso negado", "message": "Autenticação necessária"}),
                     401,
                 )
 
             is_authenticated, role = check_auth(auth.username, auth.password)
             if not is_authenticated:
-                from flask import jsonify
-
                 return (
-                    jsonify(
-                        {
-                            "error": "Acesso negado",
-                            "message": "Credenciais inválidas",
-                        }
-                    ),
+                    jsonify({"error": "Acesso negado", "message": "Credenciais inválidas"}),
                     401,
                 )
 
             if role != required_role:
-                from flask import jsonify
-
                 return (
                     jsonify(
                         {
@@ -299,47 +325,60 @@ def requires_role(required_role: str):
 
 def requires_any_role(*allowed_roles: str):
     """
-    Decorator para verificar se o usuário tem um dos papéis especificados
-
-    Args:
-        *allowed_roles: Papéis permitidos (admin, atendente, entregador)
+    Decorator para verificar se o usuário tem um dos papéis especificados.
+    Aceita JWT Bearer (módulo Recebíveis) ou HTTP Basic Auth (legado).
     """
 
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
+            from flask import jsonify
+
+            # --- Tentar JWT Bearer primeiro ---
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.lower().startswith("bearer "):
+                try:
+                    from app.services.auth_service import decode_token, extract_bearer_token
+
+                    token = extract_bearer_token(auth_header)
+                    payload = decode_token(token) if token else None
+                    if payload:
+                        role = payload.get("role", "")
+                        if role not in allowed_roles:
+                            return (
+                                jsonify(
+                                    {
+                                        "error": "Acesso negado",
+                                        "message": f"Esta operação requer um dos papéis: {', '.join(allowed_roles)}",
+                                        "user_role": role,
+                                    }
+                                ),
+                                403,
+                            )
+                        request.authenticated_user = payload.get("email", "")
+                        request.user_role = role
+                        request.current_user = payload
+                        return f(*args, **kwargs)
+                except Exception:
+                    pass
+
+            # --- Fallback: HTTP Basic Auth ---
             auth = request.authorization
 
             if not auth:
-                from flask import jsonify
-
                 return (
-                    jsonify(
-                        {
-                            "error": "Acesso negado",
-                            "message": "Autenticação necessária",
-                        }
-                    ),
+                    jsonify({"error": "Acesso negado", "message": "Autenticação necessária"}),
                     401,
                 )
 
             is_authenticated, role = check_auth(auth.username, auth.password)
             if not is_authenticated:
-                from flask import jsonify
-
                 return (
-                    jsonify(
-                        {
-                            "error": "Acesso negado",
-                            "message": "Credenciais inválidas",
-                        }
-                    ),
+                    jsonify({"error": "Acesso negado", "message": "Credenciais inválidas"}),
                     401,
                 )
 
             if role not in allowed_roles:
-                from flask import jsonify
-
                 return (
                     jsonify(
                         {

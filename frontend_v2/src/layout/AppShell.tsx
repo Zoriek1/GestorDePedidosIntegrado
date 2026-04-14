@@ -46,7 +46,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, getCredentials, logout: handleLogout } = useAuth();
+  const { isAuthenticated, getCredentials, getUser, logout: handleLogout } = useAuth();
   const { isOnline, outboxCount } = useOffline();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [navMenuEl, setNavMenuEl] = React.useState<null | HTMLElement>(null);
@@ -62,10 +62,14 @@ export function AppShell({ children }: AppShellProps) {
   const isOrdersPage = location.pathname === '/';
 
   const authenticated = isAuthenticated();
+  const currentUser = authenticated ? getUser() : null;
   const credentials = authenticated ? getCredentials() : null;
-  const username = credentials?.username;
-  const userRole = credentials?.role || 'admin'; // Default para admin se não especificado
+  const username = currentUser?.name ?? currentUser?.email ?? credentials?.username;
+  const userRole = currentUser?.role ?? credentials?.role ?? 'admin';
   const isEntregador = userRole === 'entregador';
+  const isAdmin = userRole === 'admin';
+  const isVendedor = userRole === 'vendedor';
+  const canViewLedger = isAdmin || isVendedor;
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -161,6 +165,12 @@ export function AppShell({ children }: AppShellProps) {
                 </>
               )}
               <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
+              {canViewLedger && (
+                <MenuItem onClick={() => handleNavigate('/recebiveis')}>Recebíveis</MenuItem>
+              )}
+              {isAdmin && (
+                <MenuItem onClick={() => handleNavigate('/usuarios')}>Usuários</MenuItem>
+              )}
               <MenuItem onClick={() => handleNavigate('/configuracoes')}>
                 <Settings sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
                 Configurações
@@ -223,6 +233,16 @@ export function AppShell({ children }: AppShellProps) {
             <Button color="inherit" onClick={() => handleNavigate('/rota-entrega')} sx={{ textTransform: 'none' }}>
               Rota
             </Button>
+            {canViewLedger && (
+              <Button color="inherit" onClick={() => handleNavigate('/recebiveis')} sx={{ textTransform: 'none' }}>
+                Recebíveis
+              </Button>
+            )}
+            {isAdmin && (
+              <Button color="inherit" onClick={() => handleNavigate('/usuarios')} sx={{ textTransform: 'none' }}>
+                Usuários
+              </Button>
+            )}
             <Tooltip title="Configurações">
               <IconButton color="inherit" onClick={() => handleNavigate('/configuracoes')}>
                 <Settings />

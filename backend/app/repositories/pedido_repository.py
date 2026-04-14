@@ -272,6 +272,15 @@ class PedidoRepository(BaseRepository):
         except Exception as e:
             print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
 
+        # Hook: Gerar comissão ao concluir pedido (módulo Recebíveis)
+        if novo_status == "concluido" and pedido_atualizado.vendedor_id:
+            try:
+                from app.services.commission_service import generate_commission
+
+                generate_commission(pedido_atualizado, pedido_atualizado.vendedor_id)
+            except Exception as e:
+                print(f"[AVISO] Erro ao gerar comissão para pedido #{pedido_id}: {e}")
+
         return pedido_atualizado
 
     def buscar_atrasados(self) -> List[Pedido]:

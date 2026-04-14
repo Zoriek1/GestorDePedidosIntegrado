@@ -1,0 +1,131 @@
+# -*- coding: utf-8 -*-
+"""
+Models de Usuário, Configuração de Remuneração e Comissão
+Parte do módulo de Recebíveis
+"""
+from datetime import datetime
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
+from app import db
+
+TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
+
+
+def datetime_now_brazil():
+    return datetime.now(TIMEZONE_BRASIL)
+
+
+class User(db.Model):
+    """Usuário do sistema com suporte a múltiplos roles"""
+
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False, comment="Nome de exibição")
+    email = db.Column(db.String(200), unique=True, nullable=False, index=True, comment="Email de login")
+    password_hash = db.Column(db.String(256), nullable=False, comment="bcrypt hash")
+    role = db.Column(
+        db.String(20),
+        nullable=False,
+        default="vendedor",
+        comment="admin | vendedor | viewer",
+    )
+    is_active = db.Column(db.Boolean, nullable=False, default=True, comment="Soft-disable")
+    created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=datetime_now_brazil, onupdate=datetime_now_brazil, nullable=False
+    )
+
+    # Relationships
+    payroll_configs = db.relationship(
+        "PayrollConfig", backref="user", lazy="dynamic", cascade="all, delete-orphan"
+    )
+    commission_configs = db.relationship(
+        "CommissionConfig", backref="user", lazy="dynamic", cascade="all, delete-orphan"
+    )
+    ledger_entries = db.relationship(
+        "LedgerEntry",
+        foreign_keys="LedgerEntry.user_id",
+        backref="user",
+        lazy="dynamic",
+    )
+
+    def __repr__(self):
+        return f"<User #{self.id} {self.email} ({self.role})>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "role": self.role,
+            "is_active": self.is_active,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
+            "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else "",
+        }
+
+
+class PayrollConfig(db.Model):
+    """Configuração de remuneração fixa por vendedor"""
+
+    __tablename__ = "payroll_config"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id"), nullable=False, index=True
+    )
+    category = db.Column(
+        db.String(50),
+        nullable=False,
+        comment="fixo_semanal | fixo_mensal | almoco | transporte | custom",
+    )
+    label = db.Column(db.String(100), nullable=False, comment="Nome de exibição")
+    amount = db.Column(db.Float, nullable=False, comment="Valor em R$")
+    frequency = db.Column(db.String(20), nullable=False, comment="semanal | mensal")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "category": self.category,
+            "label": self.label,
+            "amount": self.amount,
+            "frequency": self.frequency,
+            "is_active": self.is_active,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
+        }
+
+
+class CommissionConfig(db.Model):
+    """Configuração de comissão por fonte de pedido por vendedor"""
+
+    __tablename__ = "commission_config"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id"), nullable=False, index=True
+    )
+    source = db.Column(
+        db.String(50),
+        nullable=False,
+        comment="whatsapp | site | balcao | indicacao | lucro_bruto",
+    )
+    rate = db.Column(db.Float, nullable=False, comment="Percentual como decimal (0.03 = 3%)")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "source": self.source,
+            "rate": self.rate,
+            "is_active": self.is_active,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
+        }

@@ -69,6 +69,12 @@ class BaseConfig:
     # Autenticação
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "plante1998"
 
+    # JWT (módulo Recebíveis)
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
+    JWT_EXPIRATION_HOURS = int(os.environ.get("JWT_EXPIRATION_HOURS") or 24)
+    AUTH_REQUIRED = os.environ.get("AUTH_REQUIRED", "false").lower() == "true"
+    BCRYPT_LOG_ROUNDS = int(os.environ.get("BCRYPT_LOG_ROUNDS") or 12)
+
     # APIs Externas
     GRAPHHOPPER_API_KEY = os.environ.get("GRAPHHOPPER_API_KEY") or ""
     OPENROUTE_API_KEY = os.environ.get("OPENROUTE_API_KEY") or ""

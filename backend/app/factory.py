@@ -60,11 +60,17 @@ def create_app(config=None):
         from app.routes.develop.backup import backup_admin_bp
         from app.routes.integrations.nuvemshop import nuvemshop_bp
         from app.routes.leads import leads_bp
+        from app.routes.ledger_routes import ledger_bp
         from app.routes.meta_gateway import meta_gateway_bp
         from app.routes.notifications import notifications_bp
         from app.routes.pedidos import pedidos_bp
         from app.routes.rotas import rotas_bp
         from app.routes.storefront import storefront_bp
+        from app.routes.user_routes import users_bp
+
+        # Importar novos models para garantir que as tabelas sejam criadas
+        from app.models.user import User  # noqa: F401
+        from app.models.ledger_entry import LedgerEntry  # noqa: F401
 
         # Registrar blueprints existentes (mantidos para compatibilidade)
         app.register_blueprint(api_bp)
@@ -79,6 +85,10 @@ def create_app(config=None):
         app.register_blueprint(nuvemshop_bp)
         app.register_blueprint(notifications_bp)
         app.register_blueprint(leads_bp)
+
+        # Módulo Recebíveis (Auth JWT + Ledger + Users)
+        app.register_blueprint(users_bp)
+        app.register_blueprint(ledger_bp)
 
         # Registrar Meta Gateway (deve vir antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)

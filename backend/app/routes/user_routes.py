@@ -1,0 +1,211 @@
+# -*- coding: utf-8 -*-
+"""
+User Routes — CRUD de usuários e configuração de remuneração/comissão (admin only)
+"""
+from flask import Blueprint, request
+
+from app.decorators.auth_decorator import require_auth
+from app.repositories.user_repository import UserRepository
+from app.schemas.common import error_response, success_response
+
+users_bp = Blueprint("users", __name__, url_prefix="/api/users")
+user_repo = UserRepository()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/users — lista todos os usuários
+# ---------------------------------------------------------------------------
+@users_bp.route("", methods=["GET"])
+@require_auth(roles=["admin"])
+def list_users():
+    try:
+        users = user_repo.get_all_active()
+        return success_response({"users": [u.to_dict() for u in users]})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/users — cria usuário
+# ---------------------------------------------------------------------------
+@users_bp.route("", methods=["POST"])
+@require_auth(roles=["admin"])
+def create_user():
+    try:
+        from app.services.auth_service import hash_password
+
+        data = request.get_json() or {}
+        email = (data.get("email") or "").strip()
+        name = (data.get("name") or "").strip()
+        password = (data.get("password") or "").strip()
+        role = data.get("role", "vendedor")
+
+        if not email or not name or not password:
+            return error_response("email, name e password são obrigatórios", 400)
+        if len(password) < 8:
+            return error_response("Senha deve ter pelo menos 8 caracteres", 400)
+        if role not in ("admin", "vendedor", "viewer"):
+            return error_response("role deve ser admin, vendedor ou viewer", 400)
+
+        if user_repo.get_by_email(email):
+            return error_response(f"Email '{email}' já cadastrado", 409)
+
+        user = user_repo.create(
+            name=name,
+            email=email,
+            password_hash=hash_password(password),
+            role=role,
+            is_active=True,
+        )
+        return success_response({"user": user.to_dict()}, status_code=201)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/users/<id> — edita usuário
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>", methods=["PUT"])
+@require_auth(roles=["admin"])
+def update_user(user_id):
+    try:
+        user = user_repo.get_by_id(user_id)
+        if not user:
+            return error_response("Usuário não encontrado", 404)
+
+        data = request.get_json() or {}
+        updates = {}
+
+        if "name" in data:
+            updates["name"] = data["name"].strip()
+        if "role" in data:
+            if data["role"] not in ("admin", "vendedor", "viewer"):
+                return error_response("role deve ser admin, vendedor ou viewer", 400)
+            updates["role"] = data["role"]
+        if "is_active" in data:
+            updates["is_active"] = bool(data["is_active"])
+        if "password" in data:
+            pw = data["password"].strip()
+            if len(pw) < 8:
+                return error_response("Senha deve ter pelo menos 8 caracteres", 400)
+            from app.services.auth_service import hash_password
+            updates["password_hash"] = hash_password(pw)
+
+        user = user_repo.update(user, **updates)
+        return success_response({"user": user.to_dict()})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/users/<id> — soft delete (desativa)
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>", methods=["DELETE"])
+@require_auth(roles=["admin"])
+def delete_user(user_id):
+    try:
+        user = user_repo.get_by_id(user_id)
+        if not user:
+            return error_response("Usuário não encontrado", 404)
+
+        current = request.current_user
+        if current["user_id"] == user_id:
+            return error_response("Não é possível desativar o próprio usuário", 400)
+
+        user_repo.soft_delete(user)
+        return success_response({}, message="Usuário desativado")
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/users/<id>/config — payroll + commission config
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>/config", methods=["GET"])
+@require_auth(roles=["admin"])
+def get_user_config(user_id):
+    try:
+        user = user_repo.get_by_id(user_id)
+        if not user:
+            return error_response("Usuário não encontrado", 404)
+
+        payroll = user_repo.get_payroll_configs(user_id)
+        commission = user_repo.get_commission_configs(user_id)
+
+        return success_response(
+            {
+                "user": user.to_dict(),
+                "payroll": [p.to_dict() for p in payroll],
+                "commission": [c.to_dict() for c in commission],
+            }
+        )
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/users/<id>/payroll — configura remuneração fixa
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>/payroll", methods=["PUT"])
+@require_auth(roles=["admin"])
+def update_payroll(user_id):
+    """
+    Body pode ser uma lista de configs ou um único objeto:
+      [{"category": "fixo_semanal", "label": "Salário", "amount": 500, "frequency": "semanal"}, ...]
+    """
+    try:
+        user = user_repo.get_by_id(user_id)
+        if not user:
+            return error_response("Usuário não encontrado", 404)
+
+        data = request.get_json() or {}
+        configs_data = data if isinstance(data, list) else [data]
+
+        results = []
+        for cfg_data in configs_data:
+            if not cfg_data.get("category") or cfg_data.get("amount") is None:
+                return error_response("category e amount são obrigatórios em cada config", 400)
+            cfg = user_repo.upsert_payroll_config(user_id, cfg_data)
+            results.append(cfg.to_dict())
+
+        return success_response({"payroll": results})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/users/<id>/commission — configura comissões
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>/commission", methods=["PUT"])
+@require_auth(roles=["admin"])
+def update_commission(user_id):
+    """
+    Body pode ser lista ou objeto:
+      [{"source": "whatsapp", "rate": 0.03}, ...]
+    """
+    try:
+        VALID_SOURCES = {"whatsapp", "site", "balcao", "indicacao", "lucro_bruto"}
+
+        user = user_repo.get_by_id(user_id)
+        if not user:
+            return error_response("Usuário não encontrado", 404)
+
+        data = request.get_json() or {}
+        configs_data = data if isinstance(data, list) else [data]
+
+        results = []
+        for cfg_data in configs_data:
+            source = cfg_data.get("source", "")
+            if source not in VALID_SOURCES:
+                return error_response(
+                    f"source '{source}' inválido. Válidos: {', '.join(VALID_SOURCES)}", 400
+                )
+            rate = cfg_data.get("rate")
+            if rate is None:
+                return error_response("rate é obrigatório", 400)
+            cfg = user_repo.upsert_commission_config(user_id, cfg_data)
+            results.append(cfg.to_dict())
+
+        return success_response({"commission": results})
+    except Exception as e:
+        return error_response(str(e), 500)

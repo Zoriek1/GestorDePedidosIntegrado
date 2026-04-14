@@ -391,6 +391,53 @@ def hash_password_command(password):
         click.echo("[ERRO] bcrypt não instalado. Execute: pip install bcrypt", err=True)
 
 
+@cli.command("create-admin")
+@click.option("--email", prompt="Email do admin", help="Email do usuário admin")
+@click.option(
+    "--password",
+    prompt="Senha",
+    hide_input=True,
+    confirmation_prompt=True,
+    help="Senha do admin (mín. 8 chars)",
+)
+@click.option("--name", default="Admin", help="Nome de exibição (padrão: Admin)")
+def create_admin_command(email, password, name):
+    """Cria o primeiro usuário admin no banco de dados.
+
+    Exemplo: flask cli create-admin --email admin@puf.com --password senha_forte
+    """
+    if len(password) < 8:
+        raise click.ClickException("Senha deve ter pelo menos 8 caracteres.")
+
+    from app import create_app
+
+    app = create_app()
+    with app.app_context():
+        try:
+            from app.models.user import User
+            from app.services.auth_service import hash_password
+            from app import db
+
+            existing = User.query.filter_by(email=email).first()
+            if existing:
+                raise click.ClickException(f"Usuário com email '{email}' já existe.")
+
+            admin = User(
+                name=name,
+                email=email,
+                password_hash=hash_password(password),
+                role="admin",
+                is_active=True,
+            )
+            db.session.add(admin)
+            db.session.commit()
+            click.echo(f"\n[OK] Admin criado: {email} (id={admin.id})")
+        except click.ClickException:
+            raise
+        except Exception as e:
+            raise click.ClickException(f"Erro ao criar admin: {e}")
+
+
 # Registrar comandos no Flask CLI
 def register_commands(app: Flask):
     """Registra comandos CLI na aplicação"""

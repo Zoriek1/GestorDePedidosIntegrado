@@ -43,26 +43,32 @@ export function SourceSelectionModal({ open, onConfirm }: SourceSelectionModalPr
   
    
   const mapped: FonteMapped[] = useMemo(() => {
-    const whatsappId = matchFonte(fontes, 'whatsapp') ?? matchFonte(fontes, 'zap') ?? matchFonte(fontes, 'caio');
-    const catalogoId = matchFonte(fontes, 'catalogo') ?? matchFonte(fontes, 'catálogo');
-    const siteId = matchFonte(fontes, 'site');
+    const whatsappFonte = fontes.find((f) => {
+      const n = f.nome.toLowerCase();
+      return n.includes('whatsapp') || n.includes('zap');
+    });
+    const catalogoFonte = fontes.find((f) => {
+      const n = f.nome.toLowerCase();
+      return n.includes('catalogo') || n.includes('catálogo');
+    });
+    const siteFonte = fontes.find((f) => f.nome.toLowerCase().includes('site'));
 
     return [
       {
-        id: whatsappId ?? -1,
-        label: 'WhatsApp (Caio)',
+        id: whatsappFonte?.id ?? -1,
+        label: whatsappFonte?.nome ?? 'WhatsApp',
         description: 'Atendimento direto via WhatsApp',
         icon: <WhatsAppIcon color="success" />,
       },
       {
-        id: catalogoId ?? -1,
-        label: 'Catálogo',
+        id: catalogoFonte?.id ?? -1,
+        label: catalogoFonte?.nome ?? 'Catálogo',
         description: 'Pedidos vindos do catálogo digital',
         icon: <MenuBookIcon color="primary" />,
       },
       {
-        id: siteId ?? -1,
-        label: 'Site',
+        id: siteFonte?.id ?? -1,
+        label: siteFonte?.nome ?? 'Site',
         description: 'Pedidos recebidos pelo site',
         icon: <LanguageIcon color="info" />,
       },

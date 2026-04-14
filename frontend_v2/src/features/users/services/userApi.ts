@@ -69,7 +69,7 @@ function useApi() {
 // Hooks
 // ---------------------------------------------------------------------------
 
-export function useUsers() {
+export function useUsers(enabled = true) {
   const api = useApi();
   return useQuery<AppUser[]>({
     queryKey: ['users'],
@@ -79,6 +79,7 @@ export function useUsers() {
       return (res.data as { users: AppUser[] }).users ?? [];
     },
     staleTime: 60_000,
+    enabled,
   });
 }
 

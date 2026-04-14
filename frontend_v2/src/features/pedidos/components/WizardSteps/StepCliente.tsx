@@ -54,7 +54,7 @@ export function StepCliente() {
 
   const { getUserRole } = useAuth();
   const isAdmin = getUserRole() === 'admin';
-  const { data: usersData } = useUsers();
+  const { data: usersData } = useUsers(isAdmin);
   const vendedores = (usersData ?? []).filter((u) => u.role === 'vendedor' && u.is_active);
 
   const origemAnuncio = useWatch({ control, name: 'origem_anuncio' });

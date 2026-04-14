@@ -56,6 +56,24 @@ function categoryLabel(category: string): string {
   return labels[category] ?? category;
 }
 
+function getCreditStatus(entry: LedgerEntry): { label: string; color: 'success' | 'warning' | 'default' } {
+  if (entry.status === 'confirmado') {
+    return { label: 'Recebido', color: 'success' };
+  }
+  if (!entry.due_date) {
+    return { label: 'Pendente', color: 'warning' };
+  }
+
+  const due = new Date(entry.due_date + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (due.getTime() > today.getTime()) {
+    return { label: 'Futuro', color: 'default' };
+  }
+  return { label: 'Pendente', color: 'warning' };
+}
+
 export function EntryList({ entries, loading }: EntryListProps) {
   if (loading) {
     return (
@@ -106,7 +124,9 @@ export function EntryList({ entries, loading }: EntryListProps) {
             </Box>
             <Divider />
             <List dense disablePadding>
-              {weekEntries.map((entry) => (
+              {weekEntries.map((entry) => {
+                const creditStatus = getCreditStatus(entry);
+                return (
                 <ListItem key={entry.id} disableGutters sx={{ px: 0.5 }}>
                   <ListItemText
                     primary={
@@ -128,8 +148,8 @@ export function EntryList({ entries, loading }: EntryListProps) {
                           {entry.type === 'CREDIT' && (
                             <Chip
                               size="small"
-                              label={entry.status === 'confirmado' ? 'Recebido' : 'Pendente'}
-                              color={entry.status === 'confirmado' ? 'success' : 'warning'}
+                              label={creditStatus.label}
+                              color={creditStatus.color}
                               variant="filled"
                               sx={{ height: 18, fontSize: '0.65rem' }}
                             />
@@ -151,7 +171,7 @@ export function EntryList({ entries, loading }: EntryListProps) {
                     }
                   />
                 </ListItem>
-              ))}
+              )})}
             </List>
           </Box>
         );

@@ -62,6 +62,14 @@ function dueDateColor(due_date: string | null): 'error' | 'warning' | 'default' 
   return 'default';
 }
 
+function isFutureDueDate(due_date: string | null): boolean {
+  if (!due_date) return false;
+  const d = new Date(due_date + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d.getTime() > today.getTime();
+}
+
 export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProps) {
   const pendingQuery = usePendingPayments(userId);
   const confirmMutation = useConfirmEntry();
@@ -126,6 +134,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
               {entries.map((entry) => {
                 const dueFmt = formatDueDate(entry.due_date);
                 const dueColor = dueDateColor(entry.due_date);
+                const isFuture = isFutureDueDate(entry.due_date);
                 return (
                   <ListItem
                     key={entry.id}
@@ -138,7 +147,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
                         color="success"
                         startIcon={<CheckIcon />}
                         onClick={() => handleConfirm(entry.id)}
-                        disabled={confirmMutation.isPending}
+                        disabled={confirmMutation.isPending || isFuture}
                         sx={{ minWidth: 80, fontSize: '0.75rem' }}
                       >
                         Recebi

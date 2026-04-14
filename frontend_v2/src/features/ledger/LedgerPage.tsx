@@ -23,6 +23,7 @@ import { EntryList } from './components/EntryList';
 import { PendingPaymentsCard } from './components/PendingPaymentsCard';
 import { PaymentDialog } from './components/PaymentDialog';
 import { WeeklyGenerateBtn } from './components/WeeklyGenerateBtn';
+import { AttributedOrdersCard } from './components/AttributedOrdersCard';
 import {
   useLedgerBalance,
   useLedgerEntries,
@@ -187,6 +188,17 @@ export default function LedgerPage() {
       {activeUserId > 0 && (
         <Box mb={3}>
           <PendingPaymentsCard userId={activeUserId} isAdmin={isAdmin} />
+        </Box>
+      )}
+
+      {/* Pedidos Atribuídos */}
+      {activeUserId > 0 && (
+        <Box mb={3}>
+          <AttributedOrdersCard
+            userId={activeUserId}
+            from={fromDate || undefined}
+            to={toDate || undefined}
+          />
         </Box>
       )}
 

@@ -170,6 +170,86 @@ def get_periods():
         return error_response(str(e), 500)
 
 
+# GET /api/ledger/pedidos — pedidos atribuídos com detalhes de comissão
+# ---------------------------------------------------------------------------
+@ledger_bp.route("/pedidos", methods=["GET"])
+@require_auth(roles=["admin", "vendedor"])
+def get_pedidos_atribuidos():
+    """
+    Retorna pedidos com comissão gerada para o vendedor.
+    Cada item contém: pedido_id, cliente, dia_entrega, due_date,
+    valor_pedido, fonte, rate (%), commission_amount.
+    Filtros opcionais: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    """
+    try:
+        from app.models.ledger_entry import LedgerEntry
+        from app.models.pedido import Pedido
+        from app.repositories.user_repository import UserRepository
+
+        user_id, err = _resolve_user_id()
+        if err:
+            return err
+
+        from_date = _parse_date(request.args.get("from", ""))
+        to_date = _parse_date(request.args.get("to", ""))
+
+        # Buscar entries que têm pedido_id (comissões)
+        query = LedgerEntry.query.filter(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.type == "CREDIT",
+            LedgerEntry.pedido_id.isnot(None),
+            LedgerEntry.category.like("comissao_%"),
+        )
+        if from_date:
+            query = query.filter(LedgerEntry.week_ref >= from_date)
+        if to_date:
+            query = query.filter(LedgerEntry.week_ref <= to_date)
+
+        entries = query.order_by(LedgerEntry.due_date.asc().nullslast(), LedgerEntry.week_ref.desc()).all()
+
+        # Buscar rate de comissão por categoria para exibição
+        user_repo = UserRepository()
+        commission_configs = {
+            c.source: c.rate
+            for c in user_repo.get_commission_configs(user_id)
+        }
+
+        result = []
+        for entry in entries:
+            pedido = Pedido.query.get(entry.pedido_id)
+            if not pedido:
+                continue
+
+            source = entry.category.replace("comissao_", "") if entry.category else ""
+            rate = commission_configs.get(source)
+
+            # Parse valor do pedido
+            valor_pedido = None
+            try:
+                valor_pedido = pedido.total_pago()
+            except Exception:
+                pass
+
+            result.append({
+                "entry_id": entry.id,
+                "pedido_id": entry.pedido_id,
+                "cliente": pedido.cliente,
+                "dia_entrega": pedido.dia_entrega.isoformat() if pedido.dia_entrega else None,
+                "week_ref": entry.week_ref.isoformat() if entry.week_ref else None,
+                "due_date": entry.due_date.isoformat() if entry.due_date else None,
+                "valor_pedido": round(float(valor_pedido), 2) if valor_pedido is not None else None,
+                "fonte": source,
+                "rate": round(rate * 100, 1) if rate is not None else None,
+                "commission_amount": round(float(entry.amount), 2),
+                "status": entry.status,
+            })
+
+        return success_response({"pedidos": result, "total": len(result)})
+
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
 # GET /api/ledger/summary — saldo de todos os vendedores (admin)
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/summary", methods=["GET"])

@@ -28,6 +28,7 @@ export interface LedgerBalance {
   user_id: number;
   total_credits: number;
   confirmed_credits: number;
+  overdue_credits: number;
   pending_credits: number;
   total_debits: number;
   balance: number;
@@ -57,6 +58,20 @@ export interface ManualEntryPayload {
   amount: number;
   description?: string;
   week_ref?: string;
+}
+
+export interface PedidoAtribuido {
+  entry_id: number;
+  pedido_id: number;
+  cliente: string;
+  dia_entrega: string | null;
+  week_ref: string | null;
+  due_date: string | null;
+  valor_pedido: number | null;
+  fonte: string;
+  rate: number | null;       // percentual (ex: 3.0 = 3%)
+  commission_amount: number;
+  status: 'pendente' | 'confirmado';
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +120,21 @@ export function useLedgerEntries(filters: EntriesFilters = {}) {
       const res = await api<{ entries: LedgerEntry[] }>(`/ledger/entries${qs}`);
       if (!res.ok) throw new Error(res.message);
       return (res.data as { entries: LedgerEntry[] }).entries ?? [];
+    },
+    staleTime: 30_000,
+  });
+}
+
+/** Pedidos atribuídos com detalhes de comissão */
+export function usePedidosAtribuidos(filters: { from?: string; to?: string; user_id?: number } = {}) {
+  const api = useApi();
+  return useQuery<PedidoAtribuido[]>({
+    queryKey: ['ledger-pedidos', filters],
+    queryFn: async () => {
+      const qs = toParams(filters as Record<string, string | number | undefined>);
+      const res = await api<{ pedidos: PedidoAtribuido[] }>(`/ledger/pedidos${qs}`);
+      if (!res.ok) throw new Error(res.message);
+      return (res.data as { pedidos: PedidoAtribuido[] }).pedidos ?? [];
     },
     staleTime: 30_000,
   });

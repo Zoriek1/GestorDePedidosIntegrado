@@ -34,10 +34,18 @@ def login():
 
         # --- Tentar autenticação via banco (usuários DB) ---
         try:
+            from app import db as _db
             from app.models.user import User
             from app.services.auth_service import generate_token, verify_password
 
+            # Aceita email ou nome (case-insensitive)
             db_user = User.query.filter_by(email=email, is_active=True).first()
+            if not db_user:
+                db_user = User.query.filter(
+                    _db.func.lower(User.name) == email.lower(),
+                    User.is_active == True,  # noqa: E712
+                ).first()
+
             if db_user and verify_password(password, db_user.password_hash):
                 token = generate_token(db_user)
                 log_debug("JWT login success", {"email": email, "role": db_user.role})

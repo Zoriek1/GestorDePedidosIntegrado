@@ -15,11 +15,11 @@ import {
   Typography,
   InputAdornment,
   IconButton,
+  Alert,
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from './authStore';
 import { AppButton } from '../../components/common/AppButton';
-import { useToast } from '../../components/system/useToast';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -29,9 +29,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [usernameError, setUsernameError] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const { login } = useAuth();
-  const { error: showError } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -42,6 +42,7 @@ export default function LoginPage() {
     setLoading(true);
     setUsernameError(false);
     setPasswordError(false);
+    setLoginError(null);
 
     // Ler do formulário (DOM) para não depender só do estado React: autofill e
     // alguns contextos (tunnel/HTTPS) podem preencher os campos sem atualizar o state.
@@ -62,15 +63,15 @@ export default function LoginPage() {
     }
 
     if (hasError) {
-      showError('Por favor, preencha usuário e senha');
+      setLoginError('Preencha e-mail (ou nome) e senha para continuar.');
       setLoading(false);
       return;
     }
 
     const sanitizedUsername = usernameValue.replace(/[<>'"]/g, '');
     if (sanitizedUsername !== usernameValue) {
-      showError('Usuário contém caracteres inválidos');
       setUsernameError(true);
+      setLoginError('Usuário contém caracteres inválidos (< > \' ").');
       setLoading(false);
       return;
     }
@@ -79,22 +80,33 @@ export default function LoginPage() {
       const result = await login(sanitizedUsername, passwordValue, remember);
 
       if (result.success) {
-        // Navigate to original route or home
         navigate(from, { replace: true });
       } else {
-        // Mensagens de erro específicas
-        if (result.error?.toLowerCase().includes('credenciais') || result.error?.toLowerCase().includes('inválid')) {
-          showError('Credenciais inválidas. Verifique seu usuário e senha.');
-        } else if (result.error?.toLowerCase().includes('autenticação') || result.error?.toLowerCase().includes('auth')) {
-          showError('Erro de autenticação. Tente novamente.');
+        const msg = result.error ?? '';
+        if (
+          msg.toLowerCase().includes('credenciais') ||
+          msg.toLowerCase().includes('inválid') ||
+          msg.toLowerCase().includes('senha') ||
+          msg.toLowerCase().includes('unauthorized') ||
+          msg.includes('401')
+        ) {
+          setLoginError('Usuário ou senha incorretos. Verifique e tente novamente.');
+        } else if (msg.toLowerCase().includes('não encontrado') || msg.toLowerCase().includes('not found')) {
+          setLoginError('Usuário não encontrado. Verifique o e-mail ou nome informado.');
+        } else if (
+          msg.toLowerCase().includes('servidor') ||
+          msg.toLowerCase().includes('conexão') ||
+          msg.toLowerCase().includes('connect')
+        ) {
+          setLoginError('Não foi possível conectar ao servidor. Verifique sua conexão.');
+        } else if (msg) {
+          setLoginError(msg);
         } else {
-          showError(result.error || 'Erro ao fazer login. Tente novamente.');
+          setLoginError('Erro ao fazer login. Tente novamente.');
         }
-        setPasswordError(true);
       }
     } catch {
-      showError('Erro ao fazer login. Tente novamente.');
-      setPasswordError(true);
+      setLoginError('Erro inesperado. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -109,7 +121,7 @@ export default function LoginPage() {
   };
 
   const handlePasswordBlur = () => {
-    if (!password.trim()) {
+    if (!password) {
       setPasswordError(true);
     } else {
       setPasswordError(false);
@@ -139,20 +151,20 @@ export default function LoginPage() {
             <TextField
               fullWidth
               name="username"
-              label="Usuário"
+              label="E-mail ou nome"
+              placeholder="ex: caio ou caio@email.com"
               variant="outlined"
               value={username}
               onChange={(e) => {
                 setUsername(e.target.value);
-                if (usernameError && e.target.value.trim()) {
-                  setUsernameError(false);
-                }
+                if (loginError) setLoginError(null);
+                if (usernameError && e.target.value.trim()) setUsernameError(false);
               }}
               onBlur={handleUsernameBlur}
               disabled={loading}
               autoComplete="username"
               error={usernameError}
-              helperText={usernameError ? 'Usuário é obrigatório' : ''}
+              helperText={usernameError ? 'Informe seu e-mail ou nome' : ''}
               inputProps={{ name: 'username' }}
               sx={{ mb: 2 }}
               autoFocus
@@ -167,9 +179,8 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
-                if (passwordError && e.target.value.trim()) {
-                  setPasswordError(false);
-                }
+                if (loginError) setLoginError(null);
+                if (passwordError && e.target.value) setPasswordError(false);
               }}
               onBlur={handlePasswordBlur}
               disabled={loading}
@@ -206,6 +217,12 @@ export default function LoginPage() {
               label="Lembrar-me"
               sx={{ mb: 2 }}
             />
+
+            {loginError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {loginError}
+              </Alert>
+            )}
 
             <AppButton
               type="submit"

@@ -612,12 +612,13 @@ def criar_pedido():
 
         # Determinar vendedor_id:
         # - vendedor JWT: auto-atribuir o próprio ID
-        # - admin: aceitar vendedor_id do body (opcional)
+        # - admin (JWT ou Basic Auth): aceitar vendedor_id do body (opcional)
         current_user = getattr(request, "current_user", None)
+        user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
         vendedor_id_final = None
-        if current_user and current_user.get("role") == "vendedor":
+        if user_role == "vendedor" and current_user:
             vendedor_id_final = current_user.get("user_id")
-        elif current_user and current_user.get("role") == "admin":
+        elif user_role == "admin":
             try:
                 vendedor_id_final = int(data["vendedor_id"]) if data.get("vendedor_id") else None
             except (ValueError, TypeError):
@@ -857,14 +858,14 @@ def atualizar_pedido(pedido_id):
 
         # Vendedor: admin pode reatribuir; vendedor vincula a si mesmo se ainda sem vendedor
         current_user = getattr(request, "current_user", None)
-        if current_user:
-            if current_user.get("role") == "admin" and "vendedor_id" in data:
-                try:
-                    pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
-                except (ValueError, TypeError):
-                    pass
-            elif current_user.get("role") == "vendedor" and pedido.vendedor_id is None:
-                pedido.vendedor_id = current_user.get("user_id")
+        user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
+        if user_role == "admin" and "vendedor_id" in data:
+            try:
+                pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
+            except (ValueError, TypeError):
+                pass
+        elif user_role == "vendedor" and current_user and pedido.vendedor_id is None:
+            pedido.vendedor_id = current_user.get("user_id")
 
         pedido.updated_at = datetime_now_brazil()
 

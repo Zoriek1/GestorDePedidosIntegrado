@@ -884,7 +884,9 @@ def atualizar_pedido(pedido_id):
         # Vendedor: admin pode reatribuir; vendedor vincula a si mesmo se ainda sem vendedor
         current_user = getattr(request, "current_user", None)
         user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
-        print(f"[VENDEDOR_DEBUG] pedido#{pedido_id} user_role={user_role!r} vendedor_id_in_data={'vendedor_id' in data} raw={data.get('vendedor_id')!r}")
+        _cu = getattr(request, "current_user", "NAO_DEFINIDO")
+        _ur = getattr(request, "user_role", "NAO_DEFINIDO")
+        print(f"[VENDEDOR_DEBUG] pedido#{pedido_id} request.current_user={_cu!r} request.user_role={_ur!r} user_role_computado={user_role!r} vendedor_id_in_data={'vendedor_id' in data} raw={data.get('vendedor_id')!r}")
         if user_role == "admin" and "vendedor_id" in data:
             try:
                 pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None

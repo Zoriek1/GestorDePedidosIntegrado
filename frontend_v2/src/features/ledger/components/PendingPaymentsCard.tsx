@@ -67,6 +67,13 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
   const confirmMutation = useConfirmEntry();
 
   const entries: LedgerEntry[] = pendingQuery.data ?? [];
+  const hasUrgentPending = entries.some((entry) => {
+    if (!entry.due_date) return false;
+    const due = new Date(entry.due_date + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return due.getTime() <= today.getTime();
+  });
 
   const handleConfirm = (entryId: number) => {
     confirmMutation.mutate(entryId);
@@ -78,7 +85,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
       sx={{
         borderRadius: 2,
         border: entries.length > 0 ? '1px solid' : undefined,
-        borderColor: entries.length > 0 ? 'warning.light' : undefined,
+        borderColor: entries.length > 0 ? (hasUrgentPending ? 'warning.light' : 'divider') : undefined,
       }}
     >
       <CardContent>
@@ -91,7 +98,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
             <Chip
               size="small"
               label={entries.length}
-              color="warning"
+              color={hasUrgentPending ? 'warning' : 'default'}
               sx={{ height: 20, fontSize: '0.7rem' }}
             />
           )}

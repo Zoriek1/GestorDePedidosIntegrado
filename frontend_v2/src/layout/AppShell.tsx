@@ -46,7 +46,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, getCredentials, getUser, logout: handleLogout } = useAuth();
+  const { isAuthenticated, isJwtUser, getCredentials, getUser, logout: handleLogout } = useAuth();
   const { isOnline, outboxCount } = useOffline();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [navMenuEl, setNavMenuEl] = React.useState<null | HTMLElement>(null);
@@ -69,7 +69,10 @@ export function AppShell({ children }: AppShellProps) {
   const isEntregador = userRole === 'entregador';
   const isAdmin = userRole === 'admin';
   const isVendedor = userRole === 'vendedor';
-  const canViewLedger = isAdmin || isVendedor;
+  // Recebíveis e Usuários são rotas JWT-only — ocultar para usuários legados (Basic Auth)
+  const jwtUser = isJwtUser();
+  const canViewLedger = jwtUser && (isAdmin || isVendedor);
+  const canViewUsers = jwtUser && isAdmin;
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -168,7 +171,7 @@ export function AppShell({ children }: AppShellProps) {
               {canViewLedger && (
                 <MenuItem onClick={() => handleNavigate('/recebiveis')}>Recebíveis</MenuItem>
               )}
-              {isAdmin && (
+              {canViewUsers && (
                 <MenuItem onClick={() => handleNavigate('/usuarios')}>Usuários</MenuItem>
               )}
               <MenuItem onClick={() => handleNavigate('/configuracoes')}>
@@ -238,7 +241,7 @@ export function AppShell({ children }: AppShellProps) {
                 Recebíveis
               </Button>
             )}
-            {isAdmin && (
+            {canViewUsers && (
               <Button color="inherit" onClick={() => handleNavigate('/usuarios')} sx={{ textTransform: 'none' }}>
                 Usuários
               </Button>

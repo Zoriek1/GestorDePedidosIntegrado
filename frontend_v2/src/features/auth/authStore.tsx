@@ -36,6 +36,7 @@ interface LegacyCredentials {
 
 interface AuthContextType {
   isAuthenticated: () => boolean;
+  isJwtUser: () => boolean;
   getUserRole: () => string | null;
   getAuthHeader: () => Record<string, string>;
   getUser: () => AuthUser | null;
@@ -130,6 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = useCallback((): boolean => {
     if (jwtToken) return true;
     return readLegacyCreds() !== null;
+  }, [jwtToken]);
+
+  const isJwtUser = useCallback((): boolean => {
+    return !!(jwtToken || readJwtToken());
   }, [jwtToken]);
 
   const getUser = useCallback((): AuthUser | null => {
@@ -305,6 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthContextType = {
     isAuthenticated,
+    isJwtUser,
     getUserRole,
     getAuthHeader,
     getUser,

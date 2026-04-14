@@ -197,9 +197,14 @@ export async function request<T = unknown>(
         : `Erro ${response.status}`;
 
       // Notificar listeners de auth inválida (401/403)
+      // Só forçar logout se há JWT ativo — usuários legados (Basic Auth) não devem
+      // ser deslogados por rotas JWT-only retornarem 401.
       if (response.status === 401 || response.status === 403) {
         try {
-          window.dispatchEvent(new CustomEvent('puf_auth_invalid'));
+          const hasJwt = !!sessionStorage.getItem('puf_jwt');
+          if (hasJwt) {
+            window.dispatchEvent(new CustomEvent('puf_auth_invalid'));
+          }
         } catch {
           // silencioso
         }

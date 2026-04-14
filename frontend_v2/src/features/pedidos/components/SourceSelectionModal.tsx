@@ -26,7 +26,7 @@ type FonteMapped = {
   icon: React.ReactNode;
 };
 
-const matchFonte = (fontes: Array<{ id: number; nome: string }>, ...keywords: string[]) => {
+const _matchFonte = (fontes: Array<{ id: number; nome: string }>, ...keywords: string[]) => {
   const lowerKeywords = keywords.map((k) => k.toLowerCase());
   const found = fontes.find((f) => {
     const name = f.nome.toLowerCase();

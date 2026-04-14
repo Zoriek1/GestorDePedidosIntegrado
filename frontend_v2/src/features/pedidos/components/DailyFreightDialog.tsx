@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -45,12 +45,7 @@ export function DailyFreightDialog({ open, onClose }: DailyFreightDialogProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!open) return;
-    fetchData(date);
-  }, [open, date]);
-
-  const fetchData = async (d: string) => {
+  const fetchData = useCallback(async (d: string) => {
     setLoading(true);
     setError('');
     try {
@@ -67,7 +62,12 @@ export function DailyFreightDialog({ open, onClose }: DailyFreightDialogProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAuthHeader]);
+
+  useEffect(() => {
+    if (!open) return;
+    fetchData(date);
+  }, [open, date, fetchData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>

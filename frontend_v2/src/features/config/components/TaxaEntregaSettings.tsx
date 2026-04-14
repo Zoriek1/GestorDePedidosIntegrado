@@ -19,7 +19,7 @@ import {
   Stack
 } from '@mui/material';
 import { Add, Delete, Save } from '@mui/icons-material';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
 import { useTaxaEntregaConfig } from '../hooks/useConfig';
 import { TaxaEntregaConfig } from '../services/configService';
 import { Loading } from '../../../components/common/Loading';
@@ -29,7 +29,7 @@ export function TaxaEntregaSettings() {
   const { config, isLoading, error, updateConfig, isUpdating } = useTaxaEntregaConfig();
   const { success, error: showError } = useToast();
 
-  const { control, handleSubmit, watch, reset } = useForm<TaxaEntregaConfig>({
+  const { control, handleSubmit, reset } = useForm<TaxaEntregaConfig>({
     defaultValues: {
       tipo: 'faixas',
       faixas: [],
@@ -52,7 +52,7 @@ export function TaxaEntregaSettings() {
     }
   }, [config, reset]);
 
-  const tipo = watch("tipo");
+  const tipo = useWatch({ control, name: "tipo" });
 
   const onSubmit = async (data: TaxaEntregaConfig) => {
     try {

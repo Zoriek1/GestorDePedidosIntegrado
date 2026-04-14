@@ -435,7 +435,7 @@ def create_admin_command(email, password, name):
         except click.ClickException:
             raise
         except Exception as e:
-            raise click.ClickException(f"Erro ao criar admin: {e}")
+            raise click.ClickException(f"Erro ao criar admin: {e}") from e
 
 
 # Registrar comandos no Flask CLI

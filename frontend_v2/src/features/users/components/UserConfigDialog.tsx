@@ -10,7 +10,6 @@ import {
   Stack,
   Typography,
   Divider,
-  IconButton,
   Table,
   TableHead,
   TableRow,
@@ -21,7 +20,6 @@ import {
   Box,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import {
   useUserConfig,
   useUpdatePayroll,

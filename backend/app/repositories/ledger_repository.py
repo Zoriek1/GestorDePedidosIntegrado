@@ -5,7 +5,7 @@ LedgerRepository — CRUD e queries do ledger de recebíveis
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 
 from app import db
 from app.models.ledger_entry import LedgerEntry
@@ -48,7 +48,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         Retorna saldo devedor separando:
         - confirmed_credits: créditos já confirmados (recebidos)
         - overdue_credits: pendentes com due_date < hoje (atrasados)
-        - pending_credits: pendentes com due_date >= hoje ou sem due_date (futuros)
+        - pending_credits: pendentes do dia (due_date == hoje) ou sem due_date
         - total_debits: débitos (pagamentos realizados)
         - balance: total_credits - total_debits
         """
@@ -76,14 +76,14 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             .scalar()
         )
 
-        # Pendente futuro: due_date >= hoje ou sem due_date
+        # Pendente do dia: due_date == hoje ou sem due_date
         pending_credits = (
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
                 LedgerEntry.user_id == user_id,
                 LedgerEntry.type == "CREDIT",
                 LedgerEntry.status == "pendente",
-                or_(LedgerEntry.due_date >= today, LedgerEntry.due_date.is_(None)),
+                (LedgerEntry.due_date == today) | (LedgerEntry.due_date.is_(None)),
             )
             .scalar()
         )

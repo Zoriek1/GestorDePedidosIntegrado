@@ -330,7 +330,17 @@ class TestLedgerOperations:
             status="pendente",
             created_by=admin.id,
         )
-        session.add_all([e1, e2, e3])
+        e4 = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="fixo_mensal",
+            amount=200.0,
+            week_ref=week_ref,
+            due_date=today + timedelta(days=2),
+            status="pendente",
+            created_by=admin.id,
+        )
+        session.add_all([e1, e2, e3, e4])
         session.commit()
 
         resp = client.get("/api/ledger/pending", headers=auth_headers(token))
@@ -340,7 +350,34 @@ class TestLedgerOperations:
 
         assert "fixo_semanal" in categories
         assert "almoco" in categories
+        assert "fixo_mensal" in categories
         assert "transporte" not in categories
+
+    def test_balance_nao_soma_creditos_pendentes_futuros(self, client, session):
+        """Saldo não deve incluir pendentes com due_date no futuro."""
+        admin = make_user(session, "adminbal@test.com", "pass1234", role="admin", name="AdminBal")
+        vendedor = make_user(session, "vendbal@test.com", "pass1234", role="vendedor")
+        token = generate_token(vendedor)
+
+        today = date.today()
+        entry = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="fixo_semanal",
+            amount=500.0,
+            week_ref=today,
+            due_date=today + timedelta(days=2),
+            status="pendente",
+            created_by=admin.id,
+        )
+        session.add(entry)
+        session.commit()
+
+        resp = client.get("/api/ledger/balance", headers=auth_headers(token))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["pending_credits"] == pytest.approx(0.0, abs=0.01)
+        assert body["overdue_credits"] == pytest.approx(0.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

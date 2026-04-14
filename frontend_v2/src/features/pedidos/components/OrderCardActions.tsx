@@ -11,7 +11,7 @@ import { usePedidoPrintService } from '../services/PedidoPrintService';
 function hasPermission(role: string | null, permission: string): boolean {
   if (!role) return false;
   if (role === 'admin') return true;
-  if (role === 'atendente') {
+  if (role === 'atendente' || role === 'vendedor') {
     return ['pedidos:create', 'pedidos:update', 'pedidos:view'].includes(permission);
   }
   if (role === 'entregador') {

@@ -68,6 +68,9 @@ export const pedidoFormSchema = z.object({
   /** ID da fonte do pedido (opcional) */
   fonte_pedido_id: z.number().optional(),
 
+  /** ID do vendedor responsável (opcional, só admin pode definir) */
+  vendedor_id: z.number().optional(),
+
   /** Código de rastreio vindo da mensagem do WhatsApp (opcional) */
   codigo_whatsapp: z.string().max(64, 'Código do WhatsApp deve ter no máximo 64 caracteres').optional(),
 
@@ -237,6 +240,7 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   telefone_cliente: '',
   cliente_id: undefined,
   fonte_pedido_id: undefined,
+  vendedor_id: undefined,
   codigo_whatsapp: '',
   tipo_pedido: 'Entrega',
   destinatario: '',
@@ -390,6 +394,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     observacoes: observacoesFinal,
     quantidade: formData.quantidade ?? 1,
     fonte_pedido_id: formData.fonte_pedido_id || undefined,
+    vendedor_id: formData.vendedor_id || undefined,
     codigo_whatsapp: formData.codigo_whatsapp?.trim()
       ? formData.codigo_whatsapp.trim().toUpperCase()
       : undefined,
@@ -411,6 +416,7 @@ export const step1Schema = z.object({
   telefone_cliente: pedidoFormSchema.shape.telefone_cliente,
   cliente_id: pedidoFormSchema.shape.cliente_id,
   fonte_pedido_id: pedidoFormSchema.shape.fonte_pedido_id,
+  vendedor_id: pedidoFormSchema.shape.vendedor_id,
   codigo_whatsapp: pedidoFormSchema.shape.codigo_whatsapp,
   origem_anuncio: pedidoFormSchema.shape.origem_anuncio,
   fbclid: pedidoFormSchema.shape.fbclid,

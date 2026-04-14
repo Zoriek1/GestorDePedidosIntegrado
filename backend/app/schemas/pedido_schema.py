@@ -171,6 +171,7 @@ class PedidoUpdateSchema(Schema):
     frete_liquido_cliente = fields.Float(allow_none=True)
     coords_lat = fields.Float(allow_none=True)
     coords_lon = fields.Float(allow_none=True)
+    vendedor_id = fields.Int(allow_none=True)
 
     @validates("horario")
     def validate_horario(self, value, **kwargs):

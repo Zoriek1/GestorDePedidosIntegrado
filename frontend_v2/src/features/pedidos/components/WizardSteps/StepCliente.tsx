@@ -25,6 +25,8 @@ import { useCustomerSearch } from '../../../../api/endpoints/customers';
 import { useFontesPedido } from '../../../../api/endpoints/fontes';
 import type { Customer } from '../../../../api/endpoints/customers';
 import type { PedidoFormData } from '../../schemas';
+import { useAuth } from '../../../auth/authStore';
+import { useUsers } from '../../../users/services/userApi';
 import {
   FormControl,
   InputLabel,
@@ -49,6 +51,11 @@ export function StepCliente() {
     watch,
     formState: { errors },
   } = useFormContext<PedidoFormData>();
+
+  const { getUserRole } = useAuth();
+  const isAdmin = getUserRole() === 'admin';
+  const { data: usersData } = useUsers();
+  const vendedores = (usersData ?? []).filter((u) => u.role === 'vendedor' && u.is_active);
 
   const origemAnuncio = useWatch({ control, name: 'origem_anuncio' });
 
@@ -403,6 +410,34 @@ export function StepCliente() {
             </FormControl>
           )}
         />
+
+        {/* Vendedor Responsável (apenas admin) */}
+        {isAdmin && vendedores.length > 0 && (
+          <Controller
+            name="vendedor_id"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth>
+                <InputLabel>Vendedor Responsável (Opcional)</InputLabel>
+                <Select
+                  {...field}
+                  label="Vendedor Responsável (Opcional)"
+                  value={field.value ?? ''}
+                  onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                >
+                  <MenuItem value="">
+                    <em>Não atribuído</em>
+                  </MenuItem>
+                  {vendedores.map((v) => (
+                    <MenuItem key={v.id} value={v.id}>
+                      {v.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          />
+        )}
 
         {/* Origem: anúncio Meta Ads */}
         <Controller

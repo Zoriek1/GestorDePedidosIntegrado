@@ -435,7 +435,7 @@ def daily_freight():
 
 
 @pedidos_bp.route("", methods=["POST"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def criar_pedido():
     """
     Cria novo pedido via API (usado pelo PWA)
@@ -610,6 +610,19 @@ def criar_pedido():
             if fonte:
                 fonte_pedido_id_int = fonte.id
 
+        # Determinar vendedor_id:
+        # - vendedor JWT: auto-atribuir o próprio ID
+        # - admin: aceitar vendedor_id do body (opcional)
+        current_user = getattr(request, "current_user", None)
+        vendedor_id_final = None
+        if current_user and current_user.get("role") == "vendedor":
+            vendedor_id_final = current_user.get("user_id")
+        elif current_user and current_user.get("role") == "admin":
+            try:
+                vendedor_id_final = int(data["vendedor_id"]) if data.get("vendedor_id") else None
+            except (ValueError, TypeError):
+                vendedor_id_final = None
+
         # Criar pedido
         pedido = Pedido(
             cliente=cliente if cliente else None,
@@ -639,6 +652,7 @@ def criar_pedido():
             cliente_id=cliente_id_int,
             fbc=fbc,
             fbp=fbp,
+            vendedor_id=vendedor_id_final,
         )
 
         db.session.add(pedido)
@@ -713,7 +727,7 @@ def criar_pedido():
 
 
 @pedidos_bp.route("/<int:pedido_id>", methods=["PUT"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def atualizar_pedido(pedido_id):
     """
     Atualiza dados completos do pedido
@@ -840,6 +854,17 @@ def atualizar_pedido(pedido_id):
             new_fbp = _clean_str(data["fbp"]) or None
             track_change("fbp", pedido.fbp, new_fbp)
             pedido.fbp = new_fbp
+
+        # Vendedor: admin pode reatribuir; vendedor vincula a si mesmo se ainda sem vendedor
+        current_user = getattr(request, "current_user", None)
+        if current_user:
+            if current_user.get("role") == "admin" and "vendedor_id" in data:
+                try:
+                    pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
+                except (ValueError, TypeError):
+                    pass
+            elif current_user.get("role") == "vendedor" and pedido.vendedor_id is None:
+                pedido.vendedor_id = current_user.get("user_id")
 
         pedido.updated_at = datetime_now_brazil()
 

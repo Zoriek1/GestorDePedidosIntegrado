@@ -214,6 +214,17 @@ PERMISSIONS = {
         "vendas:view",
         "fontes:view",
     ],
+    "vendedor": [
+        "pedidos:create",
+        "pedidos:update",
+        "pedidos:view",
+        "pedidos:update_status",
+        "clientes:view",
+        "clientes:create",
+        "clientes:update",
+        "vendas:view",
+        "fontes:view",
+    ],
     "entregador": [
         "pedidos:view",
         "pedidos:update_status",

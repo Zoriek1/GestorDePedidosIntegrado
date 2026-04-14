@@ -52,10 +52,10 @@ export function StepPagamento() {
   const cidade = useWatch({ control, name: 'cidade' });
   const statusPagamento = useWatch({ control, name: 'status_pagamento' });
 
-  // Calcula o total
+  // Calcula o valor líquido (valor do pedido menos frete)
   const valorFloat = parseCurrencyToFloat(valorProduto) || 0;
   const taxaFloat = parseCurrencyToFloat(taxaEntrega) || 0;
-  const total = valorFloat + taxaFloat;
+  const valorLiquido = valorFloat - taxaFloat;
 
   // Componente de Resumo
   const ResumoContent = (
@@ -158,10 +158,10 @@ export function StepPagamento() {
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
           <Typography variant="subtitle1" fontWeight="bold" color="primary.main">
-            TOTAL:
+            Valor Líquido:
           </Typography>
           <Typography variant="subtitle1" fontWeight="bold" color="primary.main">
-            {formatCurrency(total)}
+            {formatCurrency(valorLiquido)}
           </Typography>
         </Box>
 

@@ -196,10 +196,11 @@ export async function request<T = unknown>(
         ? (errorData.error || errorData.message || `Erro ${response.status}`)
         : `Erro ${response.status}`;
 
-      // Notificar listeners de auth inválida (401/403)
+      // Notificar listeners de auth inválida (apenas 401 = token expirado/inválido)
+      // 403 = acesso negado por papel insuficiente — NÃO deslogar, o token é válido.
       // Só forçar logout se há JWT ativo — usuários legados (Basic Auth) não devem
       // ser deslogados por rotas JWT-only retornarem 401.
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         try {
           const hasJwt = !!sessionStorage.getItem('puf_jwt');
           if (hasJwt) {

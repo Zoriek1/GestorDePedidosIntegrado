@@ -18,12 +18,17 @@ import {
   Chip,
   CircularProgress,
   Box,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
   useUserConfig,
   useUpdatePayroll,
   useUpdateCommission,
+  useDeletePayroll,
+  useDeleteCommission,
   PayrollConfig,
 } from '../services/userApi';
 import { useToast } from '../../../components/system/useToast';
@@ -56,6 +61,8 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
   const configQuery = useUserConfig(userId);
   const updatePayroll = useUpdatePayroll(userId);
   const updateCommission = useUpdateCommission(userId);
+  const deletePayroll = useDeletePayroll(userId);
+  const deleteCommission = useDeleteCommission(userId);
 
   // Estado local de edição de payroll
   const [newPayroll, setNewPayroll] = useState<Partial<PayrollConfig>>({
@@ -125,6 +132,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                     <TableCell>Valor</TableCell>
                     <TableCell>Frequência</TableCell>
                     <TableCell>Dia Pgto</TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -149,6 +157,18 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                           {p.frequency === 'semanal' && p.payment_day != null
                             ? ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][p.payment_day]
                             : '—'}
+                        </TableCell>
+                        <TableCell padding="none">
+                          <Tooltip title="Remover">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => deletePayroll.mutate(p.id)}
+                              disabled={deletePayroll.isPending}
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         </TableCell>
                       </TableRow>
                     ))
@@ -237,6 +257,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                     <TableCell>Fonte</TableCell>
                     <TableCell>Taxa</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -261,6 +282,18 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                           ) : (
                             <Chip label="Ativo" size="small" color="success" />
                           )}
+                        </TableCell>
+                        <TableCell padding="none">
+                          <Tooltip title="Remover">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => deleteCommission.mutate(c.id)}
+                              disabled={deleteCommission.isPending}
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         </TableCell>
                       </TableRow>
                     ))

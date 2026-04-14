@@ -174,6 +174,21 @@ def update_payroll(user_id):
 
 
 # ---------------------------------------------------------------------------
+# DELETE /api/users/<id>/payroll/<config_id> — remove config de remuneração
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>/payroll/<int:config_id>", methods=["DELETE"])
+@require_auth(roles=["admin"])
+def delete_payroll(user_id, config_id):
+    try:
+        ok = user_repo.deactivate_payroll_config(config_id)
+        if not ok:
+            return error_response("Config não encontrada", 404)
+        return success_response({}, message="Remuneração removida")
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
 # PUT /api/users/<id>/commission — configura comissões
 # ---------------------------------------------------------------------------
 @users_bp.route("/<int:user_id>/commission", methods=["PUT"])
@@ -207,5 +222,20 @@ def update_commission(user_id):
             results.append(cfg.to_dict())
 
         return success_response({"commission": results})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/users/<id>/commission/<config_id> — remove comissão
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>/commission/<int:config_id>", methods=["DELETE"])
+@require_auth(roles=["admin"])
+def delete_commission(user_id, config_id):
+    try:
+        ok = user_repo.deactivate_commission_config(config_id)
+        if not ok:
+            return error_response("Config não encontrada", 404)
+        return success_response({}, message="Comissão removida")
     except Exception as e:
         return error_response(str(e), 500)

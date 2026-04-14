@@ -4,7 +4,7 @@ from datetime import date
 
 from flask import Blueprint, jsonify, request
 
-from app.middleware import requires_auth, requires_edit_auth
+from app.middleware import requires_edit_auth
 from app.services.taxa_entrega import taxa_entrega_service
 
 config_bp = Blueprint("config", __name__, url_prefix="/api/config")
@@ -33,7 +33,7 @@ def _save_meta_faturamento(data: dict) -> None:
 
 
 @config_bp.route("/taxa-entrega", methods=["GET"])
-@requires_auth
+@requires_edit_auth
 def get_taxa_entrega_config():
     """Retorna a configuração atual da taxa de entrega"""
     try:
@@ -77,7 +77,7 @@ def update_taxa_entrega_config():
 
 
 @config_bp.route("/meta-faturamento", methods=["GET"])
-@requires_auth
+@requires_edit_auth
 def get_meta_faturamento():
     """Retorna a meta de faturamento para um mês (YYYY-MM)."""
     try:

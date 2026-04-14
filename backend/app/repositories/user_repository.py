@@ -52,12 +52,14 @@ class UserRepository(BaseRepository[User]):
             for cfg in existing:
                 cfg.is_active = False
 
+        payment_day = data.get("payment_day")
         new_cfg = PayrollConfig(
             user_id=user_id,
             category=data.get("category", "custom"),
             label=data.get("label", ""),
             amount=float(data.get("amount", 0)),
             frequency=data.get("frequency", "semanal"),
+            payment_day=int(payment_day) if payment_day is not None else None,
             is_active=True,
         )
         db.session.add(new_cfg)

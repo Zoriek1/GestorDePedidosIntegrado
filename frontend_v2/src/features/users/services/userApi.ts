@@ -122,6 +122,18 @@ export function useUpdateUser(userId: number) {
   });
 }
 
+export function useDeleteCommission(userId: number) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (configId: number) => {
+      const res = await api(`/users/${userId}/commission/${configId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((res as { message: string }).message);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-config', userId] }),
+  });
+}
+
 export function useDeleteUser(userId: number) {
   const api = useApi();
   const qc = useQueryClient();
@@ -143,6 +155,18 @@ export function useUpdatePayroll(userId: number) {
         method: 'PUT',
         body: JSON.stringify(configs),
       });
+      if (!res.ok) throw new Error((res as { message: string }).message);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-config', userId] }),
+  });
+}
+
+export function useDeletePayroll(userId: number) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (configId: number) => {
+      const res = await api(`/users/${userId}/payroll/${configId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['user-config', userId] }),

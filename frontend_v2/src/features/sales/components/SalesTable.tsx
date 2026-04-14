@@ -13,6 +13,9 @@ import type { Pedido } from '../../../api/endpoints/pedidos';
 import { calcularValorBrutoPedido } from '../utils/valorEfetivo';
 import dayjs from 'dayjs';
 import 'dayjs/locale/pt-br';
+import { useUsers } from '../../users/services/userApi';
+import { useAuth } from '../../auth/authStore';
+import { formatOrderSourceLabel } from '../../pedidos/utils/sourceLabel';
 
 // Configurar locale pt-br para dayjs
 dayjs.locale('pt-br');
@@ -22,6 +25,18 @@ interface SalesTableProps {
 }
 
 export function SalesTable({ vendas }: SalesTableProps) {
+  const { getUserRole, getUser } = useAuth();
+  const { data: users } = useUsers(getUserRole() === 'admin');
+  const currentUser = getUser();
+
+  const sellerNameById: Record<number, string> = {};
+  (users || []).forEach((user) => {
+    sellerNameById[user.id] = user.name;
+  });
+  if (currentUser?.id && currentUser?.name) {
+    sellerNameById[currentUser.id] = currentUser.name;
+  }
+
   const formatDate = (iso?: string) => {
     if (!iso) return '—';
     // Formatar data de criação em pt-BR
@@ -59,6 +74,12 @@ export function SalesTable({ vendas }: SalesTableProps) {
           ) : (
             vendas.map((venda) => {
               const valorBruto = calcularValorBrutoPedido(venda);
+              const sourceLabel = formatOrderSourceLabel({
+                sourceName: venda.fonte_pedido_nome,
+                legacySource: venda.fonte_pedido,
+                vendedorId: venda.vendedor_id,
+                vendedorName: venda.vendedor_id ? sellerNameById[venda.vendedor_id] : undefined,
+              });
               
               return (
                 <TableRow key={venda.id} hover>
@@ -77,7 +98,7 @@ export function SalesTable({ vendas }: SalesTableProps) {
                   <TableCell>{venda.produto}</TableCell>
                   <TableCell>
                     <Chip 
-                      label={venda.fonte_pedido_nome || venda.fonte_pedido || 'Sem fonte'} 
+                      label={sourceLabel}
                       size="small" 
                       color="primary" 
                       variant="outlined"

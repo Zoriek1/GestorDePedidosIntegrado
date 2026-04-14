@@ -8,6 +8,8 @@ import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import { OrderCard } from './OrderCard';
 import { groupOrdersByDate } from '../utils/dateGrouping';
+import { useUsers } from '../../users/services/userApi';
+import { useAuth } from '../../auth/authStore';
 
 interface OrderListProps {
   pedidos: Pedido[];
@@ -18,6 +20,22 @@ interface OrderListProps {
 }
 
 export function OrderList({ pedidos, onOrderClick, selectionMode = false, selectedIds, onToggleSelect }: OrderListProps) {
+  const { getUserRole, getUser } = useAuth();
+  const userRole = getUserRole();
+  const currentUser = getUser();
+  const { data: users } = useUsers(userRole === 'admin');
+
+  const sellerNameById = useMemo<Record<number, string>>(() => {
+    const map: Record<number, string> = {};
+    (users || []).forEach((user) => {
+      map[user.id] = user.name;
+    });
+    if (currentUser?.id && currentUser?.name) {
+      map[currentUser.id] = currentUser.name;
+    }
+    return map;
+  }, [users, currentUser]);
+
   // Filtrar pedidos deletados (segurança extra)
   const pedidosValidos = pedidos.filter(p => !p.deleted_at);
   
@@ -154,6 +172,7 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
                   <Grid size={{ xs: 12, sm: 6, md: 4 }} key={pedido.id}>
                     <OrderCard
                       pedido={pedido}
+                      sellerNameById={sellerNameById}
                       onClick={onOrderClick ? () => onOrderClick(pedido) : undefined}
                       selectable={selectionMode}
                       selected={selectedIds ? selectedIds.has(pedido.id) : false}

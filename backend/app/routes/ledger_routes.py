@@ -182,8 +182,14 @@ def get_pedidos_atribuidos():
     Filtros opcionais: ?from=YYYY-MM-DD&to=YYYY-MM-DD
     """
     try:
-        from app.models.ledger_entry import LedgerEntry
         from app.models.pedido import Pedido
+        from app.services.commission_service import (
+            get_due_date_for_commission,
+            get_monday,
+            map_fonte_to_source,
+        )
+        from sqlalchemy import func
+
         from app.repositories.user_repository import UserRepository
 
         user_id, err = _resolve_user_id()
@@ -193,55 +199,70 @@ def get_pedidos_atribuidos():
         from_date = _parse_date(request.args.get("from", ""))
         to_date = _parse_date(request.args.get("to", ""))
 
-        # Buscar entries que têm pedido_id (comissões)
-        query = LedgerEntry.query.filter(
-            LedgerEntry.user_id == user_id,
-            LedgerEntry.type == "CREDIT",
-            LedgerEntry.pedido_id.isnot(None),
-            LedgerEntry.category.like("comissao_%"),
+        # Buscar pedidos atribuídos ao vendedor (inclui ocultos; exclui cancelados/deletados)
+        query = Pedido.query.filter(
+            Pedido.vendedor_id == user_id,
+            Pedido.deleted_at.is_(None),
+            func.lower(func.trim(Pedido.status)) != "cancelado",
         )
         if from_date:
-            query = query.filter(LedgerEntry.week_ref >= from_date)
+            query = query.filter(Pedido.dia_entrega >= from_date)
         if to_date:
-            query = query.filter(LedgerEntry.week_ref <= to_date)
+            query = query.filter(Pedido.dia_entrega <= to_date)
 
-        entries = query.order_by(LedgerEntry.due_date.asc().nullslast(), LedgerEntry.week_ref.desc()).all()
+        pedidos = query.order_by(Pedido.dia_entrega.desc(), Pedido.id.desc()).all()
 
-        # Buscar rate de comissão por categoria para exibição
+        # Buscar taxa de comissão por source para cálculo em tempo real
         user_repo = UserRepository()
-        commission_configs = {
-            c.source: c.rate
-            for c in user_repo.get_commission_configs(user_id)
-        }
+        commission_configs = {c.source: c.rate for c in user_repo.get_commission_configs(user_id)}
+
+        payroll_configs = user_repo.get_payroll_configs(user_id)
+        semanal_config = next(
+            (cfg for cfg in payroll_configs if cfg.frequency == "semanal" and cfg.payment_day is not None),
+            None,
+        )
 
         result = []
-        for entry in entries:
-            pedido = Pedido.query.get(entry.pedido_id)
-            if not pedido:
-                continue
+        for pedido in pedidos:
+            fonte_nome = ""
+            if pedido.fonte_pedido_rel:
+                fonte_nome = pedido.fonte_pedido_rel.nome or ""
+            elif pedido.fonte_pedido:
+                fonte_nome = pedido.fonte_pedido or ""
 
-            source = entry.category.replace("comissao_", "") if entry.category else ""
-            rate = commission_configs.get(source)
+            source = map_fonte_to_source(fonte_nome)
+            rate = commission_configs.get(source) if source else None
 
-            # Parse valor do pedido
             valor_pedido = None
             try:
                 valor_pedido = pedido.total_pago()
             except Exception:
-                pass
+                valor_pedido = None
+
+            commission_amount = 0.0
+            if rate is not None and valor_pedido is not None and valor_pedido > 0:
+                commission_amount = round(float(valor_pedido) * float(rate), 2)
+
+            week_ref = get_monday(pedido.dia_entrega) if pedido.dia_entrega else None
+            due_date = None
+            if pedido.dia_entrega and semanal_config is not None:
+                due_date = get_due_date_for_commission(pedido.dia_entrega, semanal_config.payment_day)
+
+            status_pagamento = (pedido.status_pagamento or "").strip().lower()
+            status = "confirmado" if status_pagamento == "pago" else "pendente"
 
             result.append({
-                "entry_id": entry.id,
-                "pedido_id": entry.pedido_id,
+                "entry_id": pedido.id,
+                "pedido_id": pedido.id,
                 "cliente": pedido.cliente,
                 "dia_entrega": pedido.dia_entrega.isoformat() if pedido.dia_entrega else None,
-                "week_ref": entry.week_ref.isoformat() if entry.week_ref else None,
-                "due_date": entry.due_date.isoformat() if entry.due_date else None,
+                "week_ref": week_ref.isoformat() if week_ref else None,
+                "due_date": due_date.isoformat() if due_date else None,
                 "valor_pedido": round(float(valor_pedido), 2) if valor_pedido is not None else None,
                 "fonte": source,
                 "rate": round(rate * 100, 1) if rate is not None else None,
-                "commission_amount": round(float(entry.amount), 2),
-                "status": entry.status,
+                "commission_amount": commission_amount,
+                "status": status,
             })
 
         return success_response({"pedidos": result, "total": len(result)})

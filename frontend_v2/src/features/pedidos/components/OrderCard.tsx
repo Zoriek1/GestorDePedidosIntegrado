@@ -53,16 +53,25 @@ import { usePedidoPrintService } from '../services/PedidoPrintService';
 import { useConfirm } from '../../../components/system/useConfirm';
 import { useDeletePedido } from '../../../api/endpoints/pedidos';
 import dayjs from 'dayjs';
+import { formatOrderSourceLabel } from '../utils/sourceLabel';
 
 interface OrderCardProps {
   pedido: Pedido;
+  sellerNameById?: Record<number, string>;
   onClick?: () => void;
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (pedido: Pedido) => void;
 }
 
-export function OrderCard({ pedido, onClick, selectable = false, selected = false, onToggleSelect }: OrderCardProps) {
+export function OrderCard({
+  pedido,
+  sellerNameById,
+  onClick,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}: OrderCardProps) {
   const navigate = useNavigate();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const statusColor = getStatusColor(pedido.status);
@@ -84,6 +93,12 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
 
   const paymentStatus = getPaymentStatusLabel(pedido.status_pagamento);
   const paymentStatusColor = getPaymentStatusColor(pedido.status_pagamento);
+  const sourceLabel = formatOrderSourceLabel({
+    sourceName: pedido.fonte_pedido_nome,
+    legacySource: pedido.fonte_pedido,
+    vendedorId: pedido.vendedor_id,
+    vendedorName: pedido.vendedor_id ? sellerNameById?.[pedido.vendedor_id] : undefined,
+  });
 
   const handleCalcularDistancia = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -399,9 +414,9 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
             <Typography variant="body2" color="text.secondary">
               {formatDateBR(pedido.dia_entrega)} às {pedido.horario}
             </Typography>
-            {pedido.fonte_pedido_nome && (
+            {(pedido.fonte_pedido_nome || pedido.fonte_pedido) && (
               <Chip 
-                label={pedido.fonte_pedido_nome} 
+                label={sourceLabel}
                 size="small" 
                 variant="outlined"
               />

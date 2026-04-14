@@ -469,6 +469,41 @@ class TestCommission:
             session.commit()
         session.rollback()
 
+    def test_ledger_pedidos_retorna_pedidos_atribuidos_sem_entry(self, client, session):
+        """GET /api/ledger/pedidos usa pedidos com vendedor_id, sem depender de ledger_entry."""
+        vendedor = self._setup_vendedor_com_comissao(session, "comv5@test.com", rate=0.03)
+        self._make_pedido_whatsapp(session, vendedor.id, valor="R$ 100,00")
+
+        token = generate_token(vendedor)
+        resp = client.get("/api/ledger/pedidos", headers=auth_headers(token))
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["total"] == 1
+        assert len(body["pedidos"]) == 1
+        pedido_row = body["pedidos"][0]
+        assert pedido_row["fonte"] == "whatsapp"
+        assert pedido_row["rate"] == 3.0
+        assert pedido_row["commission_amount"] == pytest.approx(3.0, abs=0.01)
+        assert pedido_row["status"] == "pendente"
+
+    def test_ledger_pedidos_sem_config_retorna_comissao_zero(self, client, session):
+        """Sem config de comissão, o pedido atribuído ainda aparece com comissão zero."""
+        vendedor = make_user(session, "comv6@test.com", "pass1234", role="vendedor")
+        self._make_pedido_whatsapp(session, vendedor.id, valor="R$ 100,00")
+
+        token = generate_token(vendedor)
+        resp = client.get("/api/ledger/pedidos", headers=auth_headers(token))
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["total"] == 1
+        pedido_row = body["pedidos"][0]
+        assert pedido_row["rate"] is None
+        assert pedido_row["commission_amount"] == 0.0
+
 
 # ---------------------------------------------------------------------------
 # 5. Créditos Semanais Fixos

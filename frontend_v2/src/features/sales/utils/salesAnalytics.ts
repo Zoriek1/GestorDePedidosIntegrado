@@ -8,6 +8,7 @@ import {
   calcularValorEfetivoComFrete,
   calcularValorRecebidoPedido,
 } from './valorEfetivo';
+import { formatOrderSourceLabel } from '../../pedidos/utils/sourceLabel';
 
 export interface SalesTotals {
   quantidade: number;
@@ -72,8 +73,12 @@ export function agruparPorCanal(vendas: Pedido[]): ChannelShareItem[] {
   const total = vendas.reduce((sum, venda) => sum + calcularValorEfetivoComFrete(venda), 0);
 
   vendas.forEach((venda) => {
-    const canalRaw = venda.fonte_pedido_nome || venda.fonte_pedido || 'Sem canal';
-    const canal = canalRaw.trim();
+    const canal = formatOrderSourceLabel({
+      sourceName: venda.fonte_pedido_nome,
+      legacySource: venda.fonte_pedido,
+      vendedorId: venda.vendedor_id,
+      emptyLabel: 'Sem canal',
+    }).trim();
     mapa.set(canal, (mapa.get(canal) || 0) + calcularValorEfetivoComFrete(venda));
   });
 

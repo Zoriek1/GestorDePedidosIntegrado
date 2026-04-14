@@ -24,6 +24,8 @@ import { usePedidoPrintService } from './services/PedidoPrintService';
 import { getStatusColor, getStatusLabel } from './useCases/orderMapping';
 import { buildEncaminharMensagem } from './components/OrderCardHelpers';
 import { copyToClipboard } from '../../lib/utils/clipboard';
+import { formatOrderSourceLabel } from './utils/sourceLabel';
+import { useUsers } from '../users/services/userApi';
 import PersonIcon from '@mui/icons-material/Person';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
@@ -38,10 +40,22 @@ export default function OrderDetailsPage() {
   const { success, error: showError } = useToast();
   const deletePedido = useDeletePedido();
   const confirm = useConfirm();
-  const { getCredentials } = useAuth();
+  const { getCredentials, getUserRole, getUser } = useAuth();
   const printService = usePedidoPrintService();
+  const { data: users } = useUsers(getUserRole() === 'admin');
 
   const pedido = data?.pedido;
+  const currentUser = getUser();
+  const sellerNameById = useMemo<Record<number, string>>(() => {
+    const map: Record<number, string> = {};
+    (users || []).forEach((user) => {
+      map[user.id] = user.name;
+    });
+    if (currentUser?.id && currentUser?.name) {
+      map[currentUser.id] = currentUser.name;
+    }
+    return map;
+  }, [users, currentUser]);
 
   const renderRow = (label: string, value?: string | number | null) => {
     if (value === undefined || value === null || value === '') return null;
@@ -114,6 +128,12 @@ export default function OrderDetailsPage() {
   const valorTotal = pedido.valor ? formatBRL(pedido.valor) : 'R$ 0,00';
   const entregaData = pedido.dia_entrega ? dayjs(pedido.dia_entrega).format('DD/MM/YYYY') : '-';
   const entregaHora = pedido.horario || '-';
+  const sourceLabel = formatOrderSourceLabel({
+    sourceName: pedido.fonte_pedido_nome,
+    legacySource: pedido.fonte_pedido,
+    vendedorId: pedido.vendedor_id,
+    vendedorName: pedido.vendedor_id ? sellerNameById[pedido.vendedor_id] : undefined,
+  });
 
   return (
     <Box>
@@ -132,7 +152,9 @@ export default function OrderDetailsPage() {
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Chip label={statusLabel} color={statusColor} />
             {pedido.tipo_pedido && <Chip label={pedido.tipo_pedido} variant="outlined" />}
-            {pedido.fonte_pedido_nome && <Chip label={`Fonte: ${pedido.fonte_pedido_nome}`} variant="outlined" />}
+            {(pedido.fonte_pedido_nome || pedido.fonte_pedido) && (
+              <Chip label={`Fonte: ${sourceLabel}`} variant="outlined" />
+            )}
           </Stack>
         </Stack>
         <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end">
@@ -204,7 +226,7 @@ export default function OrderDetailsPage() {
               {renderRow('Nome', pedido.cliente)}
               {renderRow('Telefone', pedido.telefone_cliente)}
               {renderRow('Destinatário', pedido.destinatario)}
-              {renderRow('Fonte do Pedido', pedido.fonte_pedido_nome || pedido.fonte_pedido)}
+              {renderRow('Fonte do Pedido', sourceLabel)}
             </Stack>
           </Paper>
         </Grid>

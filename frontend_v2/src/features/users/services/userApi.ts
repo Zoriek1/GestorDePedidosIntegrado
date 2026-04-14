@@ -25,6 +25,7 @@ export interface PayrollConfig {
   label: string;
   amount: number;
   frequency: 'semanal' | 'mensal';
+  payment_day: number | null; // 0=Seg...6=Dom; só para semanal
   is_active: boolean;
   created_at: string;
 }

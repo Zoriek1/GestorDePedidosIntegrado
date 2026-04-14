@@ -63,6 +63,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
     label: 'Salário Semanal',
     amount: 0,
     frequency: 'semanal',
+    payment_day: 4, // Sexta por padrão
   });
 
   // Estado local de edição de commission
@@ -76,7 +77,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
     try {
       await updatePayroll.mutateAsync([newPayroll]);
       toast.success('Remuneração atualizada');
-      setNewPayroll({ category: 'fixo_semanal', label: 'Salário Semanal', amount: 0, frequency: 'semanal' });
+      setNewPayroll({ category: 'fixo_semanal', label: 'Salário Semanal', amount: 0, frequency: 'semanal', payment_day: 4 });
     } catch (e) {
       toast.error(`Erro: ${(e as Error).message}`);
     }
@@ -123,12 +124,13 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                     <TableCell>Descrição</TableCell>
                     <TableCell>Valor</TableCell>
                     <TableCell>Frequência</TableCell>
+                    <TableCell>Dia Pgto</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {payroll.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4}>
+                      <TableCell colSpan={5}>
                         <Typography variant="caption" color="text.secondary">
                           Nenhuma configuração ativa
                         </Typography>
@@ -143,6 +145,11 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                           {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.amount)}
                         </TableCell>
                         <TableCell>{p.frequency}</TableCell>
+                        <TableCell>
+                          {p.frequency === 'semanal' && p.payment_day != null
+                            ? ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][p.payment_day]
+                            : '—'}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -191,6 +198,20 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                   <MenuItem value="semanal">Semanal</MenuItem>
                   <MenuItem value="mensal">Mensal</MenuItem>
                 </TextField>
+                {newPayroll.frequency === 'semanal' && (
+                  <TextField
+                    select
+                    label="Dia de pagamento"
+                    value={newPayroll.payment_day ?? 4}
+                    onChange={(e) => setNewPayroll((p) => ({ ...p, payment_day: Number(e.target.value) }))}
+                    size="small"
+                    sx={{ minWidth: 140 }}
+                  >
+                    {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
+                      <MenuItem key={i} value={i}>{d}</MenuItem>
+                    ))}
+                  </TextField>
+                )}
                 <Button
                   variant="contained"
                   size="small"

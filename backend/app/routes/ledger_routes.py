@@ -168,6 +168,72 @@ def get_summary():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/ledger/pending — pagamentos pendentes de confirmação
+# ---------------------------------------------------------------------------
+@ledger_bp.route("/pending", methods=["GET"])
+@require_auth(roles=["admin", "vendedor"])
+def get_pending():
+    try:
+        user_id, err = _resolve_user_id()
+        if err:
+            return err
+
+        entries = ledger_repo.get_pending(user_id)
+        return success_response(
+            {"user_id": user_id, "entries": [e.to_dict() for e in entries]}
+        )
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/ledger/entries/<id>/confirm — funcionário confirma recebimento
+# ---------------------------------------------------------------------------
+@ledger_bp.route("/entries/<int:entry_id>/confirm", methods=["PUT"])
+@require_auth(roles=["admin", "vendedor"])
+def confirm_entry(entry_id: int):
+    try:
+        current = request.current_user
+        is_admin = current["role"] == "admin"
+        entry = ledger_repo.confirm_entry(
+            entry_id=entry_id,
+            user_id=current["user_id"],
+            is_admin=is_admin,
+        )
+        if entry is None:
+            return error_response("Lançamento não encontrado ou sem permissão", 404)
+        return success_response({"entry": entry.to_dict()})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/ledger/generate-calendar — gera calendário de créditos (admin)
+# ---------------------------------------------------------------------------
+@ledger_bp.route("/generate-calendar", methods=["POST"])
+@require_auth(roles=["admin"])
+def generate_calendar():
+    try:
+        data = request.get_json() or {}
+        current = request.current_user
+
+        n_weeks = int(data.get("n_weeks") or 4)
+        from_week_str = data.get("from_week")
+        from_week = _parse_date(from_week_str) or date.today()
+
+        result = ledger_service.generate_calendar(
+            n_weeks=n_weeks,
+            created_by=current["user_id"],
+            from_week=from_week,
+        )
+        return success_response(result, message=f"Calendário de {n_weeks} semanas gerado")
+    except ValueError as e:
+        return error_response(str(e), 400)
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/ledger/export — exporta extrato em CSV
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/export", methods=["GET"])

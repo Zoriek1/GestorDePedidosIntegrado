@@ -8,14 +8,27 @@ import {
   MenuItem,
   Divider,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Snackbar,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import AddIcon from '@mui/icons-material/Add';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { BalanceCard } from './components/BalanceCard';
 import { EntryList } from './components/EntryList';
+import { PendingPaymentsCard } from './components/PendingPaymentsCard';
 import { PaymentDialog } from './components/PaymentDialog';
 import { WeeklyGenerateBtn } from './components/WeeklyGenerateBtn';
-import { useLedgerBalance, useLedgerEntries, useLedgerSummary } from './services/ledgerApi';
+import {
+  useLedgerBalance,
+  useLedgerEntries,
+  useLedgerSummary,
+  useGenerateCalendar,
+} from './services/ledgerApi';
 import { useAuth } from '../auth/authStore';
 import { getApiBaseUrl } from '../../api/http';
 
@@ -32,6 +45,13 @@ export default function LedgerPage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  // Calendário modal
+  const [calendarDialogOpen, setCalendarDialogOpen] = useState(false);
+  const [calendarWeeks, setCalendarWeeks] = useState(4);
+  const [snackbarMsg, setSnackbarMsg] = useState('');
+
+  const generateCalendar = useGenerateCalendar();
 
   // Queries
   const balanceQuery = useLedgerBalance(selectedUserId);
@@ -54,10 +74,6 @@ export default function LedgerPage() {
     if (selectedUserId) params.set('user_id', String(selectedUserId));
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
-    const authHeader = getAuthHeader();
-    // O download precisa abrir com o token — usamos fetch para isso
-    const token = authHeader['Authorization']?.replace('Bearer ', '') ?? '';
-    void token; // usado no handler abaixo
     return `${base}/ledger/export?${params.toString()}`;
   };
 
@@ -73,6 +89,18 @@ export default function LedgerPage() {
       URL.revokeObjectURL(url);
     } catch {
       // silencioso
+    }
+  };
+
+  const handleGenerateCalendar = async () => {
+    try {
+      const result = await generateCalendar.mutateAsync({ nWeeks: calendarWeeks });
+      setCalendarDialogOpen(false);
+      setSnackbarMsg(
+        `Calendário gerado: ${result.total_created} lançamento(s) criado(s) em ${result.weeks.length} semanas.`
+      );
+    } catch (e) {
+      setSnackbarMsg(`Erro: ${(e as Error).message}`);
     }
   };
 
@@ -92,6 +120,16 @@ export default function LedgerPage() {
 
         <Stack direction="row" gap={1} flexWrap="wrap">
           {isAdmin && <WeeklyGenerateBtn />}
+          {isAdmin && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<CalendarMonthIcon />}
+              onClick={() => setCalendarDialogOpen(true)}
+            >
+              Calendário
+            </Button>
+          )}
           {isAdmin && activeUserId > 0 && (
             <Button
               variant="outlined"
@@ -136,12 +174,19 @@ export default function LedgerPage() {
 
       {/* Card de saldo */}
       {activeUserId > 0 && (
-        <Box mb={3}>
+        <Box mb={2}>
           <BalanceCard
             balance={balanceQuery.data}
             loading={balanceQuery.isLoading}
             userName={selectedUserName}
           />
+        </Box>
+      )}
+
+      {/* Pagamentos pendentes */}
+      {activeUserId > 0 && (
+        <Box mb={3}>
+          <PendingPaymentsCard userId={activeUserId} isAdmin={isAdmin} />
         </Box>
       )}
 
@@ -232,6 +277,44 @@ export default function LedgerPage() {
           userName={selectedUserName}
         />
       )}
+
+      {/* Dialog geração de calendário */}
+      <Dialog open={calendarDialogOpen} onClose={() => setCalendarDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Gerar Calendário de Recebíveis</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Gera lançamentos fixos semanais para todas as vendedoras ativas,
+            considerando o dia de pagamento configurado em cada item.
+          </DialogContentText>
+          <TextField
+            label="Número de semanas"
+            type="number"
+            value={calendarWeeks}
+            onChange={(e) => setCalendarWeeks(Math.max(1, Math.min(52, Number(e.target.value))))}
+            fullWidth
+            size="small"
+            inputProps={{ min: 1, max: 52 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCalendarDialogOpen(false)}>Cancelar</Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateCalendar}
+            disabled={generateCalendar.isPending}
+          >
+            Gerar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar de feedback */}
+      <Snackbar
+        open={!!snackbarMsg}
+        autoHideDuration={5000}
+        onClose={() => setSnackbarMsg('')}
+        message={snackbarMsg}
+      />
     </Box>
   );
 }

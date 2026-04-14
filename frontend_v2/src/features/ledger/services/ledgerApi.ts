@@ -17,6 +17,9 @@ export interface LedgerEntry {
   description: string;
   pedido_id: number | null;
   week_ref: string; // YYYY-MM-DD (segunda-feira)
+  due_date: string | null; // YYYY-MM-DD
+  status: 'pendente' | 'confirmado';
+  confirmed_at: string | null;
   created_at: string;
   created_by: number;
 }
@@ -24,6 +27,8 @@ export interface LedgerEntry {
 export interface LedgerBalance {
   user_id: number;
   total_credits: number;
+  confirmed_credits: number;
+  pending_credits: number;
   total_debits: number;
   balance: number;
 }
@@ -31,6 +36,8 @@ export interface LedgerBalance {
 export interface LedgerSummaryItem {
   user: { id: number; name: string; email: string; role: string };
   total_credits: number;
+  confirmed_credits: number;
+  pending_credits: number;
   total_debits: number;
   balance: number;
 }
@@ -103,6 +110,40 @@ export function useLedgerEntries(filters: EntriesFilters = {}) {
   });
 }
 
+/** Pagamentos pendentes de confirmação */
+export function usePendingPayments(userId?: number) {
+  const api = useApi();
+  return useQuery<LedgerEntry[]>({
+    queryKey: ['ledger-pending', userId],
+    queryFn: async () => {
+      const qs = userId ? `?user_id=${userId}` : '';
+      const res = await api<{ entries: LedgerEntry[] }>(`/ledger/pending${qs}`);
+      if (!res.ok) throw new Error(res.message);
+      return (res.data as { entries: LedgerEntry[] }).entries ?? [];
+    },
+    staleTime: 20_000,
+  });
+}
+
+/** Confirmar recebimento (funcionário ou admin) */
+export function useConfirmEntry() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (entryId: number) => {
+      const res = await api(`/ledger/entries/${entryId}/confirm`, { method: 'PUT' });
+      if (!res.ok) throw new Error((res as { message: string }).message);
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
+      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
+      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
+      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+    },
+  });
+}
+
 /** Resumo de todos os vendedores (admin) */
 export function useLedgerSummary() {
   const api = useApi();
@@ -154,6 +195,29 @@ export function useGenerateWeekly() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ledger-balance'] });
       qc.invalidateQueries({ queryKey: ['ledger-entries'] });
+      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
+      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+    },
+  });
+}
+
+/** Gerar calendário de créditos para N semanas (admin) */
+export function useGenerateCalendar() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ nWeeks, fromWeek }: { nWeeks: number; fromWeek?: string }) => {
+      const res = await api('/ledger/generate-calendar', {
+        method: 'POST',
+        body: JSON.stringify({ n_weeks: nWeeks, from_week: fromWeek }),
+      });
+      if (!res.ok) throw new Error((res as { message: string }).message);
+      return res.data as { weeks: string[]; total_created: number; total_skipped: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
+      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
+      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
       qc.invalidateQueries({ queryKey: ['ledger-summary'] });
     },
   });

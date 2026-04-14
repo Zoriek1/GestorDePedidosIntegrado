@@ -110,30 +110,45 @@ export function EntryList({ entries, loading }: EntryListProps) {
                 <ListItem key={entry.id} disableGutters sx={{ px: 0.5 }}>
                   <ListItemText
                     primary={
-                      <Box display="flex" justifyContent="space-between" alignItems="center">
-                        <Typography variant="body2">
-                          {categoryLabel(entry.category)}
-                          {entry.pedido_id && (
-                            <Typography
-                              component="span"
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ ml: 0.5 }}
-                            >
-                              #{entry.pedido_id}
-                            </Typography>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" gap={1}>
+                        <Box display="flex" alignItems="center" gap={0.5} flexWrap="wrap">
+                          <Typography variant="body2">
+                            {categoryLabel(entry.category)}
+                            {entry.pedido_id && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ ml: 0.5 }}
+                              >
+                                #{entry.pedido_id}
+                              </Typography>
+                            )}
+                          </Typography>
+                          {entry.type === 'CREDIT' && (
+                            <Chip
+                              size="small"
+                              label={entry.status === 'confirmado' ? 'Recebido' : 'Pendente'}
+                              color={entry.status === 'confirmado' ? 'success' : 'warning'}
+                              variant="filled"
+                              sx={{ height: 18, fontSize: '0.65rem' }}
+                            />
                           )}
-                        </Typography>
+                        </Box>
                         <Chip
                           size="small"
                           label={`${entry.type === 'CREDIT' ? '+' : '-'} ${formatBRL(entry.amount)}`}
                           color={entry.type === 'CREDIT' ? 'success' : 'error'}
                           variant="outlined"
-                          sx={{ fontWeight: 600 }}
+                          sx={{ fontWeight: 600, flexShrink: 0 }}
                         />
                       </Box>
                     }
-                    secondary={entry.description || undefined}
+                    secondary={
+                      entry.due_date
+                        ? `${entry.description ? entry.description + ' · ' : ''}Vence ${new Date(entry.due_date + 'T00:00:00').toLocaleDateString('pt-BR')}`
+                        : entry.description || undefined
+                    }
                   />
                 </ListItem>
               ))}

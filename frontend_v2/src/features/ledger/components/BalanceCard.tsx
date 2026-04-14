@@ -1,5 +1,7 @@
-import { Card, CardContent, Typography, Box, Skeleton, Chip } from '@mui/material';
+import { Card, CardContent, Typography, Box, Skeleton, Chip, Stack } from '@mui/material';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import { formatBRL } from '../../../lib/format/currency';
 import { LedgerBalance } from '../services/ledgerApi';
 
@@ -34,11 +36,19 @@ export function BalanceCard({ balance, loading, userName }: BalanceCardProps) {
           </Typography>
         )}
 
-        <Box display="flex" gap={1} mt={1} flexWrap="wrap">
+        <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
           <Chip
             size="small"
-            label={`Créditos: ${formatBRL(balance?.total_credits ?? 0)}`}
+            icon={<CheckCircleOutlineIcon />}
+            label={`Confirmado: ${formatBRL(balance?.confirmed_credits ?? 0)}`}
             color="success"
+            variant="outlined"
+          />
+          <Chip
+            size="small"
+            icon={<HourglassEmptyIcon />}
+            label={`Pendente: ${formatBRL(balance?.pending_credits ?? 0)}`}
+            color="warning"
             variant="outlined"
           />
           <Chip
@@ -47,7 +57,7 @@ export function BalanceCard({ balance, loading, userName }: BalanceCardProps) {
             color="error"
             variant="outlined"
           />
-        </Box>
+        </Stack>
       </CardContent>
     </Card>
   );

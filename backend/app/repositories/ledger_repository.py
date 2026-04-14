@@ -2,7 +2,7 @@
 """
 LedgerRepository — CRUD e queries do ledger de recebíveis
 """
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
 from sqlalchemy import func
@@ -10,6 +10,13 @@ from sqlalchemy import func
 from app import db
 from app.models.ledger_entry import LedgerEntry
 from app.repositories.base_repository import BaseRepository
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
+TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
 
 
 class LedgerRepository(BaseRepository[LedgerEntry]):
@@ -37,10 +44,23 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
     # ------------------------------------------------------------------
 
     def get_balance(self, user_id: int) -> dict:
-        """Retorna saldo devedor (quanto a empresa deve ao vendedor)."""
-        credits = (
+        """Retorna saldo devedor separando créditos confirmados e pendentes."""
+        confirmed_credits = (
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
-            .filter(LedgerEntry.user_id == user_id, LedgerEntry.type == "CREDIT")
+            .filter(
+                LedgerEntry.user_id == user_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.status == "confirmado",
+            )
+            .scalar()
+        )
+        pending_credits = (
+            db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
+            .filter(
+                LedgerEntry.user_id == user_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.status == "pendente",
+            )
             .scalar()
         )
         debits = (
@@ -48,10 +68,13 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             .filter(LedgerEntry.user_id == user_id, LedgerEntry.type == "DEBIT")
             .scalar()
         )
+        total_credits = float(confirmed_credits) + float(pending_credits)
         return {
-            "total_credits": round(float(credits), 2),
+            "total_credits": round(total_credits, 2),
+            "confirmed_credits": round(float(confirmed_credits), 2),
+            "pending_credits": round(float(pending_credits), 2),
             "total_debits": round(float(debits), 2),
-            "balance": round(float(credits) - float(debits), 2),
+            "balance": round(total_credits - float(debits), 2),
         }
 
     def get_all_balances(self) -> List[dict]:
@@ -64,6 +87,36 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             bal = self.get_balance(v.id)
             result.append({"user": v.to_dict(), **bal})
         return result
+
+    # ------------------------------------------------------------------
+    # Pagamentos pendentes (a confirmar pelo funcionário)
+    # ------------------------------------------------------------------
+
+    def get_pending(self, user_id: int) -> List[LedgerEntry]:
+        """Retorna CREDITs com status=pendente desse vendedor, ordenados por due_date."""
+        return (
+            LedgerEntry.query.filter_by(user_id=user_id, type="CREDIT", status="pendente")
+            .order_by(LedgerEntry.due_date.asc().nullsfirst(), LedgerEntry.week_ref.asc())
+            .all()
+        )
+
+    def confirm_entry(self, entry_id: int, user_id: int, is_admin: bool) -> Optional[LedgerEntry]:
+        """
+        Marca entry como confirmada.
+        - Vendedor só pode confirmar as próprias entries.
+        - Admin pode confirmar qualquer entry.
+        """
+        entry = LedgerEntry.query.get(entry_id)
+        if not entry:
+            return None
+        if not is_admin and entry.user_id != user_id:
+            return None
+        if entry.status == "confirmado":
+            return entry  # idempotente
+        entry.status = "confirmado"
+        entry.confirmed_at = datetime.now(TIMEZONE_BRASIL)
+        db.session.commit()
+        return entry
 
     # ------------------------------------------------------------------
     # Extrato

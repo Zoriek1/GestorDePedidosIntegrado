@@ -70,6 +70,18 @@ class LedgerEntry(db.Model):
         index=True,
         comment="Segunda-feira da semana de referência",
     )
+    due_date = db.Column(
+        db.Date,
+        nullable=True,
+        comment="Data prevista de pagamento (semana + payment_day)",
+    )
+    status = db.Column(
+        db.String(20),
+        nullable=False,
+        default="pendente",
+        comment="pendente | confirmado — funcionário confirma recebimento",
+    )
+    confirmed_at = db.Column(db.DateTime, nullable=True, comment="Quando o funcionário confirmou")
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
     created_by = db.Column(
         db.Integer,
@@ -96,6 +108,9 @@ class LedgerEntry(db.Model):
             "description": self.description or "",
             "pedido_id": self.pedido_id,
             "week_ref": self.week_ref.strftime("%Y-%m-%d") if self.week_ref else "",
+            "due_date": self.due_date.strftime("%Y-%m-%d") if self.due_date else None,
+            "status": self.status,
+            "confirmed_at": self.confirmed_at.strftime("%Y-%m-%d %H:%M:%S") if self.confirmed_at else None,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "created_by": self.created_by,
         }

@@ -86,6 +86,11 @@ class PayrollConfig(db.Model):
     label = db.Column(db.String(100), nullable=False, comment="Nome de exibição")
     amount = db.Column(db.Float, nullable=False, comment="Valor em R$")
     frequency = db.Column(db.String(20), nullable=False, comment="semanal | mensal")
+    payment_day = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Dia de pagamento: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex, 5=Sáb, 6=Dom (só p/ semanal)",
+    )
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
 
@@ -97,6 +102,7 @@ class PayrollConfig(db.Model):
             "label": self.label,
             "amount": self.amount,
             "frequency": self.frequency,
+            "payment_day": self.payment_day,
             "is_active": self.is_active,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
         }

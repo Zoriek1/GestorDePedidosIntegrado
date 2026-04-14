@@ -639,6 +639,15 @@ def criar_pedido():
         # - vendedor (JWT ou Basic Auth): auto-atribuir o próprio ID
         # - admin: aceitar vendedor_id do body (opcional)
         current_user = getattr(request, "current_user", None)
+        if current_user is None:
+            _auth_hdr = request.headers.get("Authorization", "")
+            if _auth_hdr.lower().startswith("bearer "):
+                try:
+                    from app.services.auth_service import decode_token, extract_bearer_token
+                    _tok = extract_bearer_token(_auth_hdr)
+                    current_user = decode_token(_tok) if _tok else None
+                except Exception:
+                    pass
         user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
         vendedor_id_final = None
         if user_role == "vendedor":
@@ -882,11 +891,19 @@ def atualizar_pedido(pedido_id):
             pedido.fbp = new_fbp
 
         # Vendedor: admin pode reatribuir; vendedor vincula a si mesmo se ainda sem vendedor
+        # Resolve current_user: tenta request.current_user (JWT via decorator),
+        # senão decodifica o Bearer token diretamente (Basic Auth path não seta current_user)
         current_user = getattr(request, "current_user", None)
+        if current_user is None:
+            _auth_hdr = request.headers.get("Authorization", "")
+            if _auth_hdr.lower().startswith("bearer "):
+                try:
+                    from app.services.auth_service import decode_token, extract_bearer_token
+                    _tok = extract_bearer_token(_auth_hdr)
+                    current_user = decode_token(_tok) if _tok else None
+                except Exception:
+                    pass
         user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
-        _cu = getattr(request, "current_user", "NAO_DEFINIDO")
-        _ur = getattr(request, "user_role", "NAO_DEFINIDO")
-        print(f"[VENDEDOR_DEBUG] pedido#{pedido_id} request.current_user={_cu!r} request.user_role={_ur!r} user_role_computado={user_role!r} vendedor_id_in_data={'vendedor_id' in data} raw={data.get('vendedor_id')!r}")
         if user_role == "admin" and "vendedor_id" in data:
             try:
                 pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
@@ -894,7 +911,6 @@ def atualizar_pedido(pedido_id):
                 pass
         elif user_role == "vendedor" and pedido.vendedor_id is None:
             pedido.vendedor_id = _get_current_vendedor_id()
-        print(f"[VENDEDOR_DEBUG] pedido#{pedido_id} vendedor_id_final={pedido.vendedor_id!r}")
 
         pedido.updated_at = datetime_now_brazil()
 

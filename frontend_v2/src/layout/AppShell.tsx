@@ -72,7 +72,7 @@ export function AppShell({ children }: AppShellProps) {
   // Recebíveis e Usuários são rotas JWT-only — ocultar para usuários legados (Basic Auth)
   const jwtUser = isJwtUser();
   const canViewLedger = jwtUser && (isAdmin || isVendedor);
-  const canViewUsers = jwtUser && isAdmin;
+  const ledgerLabel = isAdmin ? 'Funcionários' : 'Recebíveis';
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -169,10 +169,7 @@ export function AppShell({ children }: AppShellProps) {
               )}
               <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
               {canViewLedger && (
-                <MenuItem onClick={() => handleNavigate('/recebiveis')}>Recebíveis</MenuItem>
-              )}
-              {canViewUsers && (
-                <MenuItem onClick={() => handleNavigate('/usuarios')}>Usuários</MenuItem>
+                <MenuItem onClick={() => handleNavigate('/recebiveis')}>{ledgerLabel}</MenuItem>
               )}
               <MenuItem onClick={() => handleNavigate('/configuracoes')}>
                 <Settings sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
@@ -238,12 +235,7 @@ export function AppShell({ children }: AppShellProps) {
             </Button>
             {canViewLedger && (
               <Button color="inherit" onClick={() => handleNavigate('/recebiveis')} sx={{ textTransform: 'none' }}>
-                Recebíveis
-              </Button>
-            )}
-            {canViewUsers && (
-              <Button color="inherit" onClick={() => handleNavigate('/usuarios')} sx={{ textTransform: 'none' }}>
-                Usuários
+                {ledgerLabel}
               </Button>
             )}
             <Tooltip title="Configurações">

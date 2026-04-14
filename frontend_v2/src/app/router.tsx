@@ -23,7 +23,6 @@ const NuvemshopPage = lazy(() => import('../features/integrations/NuvemshopPage'
 const SettingsPage = lazy(() => import('../features/config/SettingsPage'));
 const LeadsPage = lazy(() => import('../features/leads/LeadsPage'));
 const LedgerPage = lazy(() => import('../features/ledger/LedgerPage'));
-const UserListPage = lazy(() => import('../features/users/components/UserListPage'));
 
 // Componente vazio para rotas do backend que não devem ser processadas pelo React Router
 // Essas rotas são processadas pelo backend Flask
@@ -173,13 +172,7 @@ const router = createBrowserRouter([
       },
       {
         path: '/usuarios',
-        element: (
-          <RequireAuth>
-            <Suspense fallback={<Loading />}>
-              <UserListPage />
-            </Suspense>
-          </RequireAuth>
-        ),
+        element: <Navigate to="/configuracoes" replace />,
       },
       {
         path: '/test-offline',

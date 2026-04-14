@@ -1,6 +1,6 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
-import { LocalShipping, Build, Payment, Calculate, Group, Storefront } from '@mui/icons-material';
+import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People } from '@mui/icons-material';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { Loading } from '../../components/common/Loading';
 import { DailyFreightDialog } from '../pedidos/components/DailyFreightDialog';
@@ -11,6 +11,7 @@ import { useConfirm } from '../../components/system/useConfirm';
 import CustomersPage from '../customers/CustomersPage';
 import NuvemshopPage from '../integrations/NuvemshopPage';
 import FontesPage from '../fontes/FontesPage';
+import UserListPage from '../users/components/UserListPage';
 
 function BatchActionsTab() {
   const { getAuthHeader } = useAuth();
@@ -100,10 +101,11 @@ function BatchActionsTab() {
 }
 
 export default function SettingsPage() {
-  const { getCredentials } = useAuth();
+  const { getUserRole } = useAuth();
   const [tabValue, setTabValue] = React.useState(0);
-  const userRole = getCredentials()?.role || 'admin';
+  const userRole = getUserRole() ?? 'admin';
   const isEntregador = userRole === 'entregador';
+  const isAdmin = userRole === 'admin';
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -134,6 +136,7 @@ export default function SettingsPage() {
           {!isEntregador && <Tab icon={<Build />} label="Fontes" iconPosition="start" />}
           {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
           {!isEntregador && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
+          {isAdmin && <Tab icon={<People />} label="Funcionários" iconPosition="start" />}
         </Tabs>
       </Paper>
 
@@ -144,6 +147,7 @@ export default function SettingsPage() {
           {!isEntregador && tabValue === 2 && <FontesPage />}
           {!isEntregador && tabValue === 3 && <CustomersPage />}
           {!isEntregador && tabValue === 4 && <NuvemshopPage />}
+          {isAdmin && tabValue === 5 && <UserListPage />}
         </Suspense>
       </Box>
     </Box>

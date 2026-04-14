@@ -120,11 +120,40 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
     # ------------------------------------------------------------------
 
     def get_pending(self, user_id: int) -> List[LedgerEntry]:
-        """Retorna CREDITs com status=pendente desse vendedor, ordenados por due_date."""
-        return (
+        """
+        Retorna CREDITs pendentes com foco operacional:
+        - Todos os atrasados (due_date < hoje)
+        - Itens de hoje (due_date == hoje)
+        - Itens sem due_date
+        - Dos futuros, somente o próximo dia de pagamento (menor due_date > hoje)
+        """
+        today = date.today()
+        all_pending = (
             LedgerEntry.query.filter_by(user_id=user_id, type="CREDIT", status="pendente")
             .order_by(LedgerEntry.due_date.asc().nullsfirst(), LedgerEntry.week_ref.asc())
             .all()
+        )
+        if not all_pending:
+            return []
+
+        overdue = [e for e in all_pending if e.due_date is not None and e.due_date < today]
+        due_today = [e for e in all_pending if e.due_date == today]
+        without_due_date = [e for e in all_pending if e.due_date is None]
+        future = [e for e in all_pending if e.due_date is not None and e.due_date > today]
+
+        next_future_due_date = min((e.due_date for e in future), default=None)
+        next_future = [e for e in future if e.due_date == next_future_due_date] if next_future_due_date else []
+
+        selected = overdue + due_today + without_due_date + next_future
+
+        # Preserva ordenação por due_date, week_ref e created_at.
+        return sorted(
+            selected,
+            key=lambda e: (
+                e.due_date or date.min,
+                e.week_ref or date.min,
+                e.created_at or datetime.min,
+            ),
         )
 
     def confirm_entry(self, entry_id: int, user_id: int, is_admin: bool) -> Optional[LedgerEntry]:

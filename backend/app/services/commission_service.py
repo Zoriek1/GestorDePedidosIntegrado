@@ -56,7 +56,35 @@ def get_due_date_for_commission(dia_entrega: date, payment_day: int) -> date:
         return pgt_this_week + timedelta(weeks=1)
 
 
-def generate_commission(pedido, vendedor_id: int) -> None:
+def resolve_commission_reference_date(pedido) -> date:
+    """
+    Define a data de referência da comissão:
+    - Pedido já pago: usa updated_at (mudança para Pago) ou created_at.
+    - Demais casos: usa created_at e, como fallback final, dia_entrega.
+    """
+    status_pagamento = (getattr(pedido, "status_pagamento", "") or "").strip().lower()
+    created_at = getattr(pedido, "created_at", None)
+    updated_at = getattr(pedido, "updated_at", None)
+
+    if status_pagamento == "pago":
+        if created_at and updated_at:
+            return updated_at.date() if updated_at > created_at else created_at.date()
+        if updated_at:
+            return updated_at.date()
+        if created_at:
+            return created_at.date()
+
+    if created_at:
+        return created_at.date()
+
+    dia_entrega = getattr(pedido, "dia_entrega", None)
+    if isinstance(dia_entrega, date):
+        return dia_entrega
+
+    return date.today()
+
+
+def generate_commission(pedido, vendedor_id: int, reference_date: date | None = None) -> None:
     """
     Gera entry de comissão no ledger ao fechar um pedido.
 
@@ -104,19 +132,10 @@ def generate_commission(pedido, vendedor_id: int) -> None:
     if commission_amount <= 0:
         return
 
-    # 6. Semana de referência e due_date com lógica PgtDay
-    ref_date = pedido.dia_entrega if isinstance(pedido.dia_entrega, date) else date.today()
+    # 6. Semana de referência e due_date com base no evento de pagamento/criação
+    ref_date = reference_date or resolve_commission_reference_date(pedido)
     week_ref = get_monday(ref_date)
-
-    # Buscar payment_day do vendedor para calcular PgtDay
-    due_date = None
-    payroll_configs = user_repo.get_payroll_configs(vendedor_id)
-    semanal_config = next(
-        (c for c in payroll_configs if c.frequency == "semanal" and c.payment_day is not None),
-        None,
-    )
-    if semanal_config is not None:
-        due_date = get_due_date_for_commission(ref_date, semanal_config.payment_day)
+    due_date = ref_date
 
     # 7. Criar entry
     category = f"comissao_{source}"

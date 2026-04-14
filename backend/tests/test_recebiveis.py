@@ -13,7 +13,7 @@ Cenários cobertos (spec seção 7):
   8. pedido_id duplicado no ledger → UNIQUE constraint impede
 """
 import os
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -27,7 +27,7 @@ from app.models.ledger_entry import LedgerEntry  # noqa: E402
 from app.models.pedido import Pedido  # noqa: E402
 from app.models.user import CommissionConfig, PayrollConfig, User  # noqa: E402
 from app.services.auth_service import generate_token, hash_password  # noqa: E402
-from app.services.commission_service import map_fonte_to_source  # noqa: E402
+from app.services.commission_service import get_monday, map_fonte_to_source  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +291,57 @@ class TestLedgerOperations:
         assert entries[0]["category"] == "fixo_semanal"
         assert entries[0]["amount"] == 400.0
 
+    def test_pending_retorna_atrasados_e_apenas_proximo_futuro(self, client, session):
+        """GET /api/ledger/pending inclui atrasados e somente o próximo dia futuro."""
+        admin = make_user(session, "adminpd@test.com", "pass1234", role="admin", name="AdminPd")
+        vendedor = make_user(session, "vendpd@test.com", "pass1234", role="vendedor")
+        token = generate_token(vendedor)
+
+        today = date.today()
+        week_ref = today
+
+        e1 = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="fixo_semanal",
+            amount=100.0,
+            week_ref=week_ref,
+            due_date=today - timedelta(days=1),
+            status="pendente",
+            created_by=admin.id,
+        )
+        e2 = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="almoco",
+            amount=80.0,
+            week_ref=week_ref,
+            due_date=today + timedelta(days=2),
+            status="pendente",
+            created_by=admin.id,
+        )
+        e3 = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="transporte",
+            amount=60.0,
+            week_ref=week_ref,
+            due_date=today + timedelta(days=7),
+            status="pendente",
+            created_by=admin.id,
+        )
+        session.add_all([e1, e2, e3])
+        session.commit()
+
+        resp = client.get("/api/ledger/pending", headers=auth_headers(token))
+        assert resp.status_code == 200
+        entries = resp.get_json()["entries"]
+        categories = [entry["category"] for entry in entries]
+
+        assert "fixo_semanal" in categories
+        assert "almoco" in categories
+        assert "transporte" not in categories
+
 
 # ---------------------------------------------------------------------------
 # 4. Comissões
@@ -307,7 +358,13 @@ class TestCommission:
         session.commit()
         return vendedor
 
-    def _make_pedido_whatsapp(self, session, vendedor_id, valor="R$ 100,00"):
+    def _make_pedido_whatsapp(
+        self,
+        session,
+        vendedor_id,
+        valor="R$ 100,00",
+        status_pagamento=None,
+    ):
         """Cria Pedido com FontePedido='WhatsApp' e vendedor_id.
         Cada teste tem seu próprio banco SQLite, logo não há conflito de unicidade.
         """
@@ -326,6 +383,7 @@ class TestCommission:
             dia_entrega=date(2025, 2, 10),  # 2025-02-10 é segunda-feira
             horario="10:00",
             status="agendado",
+            status_pagamento=status_pagamento,
             fonte_pedido_id=fonte.id,
             vendedor_id=vendedor_id,
         )
@@ -369,8 +427,8 @@ class TestCommission:
         assert entry.category == "comissao_whatsapp"
         assert entry.amount == pytest.approx(3.0, abs=0.01)
         assert entry.pedido_id == pedido.id
-        # week_ref deve ser a segunda-feira da semana de 2025-02-10
-        assert entry.week_ref == date(2025, 2, 10)
+        # week_ref deve seguir a data de referência (criação/pagamento)
+        assert entry.week_ref == get_monday(pedido.created_at.date())
 
     def test_comissao_idempotente_por_pedido_id(self, session):
         """Cenário 8 (service layer): segunda chamada com mesmo pedido → sem duplicata."""
@@ -503,6 +561,47 @@ class TestCommission:
         pedido_row = body["pedidos"][0]
         assert pedido_row["rate"] is None
         assert pedido_row["commission_amount"] == 0.0
+
+    def test_ledger_pedidos_pago_usa_data_referencia_do_pagamento(self, client, session):
+        """
+        Pedido pago deve usar data de criação/pagamento como referência de comissão,
+        não a data de entrega.
+        """
+        vendedor = self._setup_vendedor_com_comissao(session, "comv7@test.com", rate=0.03)
+        pedido = self._make_pedido_whatsapp(
+            session,
+            vendedor.id,
+            valor="R$ 100,00",
+            status_pagamento="Pago",
+        )
+
+        token = generate_token(vendedor)
+        resp = client.get("/api/ledger/pedidos", headers=auth_headers(token))
+
+        assert resp.status_code == 200
+        row = resp.get_json()["pedidos"][0]
+        expected_ref_date = pedido.created_at.date().isoformat()
+        assert row["due_date"] == expected_ref_date
+        assert row["week_ref"] == get_monday(pedido.created_at.date()).isoformat()
+
+    def test_balance_inclui_comissao_live_sem_ledger_entry(self, client, session):
+        """Saldo deve incluir comissão de pedido pago mesmo sem entry persistida."""
+        vendedor = self._setup_vendedor_com_comissao(session, "comv8@test.com", rate=0.03)
+        self._make_pedido_whatsapp(
+            session,
+            vendedor.id,
+            valor="R$ 100,00",
+            status_pagamento="Pago",
+        )
+
+        token = generate_token(vendedor)
+        resp = client.get("/api/ledger/balance", headers=auth_headers(token))
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["confirmed_credits"] == pytest.approx(3.0, abs=0.01)
+        assert body["total_credits"] == pytest.approx(3.0, abs=0.01)
+        assert body["balance"] == pytest.approx(3.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

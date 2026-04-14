@@ -79,7 +79,7 @@ export function OrderCard({ pedido, onClick, selectable = false, selected = fals
   const confirm = useConfirm();
 
   const userRole = getUserRole();
-  const canEdit = userRole === 'admin' || userRole === 'atendente';
+  const canEdit = userRole === 'admin' || userRole === 'atendente' || userRole === 'vendedor';
   const canDelete = userRole === 'admin';
 
   const paymentStatus = getPaymentStatusLabel(pedido.status_pagamento);

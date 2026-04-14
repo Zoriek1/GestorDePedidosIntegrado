@@ -1,14 +1,11 @@
 /**
- * Login Page
- * MUI form for user authentication
+ * Login Page — split layout com painel de branding
  */
 
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
-  Container,
-  Paper,
   TextField,
   Checkbox,
   FormControlLabel,
@@ -16,8 +13,15 @@ import {
   InputAdornment,
   IconButton,
   Alert,
+  Divider,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import {
+  Visibility,
+  VisibilityOff,
+  LocalFlorist,
+  LockOutlined,
+  PersonOutline,
+} from '@mui/icons-material';
 import { useAuth } from './authStore';
 import { AppButton } from '../../components/common/AppButton';
 
@@ -44,8 +48,6 @@ export default function LoginPage() {
     setPasswordError(false);
     setLoginError(null);
 
-    // Ler do formulário (DOM) para não depender só do estado React: autofill e
-    // alguns contextos (tunnel/HTTPS) podem preencher os campos sem atualizar o state.
     const form = e.currentTarget;
     const userInput = form.elements.namedItem('username') as HTMLInputElement | null;
     const passInput = form.elements.namedItem('password') as HTMLInputElement | null;
@@ -53,14 +55,8 @@ export default function LoginPage() {
     const passwordValue = passInput?.value ?? password;
 
     let hasError = false;
-    if (!usernameValue) {
-      setUsernameError(true);
-      hasError = true;
-    }
-    if (!passwordValue) {
-      setPasswordError(true);
-      hasError = true;
-    }
+    if (!usernameValue) { setUsernameError(true); hasError = true; }
+    if (!passwordValue) { setPasswordError(true); hasError = true; }
 
     if (hasError) {
       setLoginError('Preencha e-mail (ou nome) e senha para continuar.');
@@ -78,7 +74,6 @@ export default function LoginPage() {
 
     try {
       const result = await login(sanitizedUsername, passwordValue, remember);
-
       if (result.success) {
         navigate(from, { replace: true });
       } else {
@@ -112,42 +107,144 @@ export default function LoginPage() {
     }
   };
 
-  const handleUsernameBlur = () => {
-    if (!username.trim()) {
-      setUsernameError(true);
-    } else {
-      setUsernameError(false);
-    }
-  };
-
-  const handlePasswordBlur = () => {
-    if (!password) {
-      setPasswordError(true);
-    } else {
-      setPasswordError(false);
-    }
-  };
-
   return (
-    <Container maxWidth="sm">
+    <Box
+      sx={{
+        display: 'flex',
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+      }}
+    >
+      {/* ── Painel esquerdo: branding ── */}
       <Box
         sx={{
-          display: 'flex',
+          display: { xs: 'none', md: 'flex' },
           flexDirection: 'column',
-          alignItems: 'center',
           justifyContent: 'center',
-          minHeight: '100vh',
+          alignItems: 'center',
+          width: '45%',
+          background: 'linear-gradient(145deg, #065f46 0%, #047857 50%, #059669 100%)',
+          position: 'relative',
+          overflow: 'hidden',
+          px: 6,
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center">
-            Login
-          </Typography>
-          <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
-            Plante Uma Flor - Gestão de Pedidos
+        {/* Círculos decorativos */}
+        <Box sx={{
+          position: 'absolute', top: -80, right: -80,
+          width: 320, height: 320, borderRadius: '50%',
+          background: 'rgba(255,255,255,0.06)',
+        }} />
+        <Box sx={{
+          position: 'absolute', bottom: -60, left: -60,
+          width: 240, height: 240, borderRadius: '50%',
+          background: 'rgba(255,255,255,0.06)',
+        }} />
+        <Box sx={{
+          position: 'absolute', top: '40%', left: -40,
+          width: 140, height: 140, borderRadius: '50%',
+          background: 'rgba(255,255,255,0.04)',
+        }} />
+
+        {/* Conteúdo */}
+        <Box
+          className="animate__animated animate__fadeInLeft"
+          sx={{ textAlign: 'center', color: 'white', zIndex: 1 }}
+        >
+          <Box
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 88,
+              height: 88,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.15)',
+              mb: 3,
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <LocalFlorist sx={{ fontSize: 48, color: 'white' }} />
+          </Box>
+
+          <Typography
+            variant="h3"
+            sx={{ fontWeight: 800, mb: 1, letterSpacing: '-0.5px', color: 'white' }}
+          >
+            Plante uma Flor
           </Typography>
 
-          <form onSubmit={handleSubmit}>
+          <Typography
+            variant="body1"
+            sx={{ color: 'rgba(255,255,255,0.75)', mb: 5, fontSize: '1.05rem' }}
+          >
+            Gestão de Pedidos
+          </Typography>
+
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.2)', mb: 5 }} />
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, textAlign: 'left' }}>
+            {[
+              'Pedidos em tempo real',
+              'Controle de entregas',
+              'Relatórios e vendas',
+            ].map((item) => (
+              <Box key={item} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box
+                  sx={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.6)', flexShrink: 0,
+                  }}
+                />
+                <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.95rem' }}>
+                  {item}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      </Box>
+
+      {/* ── Painel direito: formulário ── */}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          px: { xs: 3, sm: 6, md: 8 },
+          py: 6,
+        }}
+      >
+        {/* Logo mobile */}
+        <Box
+          className="animate__animated animate__fadeInDown"
+          sx={{
+            display: { xs: 'flex', md: 'none' },
+            alignItems: 'center',
+            gap: 1.5,
+            mb: 4,
+          }}
+        >
+          <LocalFlorist sx={{ fontSize: 32, color: 'primary.main' }} />
+          <Typography variant="h5" sx={{ fontWeight: 800, color: 'primary.main' }}>
+            Plante uma Flor
+          </Typography>
+        </Box>
+
+        <Box
+          className="animate__animated animate__fadeInUp"
+          sx={{ width: '100%', maxWidth: 420 }}
+        >
+          <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5, color: 'text.primary' }}>
+            Bem-vindo de volta
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 4 }}>
+            Entre com suas credenciais para continuar
+          </Typography>
+
+          <form onSubmit={handleSubmit} noValidate>
             <TextField
               fullWidth
               name="username"
@@ -160,14 +257,23 @@ export default function LoginPage() {
                 if (loginError) setLoginError(null);
                 if (usernameError && e.target.value.trim()) setUsernameError(false);
               }}
-              onBlur={handleUsernameBlur}
+              onBlur={() => { if (!username.trim()) setUsernameError(true); else setUsernameError(false); }}
               disabled={loading}
               autoComplete="username"
               error={usernameError}
               helperText={usernameError ? 'Informe seu e-mail ou nome' : ''}
               inputProps={{ name: 'username' }}
-              sx={{ mb: 2 }}
               autoFocus
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonOutline sx={{ color: usernameError ? 'error.main' : 'text.disabled', fontSize: 20 }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{ mb: 2.5 }}
             />
 
             <TextField
@@ -182,28 +288,36 @@ export default function LoginPage() {
                 if (loginError) setLoginError(null);
                 if (passwordError && e.target.value) setPasswordError(false);
               }}
-              onBlur={handlePasswordBlur}
+              onBlur={() => { if (!password) setPasswordError(true); else setPasswordError(false); }}
               disabled={loading}
               autoComplete="current-password"
               error={passwordError}
               helperText={passwordError ? 'Senha é obrigatória' : ''}
               inputProps={{ name: 'password' }}
-              sx={{ mb: 2 }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="toggle password visibility"
-                      onClick={() => setShowPassword(!showPassword)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      edge="end"
-                      disabled={loading}
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LockOutlined sx={{ color: passwordError ? 'error.main' : 'text.disabled', fontSize: 20 }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="toggle password visibility"
+                        onClick={() => setShowPassword(!showPassword)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        edge="end"
+                        disabled={loading}
+                        size="small"
+                      >
+                        {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
               }}
+              sx={{ mb: 1 }}
             />
 
             <FormControlLabel
@@ -212,14 +326,24 @@ export default function LoginPage() {
                   checked={remember}
                   onChange={(e) => setRemember(e.target.checked)}
                   disabled={loading}
+                  size="small"
+                  sx={{ color: 'primary.main' }}
                 />
               }
-              label="Lembrar-me"
-              sx={{ mb: 2 }}
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Lembrar-me
+                </Typography>
+              }
+              sx={{ mb: 2.5 }}
             />
 
             {loginError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
+              <Alert
+                severity="error"
+                sx={{ mb: 2.5, borderRadius: 2 }}
+                className="animate__animated animate__shakeX"
+              >
                 {loginError}
               </Alert>
             )}
@@ -230,14 +354,31 @@ export default function LoginPage() {
               variant="contained"
               size="large"
               loading={loading}
-              sx={{ mb: 2 }}
+              sx={{
+                py: 1.5,
+                fontSize: '1rem',
+                fontWeight: 700,
+                borderRadius: 2,
+                boxShadow: '0 4px 14px rgba(4,120,87,0.35)',
+                '&:hover': {
+                  boxShadow: '0 6px 20px rgba(4,120,87,0.45)',
+                  transform: 'translateY(-1px)',
+                },
+                transition: 'all 0.2s ease',
+              }}
             >
-              Entrar
+              {loading ? 'Entrando...' : 'Entrar'}
             </AppButton>
           </form>
-        </Paper>
+        </Box>
+
+        <Typography
+          variant="caption"
+          sx={{ mt: 6, color: 'text.disabled', textAlign: 'center' }}
+        >
+          © {new Date().getFullYear()} Plante Uma Flor · Gestão de Pedidos
+        </Typography>
       </Box>
-    </Container>
+    </Box>
   );
 }
-

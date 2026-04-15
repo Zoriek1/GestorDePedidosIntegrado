@@ -431,6 +431,14 @@ export default function LeadsPage() {
                             <VisibilityIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
+                      ) : lead.status === 'compra_realizada' ? (
+                        <Tooltip title="Compra realizada — pedido não localizado">
+                          <span>
+                            <IconButton size="small" disabled>
+                              <VisibilityIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
                       ) : (
                         <Tooltip title="Criar pedido a partir deste lead">
                           <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>

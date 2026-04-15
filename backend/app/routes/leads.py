@@ -534,16 +534,56 @@ def listar_leads():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    # Busca em lote os valores dos pedidos vinculados (evita N+1)
+    from sqlalchemy import func
+
+    from app.models.pedido import Pedido
+
+    # 1. Busca valores para leads que já têm pedido_id
     pedido_valores: dict = {}
     pedido_ids = [lead.pedido_id for lead in pagination.items if lead.pedido_id]
     if pedido_ids:
-        from app.models.pedido import Pedido
-
         pedidos = Pedido.query.filter(Pedido.id.in_(pedido_ids)).with_entities(
             Pedido.id, Pedido.valor
         ).all()
         pedido_valores = {p.id: p.valor for p in pedidos}
+
+    # 2. Backfill preguiçoso: leads compra_realizada sem pedido_id → busca por telefone
+    unlinked = [
+        lead for lead in pagination.items
+        if not lead.pedido_id
+        and lead.status == "compra_realizada"
+        and lead.phone
+    ]
+    if unlinked:
+        phones = list({lead.phone for lead in unlinked})
+        norm_expr = func.regexp_replace(Pedido.telefone_cliente, "[^0-9]", "", "g")
+        matched = (
+            Pedido.query
+            .filter(
+                norm_expr.in_(phones),
+                Pedido.deleted_at.is_(None),
+                Pedido.status != "cancelado",
+            )
+            .with_entities(Pedido.id, norm_expr.label("phone_norm"), Pedido.valor)
+            .order_by(Pedido.id.desc())
+            .all()
+        )
+        # phone → pedido mais recente
+        phone_to_pedido: dict = {}
+        for p in matched:
+            if p.phone_norm not in phone_to_pedido:
+                phone_to_pedido[p.phone_norm] = (p.id, p.valor)
+
+        backfilled = False
+        for lead in unlinked:
+            entry = phone_to_pedido.get(lead.phone)
+            if entry:
+                pid, pval = entry
+                lead.pedido_id = pid
+                pedido_valores[pid] = pval
+                backfilled = True
+        if backfilled:
+            db.session.commit()
 
     return jsonify(
         {

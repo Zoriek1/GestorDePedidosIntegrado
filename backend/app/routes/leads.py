@@ -31,7 +31,7 @@ from app.utils.tracking_token import (
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 
 # Evento padrão quando nenhum filtro de evento é enviado pelo frontend
-DEFAULT_KEY_EVENTS = (“whatsapp_click”,)
+DEFAULT_KEY_EVENTS = ("whatsapp_click",)
 WHATSAPP_EVENT = "whatsapp_click"
 
 ALLOWED_FIELDS = (

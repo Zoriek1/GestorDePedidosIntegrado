@@ -98,9 +98,14 @@ def _get_current_vendedor_id() -> int | None:
     return None
 
 
-def _link_lead_by_whatsapp_code(codigo_whatsapp: str | None, telefone_cliente: str | None) -> Lead | None:
+def _link_lead_by_whatsapp_code(
+    codigo_whatsapp: str | None,
+    telefone_cliente: str | None,
+    pedido_id: int | None = None,
+) -> Lead | None:
     """
     Faz o casamento do lead anônimo com o telefone real do pedido.
+    Grava também o pedido_id para permitir navegação direta no painel.
     Não lança erro para não bloquear criação/edição de pedido.
     """
     if not codigo_whatsapp or not telefone_cliente:
@@ -122,6 +127,8 @@ def _link_lead_by_whatsapp_code(codigo_whatsapp: str | None, telefone_cliente: s
             continue
         lead.phone = telefone_digits
         lead.status = "compra_realizada"
+        if pedido_id is not None:
+            lead.pedido_id = pedido_id
         return lead
     return None
 
@@ -691,7 +698,8 @@ def criar_pedido():
         )
 
         db.session.add(pedido)
-        _link_lead_by_whatsapp_code(codigo_whatsapp, telefone_cliente)
+        db.session.flush()  # gera pedido.id antes de vincular o lead
+        _link_lead_by_whatsapp_code(codigo_whatsapp, telefone_cliente, pedido_id=pedido.id)
         db.session.commit()
 
         # Hook de Purchase (mantém regra atual: status_pagamento=Pago/Parcial)
@@ -927,7 +935,7 @@ def atualizar_pedido(pedido_id):
                 )
 
         if codigo_whatsapp:
-            _link_lead_by_whatsapp_code(codigo_whatsapp, pedido.telefone_cliente)
+            _link_lead_by_whatsapp_code(codigo_whatsapp, pedido.telefone_cliente, pedido_id=pedido_id)
 
         db.session.commit()
 

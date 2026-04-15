@@ -84,6 +84,21 @@ def resolve_commission_reference_date(pedido) -> date:
     return date.today()
 
 
+def commission_base(pedido) -> float:
+    """
+    Retorna o valor líquido usado como base de cálculo da comissão.
+
+    - Retirada: valor bruto do pedido (sem taxa de entrega).
+    - Entrega:  valor bruto − taxa_entrega (nunca negativo).
+    """
+    valor = pedido.total_pago()
+    tipo = (getattr(pedido, "tipo_pedido", None) or "Entrega").strip()
+    if tipo.lower() == "retirada":
+        return valor
+    taxa = float(getattr(pedido, "taxa_entrega", None) or 0.0)
+    return max(0.0, valor - taxa)
+
+
 def generate_commission(pedido, vendedor_id: int, reference_date: date | None = None) -> None:
     """
     Gera entry de comissão no ledger ao fechar um pedido.
@@ -123,12 +138,12 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
     if not config:
         return
 
-    # 5. Calcular valor (usa total_pago() que já faz parse_brl_money)
-    valor = pedido.total_pago()
-    if valor <= 0:
+    # 5. Calcular base líquida (desconta taxa de entrega para pedidos Entrega)
+    base = commission_base(pedido)
+    if base <= 0:
         return
 
-    commission_amount = round(valor * config.rate, 2)
+    commission_amount = round(base * config.rate, 2)
     if commission_amount <= 0:
         return
 

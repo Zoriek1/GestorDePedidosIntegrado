@@ -62,6 +62,7 @@ def _build_live_commission_rows(
     from app.models.pedido import Pedido
     from app.repositories.user_repository import UserRepository
     from app.services.commission_service import (
+        commission_base,
         get_monday,
         map_fonte_to_source,
         resolve_commission_reference_date,
@@ -109,14 +110,17 @@ def _build_live_commission_rows(
         rate = commission_configs.get(source) if source else None
 
         valor_pedido = None
+        base_comissao = None
         try:
             valor_pedido = pedido.total_pago()
+            base_comissao = commission_base(pedido)
         except Exception:
             valor_pedido = None
+            base_comissao = None
 
         commission_amount = 0.0
-        if rate is not None and valor_pedido is not None and valor_pedido > 0:
-            commission_amount = round(float(valor_pedido) * float(rate), 2)
+        if rate is not None and base_comissao is not None and base_comissao > 0:
+            commission_amount = round(float(base_comissao) * float(rate), 2)
 
         ref_date = resolve_commission_reference_date(pedido)
         week_ref = get_monday(ref_date)

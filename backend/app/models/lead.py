@@ -45,6 +45,7 @@ class Lead(db.Model):
     meta_event_id_contact = db.Column(db.String(100), nullable=True, index=True)
     meta_event_id_lead = db.Column(db.String(100), nullable=True, index=True)
     client_user_agent = db.Column(db.String(512), nullable=True)
+    pedido_id = db.Column(db.Integer, db.ForeignKey("pedidos.id"), nullable=True, index=True)
 
     def to_dict(self):
         return {
@@ -70,4 +71,5 @@ class Lead(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "meta_event_id_contact": self.meta_event_id_contact,
             "meta_event_id_lead": self.meta_event_id_lead,
+            "pedido_id": self.pedido_id,
         }

@@ -143,13 +143,18 @@ def _resolve_lead_by_token_payload(data: dict) -> tuple[Lead | None, tuple | Non
     return lead, None
 
 
-def _serialize_lead(lead: Lead) -> dict:
+def _serialize_lead(lead: Lead, pedido_valores: dict | None = None) -> dict:
     payload = lead.to_dict()
     if not _is_whatsapp_event(payload.get("event")):
         payload["token_rastreio"] = None
         payload["token_valido"] = None
         if payload.get("status") == "pendente_whatsapp":
             payload["status"] = None
+    payload["valor_pedido"] = (
+        pedido_valores.get(lead.pedido_id)
+        if (pedido_valores and lead.pedido_id)
+        else None
+    )
     return payload
 
 
@@ -525,9 +530,20 @@ def listar_leads():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
+    # Busca em lote os valores dos pedidos vinculados (evita N+1)
+    pedido_valores: dict = {}
+    pedido_ids = [lead.pedido_id for lead in pagination.items if lead.pedido_id]
+    if pedido_ids:
+        from app.models.pedido import Pedido
+
+        pedidos = Pedido.query.filter(Pedido.id.in_(pedido_ids)).with_entities(
+            Pedido.id, Pedido.valor
+        ).all()
+        pedido_valores = {p.id: p.valor for p in pedidos}
+
     return jsonify(
         {
-            "leads": [_serialize_lead(lead) for lead in pagination.items],
+            "leads": [_serialize_lead(lead, pedido_valores) for lead in pagination.items],
             "total": pagination.total,
             "page": pagination.page,
             "pages": pagination.pages,

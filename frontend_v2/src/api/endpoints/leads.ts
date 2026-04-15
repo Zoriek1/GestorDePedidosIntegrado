@@ -27,6 +27,8 @@ export interface Lead {
   fbp: string | null;
   ip_address: string | null;
   created_at: string | null;
+  pedido_id: number | null;
+  valor_pedido: string | null;
 }
 
 export interface LeadsResponse {

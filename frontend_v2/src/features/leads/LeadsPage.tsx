@@ -35,6 +35,7 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import {
   useLeads,
   useUpdateLeadPhone,
@@ -173,6 +174,10 @@ export default function LeadsPage() {
   const { data, isLoading, error, refetch } = useLeads(filters);
   const updateLeadPhone = useUpdateLeadPhone();
   const updateLeadStatus = useUpdateLeadStatus();
+
+  const handleViewOrder = useCallback((pedidoId: number) => {
+    navigate(`/pedidos/${pedidoId}`);
+  }, [navigate]);
 
   const handleCreateOrder = useCallback((lead: Lead) => {
     navigate('/pedidos/novo', {
@@ -373,6 +378,7 @@ export default function LeadsPage() {
               <TableCell>Data (BRT)</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Telefone</TableCell>
+              <TableCell>Valor Pedido</TableCell>
               <TableCell>Código WhatsApp</TableCell>
               <TableCell>Token válido</TableCell>
               <TableCell>Evento</TableCell>
@@ -388,7 +394,7 @@ export default function LeadsPage() {
           <TableBody>
             {leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={14} align="center">
+                <TableCell colSpan={15} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
                     Nenhum lead encontrado
                   </Typography>
@@ -421,11 +427,23 @@ export default function LeadsPage() {
                           </span>
                         </Tooltip>
                       )}
-                      <Tooltip title="Criar pedido a partir deste lead">
-                        <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
-                          <AddShoppingCartIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      {lead.pedido_id ? (
+                        <Tooltip title="Visualizar pedido vinculado">
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            onClick={() => handleViewOrder(lead.pedido_id!)}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title="Criar pedido a partir deste lead">
+                          <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
+                            <AddShoppingCartIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </Stack>
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
@@ -464,6 +482,16 @@ export default function LeadsPage() {
                     )}
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {lead.valor_pedido ? (
+                      <Chip
+                        size="small"
+                        label={lead.valor_pedido}
+                        color="success"
+                        variant="outlined"
+                      />
+                    ) : '—'}
+                  </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
                     {lead.token_rastreio ?? '—'}
                   </TableCell>

@@ -49,6 +49,8 @@ export interface LeadsFilters {
   utm_campaign?: string;
   /** Filtra pelo código único de rastreio (token WhatsApp) */
   token_rastreio?: string;
+  /** Filtra pelo status do lead */
+  status?: string;
   date_from?: string;
   date_to?: string;
 }
@@ -73,6 +75,7 @@ export function useLeads(filters: LeadsFilters = {}) {
       if (filters.token_rastreio?.trim()) {
         params.set('token_rastreio', filters.token_rastreio.trim());
       }
+      if (filters.status) params.set('status', filters.status);
       if (filters.date_from) params.set('date_from', filters.date_from);
       if (filters.date_to) params.set('date_to', filters.date_to);
 

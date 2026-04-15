@@ -30,8 +30,8 @@ from app.utils.tracking_token import (
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 
-# Eventos considerados “principais” na listagem quando não há filtro explícito
-DEFAULT_KEY_EVENTS = ("modal_open", "whatsapp_click", "site_click")
+# Evento padrão quando nenhum filtro de evento é enviado pelo frontend
+DEFAULT_KEY_EVENTS = (“whatsapp_click”,)
 WHATSAPP_EVENT = "whatsapp_click"
 
 ALLOWED_FIELDS = (
@@ -507,6 +507,10 @@ def listar_leads():
     utm_campaign = request.args.get("utm_campaign")
     if utm_campaign:
         query = query.filter(Lead.utm_campaign == utm_campaign)
+
+    status_q = request.args.get("status")
+    if status_q:
+        query = query.filter(Lead.status == status_q)
 
     token_q = request.args.get("token_rastreio")
     if token_q:

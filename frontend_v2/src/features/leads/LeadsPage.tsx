@@ -57,11 +57,7 @@ dayjs.extend(timezone);
 
 const TZ_BR = 'America/Sao_Paulo';
 
-/** Mesmo conjunto que o backend usa como padrão (DEFAULT_KEY_EVENTS) */
-const DEFAULT_KEY_EVENTS = 'modal_open,whatsapp_click,site_click';
-
 const EVENT_LABELS: Record<string, string> = {
-  modal_open: 'Modal open',
   whatsapp_click: 'WhatsApp Click',
   site_click: 'Site Click',
 };
@@ -102,13 +98,6 @@ function formatDate(iso: string | null): string {
 function formatEventLabel(raw: string | null): string {
   if (!raw) return '—';
   return EVENT_LABELS[raw] ?? raw.replace(/_/g, ' ');
-}
-
-function eventFilterToSelectValue(f: LeadsFilters): string {
-  if (f.events === DEFAULT_KEY_EVENTS) return 'key';
-  if (f.event === 'all') return 'all';
-  if (f.event) return f.event;
-  return 'key';
 }
 
 function sourceColor(source: string | null): 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default' {
@@ -165,7 +154,7 @@ export default function LeadsPage() {
   const [filters, setFilters] = useState<LeadsFilters>({
     page: 1,
     per_page: 25,
-    events: DEFAULT_KEY_EVENTS,
+    event: 'whatsapp_click',
   });
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [manualPhone, setManualPhone] = useState('');
@@ -271,37 +260,42 @@ export default function LeadsPage() {
 
       {/* Filtros */}
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <FormControl size="small" sx={{ minWidth: 170 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
+          <FormControl size="small" sx={{ minWidth: 160 }}>
             <InputLabel>Evento</InputLabel>
             <Select
-              value={eventFilterToSelectValue(filters)}
+              value={filters.event ?? 'whatsapp_click'}
               label="Evento"
               onChange={(e) => {
                 const v = e.target.value;
                 setFilters((prev) => {
                   const next: LeadsFilters = { ...prev, page: 1 };
-                  if (v === 'key') {
-                    delete next.event;
-                    next.events = DEFAULT_KEY_EVENTS;
-                    return next;
-                  }
-                  if (v === 'all') {
-                    delete next.events;
-                    next.event = 'all';
-                    return next;
-                  }
                   delete next.events;
                   next.event = v;
                   return next;
                 });
               }}
             >
-              <MenuItem value="key">Principais (modal, WhatsApp, site)</MenuItem>
-              <MenuItem value="modal_open">{EVENT_LABELS.modal_open}</MenuItem>
               <MenuItem value="whatsapp_click">{EVENT_LABELS.whatsapp_click}</MenuItem>
               <MenuItem value="site_click">{EVENT_LABELS.site_click}</MenuItem>
               <MenuItem value="all">Todos</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 190 }}>
+            <InputLabel>Status</InputLabel>
+            <Select
+              value={filters.status ?? ''}
+              label="Status"
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, status: e.target.value || undefined, page: 1 }))
+              }
+            >
+              <MenuItem value="">Todos</MenuItem>
+              <MenuItem value="pendente_whatsapp">Pendente WhatsApp</MenuItem>
+              <MenuItem value="whatsapp_iniciado">WhatsApp iniciado</MenuItem>
+              <MenuItem value="compra_realizada">Compra realizada</MenuItem>
+              <MenuItem value="nao_entrou_em_contato">Não entrou em contato</MenuItem>
             </Select>
           </FormControl>
 

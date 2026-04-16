@@ -83,7 +83,7 @@ export function OrderCard({
   const updatePedido = useUpdatePedido();
   const deletePedido = useDeletePedido();
   const { success, error: showError } = useToast();
-  const { getUserRole, getCredentials } = useAuth();
+  const { getUserRole, getCredentials, isJwtUser } = useAuth();
   const printService = usePedidoPrintService();
   const confirm = useConfirm();
 
@@ -197,15 +197,17 @@ export function OrderCard({
     });
     if (!confirmed) return;
 
-    const creds = getCredentials();
-    const input = window.prompt('Digite sua senha para confirmar a exclusão:');
-    if (!input) {
-      showError('Exclusão cancelada: senha não informada');
-      return;
-    }
-    if (!creds || input !== creds.password) {
-      showError('Senha incorreta');
-      return;
+    if (!isJwtUser()) {
+      const creds = getCredentials();
+      const input = window.prompt('Digite sua senha para confirmar a exclusão:');
+      if (!input) {
+        showError('Exclusão cancelada: senha não informada');
+        return;
+      }
+      if (!creds || input !== creds.password) {
+        showError('Senha incorreta');
+        return;
+      }
     }
 
     try {

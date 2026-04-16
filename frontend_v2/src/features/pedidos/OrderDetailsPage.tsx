@@ -40,7 +40,7 @@ export default function OrderDetailsPage() {
   const { success, error: showError } = useToast();
   const deletePedido = useDeletePedido();
   const confirm = useConfirm();
-  const { getCredentials, getUserRole, getUser } = useAuth();
+  const { getCredentials, getUserRole, getUser, isJwtUser } = useAuth();
   const printService = usePedidoPrintService();
   const { data: users } = useUsers(getUserRole() === 'admin');
 
@@ -82,15 +82,17 @@ export default function OrderDetailsPage() {
     });
     if (!confirmed) return;
 
-    const creds = getCredentials();
-    const input = window.prompt('Digite sua senha para confirmar a exclusão:');
-    if (!input) {
-      showError('Exclusão cancelada: senha não informada');
-      return;
-    }
-    if (!creds || input !== creds.password) {
-      showError('Senha incorreta');
-      return;
+    if (!isJwtUser()) {
+      const creds = getCredentials();
+      const input = window.prompt('Digite sua senha para confirmar a exclusão:');
+      if (!input) {
+        showError('Exclusão cancelada: senha não informada');
+        return;
+      }
+      if (!creds || input !== creds.password) {
+        showError('Senha incorreta');
+        return;
+      }
     }
 
     try {

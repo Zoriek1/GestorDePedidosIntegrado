@@ -62,6 +62,7 @@ export default function OrdersPage() {
   const userRole = getUserRole() || 'admin'; // Default para admin se não especificado
   const isAdmin = userRole === 'admin';
   const isEntregador = userRole === 'entregador';
+  const canOcultarConcluidos = isAdmin || userRole === 'vendedor';
   
   // Entregadores só podem ver pedidos agendados e em rota
   const adjustedFilters = isEntregador 
@@ -308,8 +309,8 @@ export default function OrdersPage() {
                   Exportar planilha
                 </MenuItem>
                 <Divider />
-                {isAdmin && (
-                  <MenuItem 
+                {canOcultarConcluidos && (
+                  <MenuItem
                     onClick={() => {
                       handleOcultarConcluidos();
                     }}
@@ -343,7 +344,7 @@ export default function OrdersPage() {
                   Exportar planilha
                 </Button>
               </Tooltip>
-              {isAdmin && (
+              {canOcultarConcluidos && (
                 <Tooltip title="Ocultar todos os pedidos concluídos do painel">
                   <span>
                     <Button

@@ -369,12 +369,23 @@ def exportar_planilha():
 
 
 @pedidos_bp.route("/batch-mark-paid", methods=["POST"])
-@requires_any_role("admin")
+@requires_any_role("admin", "vendedor")
 def batch_mark_paid():
     """Marca todos os pedidos com pagamento Pendente/null como Pago"""
     try:
         from app import db
         from app.models import Pedido
+        from app.utils.meta_capi_helper import create_outbox_if_purchase
+
+        # Buscar pedidos afetados ANTES do update para notificar Meta depois
+        pedidos_a_marcar = (
+            Pedido.query.filter(
+                (Pedido.status_pagamento.is_(None)) | (Pedido.status_pagamento == "Pendente")
+            )
+            .filter(Pedido.deleted_at.is_(None))
+            .all()
+        )
+        status_anteriores = {p.id: p.status_pagamento for p in pedidos_a_marcar}
 
         count = (
             Pedido.query.filter(
@@ -387,6 +398,16 @@ def batch_mark_paid():
             )
         )
         db.session.commit()
+
+        # Notificar Meta para cada pedido afetado
+        for pedido in pedidos_a_marcar:
+            try:
+                create_outbox_if_purchase(
+                    pedido, status_pagamento_anterior=status_anteriores[pedido.id]
+                )
+            except Exception:
+                pass  # Não falhar a resposta por erro de Meta
+
         return success_response(message=f"{count} pedidos marcados como Pago")
     except Exception as e:
         import traceback
@@ -1074,7 +1095,7 @@ def obter_comprovante(pedido_id):
 
 
 @pedidos_bp.route("/ocultar-concluidos", methods=["POST"])
-@requires_role("admin")
+@requires_any_role("admin", "vendedor")
 def ocultar_concluidos():
     """Oculta todos os pedidos concluídos do painel"""
     try:
@@ -1269,6 +1290,46 @@ def criar_outbox_faltantes():
 
     except Exception as e:
         return error_response(f"Erro ao criar outboxes faltantes: {str(e)}", 500)
+
+
+@pedidos_bp.route("/meta-outbox/reset-failed", methods=["POST"])
+@requires_any_role("admin")
+def reset_failed_outbox():
+    """
+    Reseta entradas failed da outbox Meta CAPI para pending (para retry).
+    Útil após corrigir credenciais META_PIXEL_ID / META_CAPI_ACCESS_TOKEN.
+
+    Body opcional:
+    {
+        "only_permanent": true  // Se true (default), reseta apenas error_type="permanent"
+    }
+    """
+    try:
+        from app import db
+        from app.models.meta_capi_outbox import MetaCapiOutbox
+
+        data = request.get_json() or {}
+        only_permanent = data.get("only_permanent", True)
+
+        q = MetaCapiOutbox.query.filter_by(status="failed")
+        if only_permanent:
+            q = q.filter_by(error_type="permanent")
+
+        entries = q.all()
+        for entry in entries:
+            entry.status = "pending"
+            entry.attempts = 0
+            entry.last_error = None
+            entry.error_type = None
+            entry.updated_at = datetime_now_brazil()
+
+        db.session.commit()
+        return success_response(
+            {"reset_count": len(entries)},
+            message=f"{len(entries)} entradas resetadas para retry",
+        )
+    except Exception as e:
+        return error_response(f"Erro ao resetar outboxes: {str(e)}", 500)
 
 
 @pedidos_bp.route("/deleted", methods=["GET"])

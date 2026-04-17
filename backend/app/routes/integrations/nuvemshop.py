@@ -470,6 +470,36 @@ def listar_pedidos_pendentes_agendamento():
     return success_response({"total": len(pedidos), "pedidos": pedidos})
 
 
+@nuvemshop_bp.route("/atribuir-vendedor", methods=["POST"])
+@requires_role("admin")
+def atribuir_vendedor_nuvemshop():
+    """Atribui um vendedor a todos os pedidos Nuvemshop que ainda não têm vendedor."""
+    from app.models.user import User
+
+    data = request.get_json() or {}
+    vendedor_id = data.get("vendedor_id")
+    if not vendedor_id:
+        return error_response("vendedor_id é obrigatório", 400)
+
+    vendedor = User.query.filter_by(id=vendedor_id, is_active=True).first()
+    if not vendedor:
+        return error_response("Vendedor não encontrado", 404)
+
+    refs = PedidoExternalRef.query.filter_by(provider="nuvemshop").all()
+    atribuidos = 0
+    for ref in refs:
+        pedido = Pedido.query.get(ref.pedido_id)
+        if pedido and pedido.vendedor_id is None:
+            pedido.vendedor_id = vendedor_id
+            atribuidos += 1
+
+    db.session.commit()
+    return success_response(
+        {"atribuidos": atribuidos},
+        message=f"{atribuidos} pedido(s) atribuído(s) a {vendedor.name}",
+    )
+
+
 def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
     """
     Re-busca o pedido na API Nuvemshop e preenche campos que estejam

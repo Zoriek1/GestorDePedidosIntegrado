@@ -105,6 +105,50 @@ export function useNuvemshopInstall() {
   });
 }
 
+export interface Vendedor {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export function useListVendedores() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useQuery<Vendedor[]>({
+    queryKey: ['users', 'vendedores'],
+    queryFn: async () => {
+      const response = await apiRequest<{ users: Vendedor[] }>('/users');
+      if (!response.ok) throw new Error(response.message);
+      return ((response.data as { users: Vendedor[] }).users ?? []).filter(
+        (u) => u.role === 'vendedor',
+      );
+    },
+  });
+}
+
+export function useAssignVendorNuvemshop() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (vendedor_id: number) => {
+      const response = await apiRequest('/integrations/nuvemshop/atribuir-vendedor', {
+        method: 'POST',
+        body: JSON.stringify({ vendedor_id }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data as { atribuidos: number };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    },
+  });
+}
+
 /** Recria os webhooks de pedidos na loja conectada (útil após mudar de domínio/VPS). */
 export function useSetupNuvemshopWebhooks() {
   const { getAuthHeader } = useAuth();

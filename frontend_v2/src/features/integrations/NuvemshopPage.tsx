@@ -22,6 +22,7 @@ import {
   useNuvemshopInstall,
   useSetupNuvemshopWebhooks,
 } from '../../api/endpoints/nuvemshop';
+import { AssignVendorModal } from './AssignVendorModal';
 
 interface DraftState {
   [pedidoId: number]: {
@@ -39,6 +40,7 @@ export default function NuvemshopPage() {
   const { error: toastError, success } = useToast();
 
   const [drafts, setDrafts] = useState<DraftState>({});
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const pendingItems = useMemo(() => data?.pedidos ?? [], [data]);
@@ -122,6 +124,9 @@ export default function NuvemshopPage() {
           <AppButton variant="outlined" onClick={() => refetch()}>
             Atualizar lista
           </AppButton>
+          <AppButton variant="outlined" onClick={() => setAssignModalOpen(true)}>
+            Atribuir vendedor
+          </AppButton>
         </Stack>
         {processPending.isError && (
           <Alert severity="error">
@@ -129,6 +134,8 @@ export default function NuvemshopPage() {
           </Alert>
         )}
       </Stack>
+
+      <AssignVendorModal open={assignModalOpen} onClose={() => setAssignModalOpen(false)} />
 
       {pendingItems.length === 0 ? (
         <Alert severity="success">Nenhuma pendencia de agendamento encontrada.</Alert>

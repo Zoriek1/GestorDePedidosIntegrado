@@ -27,7 +27,8 @@ from app.models.ledger_entry import LedgerEntry  # noqa: E402
 from app.models.pedido import Pedido  # noqa: E402
 from app.models.user import CommissionConfig, PayrollConfig, User  # noqa: E402
 from app.services.auth_service import generate_token, hash_password  # noqa: E402
-from app.services.commission_service import get_monday, map_fonte_to_source  # noqa: E402
+from app.utils.date_utils import get_monday  # noqa: E402
+from app.services.commission_service import map_fonte_to_source  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +308,7 @@ class TestLedgerOperations:
             amount=100.0,
             week_ref=week_ref,
             due_date=today - timedelta(days=1),
-            status="pendente",
+            status="active",
             created_by=admin.id,
         )
         e2 = LedgerEntry(
@@ -317,7 +318,7 @@ class TestLedgerOperations:
             amount=80.0,
             week_ref=week_ref,
             due_date=today + timedelta(days=2),
-            status="pendente",
+            status="active",
             created_by=admin.id,
         )
         e3 = LedgerEntry(
@@ -327,7 +328,7 @@ class TestLedgerOperations:
             amount=60.0,
             week_ref=week_ref,
             due_date=today + timedelta(days=7),
-            status="pendente",
+            status="active",
             created_by=admin.id,
         )
         e4 = LedgerEntry(
@@ -337,7 +338,7 @@ class TestLedgerOperations:
             amount=200.0,
             week_ref=week_ref,
             due_date=today + timedelta(days=2),
-            status="pendente",
+            status="active",
             created_by=admin.id,
         )
         session.add_all([e1, e2, e3, e4])
@@ -353,8 +354,8 @@ class TestLedgerOperations:
         assert "fixo_mensal" in categories
         assert "transporte" not in categories
 
-    def test_balance_nao_soma_creditos_pendentes_futuros(self, client, session):
-        """Saldo não deve incluir pendentes com due_date no futuro."""
+    def test_balance_credito_futuro_em_upcoming(self, client, session):
+        """CREDIT active com due_date no futuro aparece em upcoming_credits e conta no balance."""
         admin = make_user(session, "adminbal@test.com", "pass1234", role="admin", name="AdminBal")
         vendedor = make_user(session, "vendbal@test.com", "pass1234", role="vendedor")
         token = generate_token(vendedor)
@@ -367,7 +368,7 @@ class TestLedgerOperations:
             amount=500.0,
             week_ref=today,
             due_date=today + timedelta(days=2),
-            status="pendente",
+            status="active",
             created_by=admin.id,
         )
         session.add(entry)
@@ -376,8 +377,9 @@ class TestLedgerOperations:
         resp = client.get("/api/ledger/balance", headers=auth_headers(token))
         assert resp.status_code == 200
         body = resp.get_json()
-        assert body["pending_credits"] == pytest.approx(0.0, abs=0.01)
+        assert body["upcoming_credits"] == pytest.approx(500.0, abs=0.01)
         assert body["overdue_credits"] == pytest.approx(0.0, abs=0.01)
+        assert body["balance"] == pytest.approx(500.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -564,10 +566,14 @@ class TestCommission:
             session.commit()
         session.rollback()
 
-    def test_ledger_pedidos_retorna_pedidos_atribuidos_sem_entry(self, client, session):
-        """GET /api/ledger/pedidos usa pedidos com vendedor_id, sem depender de ledger_entry."""
+    def test_ledger_pedidos_retorna_entrada_apos_comissao(self, client, session):
+        """GET /api/ledger/pedidos lê de ledger_entry — pedido aparece após generate_commission."""
+        from app.services.commission_service import generate_commission
+
         vendedor = self._setup_vendedor_com_comissao(session, "comv5@test.com", rate=0.03)
-        self._make_pedido_whatsapp(session, vendedor.id, valor="R$ 100,00")
+        pedido = self._make_pedido_whatsapp(session, vendedor.id, valor="R$ 100,00")
+
+        generate_commission(pedido, vendedor.id)
 
         token = generate_token(vendedor)
         resp = client.get("/api/ledger/pedidos", headers=auth_headers(token))
@@ -578,13 +584,12 @@ class TestCommission:
         assert body["total"] == 1
         assert len(body["pedidos"]) == 1
         pedido_row = body["pedidos"][0]
-        assert pedido_row["fonte"] == "whatsapp"
-        assert pedido_row["rate"] == 3.0
+        assert pedido_row["category"] == "comissao_whatsapp"
         assert pedido_row["commission_amount"] == pytest.approx(3.0, abs=0.01)
-        assert pedido_row["status"] == "pendente"
+        assert pedido_row["status"] == "active"
 
-    def test_ledger_pedidos_sem_config_retorna_comissao_zero(self, client, session):
-        """Sem config de comissão, o pedido atribuído ainda aparece com comissão zero."""
+    def test_ledger_pedidos_sem_config_nao_aparece(self, client, session):
+        """Sem config de comissão, generate_commission não cria entry → /pedidos retorna vazio."""
         vendedor = make_user(session, "comv6@test.com", "pass1234", role="vendedor")
         self._make_pedido_whatsapp(session, vendedor.id, valor="R$ 100,00")
 
@@ -594,16 +599,15 @@ class TestCommission:
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["success"] is True
-        assert body["total"] == 1
-        pedido_row = body["pedidos"][0]
-        assert pedido_row["rate"] is None
-        assert pedido_row["commission_amount"] == 0.0
+        assert body["total"] == 0
 
     def test_ledger_pedidos_pago_usa_data_referencia_do_pagamento(self, client, session):
         """
         Pedido pago deve usar data de criação/pagamento como referência de comissão,
-        não a data de entrega.
+        não a data de entrega. Entry criada via generate_commission reflete isso.
         """
+        from app.services.commission_service import generate_commission
+
         vendedor = self._setup_vendedor_com_comissao(session, "comv7@test.com", rate=0.03)
         pedido = self._make_pedido_whatsapp(
             session,
@@ -612,31 +616,36 @@ class TestCommission:
             status_pagamento="Pago",
         )
 
+        generate_commission(pedido, vendedor.id)
+
         token = generate_token(vendedor)
         resp = client.get("/api/ledger/pedidos", headers=auth_headers(token))
 
         assert resp.status_code == 200
-        row = resp.get_json()["pedidos"][0]
-        expected_ref_date = pedido.created_at.date().isoformat()
-        assert row["due_date"] == expected_ref_date
+        rows = resp.get_json()["pedidos"]
+        assert len(rows) == 1
+        row = rows[0]
         assert row["week_ref"] == get_monday(pedido.created_at.date()).isoformat()
 
-    def test_balance_inclui_comissao_live_sem_ledger_entry(self, client, session):
-        """Saldo deve incluir comissão de pedido pago mesmo sem entry persistida."""
+    def test_balance_inclui_comissao_apos_geracao(self, client, session):
+        """Saldo reflete comissão após generate_commission persistir a CREDIT entry."""
+        from app.services.commission_service import generate_commission
+
         vendedor = self._setup_vendedor_com_comissao(session, "comv8@test.com", rate=0.03)
-        self._make_pedido_whatsapp(
+        pedido = self._make_pedido_whatsapp(
             session,
             vendedor.id,
             valor="R$ 100,00",
             status_pagamento="Pago",
         )
 
+        generate_commission(pedido, vendedor.id)
+
         token = generate_token(vendedor)
         resp = client.get("/api/ledger/balance", headers=auth_headers(token))
 
         assert resp.status_code == 200
         body = resp.get_json()
-        assert body["confirmed_credits"] == pytest.approx(3.0, abs=0.01)
         assert body["total_credits"] == pytest.approx(3.0, abs=0.01)
         assert body["balance"] == pytest.approx(3.0, abs=0.01)
 

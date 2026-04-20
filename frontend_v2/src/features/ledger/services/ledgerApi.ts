@@ -1,5 +1,5 @@
 /**
- * Ledger API — hooks React Query para o módulo de Recebíveis
+ * Ledger API — hooks React Query para o módulo de Recebíveis (double-entry)
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../../../api/http';
@@ -18,8 +18,10 @@ export interface LedgerEntry {
   pedido_id: number | null;
   week_ref: string; // YYYY-MM-DD (segunda-feira)
   due_date: string | null; // YYYY-MM-DD
-  status: 'pendente' | 'confirmado';
-  confirmed_at: string | null;
+  status: 'active' | 'settled';
+  settled_at: string | null;
+  settled_by_id: number | null;
+  voided: boolean;
   created_at: string;
   created_by: number;
 }
@@ -27,9 +29,9 @@ export interface LedgerEntry {
 export interface LedgerBalance {
   user_id: number;
   total_credits: number;
-  confirmed_credits: number;
   overdue_credits: number;
-  pending_credits: number;
+  due_today_credits: number;
+  upcoming_credits: number;
   total_debits: number;
   balance: number;
 }
@@ -37,8 +39,7 @@ export interface LedgerBalance {
 export interface LedgerSummaryItem {
   user: { id: number; name: string; email: string; role: string };
   total_credits: number;
-  confirmed_credits: number;
-  pending_credits: number;
+  overdue_credits: number;
   total_debits: number;
   balance: number;
 }
@@ -60,18 +61,24 @@ export interface ManualEntryPayload {
   week_ref?: string;
 }
 
+export interface SettleResult {
+  settled: number;
+  amount: number;
+  debit_id: number | null;
+}
+
 export interface PedidoAtribuido {
   entry_id: number;
   pedido_id: number;
-  cliente: string;
+  cliente: string | null;
   dia_entrega: string | null;
   week_ref: string | null;
   due_date: string | null;
-  valor_pedido: number | null;
-  fonte: string;
-  rate: number | null;       // percentual (ex: 3.0 = 3%)
   commission_amount: number;
-  status: 'pendente' | 'confirmado';
+  category: string;
+  status: 'active' | 'settled';
+  settled_at: string | null;
+  settled_by_id: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +117,7 @@ export function useLedgerBalance(userId?: number) {
   });
 }
 
-/** Extrato com filtros */
+/** Extrato com filtros (exclui voided automaticamente no backend) */
 export function useLedgerEntries(filters: EntriesFilters = {}) {
   const api = useApi();
   return useQuery<LedgerEntry[]>({
@@ -140,7 +147,7 @@ export function usePedidosAtribuidos(filters: { from?: string; to?: string; user
   });
 }
 
-/** Pagamentos pendentes de confirmação */
+/** CREDITs active do vendedor (pendentes de quitação em lote) */
 export function usePendingPayments(userId?: number) {
   const api = useApi();
   return useQuery<LedgerEntry[]>({
@@ -155,15 +162,16 @@ export function usePendingPayments(userId?: number) {
   });
 }
 
-/** Confirmar recebimento (funcionário ou admin) */
-export function useConfirmEntry() {
+/** Quitação em lote — substitui confirmação individual */
+export function useSettleUser() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (entryId: number) => {
-      const res = await api(`/ledger/entries/${entryId}/confirm`, { method: 'PUT' });
+    mutationFn: async (userId?: number) => {
+      const body = userId ? JSON.stringify({ user_id: userId }) : '{}';
+      const res = await api<SettleResult>('/ledger/settle', { method: 'POST', body });
       if (!res.ok) throw new Error((res as { message: string }).message);
-      return res;
+      return res.data as SettleResult;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ledger-balance'] });

@@ -1,7 +1,8 @@
 import { Card, CardContent, Typography, Box, Skeleton, Chip, Stack } from '@mui/material';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { formatBRL } from '../../../lib/format/currency';
 import { LedgerBalance } from '../services/ledgerApi';
 
@@ -13,6 +14,7 @@ interface BalanceCardProps {
 
 export function BalanceCard({ balance, loading, userName }: BalanceCardProps) {
   const isPositive = (balance?.balance ?? 0) >= 0;
+  const aReceber = (balance?.due_today_credits ?? 0) + (balance?.upcoming_credits ?? 0);
 
   return (
     <Card elevation={2} sx={{ borderRadius: 2 }}>
@@ -37,26 +39,34 @@ export function BalanceCard({ balance, loading, userName }: BalanceCardProps) {
         )}
 
         <Stack direction="row" gap={1} mt={1} flexWrap="wrap">
+          {/* A Receber (due_today + upcoming) */}
           <Chip
             size="small"
-            icon={<CheckCircleOutlineIcon />}
-            label={`Confirmado: ${formatBRL(balance?.confirmed_credits ?? 0)}`}
-            color="success"
+            icon={<ScheduleIcon />}
+            label={`A receber: ${formatBRL(aReceber)}`}
+            color="info"
             variant="outlined"
           />
-          <Chip
-            size="small"
-            icon={<HourglassEmptyIcon />}
-            label={`Pendente: ${formatBRL(balance?.pending_credits ?? 0)}`}
-            color="warning"
-            variant="outlined"
-          />
-          <Chip
-            size="small"
-            label={`Débitos: ${formatBRL(balance?.total_debits ?? 0)}`}
-            color="error"
-            variant="outlined"
-          />
+          {/* Atrasado */}
+          {(balance?.overdue_credits ?? 0) > 0 && (
+            <Chip
+              size="small"
+              icon={<WarningAmberIcon />}
+              label={`Atrasado: ${formatBRL(balance?.overdue_credits ?? 0)}`}
+              color="error"
+              variant="outlined"
+            />
+          )}
+          {/* Débitos totais */}
+          {(balance?.total_debits ?? 0) > 0 && (
+            <Chip
+              size="small"
+              icon={<RemoveCircleOutlineIcon />}
+              label={`Quitado: ${formatBRL(balance?.total_debits ?? 0)}`}
+              color="default"
+              variant="outlined"
+            />
+          )}
         </Stack>
       </CardContent>
     </Card>

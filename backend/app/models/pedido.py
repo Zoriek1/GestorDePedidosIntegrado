@@ -170,6 +170,12 @@ class Pedido(db.Model):
         onupdate=datetime_now_brazil,
         comment="Última atualização",
     )
+    # Setado uma única vez quando status_pagamento transita para Pago/Parcial
+    paid_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Momento real do pagamento (imutável após ser definido)",
+    )
 
     # Soft Delete (P0.3)
     deleted_at = db.Column(

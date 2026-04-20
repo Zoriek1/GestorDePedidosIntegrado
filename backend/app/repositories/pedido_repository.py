@@ -233,36 +233,46 @@ class PedidoRepository(BaseRepository):
 
     def atualizar_status(self, pedido_id: int, novo_status: str) -> Optional[Pedido]:
         """
-        Atualiza status de um pedido
+        Atualiza status de um pedido.
 
-        Hook: Se pedido mudar para Purchase (status_pagamento = Pago ou Parcial),
-        cria registro na outbox Meta CAPI.
+        Hooks disparados aqui:
+        - Meta CAPI outbox quando status_pagamento → Pago/Parcial
+        - UTMify quando status_pagamento → Pago/Parcial
+        - Comissão quando status_pagamento transita para Pago/Parcial (Q2)
+        - paid_at setado uma única vez na transição para Pago/Parcial
         """
         pedido = self.get_by_id(pedido_id)
         if not pedido:
             return None
 
-        # Status anterior (ANTES de atualizar)
         status_anterior = pedido.status
         status_pagamento_anterior = pedido.status_pagamento
 
-        # Auto-pagar ao concluir se pagamento pendente
         update_fields = {"status": novo_status, "updated_at": datetime_now_brazil()}
+
+        # Auto-pagar ao concluir se pagamento ainda pendente
         if novo_status == "concluido" and (
             not pedido.status_pagamento or pedido.status_pagamento.upper() == "PENDENTE"
         ):
             update_fields["status_pagamento"] = "Pago"
 
+        # Setar paid_at na primeira transição para Pago/Parcial (imutável após isso)
+        novo_sp = update_fields.get("status_pagamento") or pedido.status_pagamento or ""
+        novo_sp_lower = novo_sp.strip().lower()
+        sp_ant_lower = (status_pagamento_anterior or "").strip().lower()
+        transitando_para_pago = (
+            novo_sp_lower in ("pago", "parcial") and sp_ant_lower not in ("pago", "parcial")
+        )
+        if transitando_para_pago and not pedido.paid_at:
+            update_fields["paid_at"] = datetime_now_brazil()
+
         pedido_atualizado = self.update(pedido, **update_fields)
 
-        # Hook: Verificar se mudou para Purchase (status_pagamento = Realizado ou Parcial)
-        # Não verificar status="concluido" porque pode agendar pedido para ano que vem
         try:
             from app.utils.meta_capi_helper import create_outbox_if_purchase
 
             create_outbox_if_purchase(pedido_atualizado, status_anterior, status_pagamento_anterior)
         except Exception as e:
-            # Não falhar a atualização de status se houver erro na outbox
             print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
 
         try:
@@ -272,14 +282,67 @@ class PedidoRepository(BaseRepository):
         except Exception as e:
             print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
 
-        # Hook: Gerar comissão ao concluir pedido (módulo Recebíveis)
-        if novo_status == "concluido" and pedido_atualizado.vendedor_id:
+        # Gerar comissão quando status_pagamento transita para Pago/Parcial (Q2)
+        if transitando_para_pago and pedido_atualizado.vendedor_id:
             try:
                 from app.services.commission_service import generate_commission
 
                 generate_commission(pedido_atualizado, pedido_atualizado.vendedor_id)
             except Exception as e:
                 print(f"[AVISO] Erro ao gerar comissão para pedido #{pedido_id}: {e}")
+
+        return pedido_atualizado
+
+    def _campos_comissao_mudaram(self, pedido: Pedido, campos_novos: dict) -> bool:
+        """Verifica se algum campo que afeta comissão foi alterado."""
+        sensíveis = {"vendedor_id", "fonte_pedido_id", "valor", "tipo_pedido", "taxa_entrega"}
+        return any(
+            k in sensíveis and campos_novos.get(k) != getattr(pedido, k, None)
+            for k in campos_novos
+        )
+
+    def atualizar_pedido_com_estorno(
+        self, pedido_id: int, campos: dict, actor_id: int
+    ) -> Optional[Pedido]:
+        """
+        Atualiza campos gerais de um pedido e, se tiver comissão ativa e campos
+        que afetam a comissão mudaram, estorna e recria (Q3).
+
+        Também dispara paid_at e comissão nova se status_pagamento transitar para Pago/Parcial.
+        """
+        pedido = self.get_by_id(pedido_id)
+        if not pedido:
+            return None
+
+        sp_ant_lower = (pedido.status_pagamento or "").strip().lower()
+        novo_sp_lower = (campos.get("status_pagamento") or pedido.status_pagamento or "").strip().lower()
+        transitando_para_pago = (
+            novo_sp_lower in ("pago", "parcial") and sp_ant_lower not in ("pago", "parcial")
+        )
+
+        if transitando_para_pago and not pedido.paid_at:
+            campos["paid_at"] = datetime_now_brazil()
+
+        campos["updated_at"] = datetime_now_brazil()
+        pedido_atualizado = self.update(pedido, **campos)
+
+        vendedor_id = pedido_atualizado.vendedor_id or actor_id
+
+        # Estorno se campos de comissão mudaram e já há entrada ativa
+        if self._campos_comissao_mudaram(pedido, campos):
+            try:
+                from app.services.commission_service import void_and_recreate_commission
+
+                void_and_recreate_commission(pedido_atualizado, vendedor_id)
+            except Exception as e:
+                print(f"[AVISO] Erro ao estornar/recriar comissão pedido #{pedido_id}: {e}")
+        elif transitando_para_pago and vendedor_id:
+            try:
+                from app.services.commission_service import generate_commission
+
+                generate_commission(pedido_atualizado, vendedor_id)
+            except Exception as e:
+                print(f"[AVISO] Erro ao gerar comissão pedido #{pedido_id}: {e}")
 
         return pedido_atualizado
 

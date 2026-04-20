@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Model de Lançamento no Ledger de Recebíveis
-Conta corrente entre vendedor e empresa
+Conta corrente entre vendedor e empresa — double-entry clássico
 """
 from datetime import datetime
 
@@ -41,7 +41,13 @@ ALL_CATEGORIES = CREDIT_CATEGORIES | DEBIT_CATEGORIES
 
 
 class LedgerEntry(db.Model):
-    """Lançamento no ledger de recebíveis do vendedor"""
+    """
+    Lançamento no ledger de recebíveis do vendedor.
+
+    Double-entry: todo pagamento gera um DEBIT que quita um lote de CREDITs active.
+    CREDIT nasce com status='active'; vira 'settled' quando o DEBIT de quitação é criado.
+    DEBIT nasce diretamente com status='settled'.
+    """
 
     __tablename__ = "ledger_entry"
 
@@ -55,14 +61,14 @@ class LedgerEntry(db.Model):
     )
     type = db.Column(db.String(10), nullable=False, comment="CREDIT | DEBIT")
     category = db.Column(db.String(50), nullable=False, comment="Ver CREDIT/DEBIT_CATEGORIES")
-    amount = db.Column(db.Float, nullable=False, comment="Sempre positivo")
+    amount = db.Column(db.Numeric(12, 2), nullable=False, comment="Sempre positivo")
     description = db.Column(db.Text, nullable=True, comment="Anotação livre")
     pedido_id = db.Column(
         db.Integer,
         db.ForeignKey("pedidos.id"),
         nullable=True,
-        unique=True,  # Idempotência: um pedido gera no máximo uma comissão
-        comment="Só para comissões — UNIQUE garante idempotência",
+        # UNIQUE removido — substituído por índice parcial WHERE voided=0 no migration script
+        comment="Só para comissões — índice parcial garante idempotência por pedido ativo",
     )
     week_ref = db.Column(
         db.Date,
@@ -78,10 +84,22 @@ class LedgerEntry(db.Model):
     status = db.Column(
         db.String(20),
         nullable=False,
-        default="pendente",
-        comment="pendente | confirmado — funcionário confirma recebimento",
+        default="active",
+        comment="active | settled",
     )
-    confirmed_at = db.Column(db.DateTime, nullable=True, comment="Quando o funcionário confirmou")
+    settled_at = db.Column(db.DateTime, nullable=True, comment="Quando foi quitado")
+    settled_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("ledger_entry.id"),
+        nullable=True,
+        comment="DEBIT que quitou este CREDIT (NULL para DEBITs ou CREDITs ainda active)",
+    )
+    voided = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        comment="TRUE quando estornado por edição de pedido",
+    )
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
     created_by = db.Column(
         db.Integer,
@@ -90,13 +108,21 @@ class LedgerEntry(db.Model):
         comment="Quem lançou",
     )
 
-    # Índice composto para consultas por semana
     __table_args__ = (
         db.Index("ix_ledger_user_week", "user_id", "week_ref"),
+        db.Index(
+            "uq_ledger_pedido_active",
+            "pedido_id",
+            unique=True,
+            sqlite_where=db.text("voided=0 AND pedido_id IS NOT NULL"),
+        ),
+        db.CheckConstraint("type IN ('CREDIT', 'DEBIT')", name="ck_ledger_type"),
+        db.CheckConstraint("status IN ('active', 'settled')", name="ck_ledger_status"),
+        db.CheckConstraint("amount > 0", name="ck_ledger_amount_positive"),
     )
 
     def __repr__(self):
-        return f"<LedgerEntry #{self.id} {self.type} {self.category} R${self.amount:.2f}>"
+        return f"<LedgerEntry #{self.id} {self.type} {self.category} R${self.amount}>"
 
     def to_dict(self):
         return {
@@ -104,13 +130,15 @@ class LedgerEntry(db.Model):
             "user_id": self.user_id,
             "type": self.type,
             "category": self.category,
-            "amount": round(self.amount, 2),
+            "amount": float(self.amount),
             "description": self.description or "",
             "pedido_id": self.pedido_id,
             "week_ref": self.week_ref.strftime("%Y-%m-%d") if self.week_ref else "",
             "due_date": self.due_date.strftime("%Y-%m-%d") if self.due_date else None,
             "status": self.status,
-            "confirmed_at": self.confirmed_at.strftime("%Y-%m-%d %H:%M:%S") if self.confirmed_at else None,
+            "settled_at": self.settled_at.strftime("%Y-%m-%d %H:%M:%S") if self.settled_at else None,
+            "settled_by_id": self.settled_by_id,
+            "voided": self.voided,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "created_by": self.created_by,
         }

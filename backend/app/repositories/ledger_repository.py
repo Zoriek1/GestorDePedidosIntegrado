@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-LedgerRepository — CRUD e queries do ledger de recebíveis
+LedgerRepository — CRUD e queries do ledger de recebíveis (double-entry)
 """
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from app import db
 from app.models.ledger_entry import LedgerEntry
@@ -27,126 +27,212 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
     # Idempotência
     # ------------------------------------------------------------------
 
+    def get_active_by_pedido_id(self, pedido_id: int) -> Optional[LedgerEntry]:
+        """Retorna a comissão ativa (não voidada) de um pedido."""
+        return LedgerEntry.query.filter_by(
+            pedido_id=pedido_id, voided=False
+        ).first()
+
+    # Alias para retrocompatibilidade interna
     def get_by_pedido_id(self, pedido_id: int) -> Optional[LedgerEntry]:
-        """Verifica se já existe entry para esse pedido (previne comissão duplicada)."""
-        return LedgerEntry.query.filter_by(pedido_id=pedido_id).first()
+        return self.get_active_by_pedido_id(pedido_id)
 
     def get_by_week_and_category(
         self, user_id: int, week_ref: date, category: str
     ) -> Optional[LedgerEntry]:
-        """Verifica se já existe lançamento fixo para a semana+categoria (previne duplicação)."""
+        """Verifica se já existe lançamento fixo para a semana+categoria."""
         return LedgerEntry.query.filter_by(
-            user_id=user_id, week_ref=week_ref, category=category
+            user_id=user_id, week_ref=week_ref, category=category, voided=False
         ).first()
 
     # ------------------------------------------------------------------
-    # Saldo
+    # Saldo — lógica double-entry simplificada
     # ------------------------------------------------------------------
 
     def get_balance(self, user_id: int) -> dict:
         """
-        Retorna saldo devedor separando:
-        - confirmed_credits: créditos já confirmados (recebidos)
-        - overdue_credits: pendentes com due_date < hoje (atrasados)
-        - pending_credits: pendentes do dia (due_date == hoje) ou sem due_date
-        - total_debits: débitos (pagamentos realizados)
-        - balance: total_credits - total_debits
+        Saldo devedor usando double-entry:
+          active_total     = Σ(CREDIT WHERE status='active' AND voided=FALSE)
+          overdue          = active_total WHERE due_date < hoje
+          due_today        = active_total WHERE due_date == hoje
+          upcoming         = active_total WHERE due_date > hoje (ou sem due_date)
+          debits_unalloc   = Σ(DEBIT WHERE settled_by_id IS NULL) — ajustes avulsos
+          balance          = active_total − debits_unalloc
         """
         today = date.today()
 
-        confirmed_credits = (
+        base_active = (
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
                 LedgerEntry.user_id == user_id,
                 LedgerEntry.type == "CREDIT",
-                LedgerEntry.status == "confirmado",
+                LedgerEntry.status == "active",
+                LedgerEntry.voided.is_(False),
             )
-            .scalar()
         )
 
-        # Atrasado: pendente e due_date já passou
-        overdue_credits = (
+        active_total = float(base_active.scalar())
+
+        overdue = float(
+            base_active.filter(LedgerEntry.due_date < today).scalar()
+        )
+        due_today = float(
+            base_active.filter(LedgerEntry.due_date == today).scalar()
+        )
+        upcoming = float(
+            base_active.filter(
+                (LedgerEntry.due_date > today) | LedgerEntry.due_date.is_(None)
+            ).scalar()
+        )
+
+        # DEBITs sem settled_by_id são ajustes avulsos (adiantamento, ajuste_debito, etc.)
+        debits_unalloc = float(
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
                 LedgerEntry.user_id == user_id,
-                LedgerEntry.type == "CREDIT",
-                LedgerEntry.status == "pendente",
-                LedgerEntry.due_date < today,
+                LedgerEntry.type == "DEBIT",
+                LedgerEntry.settled_by_id.is_(None),
+                LedgerEntry.voided.is_(False),
             )
             .scalar()
         )
 
-        # Pendente do dia: due_date == hoje ou sem due_date
-        pending_credits = (
+        total_debits = float(
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
                 LedgerEntry.user_id == user_id,
-                LedgerEntry.type == "CREDIT",
-                LedgerEntry.status == "pendente",
-                (LedgerEntry.due_date == today) | (LedgerEntry.due_date.is_(None)),
+                LedgerEntry.type == "DEBIT",
+                LedgerEntry.voided.is_(False),
             )
             .scalar()
         )
 
-        debits = (
-            db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
-            .filter(LedgerEntry.user_id == user_id, LedgerEntry.type == "DEBIT")
-            .scalar()
-        )
-
-        total_credits = float(confirmed_credits) + float(overdue_credits) + float(pending_credits)
         return {
-            "total_credits": round(total_credits, 2),
-            "confirmed_credits": round(float(confirmed_credits), 2),
-            "overdue_credits": round(float(overdue_credits), 2),
-            "pending_credits": round(float(pending_credits), 2),
-            "total_debits": round(float(debits), 2),
-            "balance": round(total_credits - float(debits), 2),
+            "total_credits": round(active_total, 2),
+            "overdue_credits": round(overdue, 2),
+            "due_today_credits": round(due_today, 2),
+            "upcoming_credits": round(upcoming, 2),
+            "total_debits": round(total_debits, 2),
+            "balance": round(active_total - debits_unalloc, 2),
         }
 
     def get_all_balances(self) -> List[dict]:
-        """Resumo de saldo de todos os vendedores (para o admin)."""
+        """
+        Resumo de saldo de todos os vendedores ativos — query única com GROUP BY.
+        Evita N+1 do loop anterior.
+        """
         from app.models.user import User
+
+        today = date.today()
+
+        rows = (
+            db.session.query(
+                LedgerEntry.user_id,
+                func.sum(
+                    case(
+                        (
+                            (LedgerEntry.type == "CREDIT")
+                            & (LedgerEntry.status == "active")
+                            & ~LedgerEntry.voided,
+                            LedgerEntry.amount,
+                        ),
+                        else_=0,
+                    )
+                ).label("active_total"),
+                func.sum(
+                    case(
+                        (
+                            (LedgerEntry.type == "DEBIT")
+                            & LedgerEntry.settled_by_id.is_(None)
+                            & ~LedgerEntry.voided,
+                            LedgerEntry.amount,
+                        ),
+                        else_=0,
+                    )
+                ).label("debits_unalloc"),
+                func.sum(
+                    case(
+                        (
+                            (LedgerEntry.type == "DEBIT") & ~LedgerEntry.voided,
+                            LedgerEntry.amount,
+                        ),
+                        else_=0,
+                    )
+                ).label("total_debits"),
+                func.sum(
+                    case(
+                        (
+                            (LedgerEntry.type == "CREDIT")
+                            & (LedgerEntry.status == "active")
+                            & ~LedgerEntry.voided
+                            & (LedgerEntry.due_date < today),
+                            LedgerEntry.amount,
+                        ),
+                        else_=0,
+                    )
+                ).label("overdue"),
+            )
+            .group_by(LedgerEntry.user_id)
+            .all()
+        )
+
+        balances_by_user = {
+            r.user_id: {
+                "total_credits": round(float(r.active_total), 2),
+                "overdue_credits": round(float(r.overdue), 2),
+                "total_debits": round(float(r.total_debits), 2),
+                "balance": round(float(r.active_total) - float(r.debits_unalloc), 2),
+            }
+            for r in rows
+        }
 
         vendedores = User.query.filter_by(is_active=True).all()
         result = []
         for v in vendedores:
-            bal = self.get_balance(v.id)
+            bal = balances_by_user.get(v.id, {
+                "total_credits": 0.0,
+                "overdue_credits": 0.0,
+                "total_debits": 0.0,
+                "balance": 0.0,
+            })
             result.append({"user": v.to_dict(), **bal})
         return result
 
     # ------------------------------------------------------------------
-    # Pagamentos pendentes (a confirmar pelo funcionário)
+    # Pagamentos pendentes (CREDITs active)
     # ------------------------------------------------------------------
 
     def get_pending(self, user_id: int) -> List[LedgerEntry]:
         """
-        Retorna CREDITs pendentes com foco operacional:
+        Retorna CREDITs active com foco operacional:
         - Todos os atrasados (due_date < hoje)
         - Itens de hoje (due_date == hoje)
         - Itens sem due_date
         - Dos futuros, somente o próximo dia de pagamento (menor due_date > hoje)
         """
         today = date.today()
-        all_pending = (
-            LedgerEntry.query.filter_by(user_id=user_id, type="CREDIT", status="pendente")
+        all_active = (
+            LedgerEntry.query.filter(
+                LedgerEntry.user_id == user_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.status == "active",
+                LedgerEntry.voided.is_(False),
+            )
             .order_by(LedgerEntry.due_date.asc().nullsfirst(), LedgerEntry.week_ref.asc())
             .all()
         )
-        if not all_pending:
+        if not all_active:
             return []
 
-        overdue = [e for e in all_pending if e.due_date is not None and e.due_date < today]
-        due_today = [e for e in all_pending if e.due_date == today]
-        without_due_date = [e for e in all_pending if e.due_date is None]
-        future = [e for e in all_pending if e.due_date is not None and e.due_date > today]
+        overdue = [e for e in all_active if e.due_date is not None and e.due_date < today]
+        due_today = [e for e in all_active if e.due_date == today]
+        without_due = [e for e in all_active if e.due_date is None]
+        future = [e for e in all_active if e.due_date is not None and e.due_date > today]
 
-        next_future_due_date = min((e.due_date for e in future), default=None)
-        next_future = [e for e in future if e.due_date == next_future_due_date] if next_future_due_date else []
+        next_due = min((e.due_date for e in future), default=None)
+        next_future = [e for e in future if e.due_date == next_due] if next_due else []
 
-        selected = overdue + due_today + without_due_date + next_future
-
-        # Preserva ordenação por due_date, week_ref e created_at.
+        selected = overdue + due_today + without_due + next_future
         return sorted(
             selected,
             key=lambda e: (
@@ -155,24 +241,6 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
                 e.created_at or datetime.min,
             ),
         )
-
-    def confirm_entry(self, entry_id: int, user_id: int, is_admin: bool) -> Optional[LedgerEntry]:
-        """
-        Marca entry como confirmada.
-        - Vendedor só pode confirmar as próprias entries.
-        - Admin pode confirmar qualquer entry.
-        """
-        entry = LedgerEntry.query.get(entry_id)
-        if not entry:
-            return None
-        if not is_admin and entry.user_id != user_id:
-            return None
-        if entry.status == "confirmado":
-            return entry  # idempotente
-        entry.status = "confirmado"
-        entry.confirmed_at = datetime.now(TIMEZONE_BRASIL)
-        db.session.commit()
-        return entry
 
     # ------------------------------------------------------------------
     # Extrato
@@ -186,7 +254,10 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         from_date: Optional[date] = None,
         to_date: Optional[date] = None,
     ) -> List[LedgerEntry]:
-        query = LedgerEntry.query.filter_by(user_id=user_id)
+        query = LedgerEntry.query.filter(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.voided.is_(False),
+        )
 
         if week_ref:
             query = query.filter(LedgerEntry.week_ref == week_ref)

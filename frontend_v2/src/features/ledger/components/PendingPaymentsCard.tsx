@@ -13,29 +13,30 @@ import {
   Alert,
 } from '@mui/material';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
-import CheckIcon from '@mui/icons-material/Check';
+import PaymentsIcon from '@mui/icons-material/Payments';
 import { formatBRL } from '../../../lib/format/currency';
-import { LedgerEntry, usePendingPayments, useConfirmEntry } from '../services/ledgerApi';
+import { LedgerEntry, usePendingPayments, useSettleUser } from '../services/ledgerApi';
 
 interface PendingPaymentsCardProps {
   userId?: number;
   isAdmin?: boolean;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  fixo_semanal: 'Salário Semanal',
+  fixo_mensal: 'Salário Mensal',
+  almoco: 'Vale Almoço',
+  transporte: 'Vale Transporte',
+  comissao_whatsapp: 'Comissão WhatsApp',
+  comissao_site: 'Comissão Site',
+  comissao_balcao: 'Comissão Balcão',
+  comissao_indicacao: 'Comissão Indicação',
+  comissao_lucro: 'Comissão Lucro',
+  custom_credit: 'Crédito Avulso',
+};
+
 function categoryLabel(category: string): string {
-  const labels: Record<string, string> = {
-    fixo_semanal: 'Salário Semanal',
-    fixo_mensal: 'Salário Mensal',
-    almoco: 'Vale Almoço',
-    transporte: 'Vale Transporte',
-    comissao_whatsapp: 'Comissão WhatsApp',
-    comissao_site: 'Comissão Site',
-    comissao_balcao: 'Comissão Balcão',
-    comissao_indicacao: 'Comissão Indicação',
-    comissao_lucro: 'Comissão Lucro',
-    custom_credit: 'Crédito Avulso',
-  };
-  return labels[category] ?? category;
+  return CATEGORY_LABELS[category] ?? category;
 }
 
 function formatDueDate(due_date: string | null): string | null {
@@ -62,29 +63,23 @@ function dueDateColor(due_date: string | null): 'error' | 'warning' | 'default' 
   return 'default';
 }
 
-function isFutureDueDate(due_date: string | null): boolean {
-  if (!due_date) return false;
-  const d = new Date(due_date + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return d.getTime() > today.getTime();
-}
-
 export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProps) {
   const pendingQuery = usePendingPayments(userId);
-  const confirmMutation = useConfirmEntry();
+  const settleMutation = useSettleUser();
 
   const entries: LedgerEntry[] = pendingQuery.data ?? [];
-  const hasUrgentPending = entries.some((entry) => {
-    if (!entry.due_date) return false;
-    const due = new Date(entry.due_date + 'T00:00:00');
+  const total = entries.reduce((acc, e) => acc + e.amount, 0);
+
+  const hasOverdue = entries.some((e) => {
+    if (!e.due_date) return false;
+    const due = new Date(e.due_date + 'T00:00:00');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return due.getTime() <= today.getTime();
+    return due.getTime() < today.getTime();
   });
 
-  const handleConfirm = (entryId: number) => {
-    confirmMutation.mutate(entryId);
+  const handleSettle = () => {
+    settleMutation.mutate(userId);
   };
 
   return (
@@ -93,22 +88,38 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
       sx={{
         borderRadius: 2,
         border: entries.length > 0 ? '1px solid' : undefined,
-        borderColor: entries.length > 0 ? (hasUrgentPending ? 'warning.light' : 'divider') : undefined,
+        borderColor: entries.length > 0 ? (hasOverdue ? 'error.light' : 'warning.light') : undefined,
       }}
     >
       <CardContent>
-        <Box display="flex" alignItems="center" gap={1} mb={1}>
-          <PendingActionsIcon color="warning" />
-          <Typography variant="subtitle2" color="text.secondary">
-            Pagamentos Pendentes
-          </Typography>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <PendingActionsIcon color={hasOverdue ? 'error' : 'warning'} />
+            <Typography variant="subtitle2" color="text.secondary">
+              A Receber
+            </Typography>
+            {entries.length > 0 && (
+              <Chip
+                size="small"
+                label={entries.length}
+                color={hasOverdue ? 'error' : 'warning'}
+                sx={{ height: 20, fontSize: '0.7rem' }}
+              />
+            )}
+          </Box>
+
           {entries.length > 0 && (
-            <Chip
+            <Button
+              variant="contained"
+              color="success"
               size="small"
-              label={entries.length}
-              color={hasUrgentPending ? 'warning' : 'default'}
-              sx={{ height: 20, fontSize: '0.7rem' }}
-            />
+              startIcon={<PaymentsIcon />}
+              onClick={handleSettle}
+              disabled={settleMutation.isPending}
+              sx={{ fontWeight: 700, minWidth: 180 }}
+            >
+              Recebi — {formatBRL(total)}
+            </Button>
           )}
         </Box>
 
@@ -120,13 +131,13 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
           </Box>
         ) : entries.length === 0 ? (
           <Alert severity="success" sx={{ mt: 1 }}>
-            Nenhum pagamento pendente. Tudo em dia!
+            Nenhum valor pendente. Tudo em dia!
           </Alert>
         ) : (
           <>
             {!isAdmin && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Clique em "Recebi" após receber o pagamento.
+                Clique em "Recebi" após receber o pagamento. Quita todos os lançamentos de uma vez.
               </Typography>
             )}
             <Divider sx={{ mb: 1 }} />
@@ -134,26 +145,8 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
               {entries.map((entry) => {
                 const dueFmt = formatDueDate(entry.due_date);
                 const dueColor = dueDateColor(entry.due_date);
-                const isFuture = isFutureDueDate(entry.due_date);
                 return (
-                  <ListItem
-                    key={entry.id}
-                    disableGutters
-                    sx={{ px: 0, py: 0.5 }}
-                    secondaryAction={
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="success"
-                        startIcon={<CheckIcon />}
-                        onClick={() => handleConfirm(entry.id)}
-                        disabled={confirmMutation.isPending || isFuture}
-                        sx={{ minWidth: 80, fontSize: '0.75rem' }}
-                      >
-                        Recebi
-                      </Button>
-                    }
-                  >
+                  <ListItem key={entry.id} disableGutters sx={{ px: 0, py: 0.5 }}>
                     <ListItemText
                       primary={
                         <Box display="flex" alignItems="center" gap={0.5}>
@@ -163,6 +156,11 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
                           <Typography variant="body2" color="success.main" fontWeight={600}>
                             {formatBRL(entry.amount)}
                           </Typography>
+                          {entry.pedido_id && (
+                            <Typography variant="caption" color="text.secondary">
+                              #{entry.pedido_id}
+                            </Typography>
+                          )}
                         </Box>
                       }
                       secondary={

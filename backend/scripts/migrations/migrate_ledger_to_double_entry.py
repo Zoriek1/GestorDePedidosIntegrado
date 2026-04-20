@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-Migration: Ledger → Double-Entry
+Migration: Ledger → Double-Entry  (online, sem downtime)
 
-O que faz:
-1. Detecta o banco (SQLite ou PostgreSQL) e aplica a estratégia correta.
-2. SQLite: recria a tabela ledger_entry (única forma de alterar schema).
-3. PostgreSQL: ADD COLUMN progressivo + UPDATE de status.
-4. Ambos: migra status pendente→active / confirmado→settled,
-          adiciona paid_at em pedidos,
-          cria índice parcial UNIQUE em pedido_id WHERE voided=FALSE.
-5. Idempotente: sai cedo se 'voided' já existir.
+Estratégia PostgreSQL:
+  - Encerra sessões idle-in-transaction antes de cada DDL (o app reconecta sozinho).
+  - Cada ALTER TABLE roda com lock_timeout de 5 s; falha rápido em vez de travar.
+  - ADD COLUMN IF NOT EXISTS — seguro rodar múltiplas vezes.
+  - Em PostgreSQL 11+, ADD COLUMN com DEFAULT constante é operação de metadados
+    (sem rewrite de tabela), então o lock é brevíssimo.
 
-Uso (VPS com Docker Compose):
-    docker compose exec web python scripts/migrations/migrate_ledger_to_double_entry.py
+Estratégia SQLite: recria a tabela (única forma de alterar schema).
 
-Uso (local):
-    cd backend
-    python scripts/migrations/migrate_ledger_to_double_entry.py
+Uso (VPS Docker):
+    docker compose exec backend python scripts/migrations/migrate_ledger_to_double_entry.py
+
+Uso local:
+    cd backend && python scripts/migrations/migrate_ledger_to_double_entry.py
 """
 import sys
 from pathlib import Path
@@ -26,41 +25,178 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from app import create_app, db
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 def column_exists(table: str, col: str) -> bool:
     from sqlalchemy import inspect as sa_inspect
-    insp = sa_inspect(db.engine)
-    return col in [c["name"] for c in insp.get_columns(table)]
+    return col in [c["name"] for c in sa_inspect(db.engine).get_columns(table)]
 
 
 def table_exists(table: str) -> bool:
     from sqlalchemy import inspect as sa_inspect
-    insp = sa_inspect(db.engine)
-    return table in insp.get_table_names()
+    return table in sa_inspect(db.engine).get_table_names()
 
 
 def is_sqlite() -> bool:
     return db.engine.dialect.name == "sqlite"
 
 
-def _add_paid_at():
-    if not column_exists("pedidos", "paid_at"):
-        print("[MIGRATION] Adicionando paid_at à tabela pedidos...")
-        db.session.execute(db.text("ALTER TABLE pedidos ADD COLUMN paid_at DATETIME"))
-        db.session.commit()
-        print("[MIGRATION]   paid_at adicionado.")
-    else:
-        print("[MIGRATION]   paid_at já existe em pedidos — pulando.")
+def _kill_idle_connections():
+    """Encerra sessões idle-in-transaction que bloqueiam DDLs. O app reconecta sozinho."""
+    killed = db.session.execute(db.text("""
+        SELECT COUNT(pg_terminate_backend(pid))
+        FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND state IN ('idle in transaction', 'idle in transaction (aborted)')
+          AND pid != pg_backend_pid()
+    """)).scalar()
+    if killed:
+        print(f"[MIGRATION]   Encerradas {killed} sessão(ões) ociosas — app reconectará automaticamente.")
 
+
+def _ddl(sql: str, params: dict | None = None):
+    """Executa DDL com lock_timeout de 5 s em transação própria."""
+    with db.engine.connect() as conn:
+        conn.execute(db.text("SET lock_timeout = '5s'"))
+        conn.execute(db.text(sql) if not params else db.text(sql).bindparams(**params))
+        conn.commit()
+
+
+def _add_column_pg(table: str, col: str, definition: str):
+    if column_exists(table, col):
+        print(f"[MIGRATION]   {col} já existe — pulando.")
+        return
+    print(f"[MIGRATION]   ADD COLUMN {col}...")
+    _kill_idle_connections()
+    _ddl(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {definition}")
+    print(f"[MIGRATION]   {col} adicionado.")
+
+
+def _add_paid_at():
+    if is_sqlite():
+        if not column_exists("pedidos", "paid_at"):
+            print("[MIGRATION] Adicionando paid_at em pedidos...")
+            db.session.execute(db.text("ALTER TABLE pedidos ADD COLUMN paid_at DATETIME"))
+            db.session.commit()
+            print("[MIGRATION]   paid_at adicionado.")
+        else:
+            print("[MIGRATION]   paid_at já existe — pulando.")
+    else:
+        _add_column_pg("pedidos", "paid_at", "TIMESTAMP")
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL — ADD COLUMN progressivo
+# ---------------------------------------------------------------------------
+
+def migrate_postgresql():
+    print("[MIGRATION] PostgreSQL — ADD COLUMN progressivo (sem downtime).")
+
+    # 1. Novas colunas
+    _add_column_pg("ledger_entry", "voided",        "BOOLEAN NOT NULL DEFAULT FALSE")
+    _add_column_pg("ledger_entry", "settled_at",    "TIMESTAMP")
+    _add_column_pg("ledger_entry", "settled_by_id", "INTEGER")
+
+    # 2. Converter status antigo → novo (UPDATE em lote, sem DDL)
+    with db.engine.connect() as conn:
+        r1 = conn.execute(db.text(
+            "UPDATE ledger_entry SET status='active'   WHERE status='pendente'"
+        ))
+        r2 = conn.execute(db.text(
+            "UPDATE ledger_entry SET status='settled'  WHERE status='confirmado'"
+        ))
+        conn.commit()
+        if r1.rowcount or r2.rowcount:
+            print(f"[MIGRATION]   {r1.rowcount} pendente→active, {r2.rowcount} confirmado→settled.")
+
+    # 3. settled_at ← confirmed_at (se coluna antiga ainda existir)
+    if column_exists("ledger_entry", "confirmed_at"):
+        with db.engine.connect() as conn:
+            conn.execute(db.text(
+                "UPDATE ledger_entry SET settled_at=confirmed_at "
+                "WHERE confirmed_at IS NOT NULL AND settled_at IS NULL"
+            ))
+            conn.commit()
+            print("[MIGRATION]   settled_at preenchido a partir de confirmed_at.")
+
+    # 4. DEBITs retroativos para CREDITs já settled
+    _create_retroactive_debits_pg()
+
+    # 5. Índices
+    _create_indexes_pg()
+
+
+def _create_retroactive_debits_pg():
+    print("[MIGRATION] DEBITs retroativos (CREDITs settled sem settled_by_id)...")
+    with db.engine.connect() as conn:
+        rows = conn.execute(db.text("""
+            SELECT user_id,
+                   SUM(amount)    AS total,
+                   MIN(created_at) AS ref_date,
+                   MIN(week_ref)   AS week_ref
+            FROM ledger_entry
+            WHERE type='CREDIT' AND status='settled' AND settled_by_id IS NULL
+            GROUP BY user_id
+            HAVING SUM(amount) > 0
+        """)).fetchall()
+
+        for row in rows:
+            uid, total, ref_date, week_ref = row
+            debit_id = conn.execute(db.text("""
+                INSERT INTO ledger_entry
+                    (user_id, type, category, amount, description,
+                     week_ref, status, settled_at, voided, created_at, created_by)
+                VALUES
+                    (:uid, 'DEBIT', 'pagamento', :amount,
+                     'Quitação retroativa (migração double-entry)',
+                     :week_ref, 'settled', :now, FALSE, :now, :uid)
+                RETURNING id
+            """), {"uid": uid, "amount": float(total), "week_ref": week_ref, "now": ref_date}).scalar()
+
+            conn.execute(db.text("""
+                UPDATE ledger_entry SET settled_by_id = :debit_id
+                WHERE user_id = :uid AND type='CREDIT' AND status='settled'
+                  AND settled_by_id IS NULL
+            """), {"debit_id": debit_id, "uid": uid})
+
+        conn.commit()
+    print(f"[MIGRATION]   {len(rows)} vendedor(es) com quitação retroativa.")
+
+
+def _create_indexes_pg():
+    print("[MIGRATION] Criando índices PostgreSQL...")
+    _kill_idle_connections()
+
+    stmts = [
+        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_user_id ON ledger_entry(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_week_ref ON ledger_entry(week_ref)",
+        "CREATE INDEX IF NOT EXISTS ix_ledger_user_week ON ledger_entry(user_id, week_ref)",
+        # Remove índice UNIQUE simples antigo (se existia) antes de criar o parcial
+        "DROP INDEX IF EXISTS uq_ledger_entry_pedido_id",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_pedido_active
+           ON ledger_entry(pedido_id)
+           WHERE voided=FALSE AND pedido_id IS NOT NULL""",
+    ]
+    for ddl in stmts:
+        try:
+            _ddl(ddl)
+        except Exception as e:
+            print(f"[MIGRATION]   Aviso índice (pode já existir): {e}")
+    print("[MIGRATION]   Índices OK.")
+
+
+# ---------------------------------------------------------------------------
+# SQLite — recriação completa da tabela
+# ---------------------------------------------------------------------------
 
 def migrate_sqlite():
-    """Estratégia SQLite: recria a tabela inteira (SQLite não suporta DROP/RENAME COLUMN)."""
-    print("[MIGRATION] SQLite detectado — usando estratégia de recriação de tabela.")
+    print("[MIGRATION] SQLite — recriação de tabela.")
 
     db.session.execute(db.text("PRAGMA foreign_keys=OFF"))
     db.session.commit()
 
-    # Criar nova tabela com schema correto
-    print("[MIGRATION] Criando ledger_entry_v2...")
     db.session.execute(db.text("""
         CREATE TABLE IF NOT EXISTS ledger_entry_v2 (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,9 +214,9 @@ def migrate_sqlite():
             voided        BOOLEAN NOT NULL DEFAULT 0,
             created_at    DATETIME NOT NULL,
             created_by    INTEGER NOT NULL,
-            FOREIGN KEY (user_id)        REFERENCES users(id),
-            FOREIGN KEY (created_by)     REFERENCES users(id),
-            FOREIGN KEY (settled_by_id)  REFERENCES ledger_entry_v2(id),
+            FOREIGN KEY (user_id)       REFERENCES users(id),
+            FOREIGN KEY (created_by)    REFERENCES users(id),
+            FOREIGN KEY (settled_by_id) REFERENCES ledger_entry_v2(id),
             CHECK (type IN ('CREDIT', 'DEBIT')),
             CHECK (status IN ('active', 'settled')),
             CHECK (amount > 0)
@@ -88,195 +224,93 @@ def migrate_sqlite():
     """))
     db.session.commit()
 
-    # Detectar se o schema antigo tem confirmed_at
     has_confirmed_at = column_exists("ledger_entry", "confirmed_at")
-    settled_at_src = "confirmed_at" if has_confirmed_at else "NULL"
+    settled_src = "confirmed_at" if has_confirmed_at else "NULL"
 
-    print(f"[MIGRATION] Copiando dados (confirmed_at={'sim' if has_confirmed_at else 'não'})...")
     db.session.execute(db.text(f"""
         INSERT INTO ledger_entry_v2
             (id, user_id, type, category, amount, description, pedido_id,
              week_ref, due_date, status, settled_at, settled_by_id, voided,
              created_at, created_by)
-        SELECT
-            id, user_id, type, category, amount, description, pedido_id,
-            week_ref, due_date,
-            CASE status
-                WHEN 'confirmado' THEN 'settled'
-                WHEN 'pendente'   THEN 'active'
-                ELSE status
-            END,
-            {settled_at_src},
-            NULL,
-            0,
-            created_at, created_by
+        SELECT id, user_id, type, category, amount, description, pedido_id,
+               week_ref, due_date,
+               CASE status
+                   WHEN 'confirmado' THEN 'settled'
+                   WHEN 'pendente'   THEN 'active'
+                   ELSE status
+               END,
+               {settled_src}, NULL, 0, created_at, created_by
         FROM ledger_entry
     """))
     db.session.commit()
 
-    _create_retroactive_debits()
+    # DEBITs retroativos
+    rows = db.session.execute(db.text("""
+        SELECT user_id, SUM(amount), MIN(created_at), MIN(week_ref)
+        FROM ledger_entry_v2
+        WHERE type='CREDIT' AND status='settled' AND settled_by_id IS NULL
+        GROUP BY user_id HAVING SUM(amount) > 0
+    """)).fetchall()
 
-    print("[MIGRATION] Substituindo ledger_entry por ledger_entry_v2...")
+    for uid, total, ref_date, week_ref in rows:
+        r = db.session.execute(db.text("""
+            INSERT INTO ledger_entry_v2
+                (user_id, type, category, amount, description,
+                 week_ref, status, settled_at, voided, created_at, created_by)
+            VALUES (:uid,'DEBIT','pagamento',:amount,
+                   'Quitação retroativa',:week_ref,'settled',:now,0,:now,:uid)
+        """), {"uid": uid, "amount": float(total), "week_ref": week_ref, "now": ref_date})
+        db.session.execute(db.text("""
+            UPDATE ledger_entry_v2 SET settled_by_id=:did
+            WHERE user_id=:uid AND type='CREDIT' AND status='settled' AND settled_by_id IS NULL
+        """), {"did": r.lastrowid, "uid": uid})
+    db.session.commit()
+
     db.session.execute(db.text("DROP TABLE ledger_entry"))
     db.session.execute(db.text("ALTER TABLE ledger_entry_v2 RENAME TO ledger_entry"))
     db.session.commit()
 
-    _create_indexes_sqlite()
+    for ddl in [
+        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_user_id ON ledger_entry(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_week_ref ON ledger_entry(week_ref)",
+        "CREATE INDEX IF NOT EXISTS ix_ledger_user_week ON ledger_entry(user_id, week_ref)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_pedido_active
+           ON ledger_entry(pedido_id) WHERE voided=0 AND pedido_id IS NOT NULL""",
+    ]:
+        db.session.execute(db.text(ddl))
+    db.session.commit()
 
     db.session.execute(db.text("PRAGMA foreign_keys=ON"))
     db.session.commit()
 
 
-def migrate_postgresql():
-    """Estratégia PostgreSQL: ADD COLUMN progressivo + UPDATE."""
-    print("[MIGRATION] PostgreSQL detectado — usando ADD COLUMN progressivo.")
-
-    # Adicionar colunas novas se não existem
-    new_cols = [
-        ("voided", "BOOLEAN NOT NULL DEFAULT FALSE"),
-        ("settled_at", "TIMESTAMP"),
-        ("settled_by_id", "INTEGER"),
-    ]
-    for col, definition in new_cols:
-        if not column_exists("ledger_entry", col):
-            print(f"[MIGRATION]   ADD COLUMN {col}...")
-            db.session.execute(db.text(
-                f"ALTER TABLE ledger_entry ADD COLUMN {col} {definition}"
-            ))
-    db.session.commit()
-
-    # Converter status antigo → novo
-    print("[MIGRATION] Convertendo status pendente→active, confirmado→settled...")
-    db.session.execute(db.text(
-        "UPDATE ledger_entry SET status='active' WHERE status='pendente'"
-    ))
-    db.session.execute(db.text(
-        "UPDATE ledger_entry SET status='settled' WHERE status='confirmado'"
-    ))
-
-    # Preencher settled_at a partir de confirmed_at se existir
-    if column_exists("ledger_entry", "confirmed_at"):
-        print("[MIGRATION]   Preenchendo settled_at a partir de confirmed_at...")
-        db.session.execute(db.text(
-            "UPDATE ledger_entry SET settled_at=confirmed_at WHERE confirmed_at IS NOT NULL"
-        ))
-    db.session.commit()
-
-    _create_retroactive_debits()
-
-    _create_indexes_postgresql()
-
-
-def _create_retroactive_debits():
-    """Cria DEBIT retroativo para CREDITs já settled (funciona em ambos os bancos)."""
-    print("[MIGRATION] Criando DEBITs retroativos para CREDITs já quitados...")
-    # Trabalha na tabela que ainda pode ser ledger_entry_v2 (SQLite) ou ledger_entry (PG)
-    tbl = "ledger_entry_v2" if (is_sqlite() and table_exists("ledger_entry_v2")) else "ledger_entry"
-
-    settled_rows = db.session.execute(db.text(f"""
-        SELECT user_id, SUM(amount) as total, MIN(created_at) as ref_date,
-               MIN(week_ref) as week_ref
-        FROM {tbl}
-        WHERE type='CREDIT' AND status='settled' AND settled_by_id IS NULL
-        GROUP BY user_id
-        HAVING SUM(amount) > 0
-    """)).fetchall()
-
-    for row in settled_rows:
-        uid, total, ref_date, week_ref = row
-        if is_sqlite():
-            result = db.session.execute(db.text(f"""
-                INSERT INTO {tbl}
-                    (user_id, type, category, amount, description,
-                     week_ref, status, settled_at, voided, created_at, created_by)
-                VALUES
-                    (:uid, 'DEBIT', 'pagamento', :amount,
-                     'Quitação retroativa (migração double-entry)',
-                     :week_ref, 'settled', :now, 0, :now, :uid)
-            """), {"uid": uid, "amount": float(total), "week_ref": week_ref, "now": ref_date})
-            debit_id = result.lastrowid
-        else:
-            result = db.session.execute(db.text(f"""
-                INSERT INTO {tbl}
-                    (user_id, type, category, amount, description,
-                     week_ref, status, settled_at, voided, created_at, created_by)
-                VALUES
-                    (:uid, 'DEBIT', 'pagamento', :amount,
-                     'Quitação retroativa (migração double-entry)',
-                     :week_ref, 'settled', :now, FALSE, :now, :uid)
-                RETURNING id
-            """), {"uid": uid, "amount": float(total), "week_ref": week_ref, "now": ref_date})
-            debit_id = result.scalar()
-
-        db.session.execute(db.text(f"""
-            UPDATE {tbl}
-            SET settled_by_id = :debit_id
-            WHERE user_id = :uid AND type='CREDIT' AND status='settled'
-        """), {"debit_id": debit_id, "uid": uid})
-
-    db.session.commit()
-    print(f"[MIGRATION]   {len(settled_rows)} vendedor(es) com quitação retroativa.")
-
-
-def _create_indexes_sqlite():
-    print("[MIGRATION] Recriando índices SQLite...")
-    for ddl in [
-        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_user_id ON ledger_entry(user_id)",
-        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_week_ref ON ledger_entry(week_ref)",
-        "CREATE INDEX IF NOT EXISTS ix_ledger_user_week ON ledger_entry(user_id, week_ref)",
-        """CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_pedido_active
-           ON ledger_entry(pedido_id)
-           WHERE voided=0 AND pedido_id IS NOT NULL""",
-    ]:
-        db.session.execute(db.text(ddl))
-    db.session.commit()
-
-
-def _create_indexes_postgresql():
-    print("[MIGRATION] Recriando índices PostgreSQL...")
-    # Remover índice UNIQUE simples antigo (se existia)
-    db.session.execute(db.text(
-        "DROP INDEX IF EXISTS uq_ledger_entry_pedido_id"
-    ))
-    for ddl in [
-        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_user_id ON ledger_entry(user_id)",
-        "CREATE INDEX IF NOT EXISTS ix_ledger_entry_week_ref ON ledger_entry(week_ref)",
-        "CREATE INDEX IF NOT EXISTS ix_ledger_user_week ON ledger_entry(user_id, week_ref)",
-        """CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_pedido_active
-           ON ledger_entry(pedido_id)
-           WHERE voided=FALSE AND pedido_id IS NOT NULL""",
-    ]:
-        db.session.execute(db.text(ddl))
-    db.session.commit()
-
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
 
 def migrate():
-    print("[MIGRATION] Iniciando migrate_ledger_to_double_entry...")
-    print(f"[MIGRATION] Banco: {db.engine.dialect.name}")
+    print(f"[MIGRATION] Iniciando migrate_ledger_to_double_entry... (banco: {db.engine.dialect.name})")
 
-    # ── 0. Banco novo: apenas criar tabelas ─────────────────────────────────
     if not table_exists("ledger_entry"):
-        print("[MIGRATION] Tabela ledger_entry não existe — db.create_all()...")
+        print("[MIGRATION] Banco novo — db.create_all()...")
         db.create_all()
         _add_paid_at()
-        print("[MIGRATION] Banco novo criado. Nada a migrar.")
+        print("[MIGRATION] Pronto.")
         return
 
-    # ── 1. Já migrado: apenas garantir paid_at ──────────────────────────────
     if column_exists("ledger_entry", "voided"):
-        print("[MIGRATION] Schema já na versão double-entry. Verificando paid_at...")
+        print("[MIGRATION] Schema já atualizado (voided existe). Verificando paid_at...")
         _add_paid_at()
         print("[MIGRATION] Nada a fazer.")
         return
 
-    # ── 2. Migração necessária ───────────────────────────────────────────────
     if is_sqlite():
         migrate_sqlite()
     else:
         migrate_postgresql()
 
     _add_paid_at()
-    print("[MIGRATION] migrate_ledger_to_double_entry concluída com sucesso.")
+    print("[MIGRATION] Concluída com sucesso.")
 
 
 if __name__ == "__main__":

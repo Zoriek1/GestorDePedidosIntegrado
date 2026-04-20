@@ -141,9 +141,9 @@ export function AttributedOrdersCard({ userId, from, to }: Props) {
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={p.status === 'confirmado' ? 'Confirmado' : 'Pendente'}
+                    label={p.status === 'settled' ? 'Quitado' : 'Ativo'}
                     size="small"
-                    color={p.status === 'confirmado' ? 'success' : 'warning'}
+                    color={p.status === 'settled' ? 'success' : 'warning'}
                     variant="outlined"
                     sx={{ fontSize: 11 }}
                   />

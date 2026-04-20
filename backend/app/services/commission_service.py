@@ -119,23 +119,28 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
     if ledger_repo.get_active_by_pedido_id(pedido.id):
         return
 
-    # 2. Determinar fonte do pedido
+    # 2. Determinar fonte do pedido (preferência: fonte real)
+    fonte_pedido_id = getattr(pedido, "fonte_pedido_id", None)
     fonte_nome = ""
-    if pedido.fonte_pedido_rel:
+    if getattr(pedido, "fonte_pedido_rel", None):
         fonte_nome = pedido.fonte_pedido_rel.nome or ""
-    elif pedido.fonte_pedido:
+    elif getattr(pedido, "fonte_pedido", None):
         fonte_nome = pedido.fonte_pedido or ""
 
     source = map_fonte_to_source(fonte_nome)
-    if not source:
-        return
-
-    if source == "lucro_bruto":
-        return
 
     # 3. Buscar config de comissão
-    config = user_repo.get_active_commission(user_id=vendedor_id, source=source)
+    config = user_repo.get_active_commission(
+        user_id=vendedor_id,
+        fonte_pedido_id=fonte_pedido_id,
+        source=source or None,
+    )
     if not config:
+        return
+
+    # Compatibilidade com placeholder legado
+    config_source = (config.source or "").strip()
+    if config_source == "lucro_bruto":
         return
 
     # 4. Calcular base líquida
@@ -163,7 +168,8 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
     )
 
     # 6. Criar entry
-    category = f"comissao_{source}"
+    category_source = config_source or source or "fonte"
+    category = f"comissao_{category_source}"
     entry = LedgerEntry(
         user_id=vendedor_id,
         type="CREDIT",
@@ -177,7 +183,7 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
         created_by=vendedor_id,
     )
     db.session.add(entry)
-    db.session.commit()
+    db.session.flush()
     current_app.logger.info(
         "[COMISSAO] Pedido #%s: R$%.2f (%s) → user %s",
         pedido.id, commission_amount, category, vendedor_id,
@@ -197,7 +203,7 @@ def void_and_recreate_commission(pedido, vendedor_id: int) -> None:
     from app import db
     from app.models.ledger_entry import LedgerEntry
     from app.repositories.ledger_repository import LedgerRepository
-    from app.utils.date_utils import get_monday
+    from app.models.ledger_entry import datetime_now_brazil
 
     ledger_repo = LedgerRepository()
     existing = ledger_repo.get_active_by_pedido_id(pedido.id)
@@ -222,10 +228,11 @@ def void_and_recreate_commission(pedido, vendedor_id: int) -> None:
         description=f"Estorno comissão Pedido #{pedido.id} (edição)",
         week_ref=old_week_ref,
         status="settled",
+        settled_at=datetime_now_brazil(),
         created_by=vendedor_id,
     )
     db.session.add(debit)
-    db.session.commit()
+    db.session.flush()
 
     current_app.logger.info(
         "[COMISSAO] Estorno Pedido #%s: R$%.2f voidado, DEBIT ajuste criado",

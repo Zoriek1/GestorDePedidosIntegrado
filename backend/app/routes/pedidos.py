@@ -23,6 +23,10 @@ from app.schemas.pedido_schema import (
     PedidoSchema,
     PedidoUpdateSchema,
 )
+from app.services.order_commission_lifecycle import (
+    apply_commission_lifecycle,
+    snapshot_commission_fields,
+)
 from app.utils.destructive_action_guard import (
     ensure_backup_before_destructive_action,
 )
@@ -227,20 +231,57 @@ def obter_pedido(pedido_id):
 def atualizar_status(pedido_id):
     """Atualiza status de um pedido"""
     try:
+        from app import db
+
         data = request.get_json() or {}
         novo_status = data.get("status", "").strip()
 
         if not novo_status:
             return error_response("Status é obrigatório", 400)
 
-        pedido = pedido_repo.atualizar_status(pedido_id, novo_status)
+        pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response("Pedido não encontrado", 404)
+
+        snapshot = snapshot_commission_fields(pedido)
+        status_anterior = pedido.status
+        status_pagamento_anterior = pedido.status_pagamento
+
+        pedido.status = novo_status
+        if novo_status == "concluido" and (
+            not pedido.status_pagamento or pedido.status_pagamento.upper() == "PENDENTE"
+        ):
+            pedido.status_pagamento = "Pago"
+
+        actor_id = None
+        current = getattr(request, "current_user", None)
+        if current:
+            actor_id = current.get("user_id")
+        apply_commission_lifecycle(pedido, previous=snapshot, actor_id=actor_id)
+        pedido.updated_at = datetime_now_brazil()
+        db.session.commit()
+
+        try:
+            from app.utils.meta_capi_helper import create_outbox_if_purchase
+
+            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+
+        try:
+            from app.utils.utmify_helper import send_utmify_if_purchase
+
+            send_utmify_if_purchase(pedido, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
 
         return success_response(
             {"pedido": pedido.to_dict()}, message="Status atualizado com sucesso"
         )
     except Exception as e:
+        from app import db
+
+        db.session.rollback()
         return error_response(f"Erro ao atualizar status: {str(e)}", 500)
 
 
@@ -721,6 +762,7 @@ def criar_pedido():
         db.session.add(pedido)
         db.session.flush()  # gera pedido.id antes de vincular o lead
         _link_lead_by_whatsapp_code(codigo_whatsapp, telefone_cliente, pedido_id=pedido.id)
+        apply_commission_lifecycle(pedido, previous=None, actor_id=vendedor_id_final)
         db.session.commit()
 
         # Hook de Purchase (mantém regra atual: status_pagamento=Pago/Parcial)
@@ -808,6 +850,7 @@ def atualizar_pedido(pedido_id):
         if not pedido:
             return error_response("Pedido não encontrado", 404, details={"pedido_id": pedido_id})
 
+        previous_commission_snapshot = snapshot_commission_fields(pedido)
         data = request.get_json() or {}
         codigo_whatsapp = _extract_whatsapp_token_from_payload(data)
 
@@ -958,6 +1001,8 @@ def atualizar_pedido(pedido_id):
         if codigo_whatsapp:
             _link_lead_by_whatsapp_code(codigo_whatsapp, pedido.telefone_cliente, pedido_id=pedido_id)
 
+        actor_id = current_user.get("user_id") if current_user else None
+        apply_commission_lifecycle(pedido, previous=previous_commission_snapshot, actor_id=actor_id)
         db.session.commit()
 
         # Hook: Verificar se mudou para Purchase (status_pagamento = Pago ou Parcial)

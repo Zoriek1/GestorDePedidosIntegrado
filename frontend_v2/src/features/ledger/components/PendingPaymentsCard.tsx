@@ -118,7 +118,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
               disabled={settleMutation.isPending}
               sx={{ fontWeight: 700, minWidth: 180 }}
             >
-              Recebi — {formatBRL(total)}
+              Recebi pagamento — {formatBRL(total)}
             </Button>
           )}
         </Box>
@@ -176,6 +176,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
                           entry.description || undefined
                         )
                       }
+                      secondaryTypographyProps={{ component: 'div' }}
                     />
                   </ListItem>
                 );

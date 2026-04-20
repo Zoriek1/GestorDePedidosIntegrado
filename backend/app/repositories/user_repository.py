@@ -5,6 +5,7 @@ UserRepository — CRUD de usuários, payroll_config e commission_config
 from typing import List, Optional
 
 from app import db
+from app.models.fonte_pedido import FontePedido
 from app.models.user import CommissionConfig, PayrollConfig, User
 from app.repositories.base_repository import BaseRepository
 
@@ -81,23 +82,77 @@ class UserRepository(BaseRepository[User]):
     def get_commission_configs(self, user_id: int) -> List[CommissionConfig]:
         return CommissionConfig.query.filter_by(user_id=user_id, is_active=True).all()
 
-    def get_active_commission(self, user_id: int, source: str) -> Optional[CommissionConfig]:
-        return CommissionConfig.query.filter_by(
-            user_id=user_id, source=source, is_active=True
-        ).first()
+    def get_active_commission(
+        self,
+        user_id: int,
+        source: str | None = None,
+        fonte_pedido_id: int | None = None,
+    ) -> Optional[CommissionConfig]:
+        # 1) Preferencial: configuração vinculada à fonte real
+        if fonte_pedido_id:
+            config = CommissionConfig.query.filter_by(
+                user_id=user_id,
+                fonte_pedido_id=fonte_pedido_id,
+                is_active=True,
+            ).first()
+            if config:
+                return config
+
+        # 2) Fallback legado: source string
+        if source:
+            return CommissionConfig.query.filter_by(
+                user_id=user_id,
+                source=source,
+                is_active=True,
+            ).first()
+
+        return None
+
+    def _resolve_source_from_fonte(self, fonte_pedido_id: int | None) -> str | None:
+        if not fonte_pedido_id:
+            return None
+        fonte = FontePedido.query.get(fonte_pedido_id)
+        if not fonte or not fonte.nome:
+            return None
+
+        # Mantém a convenção usada em commission_config.source
+        import unicodedata
+
+        nfkd = unicodedata.normalize("NFD", fonte.nome)
+        ascii_name = "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
+        return ascii_name.lower().strip().replace(" ", "_")
 
     def upsert_commission_config(self, user_id: int, data: dict) -> CommissionConfig:
-        source = data.get("source")
-        if source:
+        fonte_pedido_id = data.get("fonte_pedido_id")
+        try:
+            fonte_pedido_id = int(fonte_pedido_id) if fonte_pedido_id is not None else None
+        except (TypeError, ValueError):
+            fonte_pedido_id = None
+
+        source = (data.get("source") or "").strip() or None
+        if not source:
+            source = self._resolve_source_from_fonte(fonte_pedido_id)
+        source = source or ""
+
+        if fonte_pedido_id is not None:
             existing = CommissionConfig.query.filter_by(
-                user_id=user_id, source=source, is_active=True
+                user_id=user_id,
+                fonte_pedido_id=fonte_pedido_id,
+                is_active=True,
             ).all()
-            for cfg in existing:
-                cfg.is_active = False
+        else:
+            existing = CommissionConfig.query.filter_by(
+                user_id=user_id,
+                source=source,
+                is_active=True,
+            ).all()
+        for cfg in existing:
+            cfg.is_active = False
 
         new_cfg = CommissionConfig(
             user_id=user_id,
-            source=data.get("source", ""),
+            fonte_pedido_id=fonte_pedido_id,
+            source=source,
             rate=float(data.get("rate", 0)),
             is_active=True,
         )

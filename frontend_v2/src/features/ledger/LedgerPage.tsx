@@ -24,11 +24,13 @@ import { PendingPaymentsCard } from './components/PendingPaymentsCard';
 import { PaymentDialog } from './components/PaymentDialog';
 import { WeeklyGenerateBtn } from './components/WeeklyGenerateBtn';
 import { AttributedOrdersCard } from './components/AttributedOrdersCard';
+import { PaymentPeriodsCard } from './components/PaymentPeriodsCard';
 import {
   useLedgerBalance,
   useLedgerEntries,
   useLedgerSummary,
   useGenerateCalendar,
+  useLedgerPeriods,
 } from './services/ledgerApi';
 import { useAuth } from '../auth/authStore';
 import { getApiBaseUrl } from '../../api/http';
@@ -61,6 +63,7 @@ export default function LedgerPage() {
     from: fromDate || undefined,
     to: toDate || undefined,
   });
+  const periodsQuery = useLedgerPeriods(selectedUserId);
   const summaryQuery = useLedgerSummary();
 
   const activeUserId = selectedUserId ?? user?.id ?? 0;
@@ -199,6 +202,13 @@ export default function LedgerPage() {
             from={fromDate || undefined}
             to={toDate || undefined}
           />
+        </Box>
+      )}
+
+      {/* Períodos de pagamento */}
+      {activeUserId > 0 && (
+        <Box mb={3}>
+          <PaymentPeriodsCard periods={periodsQuery.data ?? []} loading={periodsQuery.isLoading} />
         </Box>
       )}
 

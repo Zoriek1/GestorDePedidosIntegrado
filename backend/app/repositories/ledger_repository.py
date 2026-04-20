@@ -51,13 +51,12 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
 
     def get_balance(self, user_id: int) -> dict:
         """
-        Saldo devedor usando double-entry:
+        Contas a receber (semântica operacional):
           active_total     = Σ(CREDIT WHERE status='active' AND voided=FALSE)
           overdue          = active_total WHERE due_date < hoje
           due_today        = active_total WHERE due_date == hoje
           upcoming         = active_total WHERE due_date > hoje (ou sem due_date)
-          debits_unalloc   = Σ(DEBIT WHERE settled_by_id IS NULL) — ajustes avulsos
-          balance          = active_total − debits_unalloc
+          balance          = active_total
         """
         today = date.today()
 
@@ -85,18 +84,6 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             ).scalar()
         )
 
-        # DEBITs sem settled_by_id são ajustes avulsos (adiantamento, ajuste_debito, etc.)
-        debits_unalloc = float(
-            db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
-            .filter(
-                LedgerEntry.user_id == user_id,
-                LedgerEntry.type == "DEBIT",
-                LedgerEntry.settled_by_id.is_(None),
-                LedgerEntry.voided.is_(False),
-            )
-            .scalar()
-        )
-
         total_debits = float(
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
@@ -113,7 +100,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             "due_today_credits": round(due_today, 2),
             "upcoming_credits": round(upcoming, 2),
             "total_debits": round(total_debits, 2),
-            "balance": round(active_total - debits_unalloc, 2),
+            "balance": round(active_total, 2),
         }
 
     def get_all_balances(self) -> List[dict]:
@@ -139,17 +126,6 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
                         else_=0,
                     )
                 ).label("active_total"),
-                func.sum(
-                    case(
-                        (
-                            (LedgerEntry.type == "DEBIT")
-                            & LedgerEntry.settled_by_id.is_(None)
-                            & ~LedgerEntry.voided,
-                            LedgerEntry.amount,
-                        ),
-                        else_=0,
-                    )
-                ).label("debits_unalloc"),
                 func.sum(
                     case(
                         (
@@ -181,7 +157,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
                 "total_credits": round(float(r.active_total), 2),
                 "overdue_credits": round(float(r.overdue), 2),
                 "total_debits": round(float(r.total_debits), 2),
-                "balance": round(float(r.active_total) - float(r.debits_unalloc), 2),
+                "balance": round(float(r.active_total), 2),
             }
             for r in rows
         }

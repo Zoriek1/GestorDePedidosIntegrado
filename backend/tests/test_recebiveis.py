@@ -208,8 +208,8 @@ class TestLedgerOperations:
         assert data["total_credits"] == 500.0
         assert data["balance"] == 500.0
 
-    def test_admin_registra_pagamento_reduz_saldo(self, client, session):
-        """Cenário 5: DEBIT de pagamento reduz saldo devedor."""
+    def test_admin_registra_pagamento_nao_reduz_contas_a_receber(self, client, session):
+        """Cenário 5: DEBIT é histórico e não reduz saldo de contas a receber."""
         admin = make_user(session, "adminpg@test.com", "pass1234", role="admin", name="AdminPg")
         vendedor = make_user(session, "vendpg@test.com", "pass1234", role="vendedor")
         admin_token = generate_token(admin)
@@ -247,7 +247,7 @@ class TestLedgerOperations:
         data = resp2.get_json()
         assert data["total_credits"] == 300.0
         assert data["total_debits"] == 200.0
-        assert data["balance"] == 100.0
+        assert data["balance"] == 300.0
 
     def test_vendedor_nao_pode_criar_entry(self, client, session):
         """POST /api/ledger/entries requer role admin → vendedor recebe 403."""
@@ -481,6 +481,48 @@ class TestCommission:
 
         assert LedgerEntry.query.filter_by(user_id=vendedor.id).count() == 1
 
+    def test_comissao_por_fonte_pedido_id(self, session):
+        """Config por fonte real (fonte_pedido_id) deve gerar comissão."""
+        from app.services.commission_service import generate_commission
+
+        fonte = FontePedido(nome="WhatsApp Oficial")
+        session.add(fonte)
+        session.flush()
+
+        vendedor = make_user(session, "comv2b@test.com", "pass1234", role="vendedor")
+        commission = CommissionConfig(
+            user_id=vendedor.id,
+            fonte_pedido_id=fonte.id,
+            source="whatsapp_oficial",
+            rate=0.04,
+        )
+        session.add(commission)
+        session.commit()
+
+        pedido = Pedido(
+            cliente="Cliente Teste",
+            telefone_cliente="11999999999",
+            destinatario="Destinatário",
+            produto="Buquê",
+            valor="R$ 100,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.commit()
+
+        generate_commission(pedido, vendedor.id)
+        session.commit()
+
+        entry = LedgerEntry.query.filter_by(user_id=vendedor.id, pedido_id=pedido.id).first()
+        assert entry is not None
+        assert entry.amount == pytest.approx(4.0, abs=0.01)
+        assert entry.category.startswith("comissao_")
+
     def test_lucro_bruto_nao_gera_comissao(self, session):
         """Source 'lucro_bruto' é placeholder — não gera entry automática."""
         from app.services.commission_service import generate_commission
@@ -648,6 +690,329 @@ class TestCommission:
         body = resp.get_json()
         assert body["total_credits"] == pytest.approx(3.0, abs=0.01)
         assert body["balance"] == pytest.approx(3.0, abs=0.01)
+
+    def test_periods_agrupa_por_due_date_e_fonte(self, session):
+        """Resumo de períodos deve agrupar por due_date e subtotalizar por fonte."""
+        from app.services.ledger_service import get_period_summary
+
+        admin = make_user(session, "adminperiod@test.com", "pass1234", role="admin")
+        vendedor = make_user(session, "vendperiod@test.com", "pass1234", role="vendedor")
+        fonte_w = FontePedido(nome="WhatsApp")
+        fonte_s = FontePedido(nome="Site")
+        session.add_all([fonte_w, fonte_s])
+        session.flush()
+
+        p1 = Pedido(
+            cliente="C1",
+            telefone_cliente="11111111111",
+            destinatario="D1",
+            produto="P1",
+            valor="R$ 100,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            fonte_pedido_id=fonte_w.id,
+            vendedor_id=vendedor.id,
+        )
+        p2 = Pedido(
+            cliente="C2",
+            telefone_cliente="22222222222",
+            destinatario="D2",
+            produto="P2",
+            valor="R$ 200,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="11:00",
+            fonte_pedido_id=fonte_s.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add_all([p1, p2])
+        session.flush()
+
+        due = date(2025, 2, 14)
+        e1 = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="comissao_whatsapp",
+            amount=3.0,
+            pedido_id=p1.id,
+            week_ref=date(2025, 2, 10),
+            due_date=due,
+            status="active",
+            created_by=admin.id,
+        )
+        e2 = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="comissao_site",
+            amount=5.0,
+            pedido_id=p2.id,
+            week_ref=date(2025, 2, 10),
+            due_date=due,
+            status="settled",
+            created_by=admin.id,
+        )
+        session.add_all([e1, e2])
+        session.commit()
+
+        summary = get_period_summary(vendedor.id)
+        period = next(p for p in summary["periods"] if p["period_date"] == due.isoformat())
+        assert period["total_commission"] == pytest.approx(8.0, abs=0.01)
+        assert period["active_commission"] == pytest.approx(3.0, abs=0.01)
+        assert period["settled_commission"] == pytest.approx(5.0, abs=0.01)
+        assert period["orders_count"] == 2
+        sources = {s["source"] for s in period["by_source"]}
+        assert "WhatsApp" in sources
+        assert "Site" in sources
+
+
+# ---------------------------------------------------------------------------
+# 4.1. Lifecycle de comissão e settle idempotente
+# ---------------------------------------------------------------------------
+
+class TestCommissionLifecycleAndSettle:
+    def test_settle_idempotente_quando_sem_creditos(self, client, session):
+        """POST /api/ledger/settle sem créditos ativos retorna 204 e não cria DEBIT."""
+        vendedor = make_user(session, "settle0@test.com", "pass1234", role="vendedor")
+        token = generate_token(vendedor)
+
+        resp = client.post("/api/ledger/settle", headers=auth_headers(token), json={})
+        assert resp.status_code == 204
+        assert LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count() == 0
+
+    def test_settle_idempotente_em_duas_chamadas(self, client, session):
+        """Primeira quita créditos; segunda chamada não cria novo DEBIT."""
+        admin = make_user(session, "settleadm@test.com", "pass1234", role="admin")
+        vendedor = make_user(session, "settle1@test.com", "pass1234", role="vendedor")
+        token = generate_token(vendedor)
+
+        credit = LedgerEntry(
+            user_id=vendedor.id,
+            type="CREDIT",
+            category="fixo_semanal",
+            amount=120.0,
+            week_ref=date(2025, 2, 10),
+            status="active",
+            created_by=admin.id,
+        )
+        session.add(credit)
+        session.commit()
+
+        resp1 = client.post("/api/ledger/settle", headers=auth_headers(token), json={})
+        assert resp1.status_code == 200
+        assert LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count() == 1
+        credit_after = LedgerEntry.query.filter_by(id=credit.id).first()
+        assert credit_after is not None
+        assert credit_after.status == "settled"
+        assert credit_after.settled_by_id is not None
+
+        resp2 = client.post("/api/ledger/settle", headers=auth_headers(token), json={})
+        assert resp2.status_code == 204
+        assert LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count() == 1
+
+    def test_trigger_create_update_pago_parcial(self, session):
+        """Create Pago e update para Pago/Parcial devem disparar comissão via lifecycle."""
+        from app.services.order_commission_lifecycle import (
+            apply_commission_lifecycle,
+            snapshot_commission_fields,
+        )
+
+        vendedor = make_user(session, "life1@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="WhatsApp")
+        session.add(fonte)
+        session.flush()
+        session.add(
+            CommissionConfig(
+                user_id=vendedor.id,
+                fonte_pedido_id=fonte.id,
+                source="whatsapp",
+                rate=0.03,
+            )
+        )
+        session.commit()
+
+        pedido_create_paid = Pedido(
+            cliente="Cliente A",
+            telefone_cliente="11999999999",
+            destinatario="Dest A",
+            produto="Buquê",
+            valor="R$ 100,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido_create_paid)
+        session.flush()
+        result_create = apply_commission_lifecycle(
+            pedido_create_paid, previous=None, actor_id=vendedor.id
+        )
+        session.commit()
+
+        assert result_create["generated"] is True
+        assert pedido_create_paid.paid_at is not None
+        assert LedgerEntry.query.filter_by(pedido_id=pedido_create_paid.id, voided=False).count() == 1
+
+        pedido_update_to_paid = Pedido(
+            cliente="Cliente B",
+            telefone_cliente="11888888888",
+            destinatario="Dest B",
+            produto="Rosa",
+            valor="R$ 200,00",
+            dia_entrega=date(2025, 2, 11),
+            horario="11:00",
+            status="agendado",
+            status_pagamento="Pendente",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido_update_to_paid)
+        session.flush()
+
+        snapshot = snapshot_commission_fields(pedido_update_to_paid)
+        pedido_update_to_paid.status_pagamento = "Parcial"
+        result_update = apply_commission_lifecycle(
+            pedido_update_to_paid, previous=snapshot, actor_id=vendedor.id
+        )
+        session.commit()
+
+        assert result_update["transitioning_to_paid"] is True
+        assert pedido_update_to_paid.paid_at is not None
+        assert LedgerEntry.query.filter_by(pedido_id=pedido_update_to_paid.id, voided=False).count() == 1
+
+    def test_estorno_e_recriacao_em_edicao_sensivel(self, session):
+        """Mudança sensível em pedido com comissão ativa deve estornar e recriar."""
+        from app.services.order_commission_lifecycle import (
+            apply_commission_lifecycle,
+            snapshot_commission_fields,
+        )
+
+        vendedor = make_user(session, "life2@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="Site")
+        session.add(fonte)
+        session.flush()
+        session.add(
+            CommissionConfig(
+                user_id=vendedor.id,
+                fonte_pedido_id=fonte.id,
+                source="site",
+                rate=0.10,
+            )
+        )
+        session.commit()
+
+        pedido = Pedido(
+            cliente="Cliente C",
+            telefone_cliente="11777777777",
+            destinatario="Dest C",
+            produto="Arranjo",
+            valor="R$ 100,00",
+            dia_entrega=date(2025, 2, 12),
+            horario="12:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.flush()
+        apply_commission_lifecycle(pedido, previous=None, actor_id=vendedor.id)
+        session.commit()
+
+        original_credit = LedgerEntry.query.filter_by(
+            pedido_id=pedido.id, type="CREDIT", voided=False
+        ).first()
+        assert original_credit is not None
+        assert float(original_credit.amount) == pytest.approx(10.0, abs=0.01)
+
+        snapshot = snapshot_commission_fields(pedido)
+        pedido.valor = "R$ 200,00"
+        result = apply_commission_lifecycle(pedido, previous=snapshot, actor_id=vendedor.id)
+        session.commit()
+
+        assert result["voided_and_recreated"] is True
+
+        old_credit = LedgerEntry.query.filter_by(id=original_credit.id).first()
+        assert old_credit is not None
+        assert old_credit.voided is True
+
+        debit = (
+            LedgerEntry.query.filter_by(
+                user_id=vendedor.id,
+                type="DEBIT",
+                category="ajuste_debito",
+            )
+            .order_by(LedgerEntry.id.desc())
+            .first()
+        )
+        assert debit is not None
+        assert float(debit.amount) == pytest.approx(10.0, abs=0.01)
+
+        new_credit = (
+            LedgerEntry.query.filter_by(
+                pedido_id=pedido.id,
+                type="CREDIT",
+                voided=False,
+            )
+            .order_by(LedgerEntry.id.desc())
+            .first()
+        )
+        assert new_credit is not None
+        assert new_credit.id != original_credit.id
+        assert float(new_credit.amount) == pytest.approx(20.0, abs=0.01)
+
+    def test_due_date_com_payment_day_aplicado_na_comissao(self, session):
+        """generate_commission deve usar payment_day semanal para calcular due_date."""
+        from app.services.commission_service import generate_commission
+
+        vendedor = make_user(session, "life3@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="Indicação")
+        session.add(fonte)
+        session.flush()
+
+        session.add(
+            CommissionConfig(
+                user_id=vendedor.id,
+                fonte_pedido_id=fonte.id,
+                source="indicacao",
+                rate=0.10,
+            )
+        )
+        session.add(
+            PayrollConfig(
+                user_id=vendedor.id,
+                category="fixo_semanal",
+                label="Semanal",
+                amount=100.0,
+                frequency="semanal",
+                payment_day=4,  # sexta
+                is_active=True,
+            )
+        )
+        session.commit()
+
+        pedido = Pedido(
+            cliente="Cliente D",
+            telefone_cliente="11666666666",
+            destinatario="Dest D",
+            produto="Girassol",
+            valor="R$ 100,00",
+            dia_entrega=date(2025, 2, 10),  # segunda
+            horario="13:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.commit()
+
+        generate_commission(pedido, vendedor.id, reference_date=date(2025, 2, 10))
+        session.commit()
+
+        entry = LedgerEntry.query.filter_by(pedido_id=pedido.id, type="CREDIT", voided=False).first()
+        assert entry is not None
+        assert entry.due_date == date(2025, 2, 14)
 
 
 # ---------------------------------------------------------------------------

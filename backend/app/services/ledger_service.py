@@ -134,45 +134,12 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
     today = date.today()
     week_ref = get_monday(today)
 
-    # 1. Somar CREDITs active em uma única query
-    from sqlalchemy import func
-
-    total_row = (
-        db.session.query(func.sum(LedgerEntry.amount), func.count(LedgerEntry.id))
-        .filter(
-            LedgerEntry.user_id == user_id,
-            LedgerEntry.type == "CREDIT",
-            LedgerEntry.status == "active",
-            LedgerEntry.voided.is_(False),
-        )
-        .one()
-    )
-    total_amount = float(total_row[0] or 0)
-    count = int(total_row[1] or 0)
-
-    if total_amount <= 0 or count == 0:
-        return {"settled": 0, "amount": 0.0, "debit_id": None}
-
-    # 2. Criar DEBIT de pagamento já settled
+    # 1) UPDATE condicional atômico.
+    # Se duas requisições chegarem ao mesmo tempo, apenas uma atualiza linhas active.
+    # A segunda obtém updated=0 e não cria DEBIT duplicado.
     from app.models.ledger_entry import datetime_now_brazil
 
     now = datetime_now_brazil()
-    debit = LedgerEntry(
-        user_id=user_id,
-        type="DEBIT",
-        category="pagamento",
-        amount=round(total_amount, 2),
-        description=f"Quitação em lote — {count} lançamento(s)",
-        week_ref=week_ref,
-        status="settled",
-        settled_at=now,
-        created_by=settled_by,
-    )
-    db.session.add(debit)
-    db.session.flush()  # gera debit.id sem commit
-    debit_id = debit.id
-
-    # 3. Marcar todos os CREDITs active como settled (UPDATE atômico)
     updated = (
         db.session.query(LedgerEntry)
         .filter(
@@ -182,9 +149,64 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
             LedgerEntry.voided.is_(False),
         )
         .update(
-            {"status": "settled", "settled_at": now, "settled_by_id": debit_id},
+            {"status": "settled", "settled_at": now, "settled_by_id": None},
             synchronize_session="fetch",
         )
+    )
+
+    if updated == 0:
+        db.session.rollback()
+        return {"settled": 0, "amount": 0.0, "debit_id": None}
+
+    # 2) Calcular total exatamente do lote atualizado nesta transação
+    # (settled_at == now e settled_by_id IS NULL).
+    from sqlalchemy import func
+
+    total_amount = float(
+        db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
+        .filter(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.type == "CREDIT",
+            LedgerEntry.status == "settled",
+            LedgerEntry.voided.is_(False),
+            LedgerEntry.settled_at == now,
+            LedgerEntry.settled_by_id.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+
+    if total_amount <= 0:
+        db.session.rollback()
+        return {"settled": 0, "amount": 0.0, "debit_id": None}
+
+    # 3) Criar DEBIT de pagamento já settled
+    debit = LedgerEntry(
+        user_id=user_id,
+        type="DEBIT",
+        category="pagamento",
+        amount=round(total_amount, 2),
+        description=f"Quitação em lote — {updated} lançamento(s)",
+        week_ref=week_ref,
+        status="settled",
+        settled_at=now,
+        created_by=settled_by,
+    )
+    db.session.add(debit)
+    db.session.flush()  # gera debit.id sem commit
+    debit_id = debit.id
+
+    # 4) Vincular créditos quitados ao DEBIT criado
+    db.session.query(LedgerEntry).filter(
+        LedgerEntry.user_id == user_id,
+        LedgerEntry.type == "CREDIT",
+        LedgerEntry.status == "settled",
+        LedgerEntry.voided.is_(False),
+        LedgerEntry.settled_at == now,
+        LedgerEntry.settled_by_id.is_(None),
+    ).update(
+        {"settled_by_id": debit_id},
+        synchronize_session="fetch",
     )
 
     db.session.commit()
@@ -198,87 +220,115 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
 
 def get_period_summary(user_id: int) -> dict:
     """
-    Retorna recebíveis agrupados por período de pagamento (semana).
+    Retorna comissões agrupadas por período de pagamento (due_date).
     """
     from collections import defaultdict
 
     from app.models.ledger_entry import LedgerEntry
-    from app.repositories.user_repository import UserRepository
+    from app.models.pedido import Pedido
+    from app.services.commission_service import map_fonte_to_source
 
     today = date.today()
 
-    user_repo = UserRepository()
-    payroll_configs = user_repo.get_payroll_configs(user_id)
-    semanal_config = next(
-        (c for c in payroll_configs if c.frequency == "semanal" and c.payment_day is not None),
-        None,
-    )
-
     entries = (
-        LedgerEntry.query.filter_by(user_id=user_id)
-        .filter(LedgerEntry.voided.is_(False))
-        .order_by(LedgerEntry.week_ref.desc(), LedgerEntry.created_at.asc())
+        LedgerEntry.query.filter(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.type == "CREDIT",
+            LedgerEntry.category.like("comissao_%"),
+            LedgerEntry.voided.is_(False),
+        )
+        .order_by(LedgerEntry.due_date.desc().nullslast(), LedgerEntry.created_at.asc())
         .all()
     )
 
-    weeks: dict = defaultdict(lambda: {
-        "entries": [],
-        "total_credit": 0.0,
-        "total_debit": 0.0,
-        "settled": 0.0,
-        "active": 0.0,
-        "pgt_day": None,
-    })
+    pedido_ids = [e.pedido_id for e in entries if e.pedido_id is not None]
+    pedidos_by_id = (
+        {p.id: p for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()} if pedido_ids else {}
+    )
 
+    periods: dict = defaultdict(
+        lambda: {
+            "period_date": None,
+            "total_commission": 0.0,
+            "active_commission": 0.0,
+            "settled_commission": 0.0,
+            "orders_count": 0,
+            "order_ids": set(),
+            "by_source_map": defaultdict(
+                lambda: {"source": None, "source_id": None, "source_slug": None, "total": 0.0}
+            ),
+        }
+    )
     for entry in entries:
-        key = entry.week_ref.isoformat() if entry.week_ref else "sem_semana"
-        group = weeks[key]
-        group["entries"].append(entry.to_dict())
+        period_key = entry.due_date.isoformat() if entry.due_date else "sem_data"
+        group = periods[period_key]
+        group["period_date"] = period_key if period_key != "sem_data" else None
 
-        if group["pgt_day"] is None:
-            if entry.due_date:
-                group["pgt_day"] = entry.due_date.isoformat()
-            elif entry.week_ref and semanal_config:
-                pgt = entry.week_ref + timedelta(days=semanal_config.payment_day)
-                group["pgt_day"] = pgt.isoformat()
-
-        if entry.type == "CREDIT":
-            group["total_credit"] = round(group["total_credit"] + float(entry.amount), 2)
-            if entry.status == "settled":
-                group["settled"] = round(group["settled"] + float(entry.amount), 2)
-            else:
-                group["active"] = round(group["active"] + float(entry.amount), 2)
+        amount = float(entry.amount or 0)
+        group["total_commission"] = round(group["total_commission"] + amount, 2)
+        if entry.status == "settled":
+            group["settled_commission"] = round(group["settled_commission"] + amount, 2)
         else:
-            group["total_debit"] = round(group["total_debit"] + float(entry.amount), 2)
+            group["active_commission"] = round(group["active_commission"] + amount, 2)
+
+        if entry.pedido_id is not None:
+            group["order_ids"].add(entry.pedido_id)
+
+        pedido = pedidos_by_id.get(entry.pedido_id)
+        source_id = pedido.fonte_pedido_id if pedido else None
+        source_name = None
+        if pedido and pedido.fonte_pedido_rel:
+            source_name = pedido.fonte_pedido_rel.nome
+        elif pedido:
+            source_name = pedido.fonte_pedido
+
+        category_source = (
+            entry.category.replace("comissao_", "", 1)
+            if entry.category.startswith("comissao_")
+            else entry.category
+        )
+        source_slug = map_fonte_to_source(source_name or "") or category_source
+        source_key = f"{source_id}:{source_slug}"
+        source_group = group["by_source_map"][source_key]
+        source_group["source"] = source_name or category_source
+        source_group["source_id"] = source_id
+        source_group["source_slug"] = source_slug
+        source_group["total"] = round(source_group["total"] + amount, 2)
 
     result = []
-    for week_key, group in sorted(weeks.items(), reverse=True):
-        pgt_day_date = date.fromisoformat(group["pgt_day"]) if group["pgt_day"] else None
-        has_active = group["active"] > 0
-        is_overdue = pgt_day_date is not None and pgt_day_date < today and has_active
+    for period_key in sorted(periods.keys(), reverse=True):
+        group = periods[period_key]
+        period_date = date.fromisoformat(period_key) if period_key != "sem_data" else None
+        has_active = group["active_commission"] > 0
+        is_overdue = period_date is not None and period_date < today and has_active
 
         if is_overdue:
             status = "atrasado"
-        elif has_active and pgt_day_date and pgt_day_date >= today:
-            status = "pendente"
         elif has_active:
             status = "pendente"
-        elif group["settled"] > 0:
+        elif group["settled_commission"] > 0:
             status = "quitado"
         else:
-            status = "futuro"
+            status = "sem_movimento"
 
-        result.append({
-            "week_ref": week_key,
-            "pgt_day": group["pgt_day"],
-            "total_credit": group["total_credit"],
-            "total_debit": group["total_debit"],
-            "settled": group["settled"],
-            "active": group["active"],
-            "is_overdue": is_overdue,
-            "status": status,
-            "entries": group["entries"],
-        })
+        by_source = sorted(
+            group["by_source_map"].values(),
+            key=lambda s: s["total"],
+            reverse=True,
+        )
+
+        result.append(
+            {
+                "period_date": group["period_date"],
+                "total_commission": group["total_commission"],
+                "active_commission": group["active_commission"],
+                "settled_commission": group["settled_commission"],
+                "orders_count": len(group["order_ids"]),
+                "is_overdue": is_overdue,
+                "status": status,
+                "by_source": by_source,
+            }
+        )
 
     return {
         "periods": result,

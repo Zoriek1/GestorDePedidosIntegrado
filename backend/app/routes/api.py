@@ -529,58 +529,11 @@ def obter_pedido(pedido_id):
 @api_bp.route("/pedidos/<int:pedido_id>/status", methods=["PUT", "POST"])
 def atualizar_status(pedido_id):
     """Atualiza status do pedido"""
-    try:
-        data = request.get_json() or {}
-        novo_status = data.get("status") or request.form.get("status")
+    # Proxy para implementação consolidada em pedidos.py
+    from app.routes.pedidos import atualizar_status as atualizar_status_v2
 
-        if not novo_status:
-            return jsonify({"error": "Status não fornecido"}), 400
-
-        # Validar status
-        status_validos = [
-            "agendado",
-            "em_producao",
-            "pronto_entrega",
-            "em_rota",
-            "pronto_retirada",
-            "concluido",
-        ]
-        if novo_status not in status_validos:
-            return (
-                jsonify({"error": "Status inválido", "status_validos": status_validos}),
-                400,
-            )
-
-        # Atualizar pedido
-        pedido = Pedido.query.get(pedido_id)
-
-        if not pedido:
-            return (
-                jsonify({"error": "Pedido não encontrado", "pedido_id": pedido_id}),
-                404,
-            )
-
-        pedido.status = novo_status
-        pedido.updated_at = datetime_now_brazil()
-
-        if novo_status == "concluido" and (
-            not pedido.status_pagamento or pedido.status_pagamento.upper() == "PENDENTE"
-        ):
-            pedido.status_pagamento = "Pago"
-
-        db.session.commit()
-
-        return jsonify(
-            {
-                "success": True,
-                "message": f"Status atualizado para {novo_status}",
-                "pedido": pedido.to_dict(),
-            }
-        )
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": "Erro ao atualizar status", "detalhes": str(e)}), 500
+    # Mantém os decorators da rota consolidada (auth/roles) para evitar bypass.
+    return atualizar_status_v2(pedido_id)
 
 
 # ============================================

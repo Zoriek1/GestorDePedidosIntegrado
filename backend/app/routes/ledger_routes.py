@@ -192,7 +192,7 @@ def generate_weekly():
 
 
 # ---------------------------------------------------------------------------
-# GET /api/ledger/periods — recebíveis agrupados por período (semana)
+# GET /api/ledger/periods — recebíveis agrupados por período (due_date)
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/periods", methods=["GET"])
 @require_auth(roles=["admin", "vendedor"])
@@ -227,6 +227,8 @@ def get_pedidos_atribuidos():
 
         from app.models.ledger_entry import LedgerEntry
         from app.models.pedido import Pedido
+        from app.repositories.user_repository import UserRepository
+        from app.services.commission_service import map_fonte_to_source
 
         query = (
             LedgerEntry.query.filter(
@@ -245,6 +247,7 @@ def get_pedidos_atribuidos():
             p.id: p
             for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()
         } if pedido_ids else {}
+        user_repo = UserRepository()
 
         result = []
         for entry in entries:
@@ -253,6 +256,29 @@ def get_pedidos_atribuidos():
                 continue
             if to_date and pedido and pedido.dia_entrega and pedido.dia_entrega > to_date:
                 continue
+
+            fonte_nome = None
+            fonte_pedido_id = None
+            valor_pedido = None
+            rate = None
+            if pedido:
+                fonte_pedido_id = pedido.fonte_pedido_id
+                if pedido.fonte_pedido_rel:
+                    fonte_nome = pedido.fonte_pedido_rel.nome
+                else:
+                    fonte_nome = pedido.fonte_pedido
+                try:
+                    valor_pedido = float(pedido.total_pago())
+                except Exception:
+                    valor_pedido = None
+                cfg = user_repo.get_active_commission(
+                    user_id=user_id,
+                    fonte_pedido_id=fonte_pedido_id,
+                    source=map_fonte_to_source(fonte_nome or ""),
+                )
+                if cfg:
+                    rate = round(float(cfg.rate) * 100, 2)
+
             result.append({
                 "entry_id": entry.id,
                 "pedido_id": entry.pedido_id,
@@ -262,6 +288,10 @@ def get_pedidos_atribuidos():
                 "due_date": entry.due_date.isoformat() if entry.due_date else None,
                 "commission_amount": float(entry.amount),
                 "category": entry.category,
+                "fonte_pedido_id": fonte_pedido_id,
+                "fonte": fonte_nome,
+                "rate": rate,
+                "valor_pedido": valor_pedido,
                 "status": entry.status,
                 "settled_at": entry.settled_at.strftime("%Y-%m-%d %H:%M:%S") if entry.settled_at else None,
                 "settled_by_id": entry.settled_by_id,

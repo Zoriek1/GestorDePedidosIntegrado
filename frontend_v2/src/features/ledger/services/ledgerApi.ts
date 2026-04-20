@@ -76,9 +76,31 @@ export interface PedidoAtribuido {
   due_date: string | null;
   commission_amount: number;
   category: string;
+  fonte_pedido_id?: number | null;
+  fonte?: string | null;
+  rate?: number | null; // percentual em %
+  valor_pedido?: number | null;
   status: 'active' | 'settled';
   settled_at: string | null;
   settled_by_id: number | null;
+}
+
+export interface LedgerPeriodSource {
+  source: string | null;
+  source_id: number | null;
+  source_slug: string | null;
+  total: number;
+}
+
+export interface LedgerPeriod {
+  period_date: string | null; // YYYY-MM-DD
+  total_commission: number;
+  active_commission: number;
+  settled_commission: number;
+  orders_count: number;
+  is_overdue: boolean;
+  status: 'atrasado' | 'pendente' | 'quitado' | 'sem_movimento';
+  by_source: LedgerPeriodSource[];
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +169,21 @@ export function usePedidosAtribuidos(filters: { from?: string; to?: string; user
   });
 }
 
+/** Comissões agrupadas por período de pagamento (due_date) */
+export function useLedgerPeriods(userId?: number) {
+  const api = useApi();
+  return useQuery<LedgerPeriod[]>({
+    queryKey: ['ledger-periods', userId],
+    queryFn: async () => {
+      const qs = userId ? `?user_id=${userId}` : '';
+      const res = await api<{ periods: LedgerPeriod[] }>(`/ledger/periods${qs}`);
+      if (!res.ok) throw new Error(res.message);
+      return (res.data as { periods: LedgerPeriod[] }).periods ?? [];
+    },
+    staleTime: 30_000,
+  });
+}
+
 /** CREDITs active do vendedor (pendentes de quitação em lote) */
 export function usePendingPayments(userId?: number) {
   const api = useApi();
@@ -178,6 +215,7 @@ export function useSettleUser() {
       qc.invalidateQueries({ queryKey: ['ledger-pending'] });
       qc.invalidateQueries({ queryKey: ['ledger-entries'] });
       qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+      qc.invalidateQueries({ queryKey: ['ledger-periods'] });
     },
   });
 }
@@ -235,6 +273,7 @@ export function useGenerateWeekly() {
       qc.invalidateQueries({ queryKey: ['ledger-entries'] });
       qc.invalidateQueries({ queryKey: ['ledger-pending'] });
       qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+      qc.invalidateQueries({ queryKey: ['ledger-periods'] });
     },
   });
 }
@@ -257,6 +296,7 @@ export function useGenerateCalendar() {
       qc.invalidateQueries({ queryKey: ['ledger-entries'] });
       qc.invalidateQueries({ queryKey: ['ledger-pending'] });
       qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+      qc.invalidateQueries({ queryKey: ['ledger-periods'] });
     },
   });
 }

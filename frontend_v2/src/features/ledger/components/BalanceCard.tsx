@@ -13,7 +13,7 @@ interface BalanceCardProps {
 }
 
 export function BalanceCard({ balance, loading, userName }: BalanceCardProps) {
-  const isPositive = (balance?.balance ?? 0) >= 0;
+  const totalAReceber = balance?.balance ?? 0;
   const aReceber = (balance?.due_today_credits ?? 0) + (balance?.upcoming_credits ?? 0);
 
   return (
@@ -22,7 +22,7 @@ export function BalanceCard({ balance, loading, userName }: BalanceCardProps) {
         <Box display="flex" alignItems="center" gap={1} mb={1}>
           <AccountBalanceWalletIcon color="primary" />
           <Typography variant="subtitle2" color="text.secondary">
-            {userName ? `Saldo — ${userName}` : 'Saldo Devedor'}
+            {userName ? `A Receber — ${userName}` : 'Contas a Receber'}
           </Typography>
         </Box>
 
@@ -32,9 +32,9 @@ export function BalanceCard({ balance, loading, userName }: BalanceCardProps) {
           <Typography
             variant="h4"
             fontWeight={700}
-            color={isPositive ? 'success.main' : 'error.main'}
+            color="success.main"
           >
-            {formatBRL(balance?.balance ?? 0)}
+            {formatBRL(totalAReceber)}
           </Typography>
         )}
 

@@ -31,15 +31,8 @@ import {
   useDeleteCommission,
   PayrollConfig,
 } from '../services/userApi';
+import { useFontesPedido } from '../../../api/endpoints/fontes';
 import { useToast } from '../../../components/system/useToast';
-
-const SOURCES = [
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'site', label: 'Site' },
-  { value: 'balcao', label: 'Balcão' },
-  { value: 'indicacao', label: 'Indicação' },
-  { value: 'lucro_bruto', label: 'Lucro Bruto (em breve)' },
-];
 
 const PAYROLL_CATEGORIES = [
   { value: 'fixo_semanal', label: 'Salário Semanal' },
@@ -63,6 +56,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
   const updateCommission = useUpdateCommission(userId);
   const deletePayroll = useDeletePayroll(userId);
   const deleteCommission = useDeleteCommission(userId);
+  const fontesQuery = useFontesPedido(true);
 
   // Estado local de edição de payroll
   const [newPayroll, setNewPayroll] = useState<Partial<PayrollConfig>>({
@@ -74,7 +68,10 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
   });
 
   // Estado local de edição de commission
-  const [newCommission, setNewCommission] = useState({ source: 'whatsapp', rate: '' });
+  const [newCommission, setNewCommission] = useState<{ fonte_pedido_id: number | ''; rate: string }>({
+    fonte_pedido_id: '',
+    rate: '',
+  });
 
   const handleAddPayroll = async () => {
     if (!newPayroll.amount || Number(newPayroll.amount) <= 0) {
@@ -96,10 +93,17 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
       toast.error('Informe uma taxa válida (%)');
       return;
     }
+    if (!newCommission.fonte_pedido_id) {
+      toast.error('Selecione uma fonte real');
+      return;
+    }
     try {
-      await updateCommission.mutateAsync([{ source: newCommission.source, rate }]);
+      await updateCommission.mutateAsync([{
+        fonte_pedido_id: Number(newCommission.fonte_pedido_id),
+        rate,
+      }]);
       toast.success('Comissão atualizada');
-      setNewCommission({ source: 'whatsapp', rate: '' });
+      setNewCommission({ fonte_pedido_id: '', rate: '' });
     } catch (e) {
       toast.error(`Erro: ${(e as Error).message}`);
     }
@@ -108,6 +112,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
   const isLoading = configQuery.isLoading;
   const payroll = configQuery.data?.payroll ?? [];
   const commission = configQuery.data?.commission ?? [];
+  const fontes = fontesQuery.data?.fontes ?? [];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -273,7 +278,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                     commission.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell>
-                          {SOURCES.find((s) => s.value === c.source)?.label ?? c.source}
+                          {c.fonte_nome || c.source || '—'}
                         </TableCell>
                         <TableCell>{(c.rate * 100).toFixed(1)}%</TableCell>
                         <TableCell>
@@ -305,13 +310,19 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                 <TextField
                   select
                   label="Fonte"
-                  value={newCommission.source}
-                  onChange={(e) => setNewCommission((c) => ({ ...c, source: e.target.value }))}
+                  value={newCommission.fonte_pedido_id}
+                  onChange={(e) =>
+                    setNewCommission((c) => ({
+                      ...c,
+                      fonte_pedido_id: e.target.value ? Number(e.target.value) : '',
+                    }))
+                  }
                   size="small"
                   sx={{ minWidth: 160 }}
                 >
-                  {SOURCES.map((s) => (
-                    <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                  <MenuItem value="">Selecione</MenuItem>
+                  {fontes.map((fonte) => (
+                    <MenuItem key={fonte.id} value={fonte.id}>{fonte.nome}</MenuItem>
                   ))}
                 </TextField>
                 <TextField
@@ -328,7 +339,7 @@ export function UserConfigDialog({ open, onClose, userId, userName }: UserConfig
                   size="small"
                   startIcon={<AddIcon />}
                   onClick={handleAddCommission}
-                  disabled={updateCommission.isPending}
+                  disabled={updateCommission.isPending || fontesQuery.isLoading || fontes.length === 0}
                 >
                   Salvar
                 </Button>

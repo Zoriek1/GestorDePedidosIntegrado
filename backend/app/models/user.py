@@ -117,6 +117,13 @@ class CommissionConfig(db.Model):
     user_id = db.Column(
         db.Integer, db.ForeignKey("users.id"), nullable=False, index=True
     )
+    fonte_pedido_id = db.Column(
+        db.Integer,
+        db.ForeignKey("fontes_pedido.id"),
+        nullable=True,
+        index=True,
+        comment="Fonte real vinculada à configuração (preferencial)",
+    )
     source = db.Column(
         db.String(50),
         nullable=False,
@@ -125,11 +132,14 @@ class CommissionConfig(db.Model):
     rate = db.Column(db.Float, nullable=False, comment="Percentual como decimal (0.03 = 3%)")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
+    fonte_pedido = db.relationship("FontePedido", lazy="joined")
 
     def to_dict(self):
         return {
             "id": self.id,
             "user_id": self.user_id,
+            "fonte_pedido_id": self.fonte_pedido_id,
+            "fonte_nome": self.fonte_pedido.nome if self.fonte_pedido else None,
             "source": self.source,
             "rate": self.rate,
             "is_active": self.is_active,

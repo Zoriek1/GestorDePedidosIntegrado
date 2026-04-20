@@ -196,10 +196,11 @@ def delete_payroll(user_id, config_id):
 def update_commission(user_id):
     """
     Body pode ser lista ou objeto:
-      [{"source": "whatsapp", "rate": 0.03}, ...]
+      [{"fonte_pedido_id": 10, "rate": 0.03}, ...]
+      [{"source": "whatsapp", "rate": 0.03}, ...]  # legado
     """
     try:
-        VALID_SOURCES = {"whatsapp", "site", "balcao", "indicacao", "lucro_bruto"}
+        from app.models.fonte_pedido import FontePedido
 
         user = user_repo.get_by_id(user_id)
         if not user:
@@ -210,15 +211,32 @@ def update_commission(user_id):
 
         results = []
         for cfg_data in configs_data:
-            source = cfg_data.get("source", "")
-            if source not in VALID_SOURCES:
-                return error_response(
-                    f"source '{source}' inválido. Válidos: {', '.join(VALID_SOURCES)}", 400
-                )
+            fonte_pedido_id = cfg_data.get("fonte_pedido_id")
+            source = (cfg_data.get("source") or "").strip()
+
+            if fonte_pedido_id is not None:
+                try:
+                    fonte_pedido_id = int(fonte_pedido_id)
+                except (TypeError, ValueError):
+                    return error_response("fonte_pedido_id inválido", 400)
+
+                fonte = FontePedido.query.get(fonte_pedido_id)
+                if not fonte:
+                    return error_response(
+                        f"fonte_pedido_id '{fonte_pedido_id}' não encontrado", 404
+                    )
+
+            if fonte_pedido_id is None and not source:
+                return error_response("Informe fonte_pedido_id ou source", 400)
             rate = cfg_data.get("rate")
             if rate is None:
                 return error_response("rate é obrigatório", 400)
-            cfg = user_repo.upsert_commission_config(user_id, cfg_data)
+            payload = {
+                "source": source,
+                "rate": rate,
+                "fonte_pedido_id": fonte_pedido_id,
+            }
+            cfg = user_repo.upsert_commission_config(user_id, payload)
             results.append(cfg.to_dict())
 
         return success_response({"commission": results})

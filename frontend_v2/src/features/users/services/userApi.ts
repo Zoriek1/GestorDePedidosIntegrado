@@ -33,6 +33,8 @@ export interface PayrollConfig {
 export interface CommissionConfig {
   id: number;
   user_id: number;
+  fonte_pedido_id: number | null;
+  fonte_nome: string | null;
   source: string;
   rate: number;
   is_active: boolean;
@@ -178,7 +180,9 @@ export function useUpdateCommission(userId: number) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (configs: { source: string; rate: number }[]) => {
+    mutationFn: async (
+      configs: { source?: string; fonte_pedido_id?: number; rate: number }[]
+    ) => {
       const res = await api(`/users/${userId}/commission`, {
         method: 'PUT',
         body: JSON.stringify(configs),

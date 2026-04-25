@@ -52,7 +52,10 @@ export default function NuvemshopPage() {
   const [drafts, setDrafts] = useState<DraftState>({});
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [defaultVendorId, setDefaultVendorId] = useState<number | ''>('');
+  // null = sem edição local; cai no valor salvo do servidor.
+  const [draftVendorId, setDraftVendorId] = useState<number | '' | null>(null);
+  const savedVendorId: number | '' = nuvemshopConfig.data?.default_vendedor_id ?? '';
+  const defaultVendorId: number | '' = draftVendorId !== null ? draftVendorId : savedVendorId;
 
   const pendingItems = useMemo(() => data?.pedidos ?? [], [data]);
 
@@ -65,11 +68,6 @@ export default function NuvemshopPage() {
       }, { replace: true });
     }
   }, [searchParams, setSearchParams, success]);
-
-  useEffect(() => {
-    const savedVendorId = nuvemshopConfig.data?.default_vendedor_id ?? null;
-    setDefaultVendorId(savedVendorId ?? '');
-  }, [nuvemshopConfig.data?.default_vendedor_id]);
 
   const handleDraftChange = (pedidoId: number, field: 'dia_entrega' | 'horario', value: string) => {
     setDrafts((prev) => ({
@@ -186,7 +184,7 @@ export default function NuvemshopPage() {
                       label="Vendedor padrao"
                       onChange={(event) => {
                         const value = event.target.value;
-                        setDefaultVendorId(value === '' ? '' : Number(value));
+                        setDraftVendorId(value === '' ? '' : Number(value));
                       }}
                     >
                       <MenuItem value="">Nenhum</MenuItem>
@@ -204,7 +202,10 @@ export default function NuvemshopPage() {
                       loading={saveDefaultVendor.isPending}
                       onClick={() =>
                         saveDefaultVendor.mutate(defaultVendorId === '' ? null : defaultVendorId, {
-                          onSuccess: () => success('Vendedor padrao salvo'),
+                          onSuccess: () => {
+                            setDraftVendorId(null);
+                            success('Vendedor padrao salvo');
+                          },
                           onError: (err) => toastError((err as Error).message),
                         })
                       }
@@ -217,7 +218,10 @@ export default function NuvemshopPage() {
                       loading={saveDefaultVendor.isPending}
                       onClick={() =>
                         saveDefaultVendor.mutate(null, {
-                          onSuccess: () => success('Vendedor padrao removido'),
+                          onSuccess: () => {
+                            setDraftVendorId(null);
+                            success('Vendedor padrao removido');
+                          },
                           onError: (err) => toastError((err as Error).message),
                         })
                       }

@@ -14,9 +14,16 @@ class NuvemshopStore(db.Model):
     store_id = db.Column(db.String(50), unique=True, index=True, nullable=False)
     access_token = db.Column(db.Text, nullable=False)
     active = db.Column(db.Boolean, default=True, nullable=False)
+    default_vendedor_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
 
     installed_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
     uninstalled_at = db.Column(db.DateTime, nullable=True)
+    default_vendedor = db.relationship("User", foreign_keys=[default_vendedor_id], lazy="joined")
 
     def __repr__(self) -> str:
         return f"<NuvemshopStore #{self.store_id} active={self.active}>"

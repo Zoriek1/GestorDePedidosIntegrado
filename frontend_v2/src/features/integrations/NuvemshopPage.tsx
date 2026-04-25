@@ -10,6 +10,10 @@ import {
   TextField,
   Divider,
   Alert,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
 } from '@mui/material';
 import { AppButton } from '../../components/common/AppButton';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -21,6 +25,9 @@ import {
   useProcessPendingNuvemshop,
   useNuvemshopInstall,
   useSetupNuvemshopWebhooks,
+  useNuvemshopConfig,
+  useListVendedores,
+  useSaveDefaultVendorNuvemshop,
 } from '../../api/endpoints/nuvemshop';
 import { AssignVendorModal } from './AssignVendorModal';
 
@@ -33,15 +40,19 @@ interface DraftState {
 
 export default function NuvemshopPage() {
   const { data, isLoading, isError, refetch } = usePendingSchedules();
+  const nuvemshopConfig = useNuvemshopConfig();
+  const vendedoresQuery = useListVendedores();
   const defineSchedule = useDefineSchedule();
   const processPending = useProcessPendingNuvemshop();
   const install = useNuvemshopInstall();
   const setupWebhooks = useSetupNuvemshopWebhooks();
+  const saveDefaultVendor = useSaveDefaultVendorNuvemshop();
   const { error: toastError, success } = useToast();
 
   const [drafts, setDrafts] = useState<DraftState>({});
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [defaultVendorId, setDefaultVendorId] = useState<number | ''>('');
 
   const pendingItems = useMemo(() => data?.pedidos ?? [], [data]);
 
@@ -55,6 +66,11 @@ export default function NuvemshopPage() {
     }
   }, [searchParams, setSearchParams, success]);
 
+  useEffect(() => {
+    const savedVendorId = nuvemshopConfig.data?.default_vendedor_id ?? null;
+    setDefaultVendorId(savedVendorId ?? '');
+  }, [nuvemshopConfig.data?.default_vendedor_id]);
+
   const handleDraftChange = (pedidoId: number, field: 'dia_entrega' | 'horario', value: string) => {
     setDrafts((prev) => ({
       ...prev,
@@ -66,12 +82,20 @@ export default function NuvemshopPage() {
     }));
   };
 
-  if (isLoading) {
+  if (isLoading || nuvemshopConfig.isLoading || vendedoresQuery.isLoading) {
     return <Loading />;
   }
 
-  if (isError) {
-    return <ErrorState onRetry={() => refetch()} />;
+  if (isError || nuvemshopConfig.isError || vendedoresQuery.isError) {
+    return (
+      <ErrorState
+        onRetry={() => {
+          refetch();
+          nuvemshopConfig.refetch();
+          vendedoresQuery.refetch();
+        }}
+      />
+    );
   }
 
   return (
@@ -125,7 +149,7 @@ export default function NuvemshopPage() {
             Atualizar lista
           </AppButton>
           <AppButton variant="outlined" onClick={() => setAssignModalOpen(true)}>
-            Atribuir vendedor
+            Backfill de vendedor
           </AppButton>
         </Stack>
         {processPending.isError && (
@@ -133,6 +157,85 @@ export default function NuvemshopPage() {
             {(processPending.error as Error)?.message || 'Erro ao processar pendencias.'}
           </Alert>
         )}
+
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={2}>
+              <Stack spacing={0.5}>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Vendedor padrao da loja
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Novos pedidos importados da Nuvemshop entram automaticamente com este vendedor.
+                  O botao de backfill continua existindo so para pedidos antigos que ja chegaram sem
+                  vendedor.
+                </Typography>
+              </Stack>
+
+              {!nuvemshopConfig.data?.connected ? (
+                <Alert severity="info">
+                  Conecte a loja primeiro para salvar um vendedor padrao.
+                </Alert>
+              ) : (
+                <>
+                  <FormControl fullWidth>
+                    <InputLabel id="default-vendor-select-label">Vendedor padrao</InputLabel>
+                    <Select
+                      labelId="default-vendor-select-label"
+                      value={defaultVendorId}
+                      label="Vendedor padrao"
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setDefaultVendorId(value === '' ? '' : Number(value));
+                      }}
+                    >
+                      <MenuItem value="">Nenhum</MenuItem>
+                      {(vendedoresQuery.data ?? []).map((vendedor) => (
+                        <MenuItem key={vendedor.id} value={vendedor.id}>
+                          {vendedor.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <AppButton
+                      variant="contained"
+                      loading={saveDefaultVendor.isPending}
+                      onClick={() =>
+                        saveDefaultVendor.mutate(defaultVendorId === '' ? null : defaultVendorId, {
+                          onSuccess: () => success('Vendedor padrao salvo'),
+                          onError: (err) => toastError((err as Error).message),
+                        })
+                      }
+                    >
+                      Salvar vendedor padrao
+                    </AppButton>
+                    <AppButton
+                      variant="outlined"
+                      disabled={defaultVendorId === ''}
+                      loading={saveDefaultVendor.isPending}
+                      onClick={() =>
+                        saveDefaultVendor.mutate(null, {
+                          onSuccess: () => success('Vendedor padrao removido'),
+                          onError: (err) => toastError((err as Error).message),
+                        })
+                      }
+                    >
+                      Limpar
+                    </AppButton>
+                  </Stack>
+
+                  {nuvemshopConfig.data?.default_vendedor_name && (
+                    <Typography variant="caption" color="text.secondary">
+                      Atual: {nuvemshopConfig.data.default_vendedor_name}
+                    </Typography>
+                  )}
+                </>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
       </Stack>
 
       <AssignVendorModal open={assignModalOpen} onClose={() => setAssignModalOpen(false)} />

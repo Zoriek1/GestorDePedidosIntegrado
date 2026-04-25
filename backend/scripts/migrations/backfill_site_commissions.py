@@ -54,14 +54,14 @@ def run(commit: bool) -> dict:
         errors = 0
 
         for pedido in pedidos:
-            if ledger_repo.get_active_by_pedido_id(pedido.id):
+            if ledger_repo.get_by_pedido_id(pedido.id):
                 skipped_existing += 1
                 continue
             try:
                 generate_commission(pedido, pedido.vendedor_id)
                 # generate_commission só cria entry se houve config — checa se
                 # de fato gerou algo (post-condition)
-                if ledger_repo.get_active_by_pedido_id(pedido.id):
+                if ledger_repo.get_by_pedido_id(pedido.id):
                     created += 1
                 else:
                     skipped_no_config += 1

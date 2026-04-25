@@ -22,14 +22,30 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
     # ------------------------------------------------------------------
 
     def get_active_by_pedido_id(self, pedido_id: int) -> Optional[LedgerEntry]:
-        """Retorna a comissão ativa (não voidada) de um pedido."""
-        return LedgerEntry.query.filter_by(
-            pedido_id=pedido_id, voided=False
-        ).first()
+        """Retorna a comissão CREDIT ainda ativa (não voidada e não quitada) de um pedido."""
+        return (
+            LedgerEntry.query.filter(
+                LedgerEntry.pedido_id == pedido_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.status == "active",
+                LedgerEntry.voided.is_(False),
+            )
+            .order_by(LedgerEntry.id.desc())
+            .first()
+        )
 
-    # Alias para retrocompatibilidade interna
+    # Alias para retrocompatibilidade interna: qualquer CREDIT histórico
+    # ainda válido para o pedido, mesmo que já tenha sido quitado.
     def get_by_pedido_id(self, pedido_id: int) -> Optional[LedgerEntry]:
-        return self.get_active_by_pedido_id(pedido_id)
+        return (
+            LedgerEntry.query.filter(
+                LedgerEntry.pedido_id == pedido_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.voided.is_(False),
+            )
+            .order_by(LedgerEntry.id.desc())
+            .first()
+        )
 
     def get_by_week_and_category(
         self, user_id: int, week_ref: date, category: str

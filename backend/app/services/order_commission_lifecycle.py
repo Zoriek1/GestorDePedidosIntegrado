@@ -62,6 +62,7 @@ def apply_commission_lifecycle(pedido, previous: dict[str, Any] | None = None, a
 
     repo = LedgerRepository()
     has_active_commission = repo.get_active_by_pedido_id(pedido.id) is not None
+    has_any_commission = repo.get_by_pedido_id(pedido.id) is not None
 
     # Regressão Pago/Parcial → não pago: voida o CREDIT ativo (sem DEBIT, pois
     # não houve pagamento real) e sai. Não exige vendedor_id.
@@ -95,11 +96,13 @@ def apply_commission_lifecycle(pedido, previous: dict[str, Any] | None = None, a
             "generated": True,
         }
 
-    if transitioning_to_paid:
+    # Pedido pago/parcial que ainda nao tem nenhuma comissao historica valida:
+    # cobre create ja pago, update Pendente->Pago e atribuicao tardia de vendedor.
+    if is_paid_now and not has_any_commission:
         generate_commission(pedido, vendedor_id)
         return {
-            "transitioning_to_paid": True,
-            "transitioning_from_paid": False,
+            "transitioning_to_paid": transitioning_to_paid,
+            "transitioning_from_paid": transitioning_from_paid,
             "voided_and_recreated": False,
             "voided": False,
             "generated": True,
@@ -112,4 +115,3 @@ def apply_commission_lifecycle(pedido, previous: dict[str, Any] | None = None, a
         "voided": False,
         "generated": False,
     }
-

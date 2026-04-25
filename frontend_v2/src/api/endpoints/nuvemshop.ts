@@ -20,6 +20,14 @@ export interface PendingSchedulesResponse {
   pedidos: PendingScheduleItem[];
 }
 
+export interface NuvemshopConfig {
+  connected: boolean;
+  store_id: string | null;
+  active: boolean;
+  default_vendedor_id: number | null;
+  default_vendedor_name: string | null;
+}
+
 export function usePendingSchedules() {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
@@ -34,6 +42,22 @@ export function usePendingSchedules() {
         throw new Error(response.message);
       }
       return response.data;
+    },
+  });
+}
+
+export function useNuvemshopConfig() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useQuery<NuvemshopConfig>({
+    queryKey: ['nuvemshop', 'config'],
+    queryFn: async () => {
+      const response = await apiRequest<NuvemshopConfig>('/integrations/nuvemshop/config');
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      return response.data as NuvemshopConfig;
     },
   });
 }
@@ -163,6 +187,28 @@ export function useSetupNuvemshopWebhooks() {
         throw new Error(response.message);
       }
       return response.data;
+    },
+  });
+}
+
+export function useSaveDefaultVendorNuvemshop() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (vendedor_id: number | null) => {
+      const response = await apiRequest('/integrations/nuvemshop/config', {
+        method: 'PUT',
+        body: JSON.stringify({ vendedor_id }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) throw new Error(response.message);
+      return response.data as NuvemshopConfig;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nuvemshop', 'config'] });
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
     },
   });
 }

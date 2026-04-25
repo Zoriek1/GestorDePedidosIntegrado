@@ -1174,6 +1174,8 @@ def ocultar_concluidos():
 def restaurar_pedido(pedido_id):
     """Restaura pedido soft-deleted (P0.3)"""
     try:
+        from app import db
+
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
             return error_response("Pedido não encontrado", 404)
@@ -1188,6 +1190,17 @@ def restaurar_pedido(pedido_id):
         pedido_restaurado = pedido_repo.restore_pedido(pedido_id, actor=actor)
 
         if pedido_restaurado:
+            actor_id = None
+            current = getattr(request, "current_user", None)
+            if current:
+                actor_id = current.get("user_id")
+
+            # Se o pedido restaurado já estiver pago, reexecuta o lifecycle para
+            # recompor a comissão que pode ter sido voidada no soft delete.
+            apply_commission_lifecycle(pedido_restaurado, previous=None, actor_id=actor_id)
+            pedido_restaurado.updated_at = datetime_now_brazil()
+            db.session.commit()
+
             return success_response(
                 {"pedido": pedido_restaurado.to_dict()},
                 message="Pedido restaurado com sucesso",

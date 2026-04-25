@@ -1267,6 +1267,24 @@ class TestAuditFixes:
         ).count()
         assert debits_after == debits_before
 
+    def test_void_active_commission_ignora_credit_ja_quitado(self, session):
+        """Soft delete/status regression não devem voidar crédito já settled."""
+        from app.services.commission_service import void_active_commission
+
+        _, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="site", rate=0.04
+        )
+        credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
+        credit.status = "settled"
+        session.commit()
+
+        ok = void_active_commission(pedido, reason="soft_delete")
+        session.commit()
+
+        credit_after = LedgerEntry.query.filter_by(id=credit.id).first()
+        assert ok is False
+        assert credit_after.voided is False
+
     def test_void_active_commission_sem_credit_retorna_false(self, session):
         """Helper retorna False quando não há CREDIT ativo."""
         from app.services.commission_service import void_active_commission
@@ -1400,6 +1418,67 @@ class TestAuditFixes:
         assert resp.status_code == 204
         assert LedgerEntry.query.filter_by(user_id=vendedor.id).count() == 0
 
+    def test_generate_commission_permanece_idempotente_com_credit_ja_quitado(self, session):
+        """Regerar comissão não duplica quando já existe CREDIT histórico settled."""
+        from app.services.commission_service import generate_commission
+
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="site", rate=0.06
+        )
+        credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
+        credit.status = "settled"
+        session.commit()
+
+        generate_commission(pedido, vendedor.id)
+        session.commit()
+
+        credits = LedgerEntry.query.filter_by(
+            pedido_id=pedido.id,
+            type="CREDIT",
+        ).all()
+        assert len(credits) == 1
+
+    def test_restore_regera_comissao_voidada_no_soft_delete(self, client, session):
+        """Restore de pedido pago recompõe a comissão voidada no soft delete."""
+        from app.services.commission_service import void_active_commission
+
+        admin = make_user(session, "audrestore@test.com", "pass1234", role="admin")
+        token = generate_token(admin)
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="site", rate=0.10
+        )
+
+        assert void_active_commission(pedido, reason="soft_delete") is True
+        pedido.soft_delete()
+        session.commit()
+
+        assert (
+            LedgerEntry.query.filter_by(
+                pedido_id=pedido.id,
+                type="CREDIT",
+                voided=False,
+            ).count()
+            == 0
+        )
+
+        resp = client.post(
+            f"/api/pedidos/{pedido.id}/restore",
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+
+        pedido_restaurado = Pedido.query.get(pedido.id)
+        assert pedido_restaurado is not None
+        assert pedido_restaurado.is_deleted is False
+
+        active_credit = LedgerEntry.query.filter_by(
+            pedido_id=pedido.id,
+            type="CREDIT",
+            voided=False,
+        ).first()
+        assert active_credit is not None
+        assert float(active_credit.amount) == pytest.approx(10.0, abs=0.01)
+
     # --- Validação de inputs (Fase 1.1, 1.2) ---
 
     def test_payroll_rejeita_payment_day_invalido(self, client, session):
@@ -1529,4 +1608,48 @@ class TestAuditFixes:
         credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
         assert credit is not None
         assert credit.category == "comissao_site"
+        assert float(credit.amount) == pytest.approx(20.0, abs=0.01)
+
+    def test_atribuicao_tardia_de_vendedor_em_pedido_pago_gera_comissao(self, session):
+        """Pedido ja pago sem vendedor deve gerar comissão quando o vendedor for atribuido depois."""
+        from app.services.order_commission_lifecycle import (
+            apply_commission_lifecycle,
+            snapshot_commission_fields,
+        )
+
+        vendedor = make_user(session, "audlatevendor@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="Site")
+        session.add(fonte)
+        session.flush()
+        session.add(
+            CommissionConfig(
+                user_id=vendedor.id, fonte_pedido_id=fonte.id, source="site", rate=0.08
+            )
+        )
+        session.commit()
+
+        pedido = Pedido(
+            cliente="Cliente Pago",
+            telefone_cliente="11999999999",
+            destinatario="Dest",
+            produto="Prod",
+            valor="R$ 250,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=None,
+        )
+        session.add(pedido)
+        session.flush()
+
+        snapshot = snapshot_commission_fields(pedido)
+        pedido.vendedor_id = vendedor.id
+        result = apply_commission_lifecycle(pedido, previous=snapshot, actor_id=vendedor.id)
+        session.commit()
+
+        assert result["generated"] is True
+        credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
+        assert credit is not None
         assert float(credit.amount) == pytest.approx(20.0, abs=0.01)

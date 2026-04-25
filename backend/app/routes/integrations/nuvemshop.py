@@ -8,7 +8,7 @@ import logging
 import re
 import threading
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import requests
 from flask import Blueprint, current_app, redirect, request
@@ -133,6 +133,34 @@ def _setup_order_webhooks(client: NuvemshopClient, webhook_url: str) -> None:
         "order/custom_fields_updated",
     ]:
         _ensure_webhook(client, event, webhook_url)
+
+
+def _resolve_target_store(store_id: Optional[str] = None) -> Optional[NuvemshopStore]:
+    if store_id:
+        return NuvemshopStore.query.filter_by(store_id=str(store_id)).first()
+
+    return NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
+
+
+def _serialize_store_config(store: Optional[NuvemshopStore]) -> Dict[str, object]:
+    if not store:
+        return {
+            "connected": False,
+            "store_id": None,
+            "active": False,
+            "default_vendedor_id": None,
+            "default_vendedor_name": None,
+        }
+
+    return {
+        "connected": True,
+        "store_id": str(store.store_id),
+        "active": bool(store.active),
+        "default_vendedor_id": store.default_vendedor_id,
+        "default_vendedor_name": (
+            store.default_vendedor.name if getattr(store, "default_vendedor", None) else None
+        ),
+    }
 
 
 @nuvemshop_bp.route("/install", methods=["GET"])
@@ -320,6 +348,49 @@ def nuvemshop_setup_webhooks():
             "events": ["order/created", "order/paid", "order/updated", "order/cancelled"],
             "status": "ok",
         }
+    )
+
+
+@nuvemshop_bp.route("/config", methods=["GET"])
+@requires_role("admin")
+def get_nuvemshop_config():
+    store_id = request.args.get("store_id")
+    store = _resolve_target_store(store_id)
+    return success_response(_serialize_store_config(store))
+
+
+@nuvemshop_bp.route("/config", methods=["PUT"])
+@requires_role("admin")
+def update_nuvemshop_config():
+    from app.models.user import User
+
+    store_id = request.args.get("store_id")
+    store = _resolve_target_store(store_id)
+    if not store:
+        return error_response("Loja Nuvemshop nao encontrada", 404)
+
+    data = request.get_json() or {}
+    vendedor_id = data.get("vendedor_id")
+    if vendedor_id in ("", 0):
+        vendedor_id = None
+
+    if vendedor_id is not None:
+        try:
+            vendedor_id = int(vendedor_id)
+        except (TypeError, ValueError):
+            return error_response("vendedor_id invalido", 400)
+
+        vendedor = User.query.filter_by(id=vendedor_id, is_active=True, role="vendedor").first()
+        if not vendedor:
+            return error_response("Vendedor nao encontrado", 404)
+
+    store.default_vendedor_id = vendedor_id
+    db.session.commit()
+
+    action = "atualizado" if vendedor_id is not None else "removido"
+    return success_response(
+        _serialize_store_config(store),
+        message=f"Vendedor padrao {action} com sucesso",
     )
 
 
@@ -580,6 +651,10 @@ def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
 
     overridden_fields = PedidoManualOverride.get_overridden_fields(pedido.id)
     changed = False
+
+    if pedido.vendedor_id is None and getattr(store, "default_vendedor_id", None):
+        pedido.vendedor_id = store.default_vendedor_id
+        changed = True
 
     # Mapa de campo -> (novo_valor, valores_placeholder_que_permitem_update)
     enrich_map = {

@@ -31,13 +31,18 @@ def create_nuvemshop_tables():
                     store_id VARCHAR(50) NOT NULL UNIQUE,
                     access_token TEXT NOT NULL,
                     active BOOLEAN NOT NULL DEFAULT 1,
+                    default_vendedor_id INTEGER,
                     installed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    uninstalled_at DATETIME
+                    uninstalled_at DATETIME,
+                    FOREIGN KEY (default_vendedor_id) REFERENCES users(id)
                 );
                 """
             )
             index_statements.append(
                 "CREATE INDEX idx_nuvemshop_stores_store_id ON nuvemshop_stores(store_id);"
+            )
+            index_statements.append(
+                "CREATE INDEX idx_nuvemshop_stores_default_vendedor_id ON nuvemshop_stores(default_vendedor_id);"
             )
         else:
             print("[SKIP] Tabela nuvemshop_stores já existe")

@@ -35,7 +35,7 @@ export function AssignVendorModal({ open, onClose }: AssignVendorModalProps) {
     assign.mutate(vendedorId, {
       onSuccess: (data) => {
         const count = (data as { atribuidos: number }).atribuidos;
-        success(`${count} pedido(s) atribuído(s) com sucesso`);
+        success(`${count} pedido(s) receberam vendedor via backfill`);
         setVendedorId('');
         onClose();
       },
@@ -54,7 +54,7 @@ export function AssignVendorModal({ open, onClose }: AssignVendorModalProps) {
         <Stack direction="row" alignItems="center" spacing={1}>
           <PersonAddIcon fontSize="small" />
           <Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
-            Atribuir vendedor aos pedidos do site
+            Backfill de vendedor nos pedidos do site
           </Typography>
           <IconButton size="small" onClick={handleClose}>
             <CloseIcon fontSize="small" />
@@ -65,8 +65,8 @@ export function AssignVendorModal({ open, onClose }: AssignVendorModalProps) {
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            Todos os pedidos importados da Nuvemshop que ainda não têm vendedor serão atribuídos ao
-            selecionado.
+            Esta acao atribui o vendedor apenas aos pedidos ja importados da Nuvemshop que ainda
+            nao tem vendedor. Ela nao salva o vendedor padrao da loja para os proximos pedidos.
           </Typography>
 
           <FormControl fullWidth>
@@ -86,9 +86,7 @@ export function AssignVendorModal({ open, onClose }: AssignVendorModalProps) {
             </Select>
           </FormControl>
 
-          {assign.isError && (
-            <Alert severity="error">{(assign.error as Error)?.message}</Alert>
-          )}
+          {assign.isError && <Alert severity="error">{(assign.error as Error)?.message}</Alert>}
         </Stack>
       </DialogContent>
 
@@ -102,7 +100,7 @@ export function AssignVendorModal({ open, onClose }: AssignVendorModalProps) {
           loading={assign.isPending}
           disabled={!vendedorId}
         >
-          Atribuir
+          Fazer backfill
         </AppButton>
       </DialogActions>
     </Dialog>

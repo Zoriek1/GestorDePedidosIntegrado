@@ -17,11 +17,26 @@ from datetime import date
 from app.integrations.nuvemshop.mapper import map_nuvemshop_order_to_pedido_data
 from app.integrations.nuvemshop.service import NuvemshopOrderImporter
 from app.integrations.nuvemshop.verifier import verify_nuvemshop_hmac
+from app.models.fonte_pedido import FontePedido
+from app.models.ledger_entry import LedgerEntry
 from app.models.nuvemshop_store import NuvemshopStore
 from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
 from app.models.pedido import Pedido
 from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
+from app.models.user import CommissionConfig, User
+from app.services.auth_service import generate_token, hash_password
+
+
+def _make_user(session, email: str, role: str = "vendedor", name: str = "Teste") -> User:
+    user = User(name=name, email=email, password_hash=hash_password("pass1234"), role=role)
+    session.add(user)
+    session.commit()
+    return user
+
+
+def _auth_headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_verify_nuvemshop_hmac():
@@ -571,6 +586,201 @@ def test_importer_idempotent(session):
 
     assert Pedido.query.count() == 1
     assert PedidoExternalRef.query.count() == 1
+
+
+def test_nuvemshop_config_persists_default_vendor(client, session):
+    admin = _make_user(session, "nuvemshop-admin@test.com", role="admin", name="Admin")
+    vendedor = _make_user(session, "nuvemshop-vendedor@test.com", role="vendedor", name="Vendedor")
+    store = NuvemshopStore(store_id="cfg-1", access_token="token", active=True)
+    session.add(store)
+    session.commit()
+
+    token = generate_token(admin)
+
+    resp = client.put(
+        "/api/integrations/nuvemshop/config",
+        json={"vendedor_id": vendedor.id},
+        headers=_auth_headers(token),
+    )
+    assert resp.status_code == 200
+
+    session.refresh(store)
+    assert store.default_vendedor_id == vendedor.id
+
+    resp_get = client.get(
+        "/api/integrations/nuvemshop/config",
+        headers=_auth_headers(token),
+    )
+    assert resp_get.status_code == 200
+    body = resp_get.get_json()
+    assert body["default_vendedor_id"] == vendedor.id
+    assert body["default_vendedor_name"] == vendedor.name
+
+
+def test_importer_applies_default_vendor_to_new_paid_order(session):
+    vendedor = _make_user(session, "nuvemshop-auto@test.com", role="vendedor", name="Auto")
+    session.add(CommissionConfig(user_id=vendedor.id, source="site", rate=0.10))
+    session.commit()
+
+    store = NuvemshopStore(
+        store_id="auto-1",
+        access_token="token",
+        active=True,
+        default_vendedor_id=vendedor.id,
+    )
+    session.add(store)
+    session.commit()
+
+    delivery = NuvemshopWebhookDelivery(
+        store_id="auto-1",
+        event="order/created",
+        resource_id="8801",
+        raw_body="{}",
+        headers_json="{}",
+    )
+    session.add(delivery)
+    session.commit()
+
+    order = {
+        "id": 8801,
+        "number": 8801,
+        "token": "tok8801",
+        "contact_name": "Cliente Auto",
+        "contact_phone": "+5562999990001",
+        "created_at": "2026-04-25T12:00:00-0300",
+        "currency": "BRL",
+        "total": "100.00",
+        "total_paid_by_customer": "100.00",
+        "payment_status": "paid",
+        "storefront": "store",
+        "shipping_option": "Entrega Normal",
+        "shipping_address": {
+            "name": "Destinatario Auto",
+            "address": "Rua A",
+            "number": "10",
+            "locality": "Centro",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Buque Auto", "quantity": 1}],
+    }
+
+    importer = NuvemshopOrderImporter(store, user_agent="TestApp")
+    importer.client.get_order = lambda _: order
+
+    assert importer.process_delivery(delivery) is True
+
+    pedido = Pedido.query.first()
+    assert pedido is not None
+    assert pedido.vendedor_id == vendedor.id
+
+    credit = LedgerEntry.query.filter_by(
+        pedido_id=pedido.id,
+        type="CREDIT",
+        voided=False,
+    ).first()
+    assert credit is not None
+
+
+def test_importer_update_existing_paid_order_without_vendor_uses_default_vendor(session):
+    vendedor = _make_user(session, "nuvemshop-late@test.com", role="vendedor", name="Late")
+    fonte = FontePedido(nome="Site")
+    session.add(fonte)
+    session.flush()
+    session.add(
+        CommissionConfig(
+            user_id=vendedor.id,
+            fonte_pedido_id=fonte.id,
+            source="site",
+            rate=0.10,
+        )
+    )
+    session.commit()
+
+    store = NuvemshopStore(
+        store_id="auto-2",
+        access_token="token",
+        active=True,
+        default_vendedor_id=vendedor.id,
+    )
+    session.add(store)
+    session.commit()
+
+    pedido = Pedido(
+        cliente="Cliente Sem Vendedor",
+        telefone_cliente="62999990002",
+        destinatario="Destinatario Sem Vendedor",
+        produto="Buque",
+        valor="100.00",
+        dia_entrega=date(2026, 4, 25),
+        horario="10:00",
+        status="agendado",
+        status_pagamento="Pago",
+        fonte_pedido_id=fonte.id,
+        vendedor_id=None,
+    )
+    session.add(pedido)
+    session.flush()
+
+    ref = PedidoExternalRef(
+        provider="nuvemshop",
+        store_id="auto-2",
+        external_order_id="8802",
+        external_order_number="8802",
+        pedido_id=pedido.id,
+        schedule_pending=False,
+    )
+    session.add(ref)
+    session.commit()
+
+    delivery = NuvemshopWebhookDelivery(
+        store_id="auto-2",
+        event="order/updated",
+        resource_id="8802",
+        raw_body="{}",
+        headers_json="{}",
+    )
+    session.add(delivery)
+    session.commit()
+
+    order = {
+        "id": 8802,
+        "number": 8802,
+        "token": "tok8802",
+        "contact_name": "Cliente Sem Vendedor",
+        "contact_phone": "+5562999990002",
+        "created_at": "2026-04-25T12:00:00-0300",
+        "currency": "BRL",
+        "total": "100.00",
+        "total_paid_by_customer": "100.00",
+        "payment_status": "paid",
+        "storefront": "store",
+        "shipping_option": "Entrega Normal",
+        "shipping_address": {
+            "name": "Destinatario Sem Vendedor",
+            "address": "Rua B",
+            "number": "20",
+            "locality": "Centro",
+            "city": "Goiania",
+            "zipcode": "74000-000",
+        },
+        "products": [{"name": "Buque Atualizado", "quantity": 1}],
+    }
+
+    importer = NuvemshopOrderImporter(store, user_agent="TestApp")
+    importer.client.get_order = lambda _: order
+
+    assert importer.process_delivery(delivery) is True
+
+    session.refresh(pedido)
+    assert pedido.vendedor_id == vendedor.id
+
+    credit = LedgerEntry.query.filter_by(
+        pedido_id=pedido.id,
+        type="CREDIT",
+        voided=False,
+    ).first()
+    assert credit is not None
 
 
 def test_manual_override_protection(session):

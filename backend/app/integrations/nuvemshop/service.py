@@ -142,6 +142,10 @@ class NuvemshopOrderImporter:
             if cliente_id:
                 pedido_data["cliente_id"] = cliente_id
 
+            # Loja pode ter um vendedor padrao persistido para atribuir
+            # automaticamente pedidos novos no momento da importacao.
+            self._apply_default_vendor(pedido_data)
+
             external_ref = self._get_external_ref(order)
             if external_ref:
                 self._update_existing_pedido(
@@ -228,6 +232,15 @@ class NuvemshopOrderImporter:
         db.session.add(fonte)
         db.session.commit()
         return fonte
+
+    def _apply_default_vendor(self, pedido_data: Dict[str, Any]) -> None:
+        """Aplica o vendedor padrao da loja quando o pedido ainda nao tem vendedor."""
+        if pedido_data.get("vendedor_id") is not None:
+            return
+
+        default_vendedor_id = getattr(self.store, "default_vendedor_id", None)
+        if default_vendedor_id:
+            pedido_data["vendedor_id"] = default_vendedor_id
 
     def _get_external_ref(self, order: Dict[str, Any]) -> Optional[PedidoExternalRef]:
         """
@@ -410,6 +423,11 @@ class NuvemshopOrderImporter:
             ),
             "updated_at": datetime_now_brazil(),
         }
+
+        if getattr(pedido, "vendedor_id", None) is None and getattr(
+            self.store, "default_vendedor_id", None
+        ):
+            updates["vendedor_id"] = self.store.default_vendedor_id
 
         # --- Campos críticos: preencher quando vazios/placeholder ---
         # Esses campos podem chegar vazios no order/created (pedido pendente)

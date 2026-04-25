@@ -120,7 +120,7 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
     user_repo = UserRepository()
 
     # 1. Idempotência — verifica entry não-voidada
-    if ledger_repo.get_active_by_pedido_id(pedido.id):
+    if ledger_repo.get_by_pedido_id(pedido.id):
         return
 
     # 2. Determinar fonte do pedido (preferência: fonte real)

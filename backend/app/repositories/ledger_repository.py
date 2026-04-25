@@ -195,13 +195,22 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
 
     def get_pending(self, user_id: int) -> List[LedgerEntry]:
         """
-        Retorna CREDITs active com foco operacional:
+        Retorna CREDITs active com foco na semana corrente:
         - Todos os atrasados (due_date < hoje)
         - Itens de hoje (due_date == hoje)
         - Itens sem due_date
-        - Dos futuros, somente o próximo dia de pagamento (menor due_date > hoje)
+        - Futuros desta semana (hoje < due_date < próxima segunda)
+
+        Valores agendados para a próxima semana ou além NÃO entram aqui — eles
+        aparecem em outras telas (extrato/períodos), mas não devem somar no
+        "A Receber" desta semana.
         """
+        from datetime import timedelta
+
         today = today_brazil()
+        # Próxima segunda-feira (limite superior exclusivo do "current week")
+        next_monday = today + timedelta(days=(7 - today.weekday()))
+
         all_active = (
             LedgerEntry.query.filter(
                 LedgerEntry.user_id == user_id,
@@ -218,12 +227,13 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         overdue = [e for e in all_active if e.due_date is not None and e.due_date < today]
         due_today = [e for e in all_active if e.due_date == today]
         without_due = [e for e in all_active if e.due_date is None]
-        future = [e for e in all_active if e.due_date is not None and e.due_date > today]
+        future_this_week = [
+            e
+            for e in all_active
+            if e.due_date is not None and today < e.due_date < next_monday
+        ]
 
-        next_due = min((e.due_date for e in future), default=None)
-        next_future = [e for e in future if e.due_date == next_due] if next_due else []
-
-        selected = overdue + due_today + without_due + next_future
+        selected = overdue + due_today + without_due + future_this_week
         return sorted(
             selected,
             key=lambda e: (

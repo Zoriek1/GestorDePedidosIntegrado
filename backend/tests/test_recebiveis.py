@@ -291,52 +291,63 @@ class TestLedgerOperations:
         assert entries[0]["category"] == "fixo_semanal"
         assert entries[0]["amount"] == 400.0
 
-    def test_pending_retorna_atrasados_e_apenas_proximo_futuro(self, client, session):
-        """GET /api/ledger/pending inclui atrasados e somente o próximo dia futuro."""
+    def test_pending_retorna_atrasados_e_futuros_da_semana(self, client, session, monkeypatch):
+        """GET /api/ledger/pending inclui atrasados + futuros desta semana,
+        exclui itens com due_date >= próxima segunda."""
+        from app.repositories import ledger_repository
+
+        # Quarta-feira fixa para o cálculo ser determinístico independente
+        # do dia em que o pytest rodar.
+        fixed_today = date(2025, 2, 12)  # quarta
+        monkeypatch.setattr(ledger_repository, "today_brazil", lambda: fixed_today)
+
         admin = make_user(session, "adminpd@test.com", "pass1234", role="admin", name="AdminPd")
         vendedor = make_user(session, "vendpd@test.com", "pass1234", role="vendedor")
         token = generate_token(vendedor)
 
-        today = date.today()
-        week_ref = today
+        week_ref = fixed_today
 
+        # Atrasado (quita) — terça desta semana
         e1 = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
             category="fixo_semanal",
             amount=100.0,
             week_ref=week_ref,
-            due_date=today - timedelta(days=1),
+            due_date=fixed_today - timedelta(days=1),
             status="active",
             created_by=admin.id,
         )
+        # Sexta desta semana (entra)
         e2 = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
             category="almoco",
             amount=80.0,
             week_ref=week_ref,
-            due_date=today + timedelta(days=2),
+            due_date=fixed_today + timedelta(days=2),
             status="active",
             created_by=admin.id,
         )
+        # Próxima quarta (NÃO entra — > próxima segunda)
         e3 = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
             category="transporte",
             amount=60.0,
             week_ref=week_ref,
-            due_date=today + timedelta(days=7),
+            due_date=fixed_today + timedelta(days=7),
             status="active",
             created_by=admin.id,
         )
+        # Sexta desta semana (entra)
         e4 = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
             category="fixo_mensal",
             amount=200.0,
             week_ref=week_ref,
-            due_date=today + timedelta(days=2),
+            due_date=fixed_today + timedelta(days=2),
             status="active",
             created_by=admin.id,
         )

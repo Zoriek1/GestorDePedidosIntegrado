@@ -139,6 +139,10 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
     today = today_brazil()
     week_ref = get_monday(today)
     now = datetime_now_brazil()
+    # Próxima segunda-feira: limite superior exclusivo do "current week".
+    # Créditos com due_date a partir desse dia ficam para a próxima quitação,
+    # consistente com o que get_pending mostra na tela "A Receber".
+    next_monday = today + timedelta(days=(7 - today.weekday()))
 
     # 1) Cria o DEBIT placeholder (amount=0.01 satisfaz CHECK amount>0;
     # o valor real é setado no passo 3, ou o DEBIT é removido se nada quitar).
@@ -157,11 +161,11 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
     db.session.flush()
     debit_id = debit.id
 
-    # 2) UPDATE atômico — captura todos os CREDITs ativos no momento e os
-    # vincula ao DEBIT. Race-safe: dois settles concorrentes capturam lotes
-    # disjuntos via settled_by_id (não há janela onde dois UPDATEs vejam o
-    # mesmo CREDIT como ativo — o primeiro UPDATE já mudou status para
-    # 'settled'). O CHECK de WHERE inclui status='active' explicitamente.
+    # 2) UPDATE atômico — captura CREDITs ativos da semana corrente
+    # (overdue, hoje, sem due_date e futuros desta semana) e os vincula
+    # ao DEBIT. Não inclui due_date >= próxima segunda. Race-safe: dois
+    # settles concorrentes capturam lotes disjuntos via settled_by_id
+    # (o primeiro UPDATE já mudou status para 'settled').
     updated = (
         db.session.query(LedgerEntry)
         .filter(
@@ -169,6 +173,7 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
             LedgerEntry.type == "CREDIT",
             LedgerEntry.status == "active",
             LedgerEntry.voided.is_(False),
+            (LedgerEntry.due_date.is_(None)) | (LedgerEntry.due_date < next_monday),
         )
         .update(
             {

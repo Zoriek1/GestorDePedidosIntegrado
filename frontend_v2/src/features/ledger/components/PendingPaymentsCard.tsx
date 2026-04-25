@@ -3,9 +3,7 @@ import {
   CardContent,
   Typography,
   Box,
-  List,
-  ListItem,
-  ListItemText,
+  Stack,
   Button,
   Chip,
   Skeleton,
@@ -14,6 +12,7 @@ import {
 } from '@mui/material';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import PaymentsIcon from '@mui/icons-material/Payments';
+import { useMemo } from 'react';
 import { formatBRL } from '../../../lib/format/currency';
 import { LedgerEntry, usePendingPayments, useSettleUser } from '../services/ledgerApi';
 
@@ -35,52 +34,101 @@ const CATEGORY_LABELS: Record<string, string> = {
   custom_credit: 'Crédito Avulso',
 };
 
+const SALARY_CATEGORIES = new Set([
+  'fixo_semanal',
+  'fixo_mensal',
+  'almoco',
+  'transporte',
+  'custom_credit',
+]);
+
 function categoryLabel(category: string): string {
   return CATEGORY_LABELS[category] ?? category;
 }
 
-function formatDueDate(due_date: string | null): string | null {
-  if (!due_date) return null;
-  const d = new Date(due_date + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
-  const formatted = d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
-  if (diff < 0) return `Atrasado — ${formatted}`;
-  if (diff === 0) return `Hoje — ${formatted}`;
-  if (diff === 1) return `Amanhã — ${formatted}`;
-  return formatted;
+function commissionSourceLabel(category: string): string {
+  // "comissao_whatsapp" → "WhatsApp"; "comissao_site" → "Site"
+  const slug = category.startsWith('comissao_') ? category.slice('comissao_'.length) : category;
+  if (!slug) return 'Outras';
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
 }
 
-function dueDateColor(due_date: string | null): 'error' | 'warning' | 'default' {
-  if (!due_date) return 'default';
-  const d = new Date(due_date + 'T00:00:00');
+interface AggregatedGroup {
+  key: string;
+  label: string;
+  total: number;
+  count: number;
+  isOverdue: boolean;
+}
+
+function aggregate(entries: LedgerEntry[]): {
+  salaryGroups: AggregatedGroup[];
+  commissionGroups: AggregatedGroup[];
+  total: number;
+  hasOverdue: boolean;
+} {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
-  if (diff < 0) return 'error';
-  if (diff <= 1) return 'warning';
-  return 'default';
+
+  const salaryMap = new Map<string, AggregatedGroup>();
+  const commissionMap = new Map<string, AggregatedGroup>();
+  let total = 0;
+  let hasOverdue = false;
+
+  for (const entry of entries) {
+    let isOverdue = false;
+    if (entry.due_date) {
+      const due = new Date(entry.due_date + 'T00:00:00');
+      isOverdue = due.getTime() < today.getTime();
+      if (isOverdue) hasOverdue = true;
+    }
+
+    const target = SALARY_CATEGORIES.has(entry.category) ? salaryMap : commissionMap;
+    const key = entry.category;
+    const label = SALARY_CATEGORIES.has(entry.category)
+      ? categoryLabel(entry.category)
+      : commissionSourceLabel(entry.category);
+
+    const existing = target.get(key);
+    if (existing) {
+      existing.total += entry.amount;
+      existing.count += 1;
+      if (isOverdue) existing.isOverdue = true;
+    } else {
+      target.set(key, { key, label, total: entry.amount, count: 1, isOverdue });
+    }
+    total += entry.amount;
+  }
+
+  const sortByTotalDesc = (a: AggregatedGroup, b: AggregatedGroup) => b.total - a.total;
+
+  return {
+    salaryGroups: Array.from(salaryMap.values()).sort(sortByTotalDesc),
+    commissionGroups: Array.from(commissionMap.values()).sort(sortByTotalDesc),
+    total,
+    hasOverdue,
+  };
 }
 
 export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProps) {
   const pendingQuery = usePendingPayments(userId);
   const settleMutation = useSettleUser();
 
-  const entries: LedgerEntry[] = pendingQuery.data ?? [];
-  const total = entries.reduce((acc, e) => acc + e.amount, 0);
-
-  const hasOverdue = entries.some((e) => {
-    if (!e.due_date) return false;
-    const due = new Date(e.due_date + 'T00:00:00');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return due.getTime() < today.getTime();
-  });
+  const entries: LedgerEntry[] = useMemo(
+    () => pendingQuery.data ?? [],
+    [pendingQuery.data]
+  );
+  const { salaryGroups, commissionGroups, total, hasOverdue } = useMemo(
+    () => aggregate(entries),
+    [entries]
+  );
 
   const handleSettle = () => {
     settleMutation.mutate(userId);
   };
+
+  const salaryTotal = salaryGroups.reduce((acc, g) => acc + g.total, 0);
+  const commissionTotal = commissionGroups.reduce((acc, g) => acc + g.total, 0);
 
   return (
     <Card
@@ -137,51 +185,62 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
           <>
             {!isAdmin && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Clique em "Recebi" após receber o pagamento. Quita todos os lançamentos de uma vez.
+                Apenas valores desta semana. Clique em "Recebi" após receber o pagamento.
               </Typography>
             )}
-            <Divider sx={{ mb: 1 }} />
-            <List dense disablePadding>
-              {entries.map((entry) => {
-                const dueFmt = formatDueDate(entry.due_date);
-                const dueColor = dueDateColor(entry.due_date);
-                return (
-                  <ListItem key={entry.id} disableGutters sx={{ px: 0, py: 0.5 }}>
-                    <ListItemText
-                      primary={
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                          <Typography variant="body2" fontWeight={500}>
-                            {categoryLabel(entry.category)}
-                          </Typography>
-                          <Typography variant="body2" color="success.main" fontWeight={600}>
-                            {formatBRL(entry.amount)}
-                          </Typography>
-                          {entry.pedido_id && (
-                            <Typography variant="caption" color="text.secondary">
-                              #{entry.pedido_id}
-                            </Typography>
-                          )}
-                        </Box>
-                      }
-                      secondary={
-                        dueFmt ? (
-                          <Chip
-                            size="small"
-                            label={dueFmt}
-                            color={dueColor}
-                            variant="outlined"
-                            sx={{ height: 18, fontSize: '0.65rem', mt: 0.25 }}
-                          />
-                        ) : (
-                          entry.description || undefined
-                        )
-                      }
-                      secondaryTypographyProps={{ component: 'div' }}
-                    />
-                  </ListItem>
-                );
-              })}
-            </List>
+            <Divider sx={{ mb: 1.5 }} />
+
+            {salaryGroups.length > 0 && (
+              <Box mb={commissionGroups.length > 0 ? 2 : 0}>
+                <Box display="flex" alignItems="baseline" justifyContent="space-between" mb={0.5}>
+                  <Typography variant="body2" fontWeight={700}>
+                    Salário
+                  </Typography>
+                  <Typography variant="body2" fontWeight={700} color="success.main">
+                    {formatBRL(salaryTotal)}
+                  </Typography>
+                </Box>
+                <Stack spacing={0.25} pl={1.5}>
+                  {salaryGroups.map((g) => (
+                    <Box key={g.key} display="flex" alignItems="baseline" justifyContent="space-between">
+                      <Typography variant="caption" color="text.secondary">
+                        {g.label}
+                        {g.count > 1 ? ` ×${g.count}` : ''}
+                      </Typography>
+                      <Typography variant="caption" color={g.isOverdue ? 'error.main' : 'text.primary'}>
+                        {formatBRL(g.total)}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {commissionGroups.length > 0 && (
+              <Box>
+                <Box display="flex" alignItems="baseline" justifyContent="space-between" mb={0.5}>
+                  <Typography variant="body2" fontWeight={700}>
+                    Comissões
+                  </Typography>
+                  <Typography variant="body2" fontWeight={700} color="success.main">
+                    {formatBRL(commissionTotal)}
+                  </Typography>
+                </Box>
+                <Stack spacing={0.25} pl={1.5}>
+                  {commissionGroups.map((g) => (
+                    <Box key={g.key} display="flex" alignItems="baseline" justifyContent="space-between">
+                      <Typography variant="caption" color="text.secondary">
+                        {g.label}
+                        {g.count > 1 ? ` (${g.count} pedidos)` : g.count === 1 ? ' (1 pedido)' : ''}
+                      </Typography>
+                      <Typography variant="caption" color={g.isOverdue ? 'error.main' : 'text.primary'}>
+                        {formatBRL(g.total)}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            )}
           </>
         )}
       </CardContent>

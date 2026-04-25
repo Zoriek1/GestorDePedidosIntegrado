@@ -44,19 +44,98 @@ def _map_storefront_to_canal(storefront: str) -> str:
     return STOREFRONT_TO_CANAL_MAP.get(storefront.lower(), "Site")
 
 
+_COMPLEMENT_FIELD_KEYS = (
+    "floor",
+    "complement",
+    "complement_2",
+    "apartment",
+    "suite",
+    "floor_number",
+    "address_2",
+    "additional_info",
+    "unit",
+    "block",
+)
+
+# Padrões para extrair complemento embutido em texto livre (nota, address, etc).
+# Captura "Apto 502", "Ap. 3", "Apartamento 502 Bl B", "andar 3", "sala 12",
+# "casa 5", "bloco B", "torre 2", "fundos".
+_COMPLEMENT_TEXT_PATTERNS = (
+    re.compile(r"\b(?:apto|apt|ap)\s*\.?\s*([A-Z0-9\-]+)\b", re.I),
+    re.compile(r"\bapartamento\s*([A-Z0-9\-]+)\b", re.I),
+    re.compile(r"\b(\d{1,3})[ºo]?\s*andar\b", re.I),
+    re.compile(r"\bandar\s*([A-Z0-9\-]+)\b", re.I),
+    re.compile(r"\bsala\s*([A-Z0-9\-]+)\b", re.I),
+    re.compile(r"\b(?:bl|bloco)\s*\.?\s*([A-Z0-9\-]+)\b", re.I),
+    re.compile(r"\btorre\s*([A-Z0-9\-]+)\b", re.I),
+    re.compile(r"\bcasa\s*([A-Z0-9\-]+)\b", re.I),
+    re.compile(r"\b(fundos)\b", re.I),
+)
+
+
+def _extract_complement_from_text(text: str, already: set) -> list:
+    """Procura padrões de andar/sala/apto/bloco em texto livre.
+
+    `already` é o conjunto (uppercase) dos fragmentos já coletados, usado para
+    evitar duplicatas como "Apt 502" + "Apartamento 502".
+    """
+    if not text:
+        return []
+    found = []
+    for pattern in _COMPLEMENT_TEXT_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        # Reconstrói um fragmento canônico legível mantendo o rótulo do padrão.
+        whole = match.group(0).strip()
+        whole_norm = whole.upper()
+        # Heurística simples para evitar duplicar com fragmento já coletado.
+        if any(whole_norm in existing or existing in whole_norm for existing in already):
+            continue
+        already.add(whole_norm)
+        found.append(whole)
+    return found
+
+
 def _extract_address_complement(
     shipping_address: Dict[str, Any], order: Optional[Dict[str, Any]] = None
 ) -> Optional[str]:
-    """Extrai complemento/andar do endereço de entrega."""
-    complement_parts = []
+    """Extrai complemento/andar do endereço de entrega.
 
-    # Campos comuns para complemento na API Nuvemshop
-    for key in ("floor", "complement", "apartment", "suite", "floor_number"):
+    Fontes consultadas (em ordem):
+      1. Campos dedicados no shipping_address (floor, complement, etc).
+      2. Padrões textuais (apto/andar/sala/bloco) embutidos no campo
+         `address`, em campos extras do shipping_address e na `note` do
+         pedido — onde o cliente costuma escrever "Apto 502, andar 3".
+      3. Padrão QD/LT (loteamentos), já tratado por
+         _extract_qd_lt_from_address_payload.
+    """
+    complement_parts: list = []
+    seen: set = set()
+
+    # 1) Campos dedicados
+    for key in _COMPLEMENT_FIELD_KEYS:
         value = _safe_str(shipping_address.get(key))
         if value:
-            complement_parts.append(value)
+            normalized = value.upper()
+            if normalized not in seen:
+                complement_parts.append(value)
+                seen.add(normalized)
 
-    # Site: alguns enderecos chegam com quadra/lote em qualquer campo textual do shipping_address.
+    # 2) Padrões textuais em campos textuais do endereço e na nota do pedido
+    free_text_sources = [
+        _safe_str(shipping_address.get("address")),
+        _safe_str(shipping_address.get("between_streets")),
+        _safe_str(shipping_address.get("reference")),
+    ]
+    if order:
+        free_text_sources.append(_safe_str(order.get("note")))
+        free_text_sources.append(_safe_str(order.get("owner_note")))
+
+    for source_text in free_text_sources:
+        complement_parts.extend(_extract_complement_from_text(source_text, seen))
+
+    # 3) QD/LT (mantido por compatibilidade — loteamentos)
     qd_lt = _extract_qd_lt_from_address_payload(shipping_address, order)
     if qd_lt:
         normalized_existing = " | ".join(complement_parts).upper()
@@ -472,9 +551,61 @@ def _extract_shipping_lines_text(order: Dict[str, Any]) -> str:
 
 
 def _is_pickup_order(order: Dict[str, Any], shipping_option_text: str) -> bool:
+    """
+    Detecta retirada usando múltiplos sinais. A Nuvemshop nem sempre preenche
+    `shipping_pickup_type`; muitos checkouts deixam apenas o billing_address e
+    nenhum endereço de entrega real, e nesse caso o pedido vinha sendo
+    classificado erradamente como Entrega.
+    """
+    # 1) Sinal explícito da Nuvemshop
     if _safe_str(order.get("shipping_pickup_type")).lower() == "pickup":
         return True
-    return _is_pickup_shipping_text(shipping_option_text)
+
+    # 2) shipping_pickup_details preenchido = pedido marcado para retirada
+    pickup_details = order.get("shipping_pickup_details")
+    if pickup_details and (
+        (isinstance(pickup_details, dict) and any(pickup_details.values()))
+        or (isinstance(pickup_details, str) and pickup_details.strip())
+    ):
+        return True
+
+    # 3) Texto da opção de envio menciona retirada
+    if _is_pickup_shipping_text(shipping_option_text):
+        return True
+
+    # 4) Heurística: ausência total de sinais de entrega.
+    # Quando o pedido não tem endereço de envio real (CEP/rua), não tem
+    # shipping_lines, custo de envio é zero e nenhuma opção de envio foi
+    # selecionada, é praticamente certo que é retirada — o cliente só tem
+    # billing_address por estar cadastrado, mas o pedido em si não envia
+    # nada.
+    shipping_address = order.get("shipping_address") or {}
+    has_real_shipping_address = bool(
+        _safe_str(shipping_address.get("zipcode"))
+        or _safe_str(shipping_address.get("address"))
+    )
+    shipping_lines = order.get("shipping_lines")
+    has_shipping_lines = bool(shipping_lines) if isinstance(shipping_lines, list) else False
+    shipping_cost_raw = (
+        order.get("shipping_cost_customer")
+        or order.get("shipping_cost_owner")
+        or order.get("shipping")
+        or 0
+    )
+    try:
+        shipping_cost = float(shipping_cost_raw) if shipping_cost_raw else 0.0
+    except (ValueError, TypeError):
+        shipping_cost = 0.0
+
+    if (
+        not has_real_shipping_address
+        and not has_shipping_lines
+        and shipping_cost == 0.0
+        and not shipping_option_text.strip()
+    ):
+        return True
+
+    return False
 
 
 def _resolve_brazil_delivery_date(created_at: Optional[datetime]) -> date:

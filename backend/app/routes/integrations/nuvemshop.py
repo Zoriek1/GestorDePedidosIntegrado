@@ -475,6 +475,10 @@ def listar_pedidos_pendentes_agendamento():
 def atribuir_vendedor_nuvemshop():
     """Atribui um vendedor a todos os pedidos Nuvemshop que ainda não têm vendedor."""
     from app.models.user import User
+    from app.services.order_commission_lifecycle import (
+        apply_commission_lifecycle,
+        snapshot_commission_fields,
+    )
 
     data = request.get_json() or {}
     vendedor_id = data.get("vendedor_id")
@@ -487,16 +491,34 @@ def atribuir_vendedor_nuvemshop():
 
     refs = PedidoExternalRef.query.filter_by(provider="nuvemshop").all()
     atribuidos = 0
+    comissoes_geradas = 0
     for ref in refs:
         pedido = Pedido.query.get(ref.pedido_id)
         if pedido and pedido.vendedor_id is None:
+            prev = snapshot_commission_fields(pedido)
             pedido.vendedor_id = vendedor_id
+            try:
+                result = apply_commission_lifecycle(
+                    pedido, previous=prev, actor_id=vendedor_id
+                )
+                if result.get("generated"):
+                    comissoes_geradas += 1
+            except Exception:
+                logger.warning(
+                    "[NUVEMSHOP] Falha em apply_commission_lifecycle ao "
+                    "atribuir vendedor para pedido #%s",
+                    pedido.id,
+                    exc_info=True,
+                )
             atribuidos += 1
 
     db.session.commit()
     return success_response(
-        {"atribuidos": atribuidos},
-        message=f"{atribuidos} pedido(s) atribuído(s) a {vendedor.name}",
+        {"atribuidos": atribuidos, "comissoes_geradas": comissoes_geradas},
+        message=(
+            f"{atribuidos} pedido(s) atribuído(s) a {vendedor.name} "
+            f"({comissoes_geradas} comissão(ões) gerada(s))"
+        ),
     )
 
 
@@ -509,6 +531,13 @@ def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
     Best-effort: erros de rede/API são logados mas não propagados.
     """
     from app.integrations.nuvemshop.mapper import map_nuvemshop_order_to_pedido_data
+    from app.services.order_commission_lifecycle import (
+        apply_commission_lifecycle,
+        snapshot_commission_fields,
+    )
+
+    # Snapshot ANTES de qualquer mutação para o lifecycle detectar transições
+    prev_snapshot = snapshot_commission_fields(pedido)
 
     store = NuvemshopStore.query.filter_by(store_id=ref.store_id).first()
     if not store or not store.active or not Config.NUVEMSHOP_USER_AGENT:
@@ -585,6 +614,23 @@ def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
         elif current in placeholders or not current:
             setattr(pedido, field, new_val)
             changed = True
+
+    if changed:
+        # Dispara lifecycle se algo mudou (em especial transição de
+        # status_pagamento Pendente→Pago, comum no caminho do enrich).
+        try:
+            apply_commission_lifecycle(
+                pedido,
+                previous=prev_snapshot,
+                actor_id=getattr(pedido, "vendedor_id", None),
+            )
+        except Exception:
+            logger.warning(
+                "[NUVEMSHOP] Falha em apply_commission_lifecycle no enrich do "
+                "pedido #%s",
+                pedido.id,
+                exc_info=True,
+            )
 
     return changed
 

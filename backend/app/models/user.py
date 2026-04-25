@@ -94,6 +94,13 @@ class PayrollConfig(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
 
+    __table_args__ = (
+        db.CheckConstraint(
+            "payment_day IS NULL OR (payment_day BETWEEN 0 AND 6)",
+            name="ck_payroll_payment_day_range",
+        ),
+    )
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -133,6 +140,24 @@ class CommissionConfig(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
     fonte_pedido = db.relationship("FontePedido", lazy="joined")
+
+    __table_args__ = (
+        db.CheckConstraint("rate >= 0", name="ck_commission_rate_nonneg"),
+        db.Index(
+            "ux_comm_user_fonte_active",
+            "user_id",
+            "fonte_pedido_id",
+            unique=True,
+            sqlite_where=db.text("is_active = 1 AND fonte_pedido_id IS NOT NULL"),
+        ),
+        db.Index(
+            "ux_comm_user_source_active",
+            "user_id",
+            "source",
+            unique=True,
+            sqlite_where=db.text("is_active = 1 AND fonte_pedido_id IS NULL AND source <> ''"),
+        ),
+    )
 
     def to_dict(self):
         return {

@@ -10,13 +10,7 @@ from sqlalchemy import case, func
 from app import db
 from app.models.ledger_entry import LedgerEntry
 from app.repositories.base_repository import BaseRepository
-
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo
-
-TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
+from app.utils.date_utils import today_brazil
 
 
 class LedgerRepository(BaseRepository[LedgerEntry]):
@@ -58,7 +52,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
           upcoming         = active_total WHERE due_date > hoje (ou sem due_date)
           balance          = active_total
         """
-        today = date.today()
+        today = today_brazil()
 
         base_active = (
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
@@ -84,12 +78,15 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             ).scalar()
         )
 
+        # ajuste_debito é puramente contábil (estorno por edição de pedido); o void
+        # do CREDIT já remove o valor do saldo, então não conta como pagamento.
         total_debits = float(
             db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .filter(
                 LedgerEntry.user_id == user_id,
                 LedgerEntry.type == "DEBIT",
                 LedgerEntry.voided.is_(False),
+                LedgerEntry.category != "ajuste_debito",
             )
             .scalar()
         )
@@ -110,7 +107,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         """
         from app.models.user import User
 
-        today = date.today()
+        today = today_brazil()
 
         rows = (
             db.session.query(
@@ -129,7 +126,9 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
                 func.sum(
                     case(
                         (
-                            (LedgerEntry.type == "DEBIT") & ~LedgerEntry.voided,
+                            (LedgerEntry.type == "DEBIT")
+                            & ~LedgerEntry.voided
+                            & (LedgerEntry.category != "ajuste_debito"),
                             LedgerEntry.amount,
                         ),
                         else_=0,
@@ -186,7 +185,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         - Itens sem due_date
         - Dos futuros, somente o próximo dia de pagamento (menor due_date > hoje)
         """
-        today = date.today()
+        today = today_brazil()
         all_active = (
             LedgerEntry.query.filter(
                 LedgerEntry.user_id == user_id,

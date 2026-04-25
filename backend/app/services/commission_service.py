@@ -28,10 +28,12 @@ def map_fonte_to_source(nome: str) -> str:
 def get_monday(ref_date) -> date:
     """Retorna a segunda-feira da semana da data fornecida."""
     from app.utils.date_utils import get_monday as _get_monday
+    from app.utils.date_utils import today_brazil
+
     if isinstance(ref_date, datetime):
         ref_date = ref_date.date()
     if ref_date is None:
-        ref_date = date.today()
+        ref_date = today_brazil()
     return _get_monday(ref_date)
 
 
@@ -72,7 +74,9 @@ def resolve_commission_reference_date(pedido) -> date:
     if isinstance(dia_entrega, date):
         return dia_entrega
 
-    return date.today()
+    from app.utils.date_utils import today_brazil
+
+    return today_brazil()
 
 
 def commission_base(pedido) -> float:
@@ -136,6 +140,11 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
         source=source or None,
     )
     if not config:
+        current_app.logger.warning(
+            "[COMISSAO] Pedido #%s sem CommissionConfig ativa "
+            "(vendedor=%s fonte_pedido_id=%s source=%r); comissão pulada.",
+            pedido.id, vendedor_id, fonte_pedido_id, source,
+        )
         return
 
     # Compatibilidade com placeholder legado
@@ -167,7 +176,7 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
         else ref_date
     )
 
-    # 6. Criar entry
+    # 6. Criar entry (com snapshot da rate/source para estorno estável)
     category_source = config_source or source or "fonte"
     category = f"comissao_{category_source}"
     entry = LedgerEntry(
@@ -180,6 +189,8 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
         week_ref=week_ref,
         due_date=due_date,
         status="active",
+        commission_rate=config.rate,
+        commission_source=category_source,
         created_by=vendedor_id,
     )
     db.session.add(entry)
@@ -201,9 +212,8 @@ def void_and_recreate_commission(pedido, vendedor_id: int) -> None:
     from flask import current_app
 
     from app import db
-    from app.models.ledger_entry import LedgerEntry
+    from app.models.ledger_entry import LedgerEntry, datetime_now_brazil
     from app.repositories.ledger_repository import LedgerRepository
-    from app.models.ledger_entry import datetime_now_brazil
 
     ledger_repo = LedgerRepository()
     existing = ledger_repo.get_active_by_pedido_id(pedido.id)
@@ -214,12 +224,17 @@ def void_and_recreate_commission(pedido, vendedor_id: int) -> None:
 
     old_amount = float(existing.amount)
     old_week_ref = existing.week_ref
+    # Snapshot fields preservam a config histórica (rate/source no momento original)
+    old_rate = existing.commission_rate
+    old_source = existing.commission_source
 
     # Marcar entry antiga como void
     existing.voided = True
+    existing.void_reason = "edit_estorno"
     db.session.flush()
 
-    # Criar DEBIT de estorno
+    # Criar DEBIT de estorno (categoria ajuste_debito é excluída do saldo —
+    # serve apenas para auditoria do estorno)
     debit = LedgerEntry(
         user_id=existing.user_id,
         type="DEBIT",
@@ -229,15 +244,49 @@ def void_and_recreate_commission(pedido, vendedor_id: int) -> None:
         week_ref=old_week_ref,
         status="settled",
         settled_at=datetime_now_brazil(),
+        commission_rate=old_rate,
+        commission_source=old_source,
         created_by=vendedor_id,
     )
     db.session.add(debit)
     db.session.flush()
 
     current_app.logger.info(
-        "[COMISSAO] Estorno Pedido #%s: R$%.2f voidado, DEBIT ajuste criado",
-        pedido.id, old_amount,
+        "[COMISSAO] Estorno Pedido #%s: R$%.2f voidado (rate=%s source=%s), "
+        "DEBIT ajuste criado",
+        pedido.id, old_amount, old_rate, old_source,
     )
 
     # Gerar nova comissão com valores atuais
     generate_commission(pedido, vendedor_id)
+
+
+def void_active_commission(pedido, reason: str) -> bool:
+    """
+    Marca o CREDIT ativo do pedido como voided, sem criar DEBIT.
+
+    Usado quando o pedido sai do estado pago (regressão de status) ou é
+    soft-deletado: o valor não foi realmente entregue ao vendedor, então o
+    void simplesmente remove o crédito do saldo. Nenhuma contrapartida é
+    necessária.
+
+    Returns: True se voidou um CREDIT, False se não havia CREDIT ativo.
+    """
+    from flask import current_app
+
+    from app import db
+    from app.repositories.ledger_repository import LedgerRepository
+
+    existing = LedgerRepository().get_active_by_pedido_id(pedido.id)
+    if not existing:
+        return False
+
+    existing.voided = True
+    existing.void_reason = reason
+    db.session.flush()
+
+    current_app.logger.info(
+        "[COMISSAO] Pedido #%s: CREDIT R$%.2f voidado (reason=%s)",
+        pedido.id, float(existing.amount), reason,
+    )
+    return True

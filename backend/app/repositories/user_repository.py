@@ -123,6 +123,17 @@ class UserRepository(BaseRepository[User]):
         return ascii_name.lower().strip().replace(" ", "_")
 
     def upsert_commission_config(self, user_id: int, data: dict) -> CommissionConfig:
+        """
+        Upsert atômico de CommissionConfig.
+
+        Os índices parciais únicos (ux_comm_user_fonte_active,
+        ux_comm_user_source_active) garantem no nível do banco que existe no
+        máximo uma config ativa por (user_id, fonte_pedido_id) ou
+        (user_id, source). Em caso de race condition, o segundo INSERT levanta
+        IntegrityError e o tratador relê o estado e retenta a desativação.
+        """
+        from sqlalchemy.exc import IntegrityError
+
         fonte_pedido_id = data.get("fonte_pedido_id")
         try:
             fonte_pedido_id = int(fonte_pedido_id) if fonte_pedido_id is not None else None
@@ -134,31 +145,47 @@ class UserRepository(BaseRepository[User]):
             source = self._resolve_source_from_fonte(fonte_pedido_id)
         source = source or ""
 
-        if fonte_pedido_id is not None:
-            existing = CommissionConfig.query.filter_by(
-                user_id=user_id,
-                fonte_pedido_id=fonte_pedido_id,
-                is_active=True,
-            ).all()
-        else:
-            existing = CommissionConfig.query.filter_by(
-                user_id=user_id,
-                source=source,
-                is_active=True,
-            ).all()
-        for cfg in existing:
-            cfg.is_active = False
+        rate_value = float(data.get("rate", 0))
 
-        new_cfg = CommissionConfig(
-            user_id=user_id,
-            fonte_pedido_id=fonte_pedido_id,
-            source=source,
-            rate=float(data.get("rate", 0)),
-            is_active=True,
-        )
-        db.session.add(new_cfg)
-        db.session.commit()
-        return new_cfg
+        for attempt in range(2):  # 1 retry após IntegrityError
+            try:
+                with db.session.begin_nested():
+                    if fonte_pedido_id is not None:
+                        existing = CommissionConfig.query.filter_by(
+                            user_id=user_id,
+                            fonte_pedido_id=fonte_pedido_id,
+                            is_active=True,
+                        ).all()
+                    else:
+                        existing = CommissionConfig.query.filter_by(
+                            user_id=user_id,
+                            source=source,
+                            is_active=True,
+                        ).all()
+                    for cfg in existing:
+                        cfg.is_active = False
+                    db.session.flush()
+
+                    new_cfg = CommissionConfig(
+                        user_id=user_id,
+                        fonte_pedido_id=fonte_pedido_id,
+                        source=source,
+                        rate=rate_value,
+                        is_active=True,
+                    )
+                    db.session.add(new_cfg)
+                    db.session.flush()
+                db.session.commit()
+                return new_cfg
+            except IntegrityError:
+                db.session.rollback()
+                if attempt == 1:
+                    raise
+                # próxima iteração relê o estado e tenta novamente
+                continue
+
+        # inalcançável: ou retorna no try, ou propaga no raise
+        raise RuntimeError("upsert_commission_config: estado inesperado")
 
     def deactivate_commission_config(self, config_id: int) -> bool:
         cfg = CommissionConfig.query.get(config_id)

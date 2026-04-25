@@ -100,6 +100,21 @@ class LedgerEntry(db.Model):
         default=False,
         comment="TRUE quando estornado por edição de pedido",
     )
+    void_reason = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Motivo do void: status_regression, soft_delete, edit_estorno",
+    )
+    commission_rate = db.Column(
+        db.Numeric(5, 4),
+        nullable=True,
+        comment="Snapshot da rate usada (CREDIT de comissão); preserva config histórica",
+    )
+    commission_source = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Snapshot do source usado (CREDIT de comissão)",
+    )
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)
     created_by = db.Column(
         db.Integer,
@@ -139,6 +154,9 @@ class LedgerEntry(db.Model):
             "settled_at": self.settled_at.strftime("%Y-%m-%d %H:%M:%S") if self.settled_at else None,
             "settled_by_id": self.settled_by_id,
             "voided": self.voided,
+            "void_reason": self.void_reason,
+            "commission_rate": float(self.commission_rate) if self.commission_rate is not None else None,
+            "commission_source": self.commission_source,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "created_by": self.created_by,
         }

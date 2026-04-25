@@ -165,6 +165,28 @@ def update_payroll(user_id):
         for cfg_data in configs_data:
             if not cfg_data.get("category") or cfg_data.get("amount") is None:
                 return error_response("category e amount são obrigatórios em cada config", 400)
+
+            try:
+                amount_val = float(cfg_data.get("amount"))
+            except (TypeError, ValueError):
+                return error_response("amount deve ser numérico", 400)
+            if amount_val < 0:
+                return error_response("amount não pode ser negativo", 400)
+
+            frequency = (cfg_data.get("frequency") or "semanal").strip().lower()
+            payment_day = cfg_data.get("payment_day")
+            if payment_day is not None:
+                try:
+                    payment_day_int = int(payment_day)
+                except (TypeError, ValueError):
+                    return error_response("payment_day deve ser inteiro 0-6", 400)
+                if payment_day_int < 0 or payment_day_int > 6:
+                    return error_response("payment_day deve estar entre 0 (Seg) e 6 (Dom)", 400)
+            elif frequency == "semanal":
+                return error_response(
+                    "payment_day é obrigatório para configs semanais (0=Seg ... 6=Dom)", 400
+                )
+
             cfg = user_repo.upsert_payroll_config(user_id, cfg_data)
             results.append(cfg.to_dict())
 
@@ -231,6 +253,16 @@ def update_commission(user_id):
             rate = cfg_data.get("rate")
             if rate is None:
                 return error_response("rate é obrigatório", 400)
+            try:
+                rate_val = float(rate)
+            except (TypeError, ValueError):
+                return error_response("rate deve ser numérico", 400)
+            if rate_val < 0:
+                return error_response("rate não pode ser negativo", 400)
+            if rate_val > 1:
+                return error_response(
+                    "rate deve ser decimal (ex: 0.05 para 5%); valores >1 são inválidos", 400
+                )
             payload = {
                 "source": source,
                 "rate": rate,

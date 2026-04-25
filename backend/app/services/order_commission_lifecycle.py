@@ -8,8 +8,11 @@ from __future__ import annotations
 from typing import Any
 
 from app.repositories.ledger_repository import LedgerRepository
-from app.services.commission_service import generate_commission, void_and_recreate_commission
-
+from app.services.commission_service import (
+    generate_commission,
+    void_active_commission,
+    void_and_recreate_commission,
+)
 
 SENSITIVE_FIELDS = ("vendedor_id", "fonte_pedido_id", "valor", "tipo_pedido", "taxa_entrega")
 
@@ -49,29 +52,46 @@ def apply_commission_lifecycle(pedido, previous: dict[str, Any] | None = None, a
 
     prev_status_pagamento = previous.get("status_pagamento")
     curr_status_pagamento = getattr(pedido, "status_pagamento", None)
-    transitioning_to_paid = _is_paid_status(curr_status_pagamento) and not _is_paid_status(
-        prev_status_pagamento
-    )
+    was_paid = _is_paid_status(prev_status_pagamento)
+    is_paid_now = _is_paid_status(curr_status_pagamento)
+    transitioning_to_paid = is_paid_now and not was_paid
+    transitioning_from_paid = was_paid and not is_paid_now
 
     if transitioning_to_paid and not getattr(pedido, "paid_at", None):
         pedido.paid_at = datetime_now_brazil()
+
+    repo = LedgerRepository()
+    has_active_commission = repo.get_active_by_pedido_id(pedido.id) is not None
+
+    # Regressão Pago/Parcial → não pago: voida o CREDIT ativo (sem DEBIT, pois
+    # não houve pagamento real) e sai. Não exige vendedor_id.
+    if transitioning_from_paid and has_active_commission:
+        voided = void_active_commission(pedido, reason="status_regression")
+        return {
+            "transitioning_to_paid": False,
+            "transitioning_from_paid": True,
+            "voided_and_recreated": False,
+            "voided": voided,
+            "generated": False,
+        }
 
     vendedor_id = getattr(pedido, "vendedor_id", None) or actor_id
     if not vendedor_id:
         return {
             "transitioning_to_paid": transitioning_to_paid,
+            "transitioning_from_paid": transitioning_from_paid,
             "voided_and_recreated": False,
+            "voided": False,
             "generated": False,
         }
-
-    repo = LedgerRepository()
-    has_active_commission = repo.get_active_by_pedido_id(pedido.id) is not None
 
     if previous and has_active_commission and _sensitive_fields_changed(previous, pedido):
         void_and_recreate_commission(pedido, vendedor_id)
         return {
             "transitioning_to_paid": transitioning_to_paid,
+            "transitioning_from_paid": transitioning_from_paid,
             "voided_and_recreated": True,
+            "voided": False,
             "generated": True,
         }
 
@@ -79,13 +99,17 @@ def apply_commission_lifecycle(pedido, previous: dict[str, Any] | None = None, a
         generate_commission(pedido, vendedor_id)
         return {
             "transitioning_to_paid": True,
+            "transitioning_from_paid": False,
             "voided_and_recreated": False,
+            "voided": False,
             "generated": True,
         }
 
     return {
         "transitioning_to_paid": False,
+        "transitioning_from_paid": False,
         "voided_and_recreated": False,
+        "voided": False,
         "generated": False,
     }
 

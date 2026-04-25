@@ -27,9 +27,8 @@ from app.models.ledger_entry import LedgerEntry  # noqa: E402
 from app.models.pedido import Pedido  # noqa: E402
 from app.models.user import CommissionConfig, PayrollConfig, User  # noqa: E402
 from app.services.auth_service import generate_token, hash_password  # noqa: E402
-from app.utils.date_utils import get_monday  # noqa: E402
 from app.services.commission_service import map_fonte_to_source  # noqa: E402
-
+from app.utils.date_utils import get_monday  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -407,8 +406,8 @@ class TestCommission:
         """Cria Pedido com FontePedido='WhatsApp' e vendedor_id.
         Cada teste tem seu próprio banco SQLite, logo não há conflito de unicidade.
         """
-        from app.models.pedido import Pedido as PedidoModel
         from app.models.fonte_pedido import FontePedido as FonteModel
+        from app.models.pedido import Pedido as PedidoModel
 
         fonte = FonteModel(nome="WhatsApp")
         session.add(fonte)
@@ -1151,3 +1150,383 @@ class TestWeeklyCredits:
             headers=auth_headers(token),
         )
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 6. Correções da auditoria 2026-04 (bug Site/Nuvemshop + 11 críticos/altos)
+# ---------------------------------------------------------------------------
+
+class TestAuditFixes:
+    """Cobre as correções aplicadas após a auditoria do sistema de comissão/salário."""
+
+    def _setup_pedido_pago_com_comissao(self, session, source="site", rate=0.10):
+        """Helper: vendedor + config + pedido Pago, com CREDIT já gerado."""
+        from app.services.order_commission_lifecycle import apply_commission_lifecycle
+
+        vendedor = make_user(
+            session,
+            f"audit_{source}_{rate}@test.com",
+            "pass1234",
+            role="vendedor",
+        )
+        fonte = FontePedido(nome=source.capitalize())
+        session.add(fonte)
+        session.flush()
+        session.add(
+            CommissionConfig(
+                user_id=vendedor.id, fonte_pedido_id=fonte.id, source=source, rate=rate
+            )
+        )
+        session.commit()
+
+        pedido = Pedido(
+            cliente="Cliente",
+            telefone_cliente="11999999999",
+            destinatario="Dest",
+            produto="Prod",
+            valor="R$ 100,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.flush()
+        apply_commission_lifecycle(pedido, previous=None, actor_id=vendedor.id)
+        session.commit()
+        return vendedor, pedido
+
+    # --- Snapshot no CREDIT (Fase 1.3) ---
+
+    def test_credit_recebe_snapshot_de_rate_e_source(self, session):
+        """generate_commission deve persistir commission_rate e commission_source."""
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="site", rate=0.07
+        )
+        credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
+        assert credit is not None
+        assert float(credit.commission_rate) == pytest.approx(0.07, abs=1e-6)
+        assert credit.commission_source == "site"
+
+    # --- Regressão Pago → Pendente (Fase 3.1) ---
+
+    def test_status_pago_para_pendente_voida_comissao_sem_debit(self, session):
+        """Regressão de status_pagamento marca CREDIT voided sem criar DEBIT."""
+        from app.services.order_commission_lifecycle import (
+            apply_commission_lifecycle,
+            snapshot_commission_fields,
+        )
+
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="balcao", rate=0.05
+        )
+        credit_before = LedgerEntry.query.filter_by(pedido_id=pedido.id).first()
+        debits_before = LedgerEntry.query.filter_by(
+            user_id=vendedor.id, type="DEBIT"
+        ).count()
+
+        snapshot = snapshot_commission_fields(pedido)
+        pedido.status_pagamento = "Pendente"
+        result = apply_commission_lifecycle(pedido, previous=snapshot, actor_id=vendedor.id)
+        session.commit()
+
+        assert result["transitioning_from_paid"] is True
+        assert result["voided"] is True
+        credit_after = LedgerEntry.query.filter_by(id=credit_before.id).first()
+        assert credit_after.voided is True
+        assert credit_after.void_reason == "status_regression"
+        debits_after = LedgerEntry.query.filter_by(
+            user_id=vendedor.id, type="DEBIT"
+        ).count()
+        assert debits_after == debits_before  # nenhum DEBIT foi criado
+
+    # --- Soft delete (Fase 3.2) ---
+
+    def test_void_active_commission_helper(self, session):
+        """void_active_commission marca CREDIT voided sem criar DEBIT."""
+        from app.services.commission_service import void_active_commission
+
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="indicacao", rate=0.03
+        )
+        debits_before = LedgerEntry.query.filter_by(
+            user_id=vendedor.id, type="DEBIT"
+        ).count()
+
+        ok = void_active_commission(pedido, reason="soft_delete")
+        session.commit()
+
+        assert ok is True
+        credit = LedgerEntry.query.filter_by(pedido_id=pedido.id).first()
+        assert credit.voided is True
+        assert credit.void_reason == "soft_delete"
+        debits_after = LedgerEntry.query.filter_by(
+            user_id=vendedor.id, type="DEBIT"
+        ).count()
+        assert debits_after == debits_before
+
+    def test_void_active_commission_sem_credit_retorna_false(self, session):
+        """Helper retorna False quando não há CREDIT ativo."""
+        from app.services.commission_service import void_active_commission
+
+        vendedor = make_user(session, "novod@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="Site")
+        session.add(fonte)
+        session.flush()
+        pedido = Pedido(
+            cliente="X",
+            telefone_cliente="11000000000",
+            destinatario="X",
+            produto="X",
+            valor="R$ 50,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pendente",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.commit()
+
+        assert void_active_commission(pedido, reason="soft_delete") is False
+
+    # --- Balance exclui ajuste_debito (Fase 4.3) ---
+
+    def test_balance_exclui_ajuste_debito(self, session):
+        """DEBIT de categoria ajuste_debito não conta como pagamento no saldo."""
+        from app.repositories.ledger_repository import LedgerRepository
+        from app.services.order_commission_lifecycle import (
+            apply_commission_lifecycle,
+            snapshot_commission_fields,
+        )
+
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="site", rate=0.10
+        )
+        # CREDIT inicial = R$10
+        # Edição sensível: muda valor, gera estorno + nova comissão
+        snapshot = snapshot_commission_fields(pedido)
+        pedido.valor = "R$ 200,00"
+        apply_commission_lifecycle(pedido, previous=snapshot, actor_id=vendedor.id)
+        session.commit()
+
+        # Após estorno: 1 CREDIT voided (10), 1 DEBIT ajuste_debito (10),
+        # 1 CREDIT ativo (20). Saldo deve refletir SOMENTE o CREDIT ativo (20),
+        # ignorando o DEBIT de ajuste.
+        balance = LedgerRepository().get_balance(vendedor.id)
+        assert balance["balance"] == pytest.approx(20.0, abs=0.01)
+        assert balance["total_debits"] == pytest.approx(0.0, abs=0.01)
+
+    def test_estorno_preserva_snapshot_no_credit_voidado(self, session):
+        """Após estorno, o DEBIT de ajuste guarda rate/source históricos."""
+        from app.services.order_commission_lifecycle import (
+            apply_commission_lifecycle,
+            snapshot_commission_fields,
+        )
+
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(
+            session, source="site", rate=0.10
+        )
+        snapshot = snapshot_commission_fields(pedido)
+        pedido.valor = "R$ 300,00"
+        apply_commission_lifecycle(pedido, previous=snapshot, actor_id=vendedor.id)
+        session.commit()
+
+        debit = (
+            LedgerEntry.query.filter_by(
+                user_id=vendedor.id,
+                type="DEBIT",
+                category="ajuste_debito",
+            )
+            .order_by(LedgerEntry.id.desc())
+            .first()
+        )
+        assert debit is not None
+        assert float(debit.commission_rate) == pytest.approx(0.10, abs=1e-6)
+        assert debit.commission_source == "site"
+
+    # --- settle_user_credits refatorado (Fase 4.1) ---
+
+    def test_settle_credits_total_correto_apos_refactor(self, client, session):
+        """Quitação cria um único DEBIT com soma exata dos CREDITs ativos."""
+        admin = make_user(session, "auditadm@test.com", "pass1234", role="admin")
+        vendedor = make_user(session, "auditset@test.com", "pass1234", role="vendedor")
+        token = generate_token(admin)
+
+        for amount in (50.0, 75.5, 24.5):
+            session.add(
+                LedgerEntry(
+                    user_id=vendedor.id,
+                    type="CREDIT",
+                    category="fixo_semanal",
+                    amount=amount,
+                    week_ref=date(2025, 3, 3),
+                    status="active",
+                    created_by=admin.id,
+                )
+            )
+        session.commit()
+
+        resp = client.post(
+            "/api/ledger/settle",
+            json={"user_id": vendedor.id},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        debits = LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").all()
+        assert len(debits) == 1
+        assert float(debits[0].amount) == pytest.approx(150.0, abs=0.01)
+        # Todos os CREDITs apontam para o DEBIT
+        for credit in LedgerEntry.query.filter_by(
+            user_id=vendedor.id, type="CREDIT"
+        ).all():
+            assert credit.status == "settled"
+            assert credit.settled_by_id == debits[0].id
+
+    def test_settle_sem_credits_ativos_nao_deixa_debit_orfao(self, client, session):
+        """Quitar com 0 CREDITs ativos não cria DEBIT (placeholder é removido)."""
+        admin = make_user(session, "audadm2@test.com", "pass1234", role="admin")
+        vendedor = make_user(session, "audset2@test.com", "pass1234", role="vendedor")
+        token = generate_token(admin)
+
+        resp = client.post(
+            "/api/ledger/settle",
+            json={"user_id": vendedor.id},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 204
+        assert LedgerEntry.query.filter_by(user_id=vendedor.id).count() == 0
+
+    # --- Validação de inputs (Fase 1.1, 1.2) ---
+
+    def test_payroll_rejeita_payment_day_invalido(self, client, session):
+        """PUT /api/users/<id>/payroll rejeita payment_day fora de 0-6."""
+        admin = make_user(session, "audval@test.com", "pass1234", role="admin")
+        vendedor = make_user(session, "audval2@test.com", "pass1234", role="vendedor")
+        token = generate_token(admin)
+
+        resp = client.put(
+            f"/api/users/{vendedor.id}/payroll",
+            json={
+                "category": "fixo_semanal",
+                "label": "Salário",
+                "amount": 500.0,
+                "frequency": "semanal",
+                "payment_day": 7,
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+        assert "payment_day" in resp.get_json().get("error", "")
+
+    def test_payroll_rejeita_semanal_sem_payment_day(self, client, session):
+        """frequency='semanal' sem payment_day → 400."""
+        admin = make_user(session, "audval3@test.com", "pass1234", role="admin")
+        vendedor = make_user(session, "audval4@test.com", "pass1234", role="vendedor")
+        token = generate_token(admin)
+
+        resp = client.put(
+            f"/api/users/{vendedor.id}/payroll",
+            json={
+                "category": "fixo_semanal",
+                "label": "Salário",
+                "amount": 500.0,
+                "frequency": "semanal",
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+
+    def test_commission_rejeita_rate_negativa(self, client, session):
+        """PUT /api/users/<id>/commission rejeita rate < 0."""
+        admin = make_user(session, "audval5@test.com", "pass1234", role="admin")
+        vendedor = make_user(session, "audval6@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="WhatsApp")
+        session.add(fonte)
+        session.commit()
+        token = generate_token(admin)
+
+        resp = client.put(
+            f"/api/users/{vendedor.id}/commission",
+            json={"fonte_pedido_id": fonte.id, "rate": -0.05},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+
+    # --- Logging de config ausente (Fase 3.3) ---
+
+    def test_pedido_sem_config_loga_warning(self, session, caplog):
+        """generate_commission deve logar warning quando não há CommissionConfig."""
+        from app.services.commission_service import generate_commission
+
+        vendedor = make_user(session, "audwarn@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="Site")
+        session.add(fonte)
+        session.flush()
+        pedido = Pedido(
+            cliente="X",
+            telefone_cliente="11000000000",
+            destinatario="X",
+            produto="X",
+            valor="R$ 100,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.commit()
+
+        with caplog.at_level("WARNING"):
+            generate_commission(pedido, vendedor.id)
+
+        assert any(
+            "sem CommissionConfig" in rec.message for rec in caplog.records
+        )
+        assert LedgerEntry.query.filter_by(pedido_id=pedido.id).count() == 0
+
+    # --- Bug primário Site/Nuvemshop (Fase 2) ---
+
+    def test_nuvemshop_create_pago_gera_comissao(self, session):
+        """_create_pedido com status Pago + vendedor → CREDIT é gerado pelo lifecycle."""
+        # Simula o que service.py::_create_pedido faz: cria pedido + chama lifecycle.
+        from app.services.order_commission_lifecycle import apply_commission_lifecycle
+
+        vendedor = make_user(session, "audns1@test.com", "pass1234", role="vendedor")
+        fonte = FontePedido(nome="Site")
+        session.add(fonte)
+        session.flush()
+        session.add(
+            CommissionConfig(
+                user_id=vendedor.id, fonte_pedido_id=fonte.id, source="site", rate=0.08
+            )
+        )
+        session.commit()
+
+        pedido = Pedido(
+            cliente="Cliente Site",
+            telefone_cliente="11999999999",
+            destinatario="Dest",
+            produto="Prod",
+            valor="R$ 250,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            fonte_pedido_id=fonte.id,
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.flush()
+        apply_commission_lifecycle(pedido, previous=None, actor_id=vendedor.id)
+        session.commit()
+
+        credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
+        assert credit is not None
+        assert credit.category == "comissao_site"
+        assert float(credit.amount) == pytest.approx(20.0, abs=0.01)

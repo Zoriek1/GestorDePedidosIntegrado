@@ -327,6 +327,12 @@ def deletar_pedido(pedido_id):
         # Obter actor (usuário) se disponível
         actor = "system"  # TODO: extrair de autenticação se disponível
 
+        # Antes do soft delete: voidar comissão ativa, se houver, para evitar
+        # crédito órfão no ledger apontando para um pedido inexistente.
+        from app.services.commission_service import void_active_commission
+
+        void_active_commission(pedido, reason="soft_delete")
+
         # Executar soft delete via repository (já registra auditoria)
         print(f"[DELETE_PEDIDO] Chamando soft_delete_pedido para pedido #{pedido_id}")
         pedido_atualizado = pedido_repo.soft_delete_pedido(pedido_id, actor=actor)

@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import List, Optional
 
-from app.utils.date_utils import get_monday
+from app.utils.date_utils import get_monday, today_brazil
 
 
 def _compute_due_date(monday: date, payment_day: Optional[int]) -> Optional[date]:
@@ -116,30 +116,52 @@ def get_balance(user_id: int) -> dict:
 
 def settle_user_credits(user_id: int, settled_by: int) -> dict:
     """
-    Quitação em lote (double-entry): cria um DEBIT = SUM(CREDITs active)
-    e marca todos os CREDITs active como settled, apontando para o DEBIT.
+    Quitação em lote (double-entry): cria um DEBIT que liga todos os CREDITs
+    ativos do vendedor.
 
-    Idempotente: retorna {"settled": 0, "amount": 0} se não há CREDITs active.
-    Usa UPDATE condicional atômico para evitar race condition (2 cliques).
+    Estratégia atômica (sem race entre requisições simultâneas):
+      1. Cria o DEBIT primeiro com amount=0 (placeholder).
+      2. UPDATE atômico nos CREDITs ativos marcando settled_by_id=debit_id —
+         essa é a "etiqueta" que define o lote, não um timestamp.
+      3. SUM dos credits agora linkados ao DEBIT → ajusta debit.amount.
+      4. Se nenhum CREDIT foi capturado, o DEBIT é removido (idempotência).
 
     Returns:
         {"settled": int, "amount": float, "debit_id": int | None}
     """
     from flask import current_app
+    from sqlalchemy import func
 
     from app import db
-    from app.models.ledger_entry import LedgerEntry
+    from app.models.ledger_entry import LedgerEntry, datetime_now_brazil
     from app.utils.date_utils import get_monday
 
-    today = date.today()
+    today = today_brazil()
     week_ref = get_monday(today)
-
-    # 1) UPDATE condicional atômico.
-    # Se duas requisições chegarem ao mesmo tempo, apenas uma atualiza linhas active.
-    # A segunda obtém updated=0 e não cria DEBIT duplicado.
-    from app.models.ledger_entry import datetime_now_brazil
-
     now = datetime_now_brazil()
+
+    # 1) Cria o DEBIT placeholder (amount=0.01 satisfaz CHECK amount>0;
+    # o valor real é setado no passo 3, ou o DEBIT é removido se nada quitar).
+    debit = LedgerEntry(
+        user_id=user_id,
+        type="DEBIT",
+        category="pagamento",
+        amount=0.01,
+        description="Quitação em lote (em processamento)",
+        week_ref=week_ref,
+        status="settled",
+        settled_at=now,
+        created_by=settled_by,
+    )
+    db.session.add(debit)
+    db.session.flush()
+    debit_id = debit.id
+
+    # 2) UPDATE atômico — captura todos os CREDITs ativos no momento e os
+    # vincula ao DEBIT. Race-safe: dois settles concorrentes capturam lotes
+    # disjuntos via settled_by_id (não há janela onde dois UPDATEs vejam o
+    # mesmo CREDIT como ativo — o primeiro UPDATE já mudou status para
+    # 'settled'). O CHECK de WHERE inclui status='active' explicitamente.
     updated = (
         db.session.query(LedgerEntry)
         .filter(
@@ -149,65 +171,34 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
             LedgerEntry.voided.is_(False),
         )
         .update(
-            {"status": "settled", "settled_at": now, "settled_by_id": None},
+            {
+                "status": "settled",
+                "settled_at": now,
+                "settled_by_id": debit_id,
+            },
             synchronize_session="fetch",
         )
     )
 
     if updated == 0:
-        db.session.rollback()
+        # Nada a quitar — remove o DEBIT placeholder
+        db.session.delete(debit)
+        db.session.commit()
         return {"settled": 0, "amount": 0.0, "debit_id": None}
 
-    # 2) Calcular total exatamente do lote atualizado nesta transação
-    # (settled_at == now e settled_by_id IS NULL).
-    from sqlalchemy import func
-
+    # 3) Total exato do lote — agora vinculado pelo settled_by_id
     total_amount = float(
         db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
         .filter(
-            LedgerEntry.user_id == user_id,
             LedgerEntry.type == "CREDIT",
-            LedgerEntry.status == "settled",
-            LedgerEntry.voided.is_(False),
-            LedgerEntry.settled_at == now,
-            LedgerEntry.settled_by_id.is_(None),
+            LedgerEntry.settled_by_id == debit_id,
         )
         .scalar()
         or 0
     )
 
-    if total_amount <= 0:
-        db.session.rollback()
-        return {"settled": 0, "amount": 0.0, "debit_id": None}
-
-    # 3) Criar DEBIT de pagamento já settled
-    debit = LedgerEntry(
-        user_id=user_id,
-        type="DEBIT",
-        category="pagamento",
-        amount=round(total_amount, 2),
-        description=f"Quitação em lote — {updated} lançamento(s)",
-        week_ref=week_ref,
-        status="settled",
-        settled_at=now,
-        created_by=settled_by,
-    )
-    db.session.add(debit)
-    db.session.flush()  # gera debit.id sem commit
-    debit_id = debit.id
-
-    # 4) Vincular créditos quitados ao DEBIT criado
-    db.session.query(LedgerEntry).filter(
-        LedgerEntry.user_id == user_id,
-        LedgerEntry.type == "CREDIT",
-        LedgerEntry.status == "settled",
-        LedgerEntry.voided.is_(False),
-        LedgerEntry.settled_at == now,
-        LedgerEntry.settled_by_id.is_(None),
-    ).update(
-        {"settled_by_id": debit_id},
-        synchronize_session="fetch",
-    )
+    debit.amount = round(total_amount, 2)
+    debit.description = f"Quitação em lote — {updated} lançamento(s)"
 
     db.session.commit()
 
@@ -228,7 +219,7 @@ def get_period_summary(user_id: int) -> dict:
     from app.models.pedido import Pedido
     from app.services.commission_service import map_fonte_to_source
 
-    today = date.today()
+    today = today_brazil()
 
     entries = (
         LedgerEntry.query.filter(

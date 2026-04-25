@@ -334,8 +334,27 @@ class NuvemshopOrderImporter:
         return _parse_datetime(created_at_str)
 
     def _create_pedido(self, pedido_data: Dict[str, Any], fonte_id: int) -> Pedido:
+        from app.services.order_commission_lifecycle import apply_commission_lifecycle
+
         pedido = Pedido(**pedido_data)
         db.session.add(pedido)
+        db.session.flush()  # garante pedido.id antes do lifecycle
+
+        # Se o pedido já chega pago + com vendedor (caso raro mas possível em
+        # webhook order/paid com atribuição prévia), gera a comissão.
+        try:
+            apply_commission_lifecycle(
+                pedido,
+                previous=None,
+                actor_id=getattr(pedido, "vendedor_id", None),
+            )
+        except Exception:
+            logger.warning(
+                "[NUVEMSHOP] Falha em apply_commission_lifecycle no _create_pedido %s",
+                pedido.id,
+                exc_info=True,
+            )
+
         db.session.commit()
 
         try:
@@ -353,9 +372,19 @@ class NuvemshopOrderImporter:
         schedule_pending: bool,
         agendamento_source: str = None,
     ) -> None:
+        from app.services.order_commission_lifecycle import (
+            apply_commission_lifecycle,
+            snapshot_commission_fields,
+        )
+
         pedido = Pedido.query.get(external_ref.pedido_id)
         if not pedido:
             return
+
+        # Snapshot ANTES de qualquer mutação — necessário para detectar
+        # transições de status_pagamento (Pendente → Pago) e mudanças sensíveis
+        # que exigem estorno.
+        prev_snapshot = snapshot_commission_fields(pedido)
 
         # Buscar campos com override manual (não devem ser sobrescritos)
         overridden_fields = PedidoManualOverride.get_overridden_fields(pedido.id)
@@ -461,6 +490,23 @@ class NuvemshopOrderImporter:
             external_ref.needs_review = agendamento_source == "fallback"
 
         external_ref.updated_at = datetime_now_brazil()
+
+        # Após todas as mutações: dispara o ciclo de vida de comissão.
+        # Garante que pedidos do site/Nuvemshop transitando Pendente→Pago, com
+        # mudança de vendedor, ou com edição de campos sensíveis, gerem ou
+        # estornem comissão como qualquer outro pedido.
+        try:
+            apply_commission_lifecycle(
+                pedido,
+                previous=prev_snapshot,
+                actor_id=getattr(pedido, "vendedor_id", None),
+            )
+        except Exception:
+            logger.warning(
+                "[NUVEMSHOP] Falha em apply_commission_lifecycle no _update_existing_pedido %s",
+                pedido.id,
+                exc_info=True,
+            )
 
         db.session.commit()
 

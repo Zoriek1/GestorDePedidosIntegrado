@@ -250,6 +250,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
                 LedgerEntry.pedido_id,
                 LedgerEntry.amount,
                 LedgerEntry.category,
+                LedgerEntry.description,
                 LedgerEntry.week_ref,
                 LedgerEntry.due_date,
                 LedgerEntry.status.label("ledger_status"),
@@ -259,14 +260,12 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
                 Pedido.fonte_pedido,
                 FontePedido.nome.label("fonte_nome"),
             )
-            .join(Pedido, Pedido.id == LedgerEntry.pedido_id)
+            .outerjoin(Pedido, Pedido.id == LedgerEntry.pedido_id)
             .outerjoin(FontePedido, FontePedido.id == Pedido.fonte_pedido_id)
             .filter(
                 LedgerEntry.user_id == user_id,
                 LedgerEntry.type == "CREDIT",
                 LedgerEntry.voided.is_(False),
-                LedgerEntry.category.like("comissao_%"),
-                LedgerEntry.pedido_id.isnot(None),
             )
         )
         if not include_quitados:
@@ -306,6 +305,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
                     "week_ref": row.week_ref.isoformat() if row.week_ref else None,
                     "amount": self._coerce_float(row.amount),
                     "category": row.category,
+                    "description": row.description,
                     "status": status_ui,
                     "competencia": competencia_key,
                     "_competence_date": competence_date,

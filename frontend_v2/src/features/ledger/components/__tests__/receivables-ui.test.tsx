@@ -63,7 +63,7 @@ describe('Recebiveis UI', () => {
     expect(screen.getByText(/Site:/i)).toBeInTheDocument();
   });
 
-  it('PendingPaymentsCard chama settle por pedido_ids ao clicar Recebi', async () => {
+  it('PendingPaymentsCard chama settle por entry_ids e permite mix fixo + comissao', async () => {
     const mutate = vi.fn();
     vi.mocked(usePendingPayments).mockReturnValue({
       data: {
@@ -72,8 +72,8 @@ describe('Recebiveis UI', () => {
         competencia: '2025-W07',
         competencias_disponiveis: ['2025-W07'],
         atrasado: {
-          total: 120,
-          total_pedidos: 1,
+          total: 160,
+          total_pedidos: 2,
           pedidos: [
             {
               ledger_entry_id: 11,
@@ -85,6 +85,20 @@ describe('Recebiveis UI', () => {
               due_date: '2025-02-11',
               amount: 120,
               category: 'comissao_whatsapp',
+              status: 'atrasado',
+              competencia: '2025-W07',
+            },
+            {
+              ledger_entry_id: 12,
+              pedido_id: null,
+              cliente: null,
+              fonte: null,
+              dia_entrega: null,
+              week_ref: '2025-02-10',
+              due_date: '2025-02-11',
+              amount: 40,
+              category: 'fixo_semanal',
+              description: 'Salario semanal',
               status: 'atrasado',
               competencia: '2025-W07',
             },
@@ -102,10 +116,11 @@ describe('Recebiveis UI', () => {
 
     render(<PendingPaymentsCard userId={1} isAdmin />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Recebi pagamento .*120,00/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Recebi pagamento .*160,00/i }));
     await waitFor(() => {
       expect(mutate).toHaveBeenCalledWith({
         user_id: 1,
+        entry_ids: [11, 12],
         pedido_ids: [99],
         contexto: {
           section: 'atrasado',

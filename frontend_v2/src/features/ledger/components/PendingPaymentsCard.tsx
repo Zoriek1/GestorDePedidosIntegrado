@@ -34,6 +34,19 @@ interface PendingPaymentsCardProps {
 
 type SectionKey = 'atrasado' | 'a_receber';
 
+const CATEGORY_LABELS: Record<string, string> = {
+  fixo_semanal: 'Salário Semanal',
+  fixo_mensal: 'Salário Mensal',
+  almoco: 'Vale Almoço',
+  transporte: 'Vale Transporte',
+  comissao_whatsapp: 'Comissão WhatsApp',
+  comissao_site: 'Comissão Site',
+  comissao_balcao: 'Comissão Balcão',
+  comissao_indicacao: 'Comissão Indicação',
+  comissao_lucro: 'Comissão Lucro',
+  custom_credit: 'Crédito Manual',
+};
+
 function formatDate(dateIso: string | null): string {
   if (!dateIso) return 'sem data';
   const d = new Date(`${dateIso}T00:00:00`);
@@ -51,14 +64,36 @@ function formatCompetenciaLabel(competenciaTipo: 'semanal' | 'mensal', value: st
   return `Semana ${match[2]}/${match[1]}`;
 }
 
-function sumByPedidoIds(pedidos: PendingPedidoItem[], pedidoIds: number[]): number {
-  if (!pedidos.length || !pedidoIds.length) return 0;
-  const selected = new Set(pedidoIds);
-  return pedidos.reduce((acc, item) => (selected.has(item.pedido_id) ? acc + item.amount : acc), 0);
+function sumByEntryIds(pedidos: PendingPedidoItem[], entryIds: number[]): number {
+  if (!pedidos.length || !entryIds.length) return 0;
+  const selected = new Set(entryIds);
+  return pedidos.reduce(
+    (acc, item) => (selected.has(item.ledger_entry_id) ? acc + item.amount : acc),
+    0,
+  );
 }
 
 function compactFonte(fonte: string | null): string {
   return fonte || 'Sem fonte';
+}
+
+function categoryLabel(category: string): string {
+  return CATEGORY_LABELS[category] ?? category;
+}
+
+function getPendingItemTitle(item: PendingPedidoItem): string {
+  if (item.pedido_id) {
+    return `#${item.pedido_id} · ${item.cliente || 'Sem cliente'}`;
+  }
+  return categoryLabel(item.category);
+}
+
+function getPendingItemSubtitle(item: PendingPedidoItem): string {
+  if (item.pedido_id) {
+    return `Vence ${formatDate(item.due_date)} · ${compactFonte(item.fonte)}`;
+  }
+  const detail = item.description?.trim() || 'Lançamento fixo';
+  return `Vence ${formatDate(item.due_date)} · ${detail}`;
 }
 
 export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProps) {
@@ -81,8 +116,8 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
   const receberPedidos = useMemo(() => data?.a_receber.pedidos ?? [], [data?.a_receber.pedidos]);
   const quitadoPedidos = useMemo(() => data?.quitado.pedidos ?? [], [data?.quitado.pedidos]);
 
-  const atrasoIds = useMemo(() => atrasoPedidos.map((p) => p.pedido_id), [atrasoPedidos]);
-  const receberIds = useMemo(() => receberPedidos.map((p) => p.pedido_id), [receberPedidos]);
+  const atrasoIds = useMemo(() => atrasoPedidos.map((p) => p.ledger_entry_id), [atrasoPedidos]);
+  const receberIds = useMemo(() => receberPedidos.map((p) => p.ledger_entry_id), [receberPedidos]);
 
   const selectedAtrasado = useMemo(() => {
     const base = selectedAtrasadoOverride ?? atrasoIds;
@@ -98,17 +133,17 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
 
   const handleTogglePedido = (
     section: SectionKey,
-    pedidoId: number,
+    entryId: number,
     checked: boolean,
     selectedIds: number[],
   ) => {
     const setter = section === 'atrasado' ? setSelectedAtrasadoOverride : setSelectedAReceberOverride;
     if (checked) {
-      if (selectedIds.includes(pedidoId)) return;
-      setter([...selectedIds, pedidoId]);
+      if (selectedIds.includes(entryId)) return;
+      setter([...selectedIds, entryId]);
       return;
     }
-    setter(selectedIds.filter((id) => id !== pedidoId));
+    setter(selectedIds.filter((id) => id !== entryId));
   };
 
   const handleToggleAll = (section: SectionKey, checked: boolean, ids: number[]) => {
@@ -118,9 +153,16 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
 
   const settleSection = (section: SectionKey, selectedIds: number[]) => {
     if (!selectedIds.length || !data) return;
+    const sectionItems = section === 'atrasado' ? atrasoPedidos : receberPedidos;
+    const selectedPedidos = sectionItems
+      .filter((item) => selectedIds.includes(item.ledger_entry_id))
+      .map((item) => item.pedido_id)
+      .filter((pedidoId): pedidoId is number => typeof pedidoId === 'number');
+
     settleMutation.mutate({
       user_id: userId,
-      pedido_ids: selectedIds,
+      entry_ids: selectedIds,
+      pedido_ids: selectedPedidos,
       contexto: {
         section,
         competencia_tipo: competenciaTipo,
@@ -137,7 +179,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
     if (!pedidos.length) {
       return (
         <Alert severity="success" sx={{ mt: 1 }}>
-          Nenhum pedido nesta seção.
+          Nenhum lançamento nesta seção.
         </Alert>
       );
     }
@@ -152,7 +194,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
             <Checkbox
               checked={allChecked}
               indeterminate={partialChecked}
-              onChange={(e) => handleToggleAll(section, e.target.checked, pedidos.map((p) => p.pedido_id))}
+              onChange={(e) => handleToggleAll(section, e.target.checked, pedidos.map((p) => p.ledger_entry_id))}
             />
           )}
           label="Selecionar todos"
@@ -171,20 +213,20 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
               <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
                 <Box display="flex" alignItems="center" gap={0.5}>
                   <Checkbox
-                    checked={selectedIds.includes(pedido.pedido_id)}
+                    checked={selectedIds.includes(pedido.ledger_entry_id)}
                     onChange={(e) => handleTogglePedido(
                       section,
-                      pedido.pedido_id,
+                      pedido.ledger_entry_id,
                       e.target.checked,
                       selectedIds,
                     )}
                   />
                   <Box>
                     <Typography variant="body2" fontWeight={600}>
-                      #{pedido.pedido_id} · {pedido.cliente || 'Sem cliente'}
+                      {getPendingItemTitle(pedido)}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Vence {formatDate(pedido.due_date)} · {compactFonte(pedido.fonte)}
+                      {getPendingItemSubtitle(pedido)}
                     </Typography>
                   </Box>
                 </Box>
@@ -206,7 +248,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
     pedidos: PendingPedidoItem[],
     selectedIds: number[],
   ) => {
-    const selectedAmount = sumByPedidoIds(pedidos, selectedIds);
+    const selectedAmount = sumByEntryIds(pedidos, selectedIds);
     const canSettle = selectedIds.length > 0 && !settleMutation.isPending;
     const isAtrasado = section === 'atrasado';
 
@@ -380,7 +422,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
                       <Box display="flex" alignItems="center" justifyContent="space-between">
                         <Box>
                           <Typography variant="body2" fontWeight={600}>
-                            #{pedido.pedido_id} · {pedido.cliente || 'Sem cliente'}
+                            {getPendingItemTitle(pedido)}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             Quitado · Vence {formatDate(pedido.due_date)}

@@ -67,6 +67,8 @@ export interface SettleResult {
   debit_id: number | null;
   pedido_ids_settled: number[];
   pedido_ids_ignored: number[];
+  entry_ids_settled?: number[];
+  entry_ids_ignored?: number[];
 }
 
 export interface SettleContext {
@@ -77,7 +79,8 @@ export interface SettleContext {
 
 export interface SettlePayload {
   user_id?: number;
-  pedido_ids: number[];
+  pedido_ids?: number[];
+  entry_ids?: number[];
   contexto?: SettleContext;
 }
 
@@ -119,7 +122,7 @@ export interface LedgerPeriod {
 
 export interface PendingPedidoItem {
   ledger_entry_id: number;
-  pedido_id: number;
+  pedido_id: number | null;
   cliente: string | null;
   fonte: string | null;
   dia_entrega: string | null;
@@ -127,6 +130,7 @@ export interface PendingPedidoItem {
   week_ref: string | null;
   amount: number;
   category: string;
+  description?: string | null;
   status: 'atrasado' | 'a_receber' | 'quitado';
   competencia: string;
 }

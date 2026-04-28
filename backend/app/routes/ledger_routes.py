@@ -77,10 +77,10 @@ def get_balance():
 @require_auth(roles=["admin", "vendedor"])
 def settle():
     """
-    Quita CREDITs de comissão selecionados por pedido_ids em uma transação atômica.
+    Quita CREDITs ativos selecionados por entry_ids e/ou pedido_ids em uma transação atômica.
     Admin pode quitar qualquer vendedor via body {"user_id": X}.
     Vendedor quita apenas a si mesmo.
-    Sem "marcar todos": pedido_ids é obrigatório.
+    Sem "marcar todos": precisa de lista explícita.
     """
     try:
         current = request.current_user
@@ -97,34 +97,56 @@ def settle():
         else:
             user_id = my_id
 
-        pedido_ids = data.get("pedido_ids")
-        if not isinstance(pedido_ids, list) or len(pedido_ids) == 0:
-            return error_response("pedido_ids é obrigatório e deve ser um array não vazio", 400)
+        def _normalize_ids(field_name: str) -> tuple[list[int] | None, tuple | None]:
+            raw_ids = data.get(field_name)
+            if raw_ids is None:
+                return None, None
+            if not isinstance(raw_ids, list):
+                return None, error_response(f"{field_name} deve ser um array", 400)
 
-        normalized_ids = []
-        seen = set()
-        for raw in pedido_ids:
-            try:
-                pid = int(raw)
-            except (ValueError, TypeError):
-                return error_response("pedido_ids deve conter apenas inteiros válidos", 400)
-            if pid <= 0:
-                return error_response("pedido_ids deve conter apenas inteiros positivos", 400)
-            if pid in seen:
-                return error_response("pedido_ids deve conter IDs únicos", 400)
-            seen.add(pid)
-            normalized_ids.append(pid)
+            normalized: list[int] = []
+            seen = set()
+            for raw in raw_ids:
+                try:
+                    item_id = int(raw)
+                except (ValueError, TypeError):
+                    return None, error_response(
+                        f"{field_name} deve conter apenas inteiros válidos",
+                        400,
+                    )
+                if item_id <= 0:
+                    return None, error_response(
+                        f"{field_name} deve conter apenas inteiros positivos",
+                        400,
+                    )
+                if item_id in seen:
+                    return None, error_response(f"{field_name} deve conter IDs únicos", 400)
+                seen.add(item_id)
+                normalized.append(item_id)
+            return normalized, None
+
+        pedido_ids, err_pedido = _normalize_ids("pedido_ids")
+        if err_pedido:
+            return err_pedido
+        entry_ids, err_entry = _normalize_ids("entry_ids")
+        if err_entry:
+            return err_entry
+
+        pedido_ids = pedido_ids or []
+        entry_ids = entry_ids or []
+        if len(pedido_ids) == 0 and len(entry_ids) == 0:
+            return error_response("entry_ids ou pedido_ids é obrigatório", 400)
 
         result = ledger_service.settle_user_credits(
             user_id=user_id,
             settled_by=my_id,
-            pedido_ids=normalized_ids,
+            pedido_ids=pedido_ids,
+            entry_ids=entry_ids,
         )
 
         return success_response(result, message=f"{result['settled']} crédito(s) quitado(s)")
     except Exception as e:
         return error_response(str(e), 500)
-
 
 # ---------------------------------------------------------------------------
 # GET /api/ledger/entries

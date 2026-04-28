@@ -114,27 +114,32 @@ def get_balance(user_id: int) -> dict:
     return LedgerRepository().get_balance(user_id)
 
 
-def _normalize_pedido_ids(pedido_ids: list[int]) -> list[int]:
+def _normalize_ids(values: list[int]) -> list[int]:
     normalized: list[int] = []
     seen = set()
-    for value in pedido_ids or []:
+    for value in values or []:
         try:
-            pid = int(value)
+            item_id = int(value)
         except (TypeError, ValueError):
             continue
-        if pid <= 0:
+        if item_id <= 0:
             continue
-        if pid in seen:
+        if item_id in seen:
             continue
-        seen.add(pid)
-        normalized.append(pid)
+        seen.add(item_id)
+        normalized.append(item_id)
     return normalized
 
 
-def settle_user_credits(user_id: int, settled_by: int, pedido_ids: list[int]) -> dict:
+def settle_user_credits(
+    user_id: int,
+    settled_by: int,
+    pedido_ids: list[int] | None = None,
+    entry_ids: list[int] | None = None,
+) -> dict:
     """
-    Quitação parcial por pedidos (double-entry): cria um DEBIT que liga os
-    CREDITs de comissão ativos dos pedido_ids selecionados.
+    Quitação parcial por lista explícita (double-entry): cria um DEBIT que liga os
+    CREDITs ativos selecionados (comissões e fixos) por entry_ids e/ou pedido_ids.
 
     Estratégia atômica (sem race entre requisições simultâneas):
       1. Cria o DEBIT primeiro com amount=0 (placeholder).
@@ -149,55 +154,65 @@ def settle_user_credits(user_id: int, settled_by: int, pedido_ids: list[int]) ->
             "amount": float,
             "debit_id": int | None,
             "pedido_ids_settled": list[int],
-            "pedido_ids_ignored": list[int]
+            "pedido_ids_ignored": list[int],
+            "entry_ids_settled": list[int],
+            "entry_ids_ignored": list[int],
         }
     """
     from flask import current_app
-    from sqlalchemy import func
 
     from app import db
     from app.models.ledger_entry import LedgerEntry, datetime_now_brazil
 
     today = today_brazil()
-    input_ids = _normalize_pedido_ids(pedido_ids)
-    if not input_ids:
+    input_pedido_ids = _normalize_ids(pedido_ids or [])
+    input_entry_ids = _normalize_ids(entry_ids or [])
+    if not input_pedido_ids and not input_entry_ids:
         return {
             "settled": 0,
             "amount": 0.0,
             "debit_id": None,
             "pedido_ids_settled": [],
-            "pedido_ids_ignored": [],
+            "pedido_ids_ignored": input_pedido_ids,
+            "entry_ids_settled": [],
+            "entry_ids_ignored": input_entry_ids,
         }
 
     week_ref = get_monday(today)
     now = datetime_now_brazil()
 
-    # Apenas IDs com comissões ativas podem entrar no UPDATE.
-    eligible_ids = [
-        int(pid)
-        for (pid,) in (
-            db.session.query(LedgerEntry.pedido_id)
-            .filter(
-                LedgerEntry.user_id == user_id,
-                LedgerEntry.type == "CREDIT",
-                LedgerEntry.status == "active",
-                LedgerEntry.voided.is_(False),
-                LedgerEntry.category.like("comissao_%"),
-                LedgerEntry.pedido_id.in_(input_ids),
-            )
-            .distinct()
-            .all()
-        )
-        if pid is not None
-    ]
+    eligible_query = db.session.query(
+        LedgerEntry.id.label("entry_id"),
+        LedgerEntry.pedido_id.label("pedido_id"),
+    ).filter(
+        LedgerEntry.user_id == user_id,
+        LedgerEntry.type == "CREDIT",
+        LedgerEntry.status == "active",
+        LedgerEntry.voided.is_(False),
+    )
 
-    if not eligible_ids:
+    if input_entry_ids and input_pedido_ids:
+        eligible_query = eligible_query.filter(
+            (LedgerEntry.id.in_(input_entry_ids))
+            | (LedgerEntry.pedido_id.in_(input_pedido_ids))
+        )
+    elif input_entry_ids:
+        eligible_query = eligible_query.filter(LedgerEntry.id.in_(input_entry_ids))
+    else:
+        eligible_query = eligible_query.filter(LedgerEntry.pedido_id.in_(input_pedido_ids))
+
+    eligible_rows = eligible_query.all()
+    eligible_entry_ids = [int(row.entry_id) for row in eligible_rows]
+
+    if not eligible_entry_ids:
         return {
             "settled": 0,
             "amount": 0.0,
             "debit_id": None,
             "pedido_ids_settled": [],
-            "pedido_ids_ignored": input_ids,
+            "pedido_ids_ignored": input_pedido_ids,
+            "entry_ids_settled": [],
+            "entry_ids_ignored": input_entry_ids,
         }
 
     # 1) Cria o DEBIT placeholder (amount=0.01 satisfaz CHECK amount>0;
@@ -225,8 +240,7 @@ def settle_user_credits(user_id: int, settled_by: int, pedido_ids: list[int]) ->
             LedgerEntry.type == "CREDIT",
             LedgerEntry.status == "active",
             LedgerEntry.voided.is_(False),
-            LedgerEntry.category.like("comissao_%"),
-            LedgerEntry.pedido_id.in_(eligible_ids),
+            LedgerEntry.id.in_(eligible_entry_ids),
         )
         .update(
             {
@@ -246,27 +260,38 @@ def settle_user_credits(user_id: int, settled_by: int, pedido_ids: list[int]) ->
             "amount": 0.0,
             "debit_id": None,
             "pedido_ids_settled": [],
-            "pedido_ids_ignored": input_ids,
+            "pedido_ids_ignored": input_pedido_ids,
+            "entry_ids_settled": [],
+            "entry_ids_ignored": input_entry_ids,
         }
 
     # 3) Total exato do lote — agora vinculado pelo settled_by_id
     settled_rows = (
-        db.session.query(LedgerEntry.pedido_id, LedgerEntry.amount)
+        db.session.query(LedgerEntry.id, LedgerEntry.pedido_id, LedgerEntry.amount)
         .filter(
             LedgerEntry.type == "CREDIT",
             LedgerEntry.settled_by_id == debit_id,
         )
         .all()
     )
-    settled_by_id = {int(pid): float(amount or 0) for pid, amount in settled_rows if pid is not None}
-    settled_ids = [pid for pid in input_ids if pid in settled_by_id]
-    ignored_ids = [pid for pid in input_ids if pid not in settled_by_id]
-    total_amount = round(sum(settled_by_id.values()), 2)
+    settled_amount_by_entry = {int(eid): float(amount or 0) for eid, _, amount in settled_rows}
+    settled_entry_id_set = set(settled_amount_by_entry.keys())
+    settled_pedido_id_set = {int(pid) for _, pid, _ in settled_rows if pid is not None}
+
+    settled_entry_ids = [eid for eid in input_entry_ids if eid in settled_entry_id_set]
+    ignored_entry_ids = [eid for eid in input_entry_ids if eid not in settled_entry_id_set]
+    settled_pedido_ids = [pid for pid in input_pedido_ids if pid in settled_pedido_id_set]
+    ignored_pedido_ids = [pid for pid in input_pedido_ids if pid not in settled_pedido_id_set]
+
+    if not input_pedido_ids and settled_pedido_id_set:
+        settled_pedido_ids = sorted(settled_pedido_id_set)
+
+    total_amount = round(sum(settled_amount_by_entry.values()), 2)
 
     debit.amount = total_amount
     debit.description = (
         f"Quitação parcial — {updated} lançamento(s), "
-        f"{len(settled_ids)} pedido(s)"
+        f"{len(settled_pedido_ids)} pedido(s)"
     )
 
     db.session.commit()
@@ -275,7 +300,7 @@ def settle_user_credits(user_id: int, settled_by: int, pedido_ids: list[int]) ->
         "[LEDGER] settle user=%s: %s créditos quitados, %s pedidos, total R$%.2f, DEBIT #%s",
         user_id,
         updated,
-        len(settled_ids),
+        len(settled_pedido_ids),
         total_amount,
         debit_id,
     )
@@ -283,8 +308,10 @@ def settle_user_credits(user_id: int, settled_by: int, pedido_ids: list[int]) ->
         "settled": updated,
         "amount": total_amount,
         "debit_id": debit_id,
-        "pedido_ids_settled": settled_ids,
-        "pedido_ids_ignored": ignored_ids,
+        "pedido_ids_settled": settled_pedido_ids,
+        "pedido_ids_ignored": ignored_pedido_ids,
+        "entry_ids_settled": sorted(settled_entry_id_set),
+        "entry_ids_ignored": ignored_entry_ids,
     }
 
 

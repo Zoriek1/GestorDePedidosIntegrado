@@ -291,13 +291,14 @@ class TestLedgerOperations:
         assert entries[0]["category"] == "fixo_semanal"
         assert entries[0]["amount"] == 400.0
 
-    def test_pending_retorna_atrasados_e_futuros_da_semana(self, client, session, monkeypatch):
-        """GET /api/ledger/pending inclui atrasados + futuros desta semana,
-        exclui itens com due_date >= próxima segunda."""
+    def test_pending_retorna_secoes_e_filtra_por_competencia(self, client, session, monkeypatch):
+        """GET /api/ledger/pending separa atrasado/a_receber/quitado e filtra a_receber por competência."""
         from app.repositories import ledger_repository
 
-        # Quarta-feira fixa para o cálculo ser determinístico independente
-        # do dia em que o pytest rodar.
+        def iso_week_key(d: date) -> str:
+            iso = d.isocalendar()
+            return f"{iso.year}-W{iso.week:02d}"
+
         fixed_today = date(2025, 2, 12)  # quarta
         monkeypatch.setattr(ledger_repository, "today_brazil", lambda: fixed_today)
 
@@ -305,64 +306,171 @@ class TestLedgerOperations:
         vendedor = make_user(session, "vendpd@test.com", "pass1234", role="vendedor")
         token = generate_token(vendedor)
 
-        week_ref = fixed_today
+        pedidos = []
+        for idx in range(1, 5):
+            pedido = Pedido(
+                cliente=f"Cliente {idx}",
+                telefone_cliente="11999999999",
+                destinatario=f"Dest {idx}",
+                produto="Buque",
+                valor="R$ 100,00",
+                dia_entrega=fixed_today,
+                horario="10:00",
+                status="agendado",
+                status_pagamento="Pago",
+                vendedor_id=vendedor.id,
+            )
+            session.add(pedido)
+            pedidos.append(pedido)
+        session.flush()
 
-        # Atrasado (quita) — terça desta semana
-        e1 = LedgerEntry(
+        e_overdue = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
-            category="fixo_semanal",
+            category="comissao_whatsapp",
             amount=100.0,
-            week_ref=week_ref,
-            due_date=fixed_today - timedelta(days=1),
+            week_ref=get_monday(fixed_today - timedelta(days=5)),
+            due_date=fixed_today - timedelta(days=5),
             status="active",
             created_by=admin.id,
+            pedido_id=pedidos[0].id,
         )
-        # Sexta desta semana (entra)
-        e2 = LedgerEntry(
+        e_current_week = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
-            category="almoco",
+            category="comissao_site",
             amount=80.0,
-            week_ref=week_ref,
-            due_date=fixed_today + timedelta(days=2),
+            week_ref=get_monday(fixed_today + timedelta(days=1)),
+            due_date=fixed_today + timedelta(days=1),
             status="active",
             created_by=admin.id,
+            pedido_id=pedidos[1].id,
         )
-        # Próxima quarta (NÃO entra — > próxima segunda)
-        e3 = LedgerEntry(
+        e_selected_week = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
-            category="transporte",
+            category="comissao_site",
             amount=60.0,
-            week_ref=week_ref,
-            due_date=fixed_today + timedelta(days=7),
+            week_ref=get_monday(fixed_today + timedelta(days=8)),
+            due_date=fixed_today + timedelta(days=8),
             status="active",
             created_by=admin.id,
+            pedido_id=pedidos[2].id,
         )
-        # Sexta desta semana (entra)
-        e4 = LedgerEntry(
+        e_settled = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
-            category="fixo_mensal",
-            amount=200.0,
-            week_ref=week_ref,
-            due_date=fixed_today + timedelta(days=2),
-            status="active",
+            category="comissao_whatsapp",
+            amount=40.0,
+            week_ref=get_monday(fixed_today - timedelta(days=2)),
+            due_date=fixed_today - timedelta(days=2),
+            status="settled",
             created_by=admin.id,
+            pedido_id=pedidos[3].id,
         )
-        session.add_all([e1, e2, e3, e4])
+        session.add_all([e_overdue, e_current_week, e_selected_week, e_settled])
         session.commit()
 
-        resp = client.get("/api/ledger/pending", headers=auth_headers(token))
+        selected_competencia = iso_week_key(fixed_today + timedelta(days=8))
+        resp = client.get(
+            f"/api/ledger/pending?competencia_tipo=semanal&competencia={selected_competencia}&include_quitados=false",
+            headers=auth_headers(token),
+        )
         assert resp.status_code == 200
-        entries = resp.get_json()["entries"]
-        categories = [entry["category"] for entry in entries]
+        body = resp.get_json()
+        assert body["competencia_tipo"] == "semanal"
+        assert body["competencia"] == selected_competencia
+        assert body["atrasado"]["total_pedidos"] == 1
+        assert body["a_receber"]["total_pedidos"] == 1
+        assert body["quitado"]["total_pedidos"] == 0
 
-        assert "fixo_semanal" in categories
-        assert "almoco" in categories
-        assert "fixo_mensal" in categories
-        assert "transporte" not in categories
+        atrasado_ids = [p["pedido_id"] for p in body["atrasado"]["pedidos"]]
+        a_receber_ids = [p["pedido_id"] for p in body["a_receber"]["pedidos"]]
+        assert pedidos[0].id in atrasado_ids
+        assert pedidos[2].id in a_receber_ids
+        assert pedidos[1].id not in a_receber_ids
+
+        resp_hist = client.get(
+            f"/api/ledger/pending?competencia_tipo=semanal&competencia={selected_competencia}&include_quitados=true",
+            headers=auth_headers(token),
+        )
+        assert resp_hist.status_code == 200
+        body_hist = resp_hist.get_json()
+        quitado_ids = [p["pedido_id"] for p in body_hist["quitado"]["pedidos"]]
+        assert pedidos[3].id in quitado_ids
+
+    def test_pending_competencia_mensal_filtra_somente_a_receber(self, client, session, monkeypatch):
+        """competencia_tipo=mensal deve filtrar só a seção a_receber."""
+        from app.repositories import ledger_repository
+
+        fixed_today = date(2025, 2, 12)
+        monkeypatch.setattr(ledger_repository, "today_brazil", lambda: fixed_today)
+
+        admin = make_user(session, "adminpm@test.com", "pass1234", role="admin", name="AdminPm")
+        vendedor = make_user(session, "vendpm@test.com", "pass1234", role="vendedor")
+        token = generate_token(vendedor)
+
+        p_fev = Pedido(
+            cliente="Cliente Fev",
+            telefone_cliente="11999999999",
+            destinatario="Dest Fev",
+            produto="Buque",
+            valor="R$ 100,00",
+            dia_entrega=fixed_today,
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            vendedor_id=vendedor.id,
+        )
+        p_mar = Pedido(
+            cliente="Cliente Mar",
+            telefone_cliente="11999999999",
+            destinatario="Dest Mar",
+            produto="Buque",
+            valor="R$ 100,00",
+            dia_entrega=fixed_today,
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            vendedor_id=vendedor.id,
+        )
+        session.add_all([p_fev, p_mar])
+        session.flush()
+
+        session.add_all([
+            LedgerEntry(
+                user_id=vendedor.id,
+                type="CREDIT",
+                category="comissao_site",
+                amount=50.0,
+                week_ref=get_monday(date(2025, 2, 20)),
+                due_date=date(2025, 2, 20),
+                status="active",
+                created_by=admin.id,
+                pedido_id=p_fev.id,
+            ),
+            LedgerEntry(
+                user_id=vendedor.id,
+                type="CREDIT",
+                category="comissao_site",
+                amount=70.0,
+                week_ref=get_monday(date(2025, 3, 5)),
+                due_date=date(2025, 3, 5),
+                status="active",
+                created_by=admin.id,
+                pedido_id=p_mar.id,
+            ),
+        ])
+        session.commit()
+
+        resp = client.get(
+            "/api/ledger/pending?competencia_tipo=mensal&competencia=2025-03&include_quitados=false",
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["a_receber"]["total_pedidos"] == 1
+        assert body["a_receber"]["pedidos"][0]["pedido_id"] == p_mar.id
 
     def test_balance_credito_futuro_em_upcoming(self, client, session):
         """CREDIT active com due_date no futuro aparece em upcoming_credits e conta no balance."""
@@ -780,42 +888,76 @@ class TestCommission:
 
 class TestCommissionLifecycleAndSettle:
     def test_settle_idempotente_quando_sem_creditos(self, client, session):
-        """POST /api/ledger/settle sem créditos ativos retorna 204 e não cria DEBIT."""
+        """POST /api/ledger/settle sem créditos elegíveis retorna settled=0 e não cria DEBIT."""
         vendedor = make_user(session, "settle0@test.com", "pass1234", role="vendedor")
         token = generate_token(vendedor)
 
-        resp = client.post("/api/ledger/settle", headers=auth_headers(token), json={})
-        assert resp.status_code == 204
+        resp = client.post(
+            "/api/ledger/settle",
+            headers=auth_headers(token),
+            json={"pedido_ids": [999999]},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["settled"] == 0
+        assert body["pedido_ids_settled"] == []
+        assert body["pedido_ids_ignored"] == [999999]
         assert LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count() == 0
 
     def test_settle_idempotente_em_duas_chamadas(self, client, session):
-        """Primeira quita créditos; segunda chamada não cria novo DEBIT."""
+        """Primeira quita os pedidos selecionados; segunda chamada não cria novo DEBIT."""
         admin = make_user(session, "settleadm@test.com", "pass1234", role="admin")
         vendedor = make_user(session, "settle1@test.com", "pass1234", role="vendedor")
         token = generate_token(vendedor)
 
+        pedido = Pedido(
+            cliente="Cliente Settle",
+            telefone_cliente="11999999999",
+            destinatario="Dest Settle",
+            produto="Buque",
+            valor="R$ 120,00",
+            dia_entrega=date(2025, 2, 10),
+            horario="10:00",
+            status="agendado",
+            status_pagamento="Pago",
+            vendedor_id=vendedor.id,
+        )
+        session.add(pedido)
+        session.flush()
+
         credit = LedgerEntry(
             user_id=vendedor.id,
             type="CREDIT",
-            category="fixo_semanal",
+            category="comissao_site",
             amount=120.0,
             week_ref=date(2025, 2, 10),
             status="active",
             created_by=admin.id,
+            pedido_id=pedido.id,
         )
         session.add(credit)
         session.commit()
 
-        resp1 = client.post("/api/ledger/settle", headers=auth_headers(token), json={})
+        resp1 = client.post(
+            "/api/ledger/settle",
+            headers=auth_headers(token),
+            json={"pedido_ids": [pedido.id]},
+        )
         assert resp1.status_code == 200
+        assert resp1.get_json()["settled"] == 1
         assert LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count() == 1
         credit_after = LedgerEntry.query.filter_by(id=credit.id).first()
         assert credit_after is not None
         assert credit_after.status == "settled"
         assert credit_after.settled_by_id is not None
 
-        resp2 = client.post("/api/ledger/settle", headers=auth_headers(token), json={})
-        assert resp2.status_code == 204
+        resp2 = client.post(
+            "/api/ledger/settle",
+            headers=auth_headers(token),
+            json={"pedido_ids": [pedido.id]},
+        )
+        assert resp2.status_code == 200
+        assert resp2.get_json()["settled"] == 0
         assert LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count() == 1
 
     def test_trigger_create_update_pago_parcial(self, session):
@@ -1380,53 +1522,83 @@ class TestAuditFixes:
     # --- settle_user_credits refatorado (Fase 4.1) ---
 
     def test_settle_credits_total_correto_apos_refactor(self, client, session):
-        """Quitação cria um único DEBIT com soma exata dos CREDITs ativos."""
+        """Quitação parcial cria DEBIT com soma exata dos pedidos selecionados."""
         admin = make_user(session, "auditadm@test.com", "pass1234", role="admin")
         vendedor = make_user(session, "auditset@test.com", "pass1234", role="vendedor")
         token = generate_token(admin)
 
-        for amount in (50.0, 75.5, 24.5):
+        pedidos = []
+        for idx in range(1, 5):
+            pedido = Pedido(
+                cliente=f"Cliente {idx}",
+                telefone_cliente="11999999999",
+                destinatario=f"Dest {idx}",
+                produto="Buque",
+                valor="R$ 100,00",
+                dia_entrega=date(2025, 3, 3),
+                horario="10:00",
+                status="agendado",
+                status_pagamento="Pago",
+                vendedor_id=vendedor.id,
+            )
+            session.add(pedido)
+            pedidos.append(pedido)
+        session.flush()
+
+        amounts = [50.0, 75.5, 24.5, 10.0]
+        for pedido, amount in zip(pedidos, amounts):
             session.add(
                 LedgerEntry(
                     user_id=vendedor.id,
                     type="CREDIT",
-                    category="fixo_semanal",
+                    category="comissao_site",
                     amount=amount,
                     week_ref=date(2025, 3, 3),
                     status="active",
                     created_by=admin.id,
+                    pedido_id=pedido.id,
                 )
             )
         session.commit()
 
+        selected_ids = [pedidos[0].id, pedidos[1].id, pedidos[2].id]
         resp = client.post(
             "/api/ledger/settle",
-            json={"user_id": vendedor.id},
+            json={"user_id": vendedor.id, "pedido_ids": selected_ids},
             headers=auth_headers(token),
         )
         assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["settled"] == 3
+        assert body["pedido_ids_settled"] == selected_ids
+        assert body["pedido_ids_ignored"] == []
         debits = LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").all()
         assert len(debits) == 1
         assert float(debits[0].amount) == pytest.approx(150.0, abs=0.01)
-        # Todos os CREDITs apontam para o DEBIT
-        for credit in LedgerEntry.query.filter_by(
-            user_id=vendedor.id, type="CREDIT"
-        ).all():
-            assert credit.status == "settled"
-            assert credit.settled_by_id == debits[0].id
+        # Apenas os CREDITs selecionados apontam para o DEBIT
+        for credit in LedgerEntry.query.filter_by(user_id=vendedor.id, type="CREDIT").all():
+            if credit.pedido_id in selected_ids:
+                assert credit.status == "settled"
+                assert credit.settled_by_id == debits[0].id
+            else:
+                assert credit.status == "active"
+                assert credit.settled_by_id is None
 
     def test_settle_sem_credits_ativos_nao_deixa_debit_orfao(self, client, session):
-        """Quitar com 0 CREDITs ativos não cria DEBIT (placeholder é removido)."""
+        """Quitar com pedido_ids sem elegibilidade não cria DEBIT."""
         admin = make_user(session, "audadm2@test.com", "pass1234", role="admin")
         vendedor = make_user(session, "audset2@test.com", "pass1234", role="vendedor")
         token = generate_token(admin)
 
         resp = client.post(
             "/api/ledger/settle",
-            json={"user_id": vendedor.id},
+            json={"user_id": vendedor.id, "pedido_ids": [123456]},
             headers=auth_headers(token),
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["settled"] == 0
+        assert body["pedido_ids_ignored"] == [123456]
         assert LedgerEntry.query.filter_by(user_id=vendedor.id).count() == 0
 
     def test_generate_commission_permanece_idempotente_com_credit_ja_quitado(self, session):

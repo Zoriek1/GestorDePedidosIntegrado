@@ -47,6 +47,12 @@ def _parse_date(value: str) -> date | None:
         return None
 
 
+def _parse_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
 # ---------------------------------------------------------------------------
 # GET /api/ledger/balance
 # ---------------------------------------------------------------------------
@@ -71,10 +77,10 @@ def get_balance():
 @require_auth(roles=["admin", "vendedor"])
 def settle():
     """
-    Quita todos os CREDITs active do vendedor em uma transação atômica.
+    Quita CREDITs de comissão selecionados por pedido_ids em uma transação atômica.
     Admin pode quitar qualquer vendedor via body {"user_id": X}.
     Vendedor quita apenas a si mesmo.
-    Idempotente: retorna 204 se não há nada a quitar.
+    Sem "marcar todos": pedido_ids é obrigatório.
     """
     try:
         current = request.current_user
@@ -91,10 +97,29 @@ def settle():
         else:
             user_id = my_id
 
-        result = ledger_service.settle_user_credits(user_id=user_id, settled_by=my_id)
+        pedido_ids = data.get("pedido_ids")
+        if not isinstance(pedido_ids, list) or len(pedido_ids) == 0:
+            return error_response("pedido_ids é obrigatório e deve ser um array não vazio", 400)
 
-        if result["settled"] == 0:
-            return success_response({"message": "Nenhum crédito pendente para quitar"}, status_code=204)
+        normalized_ids = []
+        seen = set()
+        for raw in pedido_ids:
+            try:
+                pid = int(raw)
+            except (ValueError, TypeError):
+                return error_response("pedido_ids deve conter apenas inteiros válidos", 400)
+            if pid <= 0:
+                return error_response("pedido_ids deve conter apenas inteiros positivos", 400)
+            if pid in seen:
+                return error_response("pedido_ids deve conter IDs únicos", 400)
+            seen.add(pid)
+            normalized_ids.append(pid)
+
+        result = ledger_service.settle_user_credits(
+            user_id=user_id,
+            settled_by=my_id,
+            pedido_ids=normalized_ids,
+        )
 
         return success_response(result, message=f"{result['settled']} crédito(s) quitado(s)")
     except Exception as e:
@@ -326,10 +351,19 @@ def get_pending():
         if err:
             return err
 
-        entries = ledger_repo.get_pending(user_id)
-        return success_response(
-            {"user_id": user_id, "entries": [e.to_dict() for e in entries]}
+        competencia_tipo = (request.args.get("competencia_tipo") or "semanal").strip().lower()
+        if competencia_tipo not in {"semanal", "mensal"}:
+            return error_response("competencia_tipo deve ser 'semanal' ou 'mensal'", 400)
+        competencia = (request.args.get("competencia") or "").strip() or None
+        include_quitados = _parse_bool(request.args.get("include_quitados"), default=False)
+
+        payload = ledger_repo.get_pending_sections(
+            user_id=user_id,
+            competencia_tipo=competencia_tipo,
+            competencia=competencia,
+            include_quitados=include_quitados,
         )
+        return success_response({"user_id": user_id, **payload})
     except Exception as e:
         return error_response(str(e), 500)
 

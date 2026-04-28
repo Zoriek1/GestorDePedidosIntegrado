@@ -65,6 +65,20 @@ export interface SettleResult {
   settled: number;
   amount: number;
   debit_id: number | null;
+  pedido_ids_settled: number[];
+  pedido_ids_ignored: number[];
+}
+
+export interface SettleContext {
+  section: 'atrasado' | 'a_receber' | 'quitado';
+  competencia_tipo: 'semanal' | 'mensal';
+  competencia: string;
+}
+
+export interface SettlePayload {
+  user_id?: number;
+  pedido_ids: number[];
+  contexto?: SettleContext;
 }
 
 export interface PedidoAtribuido {
@@ -103,6 +117,43 @@ export interface LedgerPeriod {
   by_source: LedgerPeriodSource[];
 }
 
+export interface PendingPedidoItem {
+  ledger_entry_id: number;
+  pedido_id: number;
+  cliente: string | null;
+  fonte: string | null;
+  dia_entrega: string | null;
+  due_date: string | null;
+  week_ref: string | null;
+  amount: number;
+  category: string;
+  status: 'atrasado' | 'a_receber' | 'quitado';
+  competencia: string;
+}
+
+export interface PendingSection {
+  total: number;
+  total_pedidos: number;
+  pedidos: PendingPedidoItem[];
+}
+
+export interface PendingPaymentsResponse {
+  user_id: number;
+  competencia_tipo: 'semanal' | 'mensal';
+  competencia: string;
+  competencias_disponiveis: string[];
+  atrasado: PendingSection;
+  a_receber: PendingSection;
+  quitado: PendingSection;
+}
+
+export interface PendingPaymentsFilters {
+  user_id?: number;
+  competencia_tipo?: 'semanal' | 'mensal';
+  competencia?: string;
+  include_quitados?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
@@ -111,7 +162,7 @@ function useApi() {
   return createApiRequest(getAuthHeader);
 }
 
-function toParams(obj: Record<string, string | number | undefined>): string {
+function toParams(obj: Record<string, string | number | boolean | undefined>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(obj)) {
     if (v !== undefined && v !== '') p.set(k, String(v));
@@ -145,7 +196,7 @@ export function useLedgerEntries(filters: EntriesFilters = {}) {
   return useQuery<LedgerEntry[]>({
     queryKey: ['ledger-entries', filters],
     queryFn: async () => {
-      const qs = toParams(filters as Record<string, string | number | undefined>);
+      const qs = toParams(filters as Record<string, string | number | boolean | undefined>);
       const res = await api<{ entries: LedgerEntry[] }>(`/ledger/entries${qs}`);
       if (!res.ok) throw new Error(res.message);
       return (res.data as { entries: LedgerEntry[] }).entries ?? [];
@@ -160,7 +211,7 @@ export function usePedidosAtribuidos(filters: { from?: string; to?: string; user
   return useQuery<PedidoAtribuido[]>({
     queryKey: ['ledger-pedidos', filters],
     queryFn: async () => {
-      const qs = toParams(filters as Record<string, string | number | undefined>);
+      const qs = toParams(filters as Record<string, string | number | boolean | undefined>);
       const res = await api<{ pedidos: PedidoAtribuido[] }>(`/ledger/pedidos${qs}`);
       if (!res.ok) throw new Error(res.message);
       return (res.data as { pedidos: PedidoAtribuido[] }).pedidos ?? [];
@@ -184,28 +235,28 @@ export function useLedgerPeriods(userId?: number) {
   });
 }
 
-/** CREDITs active do vendedor (pendentes de quitação em lote) */
-export function usePendingPayments(userId?: number) {
+/** Comissões pendentes seccionadas (atrasado / a_receber / quitado) */
+export function usePendingPayments(filters: PendingPaymentsFilters = {}) {
   const api = useApi();
-  return useQuery<LedgerEntry[]>({
-    queryKey: ['ledger-pending', userId],
+  return useQuery<PendingPaymentsResponse>({
+    queryKey: ['ledger-pending', filters],
     queryFn: async () => {
-      const qs = userId ? `?user_id=${userId}` : '';
-      const res = await api<{ entries: LedgerEntry[] }>(`/ledger/pending${qs}`);
+      const qs = toParams(filters as Record<string, string | number | boolean | undefined>);
+      const res = await api<PendingPaymentsResponse>(`/ledger/pending${qs}`);
       if (!res.ok) throw new Error(res.message);
-      return (res.data as { entries: LedgerEntry[] }).entries ?? [];
+      return res.data as PendingPaymentsResponse;
     },
     staleTime: 20_000,
   });
 }
 
-/** Quitação em lote — substitui confirmação individual */
+/** Quitação parcial por pedido_ids */
 export function useSettleUser() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (userId?: number) => {
-      const body = userId ? JSON.stringify({ user_id: userId }) : '{}';
+    mutationFn: async (payload: SettlePayload) => {
+      const body = JSON.stringify(payload);
       const res = await api<SettleResult>('/ledger/settle', { method: 'POST', body });
       if (!res.ok) throw new Error((res as { message: string }).message);
       return res.data as SettleResult;

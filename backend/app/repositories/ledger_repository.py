@@ -3,12 +3,14 @@
 LedgerRepository — CRUD e queries do ledger de recebíveis (double-entry)
 """
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import case, func
 
 from app import db
+from app.models.fonte_pedido import FontePedido
 from app.models.ledger_entry import LedgerEntry
+from app.models.pedido import Pedido
 from app.repositories.base_repository import BaseRepository
 from app.utils.date_utils import today_brazil
 
@@ -192,6 +194,166 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
     # ------------------------------------------------------------------
     # Pagamentos pendentes (CREDITs active)
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _competencia_key(competence_date: date, competencia_tipo: str) -> str:
+        if competencia_tipo == "mensal":
+            return competence_date.strftime("%Y-%m")
+        iso = competence_date.isocalendar()
+        return f"{iso.year}-W{iso.week:02d}"
+
+    @staticmethod
+    def _coerce_date(value: Any, fallback: date) -> date:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        return fallback
+
+    @staticmethod
+    def _coerce_float(value: Any) -> float:
+        try:
+            return float(value or 0)
+        except Exception:
+            return 0.0
+
+    def get_pending_sections(
+        self,
+        user_id: int,
+        competencia_tipo: str = "semanal",
+        competencia: Optional[str] = None,
+        include_quitados: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Retorna comissões de pedidos seccionadas por status de UI:
+          - atrasado: status='active' e data de competência < hoje
+          - a_receber: status='active' e na competência selecionada
+          - quitado: status='settled' (somente se include_quitados=True)
+
+        Regras:
+          - somente CREDIT de comissão com pedido_id
+          - atrasados sempre retornam (independem da competência)
+          - quitados não entram no payload padrão
+        """
+        competencia_tipo = (competencia_tipo or "semanal").strip().lower()
+        if competencia_tipo not in {"semanal", "mensal"}:
+            competencia_tipo = "semanal"
+
+        today = today_brazil()
+        if not competencia:
+            competencia = self._competencia_key(today, competencia_tipo)
+
+        query = (
+            db.session.query(
+                LedgerEntry.id.label("ledger_entry_id"),
+                LedgerEntry.user_id,
+                LedgerEntry.pedido_id,
+                LedgerEntry.amount,
+                LedgerEntry.category,
+                LedgerEntry.week_ref,
+                LedgerEntry.due_date,
+                LedgerEntry.status.label("ledger_status"),
+                LedgerEntry.created_at,
+                Pedido.cliente,
+                Pedido.dia_entrega,
+                Pedido.fonte_pedido,
+                FontePedido.nome.label("fonte_nome"),
+            )
+            .join(Pedido, Pedido.id == LedgerEntry.pedido_id)
+            .outerjoin(FontePedido, FontePedido.id == Pedido.fonte_pedido_id)
+            .filter(
+                LedgerEntry.user_id == user_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.voided.is_(False),
+                LedgerEntry.category.like("comissao_%"),
+                LedgerEntry.pedido_id.isnot(None),
+            )
+        )
+        if not include_quitados:
+            query = query.filter(LedgerEntry.status == "active")
+
+        rows = query.all()
+
+        classified = []
+        competencias_a_receber = set()
+
+        for row in rows:
+            competence_date = (
+                row.due_date
+                or row.week_ref
+                or self._coerce_date(row.created_at, today)
+            )
+            competencia_key = self._competencia_key(competence_date, competencia_tipo)
+
+            if row.ledger_status == "settled":
+                status_ui = "quitado"
+            elif competence_date < today:
+                status_ui = "atrasado"
+            else:
+                status_ui = "a_receber"
+
+            if status_ui == "a_receber":
+                competencias_a_receber.add(competencia_key)
+
+            classified.append(
+                {
+                    "ledger_entry_id": row.ledger_entry_id,
+                    "pedido_id": row.pedido_id,
+                    "cliente": row.cliente,
+                    "fonte": row.fonte_nome or row.fonte_pedido,
+                    "dia_entrega": row.dia_entrega.isoformat() if row.dia_entrega else None,
+                    "due_date": row.due_date.isoformat() if row.due_date else None,
+                    "week_ref": row.week_ref.isoformat() if row.week_ref else None,
+                    "amount": self._coerce_float(row.amount),
+                    "category": row.category,
+                    "status": status_ui,
+                    "competencia": competencia_key,
+                    "_competence_date": competence_date,
+                }
+            )
+
+        scoped = []
+        for item in classified:
+            if item["status"] == "atrasado":
+                scoped.append(item)
+                continue
+            if item["status"] == "a_receber" and item["competencia"] == competencia:
+                scoped.append(item)
+                continue
+            if include_quitados and item["status"] == "quitado":
+                scoped.append(item)
+
+        sections: Dict[str, Dict[str, Any]] = {
+            "atrasado": {"total": 0.0, "total_pedidos": 0, "pedidos": []},
+            "a_receber": {"total": 0.0, "total_pedidos": 0, "pedidos": []},
+            "quitado": {"total": 0.0, "total_pedidos": 0, "pedidos": []},
+        }
+
+        scoped_sorted = sorted(
+            scoped,
+            key=lambda x: (x["_competence_date"], x["ledger_entry_id"]),
+        )
+
+        for item in scoped_sorted:
+            sec = sections[item["status"]]
+            sec["total"] = round(sec["total"] + item["amount"], 2)
+            sec["total_pedidos"] += 1
+            payload_item = {k: v for k, v in item.items() if not k.startswith("_")}
+            sec["pedidos"].append(payload_item)
+
+        if not include_quitados:
+            sections["quitado"] = {"total": 0.0, "total_pedidos": 0, "pedidos": []}
+
+        competencias_disponiveis = sorted(competencias_a_receber, reverse=True)
+
+        return {
+            "competencia_tipo": competencia_tipo,
+            "competencia": competencia,
+            "competencias_disponiveis": competencias_disponiveis,
+            "atrasado": sections["atrasado"],
+            "a_receber": sections["a_receber"],
+            "quitado": sections["quitado"],
+        }
 
     def get_pending(self, user_id: int) -> List[LedgerEntry]:
         """

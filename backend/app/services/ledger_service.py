@@ -114,35 +114,91 @@ def get_balance(user_id: int) -> dict:
     return LedgerRepository().get_balance(user_id)
 
 
-def settle_user_credits(user_id: int, settled_by: int) -> dict:
+def _normalize_pedido_ids(pedido_ids: list[int]) -> list[int]:
+    normalized: list[int] = []
+    seen = set()
+    for value in pedido_ids or []:
+        try:
+            pid = int(value)
+        except (TypeError, ValueError):
+            continue
+        if pid <= 0:
+            continue
+        if pid in seen:
+            continue
+        seen.add(pid)
+        normalized.append(pid)
+    return normalized
+
+
+def settle_user_credits(user_id: int, settled_by: int, pedido_ids: list[int]) -> dict:
     """
-    Quitação em lote (double-entry): cria um DEBIT que liga todos os CREDITs
-    ativos do vendedor.
+    Quitação parcial por pedidos (double-entry): cria um DEBIT que liga os
+    CREDITs de comissão ativos dos pedido_ids selecionados.
 
     Estratégia atômica (sem race entre requisições simultâneas):
       1. Cria o DEBIT primeiro com amount=0 (placeholder).
-      2. UPDATE atômico nos CREDITs ativos marcando settled_by_id=debit_id —
+      2. UPDATE atômico nos CREDITs elegíveis marcando settled_by_id=debit_id —
          essa é a "etiqueta" que define o lote, não um timestamp.
       3. SUM dos credits agora linkados ao DEBIT → ajusta debit.amount.
       4. Se nenhum CREDIT foi capturado, o DEBIT é removido (idempotência).
 
     Returns:
-        {"settled": int, "amount": float, "debit_id": int | None}
+        {
+            "settled": int,
+            "amount": float,
+            "debit_id": int | None,
+            "pedido_ids_settled": list[int],
+            "pedido_ids_ignored": list[int]
+        }
     """
     from flask import current_app
     from sqlalchemy import func
 
     from app import db
     from app.models.ledger_entry import LedgerEntry, datetime_now_brazil
-    from app.utils.date_utils import get_monday
 
     today = today_brazil()
+    input_ids = _normalize_pedido_ids(pedido_ids)
+    if not input_ids:
+        return {
+            "settled": 0,
+            "amount": 0.0,
+            "debit_id": None,
+            "pedido_ids_settled": [],
+            "pedido_ids_ignored": [],
+        }
+
     week_ref = get_monday(today)
     now = datetime_now_brazil()
-    # Próxima segunda-feira: limite superior exclusivo do "current week".
-    # Créditos com due_date a partir desse dia ficam para a próxima quitação,
-    # consistente com o que get_pending mostra na tela "A Receber".
-    next_monday = today + timedelta(days=(7 - today.weekday()))
+
+    # Apenas IDs com comissões ativas podem entrar no UPDATE.
+    eligible_ids = [
+        int(pid)
+        for (pid,) in (
+            db.session.query(LedgerEntry.pedido_id)
+            .filter(
+                LedgerEntry.user_id == user_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.status == "active",
+                LedgerEntry.voided.is_(False),
+                LedgerEntry.category.like("comissao_%"),
+                LedgerEntry.pedido_id.in_(input_ids),
+            )
+            .distinct()
+            .all()
+        )
+        if pid is not None
+    ]
+
+    if not eligible_ids:
+        return {
+            "settled": 0,
+            "amount": 0.0,
+            "debit_id": None,
+            "pedido_ids_settled": [],
+            "pedido_ids_ignored": input_ids,
+        }
 
     # 1) Cria o DEBIT placeholder (amount=0.01 satisfaz CHECK amount>0;
     # o valor real é setado no passo 3, ou o DEBIT é removido se nada quitar).
@@ -151,7 +207,7 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
         type="DEBIT",
         category="pagamento",
         amount=0.01,
-        description="Quitação em lote (em processamento)",
+        description="Quitação parcial (em processamento)",
         week_ref=week_ref,
         status="settled",
         settled_at=now,
@@ -161,11 +217,7 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
     db.session.flush()
     debit_id = debit.id
 
-    # 2) UPDATE atômico — captura CREDITs ativos da semana corrente
-    # (overdue, hoje, sem due_date e futuros desta semana) e os vincula
-    # ao DEBIT. Não inclui due_date >= próxima segunda. Race-safe: dois
-    # settles concorrentes capturam lotes disjuntos via settled_by_id
-    # (o primeiro UPDATE já mudou status para 'settled').
+    # 2) UPDATE atômico — captura apenas os CREDITs elegíveis enviados.
     updated = (
         db.session.query(LedgerEntry)
         .filter(
@@ -173,7 +225,8 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
             LedgerEntry.type == "CREDIT",
             LedgerEntry.status == "active",
             LedgerEntry.voided.is_(False),
-            (LedgerEntry.due_date.is_(None)) | (LedgerEntry.due_date < next_monday),
+            LedgerEntry.category.like("comissao_%"),
+            LedgerEntry.pedido_id.in_(eligible_ids),
         )
         .update(
             {
@@ -186,32 +239,53 @@ def settle_user_credits(user_id: int, settled_by: int) -> dict:
     )
 
     if updated == 0:
-        # Nada a quitar — remove o DEBIT placeholder
         db.session.delete(debit)
         db.session.commit()
-        return {"settled": 0, "amount": 0.0, "debit_id": None}
+        return {
+            "settled": 0,
+            "amount": 0.0,
+            "debit_id": None,
+            "pedido_ids_settled": [],
+            "pedido_ids_ignored": input_ids,
+        }
 
     # 3) Total exato do lote — agora vinculado pelo settled_by_id
-    total_amount = float(
-        db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
+    settled_rows = (
+        db.session.query(LedgerEntry.pedido_id, LedgerEntry.amount)
         .filter(
             LedgerEntry.type == "CREDIT",
             LedgerEntry.settled_by_id == debit_id,
         )
-        .scalar()
-        or 0
+        .all()
     )
+    settled_by_id = {int(pid): float(amount or 0) for pid, amount in settled_rows if pid is not None}
+    settled_ids = [pid for pid in input_ids if pid in settled_by_id]
+    ignored_ids = [pid for pid in input_ids if pid not in settled_by_id]
+    total_amount = round(sum(settled_by_id.values()), 2)
 
-    debit.amount = round(total_amount, 2)
-    debit.description = f"Quitação em lote — {updated} lançamento(s)"
+    debit.amount = total_amount
+    debit.description = (
+        f"Quitação parcial — {updated} lançamento(s), "
+        f"{len(settled_ids)} pedido(s)"
+    )
 
     db.session.commit()
 
     current_app.logger.info(
-        "[LEDGER] settle user=%s: %s créditos quitados, total R$%.2f, DEBIT #%s",
-        user_id, updated, total_amount, debit_id,
+        "[LEDGER] settle user=%s: %s créditos quitados, %s pedidos, total R$%.2f, DEBIT #%s",
+        user_id,
+        updated,
+        len(settled_ids),
+        total_amount,
+        debit_id,
     )
-    return {"settled": updated, "amount": round(total_amount, 2), "debit_id": debit_id}
+    return {
+        "settled": updated,
+        "amount": total_amount,
+        "debit_id": debit_id,
+        "pedido_ids_settled": settled_ids,
+        "pedido_ids_ignored": ignored_ids,
+    }
 
 
 def get_period_summary(user_id: int) -> dict:

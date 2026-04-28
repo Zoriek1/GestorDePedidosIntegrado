@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BalanceCard } from '../BalanceCard';
@@ -33,7 +33,7 @@ describe('Recebiveis UI', () => {
       />
     );
 
-    expect(screen.getByText(/A Receber —/i)).toBeInTheDocument();
+    expect(screen.getByText(/A Receber .*Vendedor Teste/i)).toBeInTheDocument();
     expect(screen.getByText(/300,00/)).toBeInTheDocument();
     expect(screen.getByText(/Quitado:/i)).toBeInTheDocument();
   });
@@ -63,28 +63,36 @@ describe('Recebiveis UI', () => {
     expect(screen.getByText(/Site:/i)).toBeInTheDocument();
   });
 
-  it('PendingPaymentsCard chama settle em lote ao clicar Recebi', () => {
+  it('PendingPaymentsCard chama settle por pedido_ids ao clicar Recebi', async () => {
     const mutate = vi.fn();
     vi.mocked(usePendingPayments).mockReturnValue({
-      data: [
-        {
-          id: 11,
-          user_id: 1,
-          type: 'CREDIT',
-          category: 'comissao_whatsapp',
-          amount: 120,
-          description: 'Comissão',
-          pedido_id: 99,
-          week_ref: '2025-02-10',
-          due_date: '2025-02-14',
-          status: 'active',
-          settled_at: null,
-          settled_by_id: null,
-          voided: false,
-          created_at: '2025-02-10 10:00:00',
-          created_by: 1,
+      data: {
+        user_id: 1,
+        competencia_tipo: 'semanal',
+        competencia: '2025-W07',
+        competencias_disponiveis: ['2025-W07'],
+        atrasado: {
+          total: 120,
+          total_pedidos: 1,
+          pedidos: [
+            {
+              ledger_entry_id: 11,
+              pedido_id: 99,
+              cliente: 'Cliente Teste',
+              fonte: 'WhatsApp',
+              dia_entrega: '2025-02-10',
+              week_ref: '2025-02-10',
+              due_date: '2025-02-11',
+              amount: 120,
+              category: 'comissao_whatsapp',
+              status: 'atrasado',
+              competencia: '2025-W07',
+            },
+          ],
         },
-      ],
+        a_receber: { total: 0, total_pedidos: 0, pedidos: [] },
+        quitado: { total: 0, total_pedidos: 0, pedidos: [] },
+      },
       isLoading: false,
     } as never);
     vi.mocked(useSettleUser).mockReturnValue({
@@ -94,7 +102,17 @@ describe('Recebiveis UI', () => {
 
     render(<PendingPaymentsCard userId={1} isAdmin />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Recebi pagamento/i }));
-    expect(mutate).toHaveBeenCalledWith(1);
+    fireEvent.click(screen.getByRole('button', { name: /Recebi pagamento .*120,00/i }));
+    await waitFor(() => {
+      expect(mutate).toHaveBeenCalledWith({
+        user_id: 1,
+        pedido_ids: [99],
+        contexto: {
+          section: 'atrasado',
+          competencia_tipo: 'semanal',
+          competencia: '2025-W07',
+        },
+      });
+    });
   });
 });

@@ -19,7 +19,7 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import HistoryIcon from '@mui/icons-material/History';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { formatBRL } from '../../../lib/format/currency';
 import {
   PendingPedidoItem,
@@ -65,8 +65,8 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
   const [competenciaTipo, setCompetenciaTipo] = useState<'semanal' | 'mensal'>('semanal');
   const [competencia, setCompetencia] = useState<string | undefined>(undefined);
   const [showQuitados, setShowQuitados] = useState(false);
-  const [selectedAtrasado, setSelectedAtrasado] = useState<number[]>([]);
-  const [selectedAReceber, setSelectedAReceber] = useState<number[]>([]);
+  const [selectedAtrasadoOverride, setSelectedAtrasadoOverride] = useState<number[] | null>(null);
+  const [selectedAReceberOverride, setSelectedAReceberOverride] = useState<number[] | null>(null);
 
   const pendingQuery = usePendingPayments({
     user_id: userId,
@@ -77,38 +77,42 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
   const settleMutation = useSettleUser();
 
   const data = pendingQuery.data;
-  const atrasoPedidos = data?.atrasado.pedidos ?? [];
-  const receberPedidos = data?.a_receber.pedidos ?? [];
-  const quitadoPedidos = data?.quitado.pedidos ?? [];
+  const atrasoPedidos = useMemo(() => data?.atrasado.pedidos ?? [], [data?.atrasado.pedidos]);
+  const receberPedidos = useMemo(() => data?.a_receber.pedidos ?? [], [data?.a_receber.pedidos]);
+  const quitadoPedidos = useMemo(() => data?.quitado.pedidos ?? [], [data?.quitado.pedidos]);
 
   const atrasoIds = useMemo(() => atrasoPedidos.map((p) => p.pedido_id), [atrasoPedidos]);
   const receberIds = useMemo(() => receberPedidos.map((p) => p.pedido_id), [receberPedidos]);
 
-  useEffect(() => {
-    if (!data) return;
-    if (!competencia || competencia !== data.competencia) {
-      setCompetencia(data.competencia);
+  const selectedAtrasado = useMemo(() => {
+    const base = selectedAtrasadoOverride ?? atrasoIds;
+    const visible = new Set(atrasoIds);
+    return base.filter((id) => visible.has(id));
+  }, [atrasoIds, selectedAtrasadoOverride]);
+
+  const selectedAReceber = useMemo(() => {
+    const base = selectedAReceberOverride ?? receberIds;
+    const visible = new Set(receberIds);
+    return base.filter((id) => visible.has(id));
+  }, [receberIds, selectedAReceberOverride]);
+
+  const handleTogglePedido = (
+    section: SectionKey,
+    pedidoId: number,
+    checked: boolean,
+    selectedIds: number[],
+  ) => {
+    const setter = section === 'atrasado' ? setSelectedAtrasadoOverride : setSelectedAReceberOverride;
+    if (checked) {
+      if (selectedIds.includes(pedidoId)) return;
+      setter([...selectedIds, pedidoId]);
+      return;
     }
-  }, [data, competencia]);
-
-  useEffect(() => {
-    setSelectedAtrasado(atrasoIds);
-  }, [atrasoIds.join(',')]);
-
-  useEffect(() => {
-    setSelectedAReceber(receberIds);
-  }, [receberIds.join(',')]);
-
-  const handleTogglePedido = (section: SectionKey, pedidoId: number, checked: boolean) => {
-    const setter = section === 'atrasado' ? setSelectedAtrasado : setSelectedAReceber;
-    setter((prev) => {
-      if (checked) return Array.from(new Set([...prev, pedidoId]));
-      return prev.filter((id) => id !== pedidoId);
-    });
+    setter(selectedIds.filter((id) => id !== pedidoId));
   };
 
   const handleToggleAll = (section: SectionKey, checked: boolean, ids: number[]) => {
-    const setter = section === 'atrasado' ? setSelectedAtrasado : setSelectedAReceber;
+    const setter = section === 'atrasado' ? setSelectedAtrasadoOverride : setSelectedAReceberOverride;
     setter(checked ? ids : []);
   };
 
@@ -168,7 +172,12 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
                 <Box display="flex" alignItems="center" gap={0.5}>
                   <Checkbox
                     checked={selectedIds.includes(pedido.pedido_id)}
-                    onChange={(e) => handleTogglePedido(section, pedido.pedido_id, e.target.checked)}
+                    onChange={(e) => handleTogglePedido(
+                      section,
+                      pedido.pedido_id,
+                      e.target.checked,
+                      selectedIds,
+                    )}
                   />
                   <Box>
                     <Typography variant="body2" fontWeight={600}>
@@ -298,6 +307,7 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
                       const next = e.target.value as 'semanal' | 'mensal';
                       setCompetenciaTipo(next);
                       setCompetencia(undefined);
+                      setSelectedAReceberOverride(null);
                     }}
                     sx={{ minWidth: 120 }}
                     SelectProps={{ native: true }}
@@ -308,8 +318,11 @@ export function PendingPaymentsCard({ userId, isAdmin }: PendingPaymentsCardProp
                   <TextField
                     select
                     size="small"
-                    value={competencia ?? ''}
-                    onChange={(e) => setCompetencia(e.target.value)}
+                    value={competencia ?? data?.competencia ?? ''}
+                    onChange={(e) => {
+                      setCompetencia(e.target.value);
+                      setSelectedAReceberOverride(null);
+                    }}
                     sx={{ minWidth: 180 }}
                     SelectProps={{ native: true }}
                   >

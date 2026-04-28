@@ -278,7 +278,6 @@ def settle_user_credits(
     settled_entry_id_set = set(settled_amount_by_entry.keys())
     settled_pedido_id_set = {int(pid) for _, pid, _ in settled_rows if pid is not None}
 
-    settled_entry_ids = [eid for eid in input_entry_ids if eid in settled_entry_id_set]
     ignored_entry_ids = [eid for eid in input_entry_ids if eid not in settled_entry_id_set]
     settled_pedido_ids = [pid for pid in input_pedido_ids if pid in settled_pedido_id_set]
     ignored_pedido_ids = [pid for pid in input_pedido_ids if pid not in settled_pedido_id_set]

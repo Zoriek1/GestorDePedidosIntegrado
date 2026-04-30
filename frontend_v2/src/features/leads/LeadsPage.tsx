@@ -380,6 +380,7 @@ export default function LeadsPage() {
               <TableCell>fbp</TableCell>
               <TableCell>Origem</TableCell>
               <TableCell>Campanha</TableCell>
+              <TableCell>Grupo de Anúncio</TableCell>
               <TableCell>Conteúdo</TableCell>
               <TableCell>Meio</TableCell>
               <TableCell>IP</TableCell>
@@ -522,6 +523,7 @@ export default function LeadsPage() {
                     ) : '—'}
                   </TableCell>
                   <TableCell>{lead.utm_campaign ?? '—'}</TableCell>
+                  <TableCell>{lead.utm_term ?? '—'}</TableCell>
                   <TableCell>{lead.utm_content ?? '—'}</TableCell>
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{lead.ip_address ?? '—'}</TableCell>

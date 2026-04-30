@@ -5,6 +5,7 @@ Servicos de integracao Nuvemshop (OAuth e importacao de pedidos).
 import json
 import logging
 import threading
+import time
 from typing import Any, Dict, Optional, Tuple
 
 import requests
@@ -95,6 +96,43 @@ class NuvemshopOrderImporter:
 
         return processed, failed
 
+    def _fetch_order_with_cartinha_retry(
+        self,
+        order_id: str,
+        attempts: int = 3,
+        gap_seconds: float = 5.0,
+    ) -> Dict[str, Any]:
+        """
+        Busca o pedido na Nuvemshop, retentando se a "cartinha" (note/owner_note)
+        ainda não chegou. A Nuvemshop às vezes propaga o `note` com atraso após
+        o webhook order/created, então um único GET pode pegar o pedido sem a
+        mensagem do cartão.
+
+        Faz até `attempts` tentativas espaçadas por `gap_seconds`. Sai cedo se
+        encontrar a cartinha. Se nenhum lookup tiver cartinha, retorna a última
+        resposta (pode realmente ser um pedido sem cartinha — esperado).
+
+        Janela total ≈ attempts × ~1s API + (attempts-1) × gap = ~13s com defaults.
+        Seguro chamar daqui porque o webhook é processado em background thread
+        (ack-first em routes/integrations/nuvemshop.py), sem afetar o ACK ao Nuvemshop.
+        """
+        last: Dict[str, Any] = {}
+        for i in range(attempts):
+            last = self.client.get_order(order_id)
+            if last and (last.get("note") or last.get("owner_note")):
+                if i > 0:
+                    logger.info(
+                        f"[NUVEMSHOP] cartinha encontrada na tentativa {i + 1} para order {order_id}"
+                    )
+                return last
+            if i < attempts - 1:
+                time.sleep(gap_seconds)
+        logger.info(
+            f"[NUVEMSHOP] cartinha vazia após {attempts} tentativas para order {order_id} "
+            f"(pode ser pedido sem cartinha)"
+        )
+        return last
+
     def process_delivery(self, delivery: NuvemshopWebhookDelivery) -> bool:
         try:
             if not self.store.active:
@@ -107,7 +145,7 @@ class NuvemshopOrderImporter:
             if not order_id:
                 return self._mark_failed(delivery, "missing_order_id")
 
-            order = self.client.get_order(order_id)
+            order = self._fetch_order_with_cartinha_retry(order_id)
             # Custom fields vêm de endpoint separado na API Nuvemshop
             try:
                 custom_fields = self.client.get_order_custom_fields(order_id)
@@ -403,15 +441,16 @@ class NuvemshopOrderImporter:
         overridden_fields = PedidoManualOverride.get_overridden_fields(pedido.id)
 
         # Atualizar campos relevantes sem sobrescrever dados manuais
-        # Statuses internos avançados não devem ser revertidos para "agendado" pela Nuvemshop
-        _ADVANCED_STATUSES = {"em_preparo", "em_entrega", "saiu_para_entrega", "concluido"}
-        incoming_status = pedido_data.get("status")  # mapper retorna "agendado" ou "cancelado"
+        # SYNC DESCONECTADO (decisão do usuário): após criação, o status_pedido local
+        # nunca é alterado pelo webhook Nuvemshop. Evita reverter pedidos que avançaram
+        # localmente (Embalado, Em Rota, Entregue) para "agendado" quando o lojista
+        # mexe no painel. Cancelamento explícito do Nuvemshop ainda vence — entra como
+        # "cancelado" porque é uma operação destrutiva que precisa propagar.
+        incoming_status = pedido_data.get("status")
         if incoming_status == "cancelado":
-            status_update = "cancelado"  # cancelamento da Nuvemshop sempre vence
-        elif pedido.status in _ADVANCED_STATUSES:
-            status_update = pedido.status  # proteger status avançado
+            status_update = "cancelado"
         else:
-            status_update = incoming_status or pedido.status
+            status_update = pedido.status  # mantém o status local atual
 
         updates = {
             "status_pagamento": pedido_data.get("status_pagamento") or pedido.status_pagamento,

@@ -248,6 +248,7 @@ export default function LedgerPage() {
         <EntryList
           entries={entriesQuery.data ?? []}
           loading={entriesQuery.isLoading}
+          canDeleteSalary={isAdmin}
         />
       )}
 

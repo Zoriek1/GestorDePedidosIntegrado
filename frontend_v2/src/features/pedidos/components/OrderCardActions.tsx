@@ -12,7 +12,7 @@ function hasPermission(role: string | null, permission: string): boolean {
   if (!role) return false;
   if (role === 'admin') return true;
   if (role === 'atendente' || role === 'vendedor') {
-    return ['pedidos:create', 'pedidos:update', 'pedidos:view'].includes(permission);
+    return ['pedidos:create', 'pedidos:update', 'pedidos:view', 'pedidos:update_status'].includes(permission);
   }
   if (role === 'entregador') {
     return ['pedidos:view', 'pedidos:update_status'].includes(permission);

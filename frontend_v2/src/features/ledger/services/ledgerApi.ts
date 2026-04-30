@@ -289,6 +289,25 @@ export function useLedgerSummary() {
   });
 }
 
+/** Apaga (voided=true) lançamento de salário — admin, fixo_semanal/almoco/transporte */
+export function useDeleteSalaryEntry() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (entryId: number) => {
+      const res = await api(`/ledger/entries/${entryId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((res as { message: string }).message);
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
+      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
+      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
+      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+    },
+  });
+}
+
 /** Lançamento manual (admin) */
 export function useCreateLedgerEntry() {
   const api = useApi();

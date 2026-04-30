@@ -131,6 +131,21 @@ class LedgerEntry(db.Model):
             unique=True,
             sqlite_where=db.text("voided=0 AND pedido_id IS NOT NULL"),
         ),
+        db.Index(
+            "uq_ledger_weekly_active",
+            "user_id",
+            "week_ref",
+            "category",
+            unique=True,
+            sqlite_where=db.text(
+                "voided=0 AND week_ref IS NOT NULL "
+                "AND category IN ('fixo_semanal','almoco','transporte')"
+            ),
+            postgresql_where=db.text(
+                "voided = FALSE AND week_ref IS NOT NULL "
+                "AND category IN ('fixo_semanal','almoco','transporte')"
+            ),
+        ),
         db.CheckConstraint("type IN ('CREDIT', 'DEBIT')", name="ck_ledger_type"),
         db.CheckConstraint("status IN ('active', 'settled')", name="ck_ledger_status"),
         db.CheckConstraint("amount > 0", name="ck_ledger_amount_positive"),
@@ -151,7 +166,9 @@ class LedgerEntry(db.Model):
             "week_ref": self.week_ref.strftime("%Y-%m-%d") if self.week_ref else "",
             "due_date": self.due_date.strftime("%Y-%m-%d") if self.due_date else None,
             "status": self.status,
-            "settled_at": self.settled_at.strftime("%Y-%m-%d %H:%M:%S") if self.settled_at else None,
+            "settled_at": self.settled_at.strftime("%Y-%m-%d %H:%M:%S")
+            if self.settled_at
+            else None,
             "settled_by_id": self.settled_by_id,
             "voided": self.voided,
             "void_reason": self.void_reason,

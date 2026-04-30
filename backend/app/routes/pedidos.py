@@ -92,11 +92,14 @@ def _get_current_vendedor_id() -> int | None:
     authenticated_user = getattr(request, "authenticated_user", None)
     if authenticated_user:
         from app.models.user import User as _User
-        u = _User.query.filter(
-            _User.is_active.is_(True),
-        ).filter(
-            (_User.email == authenticated_user) | (_User.name == authenticated_user)
-        ).first()
+
+        u = (
+            _User.query.filter(
+                _User.is_active.is_(True),
+            )
+            .filter((_User.email == authenticated_user) | (_User.name == authenticated_user))
+            .first()
+        )
         return u.id if u else None
 
     return None
@@ -227,7 +230,7 @@ def obter_pedido(pedido_id):
 
 
 @pedidos_bp.route("/<int:pedido_id>/status", methods=["PUT", "POST"])
-@requires_any_role("admin", "atendente", "entregador")
+@requires_any_role("admin", "atendente", "entregador", "vendedor")
 def atualizar_status(pedido_id):
     """Atualiza status de um pedido"""
     try:
@@ -719,11 +722,14 @@ def criar_pedido():
             if _auth_hdr.lower().startswith("bearer "):
                 try:
                     from app.services.auth_service import decode_token, extract_bearer_token
+
                     _tok = extract_bearer_token(_auth_hdr)
                     current_user = decode_token(_tok) if _tok else None
                 except Exception:
                     pass
-        user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
+        user_role = (current_user.get("role") if current_user else None) or getattr(
+            request, "user_role", None
+        )
         vendedor_id_final = None
         if user_role == "vendedor":
             vendedor_id_final = _get_current_vendedor_id()
@@ -977,11 +983,14 @@ def atualizar_pedido(pedido_id):
             if _auth_hdr.lower().startswith("bearer "):
                 try:
                     from app.services.auth_service import decode_token, extract_bearer_token
+
                     _tok = extract_bearer_token(_auth_hdr)
                     current_user = decode_token(_tok) if _tok else None
                 except Exception:
                     pass
-        user_role = (current_user.get("role") if current_user else None) or getattr(request, "user_role", None)
+        user_role = (current_user.get("role") if current_user else None) or getattr(
+            request, "user_role", None
+        )
         if user_role == "admin" and "vendedor_id" in data:
             try:
                 pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
@@ -1005,7 +1014,9 @@ def atualizar_pedido(pedido_id):
                 )
 
         if codigo_whatsapp:
-            _link_lead_by_whatsapp_code(codigo_whatsapp, pedido.telefone_cliente, pedido_id=pedido_id)
+            _link_lead_by_whatsapp_code(
+                codigo_whatsapp, pedido.telefone_cliente, pedido_id=pedido_id
+            )
 
         actor_id = current_user.get("user_id") if current_user else None
         apply_commission_lifecycle(pedido, previous=previous_commission_snapshot, actor_id=actor_id)

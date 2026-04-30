@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -7,14 +8,29 @@ import {
   ListItemText,
   Chip,
   Skeleton,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
+  Snackbar,
+  Alert,
 } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { formatBRL } from '../../../lib/format/currency';
-import { LedgerEntry } from '../services/ledgerApi';
+import { LedgerEntry, useDeleteSalaryEntry } from '../services/ledgerApi';
 
 interface EntryListProps {
   entries: LedgerEntry[];
   loading?: boolean;
+  /** Quando true, exibe a lixeira ao lado de salários não-liquidados (admin only). */
+  canDeleteSalary?: boolean;
 }
+
+const SALARY_CATEGORIES = new Set(['fixo_semanal', 'almoco', 'transporte']);
 
 function groupByWeek(entries: LedgerEntry[]): Map<string, LedgerEntry[]> {
   const map = new Map<string, LedgerEntry[]>();
@@ -93,7 +109,29 @@ function settledInfo(entry: LedgerEntry): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-export function EntryList({ entries, loading }: EntryListProps) {
+export function EntryList({ entries, loading, canDeleteSalary = false }: EntryListProps) {
+  const [confirmEntry, setConfirmEntry] = useState<LedgerEntry | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const deleteMutation = useDeleteSalaryEntry();
+
+  const isDeletable = (entry: LedgerEntry) =>
+    canDeleteSalary &&
+    entry.type === 'CREDIT' &&
+    SALARY_CATEGORIES.has(entry.category) &&
+    entry.status !== 'settled' &&
+    !entry.voided;
+
+  const onConfirmDelete = async () => {
+    if (!confirmEntry) return;
+    try {
+      await deleteMutation.mutateAsync(confirmEntry.id);
+      setConfirmEntry(null);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Erro ao apagar');
+      setConfirmEntry(null);
+    }
+  };
+
   if (loading) {
     return (
       <Box>
@@ -176,13 +214,26 @@ export function EntryList({ entries, loading }: EntryListProps) {
                               />
                             )}
                           </Box>
-                          <Chip
-                            size="small"
-                            label={`${entry.type === 'CREDIT' ? '+' : '-'} ${formatBRL(entry.amount)}`}
-                            color={entry.type === 'CREDIT' ? 'success' : 'error'}
-                            variant="outlined"
-                            sx={{ fontWeight: 600, flexShrink: 0 }}
-                          />
+                          <Box display="flex" alignItems="center" gap={0.5} flexShrink={0}>
+                            <Chip
+                              size="small"
+                              label={`${entry.type === 'CREDIT' ? '+' : '-'} ${formatBRL(entry.amount)}`}
+                              color={entry.type === 'CREDIT' ? 'success' : 'error'}
+                              variant="outlined"
+                              sx={{ fontWeight: 600 }}
+                            />
+                            {isDeletable(entry) && (
+                              <Tooltip title="Apagar salário (admin)">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setConfirmEntry(entry)}
+                                  aria-label={`Apagar lançamento ${entry.id}`}
+                                >
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Box>
                         </Box>
                       }
                       secondary={
@@ -200,6 +251,44 @@ export function EntryList({ entries, loading }: EntryListProps) {
           </Box>
         );
       })}
+
+      <Dialog open={confirmEntry !== null} onClose={() => setConfirmEntry(null)}>
+        <DialogTitle>Apagar lançamento?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmEntry && (
+              <>
+                Tem certeza que deseja apagar este lançamento de{' '}
+                <strong>{categoryLabel(confirmEntry.category)}</strong> de{' '}
+                <strong>{formatBRL(confirmEntry.amount)}</strong>?
+                <br />A entrada ficará marcada como estornada (mantida para auditoria).
+              </>
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmEntry(null)}>Cancelar</Button>
+          <Button
+            onClick={onConfirmDelete}
+            color="error"
+            variant="contained"
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? 'Apagando…' : 'Apagar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={!!errorMsg}
+        autoHideDuration={5000}
+        onClose={() => setErrorMsg('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setErrorMsg('')}>
+          {errorMsg}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

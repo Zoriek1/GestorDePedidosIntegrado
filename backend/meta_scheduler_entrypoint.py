@@ -47,6 +47,10 @@ app = create_app(
 HOUR = int(os.environ.get("META_SCHEDULER_HOUR", 23))
 MINUTE = int(os.environ.get("META_SCHEDULER_MINUTE", 0))
 
+# Autopagamento de salário semanal — roda 1x/dia, idempotente.
+PAYROLL_HOUR = int(os.environ.get("PAYROLL_AUTO_HOUR", 6))
+PAYROLL_MINUTE = int(os.environ.get("PAYROLL_AUTO_MINUTE", 0))
+
 
 def run_daily_send() -> None:
     try:
@@ -68,14 +72,32 @@ def run_daily_send() -> None:
         print(f"[META_SCHEDULER] Erro no envio diário: {exc}", flush=True)
 
 
+def run_payroll_auto_today() -> None:
+    try:
+        with app.app_context():
+            from app.services.ledger_service import auto_generate_for_today
+
+            result = auto_generate_for_today()
+            print(
+                "[PAYROLL] auto_generate_for_today — "
+                f"date={result.get('date')} alvo={result.get('vendedores_processados', 0)} "
+                f"criados={result.get('created', 0)} pulados={result.get('skipped', 0)}",
+                flush=True,
+            )
+    except Exception as exc:
+        print(f"[PAYROLL] Erro no autopagamento: {exc}", flush=True)
+
+
 def main() -> None:
     now_brt = datetime.datetime.now(BRAZIL_TZ)
     print(
-        f"[META_SCHEDULER] Processo ativo desde {now_brt.isoformat()} — disparo diário às {HOUR:02d}:{MINUTE:02d} BRT.",
+        f"[META_SCHEDULER] Processo ativo desde {now_brt.isoformat()} — "
+        f"Meta às {HOUR:02d}:{MINUTE:02d} BRT, payroll às {PAYROLL_HOUR:02d}:{PAYROLL_MINUTE:02d} BRT.",
         flush=True,
     )
 
     last_run_date = None
+    last_payroll_date = None
 
     while True:
         now = datetime.datetime.now(BRAZIL_TZ)
@@ -88,6 +110,14 @@ def main() -> None:
                 flush=True,
             )
             run_daily_send()
+
+        if now.hour == PAYROLL_HOUR and now.minute == PAYROLL_MINUTE and last_payroll_date != today:
+            last_payroll_date = today
+            print(
+                f"[PAYROLL] Disparando autopagamento às {now.strftime('%H:%M')} BRT",
+                flush=True,
+            )
+            run_payroll_auto_today()
 
         time.sleep(30)
 

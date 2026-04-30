@@ -171,9 +171,31 @@ def get_entries():
             from_date=from_date,
             to_date=to_date,
         )
-        return success_response(
-            {"user_id": user_id, "entries": [e.to_dict() for e in entries]}
-        )
+        return success_response({"user_id": user_id, "entries": [e.to_dict() for e in entries]})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/ledger/entries/<id> — apaga lançamento de salário (admin)
+# ---------------------------------------------------------------------------
+@ledger_bp.route("/entries/<int:entry_id>", methods=["DELETE"])
+@require_auth(roles=["admin"])
+def delete_salary_entry(entry_id):
+    """
+    Soft-delete (voided=true) de salário fixo_semanal/almoco/transporte.
+    Bloqueado para comissões e para entradas já liquidadas.
+    """
+    try:
+        current = request.current_user
+        result = ledger_service.void_salary_entry(entry_id=entry_id, actor_id=current["user_id"])
+        return success_response({"entry": result}, message="Lançamento apagado")
+    except LookupError as e:
+        return error_response(str(e), 404)
+    except PermissionError as e:
+        return error_response(str(e), 403)
+    except ValueError as e:
+        return error_response(str(e), 409)
     except Exception as e:
         return error_response(str(e), 500)
 
@@ -277,23 +299,22 @@ def get_pedidos_atribuidos():
         from app.repositories.user_repository import UserRepository
         from app.services.commission_service import map_fonte_to_source
 
-        query = (
-            LedgerEntry.query.filter(
-                LedgerEntry.user_id == user_id,
-                LedgerEntry.type == "CREDIT",
-                LedgerEntry.pedido_id.isnot(None),
-                LedgerEntry.category.like("comissao_%"),
-                LedgerEntry.voided.is_(False),
-            )
+        query = LedgerEntry.query.filter(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.type == "CREDIT",
+            LedgerEntry.pedido_id.isnot(None),
+            LedgerEntry.category.like("comissao_%"),
+            LedgerEntry.voided.is_(False),
         )
 
         entries = query.order_by(LedgerEntry.week_ref.desc(), LedgerEntry.created_at.desc()).all()
 
         pedido_ids = [e.pedido_id for e in entries]
-        pedidos_by_id = {
-            p.id: p
-            for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()
-        } if pedido_ids else {}
+        pedidos_by_id = (
+            {p.id: p for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()}
+            if pedido_ids
+            else {}
+        )
         user_repo = UserRepository()
 
         result = []
@@ -326,23 +347,29 @@ def get_pedidos_atribuidos():
                 if cfg:
                     rate = round(float(cfg.rate) * 100, 2)
 
-            result.append({
-                "entry_id": entry.id,
-                "pedido_id": entry.pedido_id,
-                "cliente": pedido.cliente if pedido else None,
-                "dia_entrega": pedido.dia_entrega.isoformat() if pedido and pedido.dia_entrega else None,
-                "week_ref": entry.week_ref.isoformat() if entry.week_ref else None,
-                "due_date": entry.due_date.isoformat() if entry.due_date else None,
-                "commission_amount": float(entry.amount),
-                "category": entry.category,
-                "fonte_pedido_id": fonte_pedido_id,
-                "fonte": fonte_nome,
-                "rate": rate,
-                "valor_pedido": valor_pedido,
-                "status": entry.status,
-                "settled_at": entry.settled_at.strftime("%Y-%m-%d %H:%M:%S") if entry.settled_at else None,
-                "settled_by_id": entry.settled_by_id,
-            })
+            result.append(
+                {
+                    "entry_id": entry.id,
+                    "pedido_id": entry.pedido_id,
+                    "cliente": pedido.cliente if pedido else None,
+                    "dia_entrega": pedido.dia_entrega.isoformat()
+                    if pedido and pedido.dia_entrega
+                    else None,
+                    "week_ref": entry.week_ref.isoformat() if entry.week_ref else None,
+                    "due_date": entry.due_date.isoformat() if entry.due_date else None,
+                    "commission_amount": float(entry.amount),
+                    "category": entry.category,
+                    "fonte_pedido_id": fonte_pedido_id,
+                    "fonte": fonte_nome,
+                    "rate": rate,
+                    "valor_pedido": valor_pedido,
+                    "status": entry.status,
+                    "settled_at": entry.settled_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if entry.settled_at
+                    else None,
+                    "settled_by_id": entry.settled_by_id,
+                }
+            )
 
         return success_response({"pedidos": result, "total": len(result)})
     except Exception as e:
@@ -436,8 +463,16 @@ def export_csv():
         writer = csv.DictWriter(
             output,
             fieldnames=[
-                "id", "week_ref", "type", "category", "amount",
-                "description", "pedido_id", "status", "settled_at", "created_at",
+                "id",
+                "week_ref",
+                "type",
+                "category",
+                "amount",
+                "description",
+                "pedido_id",
+                "status",
+                "settled_at",
+                "created_at",
             ],
             extrasaction="ignore",
         )

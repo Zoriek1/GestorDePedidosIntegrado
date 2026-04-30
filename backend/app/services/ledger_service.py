@@ -26,10 +26,15 @@ def generate_weekly_credits(week_ref: date, created_by: int) -> dict:
     Idempotente: não cria duplicatas para a mesma semana+categoria.
     Define status='active' e due_date a partir de payment_day do PayrollConfig.
 
+    Idempotência em duas camadas:
+      1. Pré-check Python (otimização — evita INSERT desnecessário)
+      2. UNIQUE index parcial uq_ledger_weekly_active (source of truth — protege race)
+
     Returns:
         {"created": int, "skipped": int}
     """
     from flask import current_app
+    from sqlalchemy.exc import IntegrityError
 
     from app import db
     from app.models.ledger_entry import LedgerEntry
@@ -70,14 +75,120 @@ def generate_weekly_credits(week_ref: date, created_by: int) -> dict:
                 created_by=created_by,
             )
             db.session.add(entry)
-            created += 1
+            try:
+                db.session.flush()
+                created += 1
+            except IntegrityError:
+                db.session.rollback()
+                skipped += 1
+                current_app.logger.info(
+                    "[LEDGER] race detectada — duplicata bloqueada pelo índice "
+                    "user=%s week=%s cat=%s",
+                    vendedor.id,
+                    monday,
+                    config.category,
+                )
 
     db.session.commit()
     current_app.logger.info(
         "[LEDGER] generate_weekly_credits week=%s: %s criados, %s pulados",
-        monday, created, skipped,
+        monday,
+        created,
+        skipped,
     )
     return {"created": created, "skipped": skipped}
+
+
+def auto_generate_for_today(created_by: int | None = None) -> dict:
+    """
+    Autopagamento diário: para cada vendedor cuja PayrollConfig.payment_day
+    coincide com o dia da semana de hoje (BRT), gera os créditos da SEMANA ATUAL.
+    Idempotente — chamar mais de uma vez no mesmo dia não duplica.
+
+    Pensado para rodar 1x/dia via meta_scheduler_entrypoint.
+    """
+    from flask import current_app
+
+    from app.models.ledger_entry import datetime_now_brazil
+    from app.repositories.user_repository import UserRepository
+
+    user_repo = UserRepository()
+    today = datetime_now_brazil().date()
+    weekday = today.weekday()  # 0=Seg ... 6=Dom
+    monday = get_monday(today)
+
+    vendedores_a_pagar = []
+    for vendedor in user_repo.get_active_by_role("vendedor"):
+        configs = user_repo.get_payroll_configs(vendedor.id)
+        if any(c.frequency == "semanal" and c.payment_day == weekday for c in configs):
+            vendedores_a_pagar.append(vendedor.id)
+
+    if not vendedores_a_pagar:
+        return {"date": today.isoformat(), "vendedores_processados": 0, "created": 0, "skipped": 0}
+
+    # generate_weekly_credits já itera todos os vendedores ativos com os
+    # configs deles — chamamos uma vez para a semana atual; idempotência via
+    # uq_ledger_weekly_active garante que apenas vendedores cujo config bate
+    # serão criados (os outros são pulados pelo pré-check).
+    actor_id = created_by or vendedores_a_pagar[0]
+    result = generate_weekly_credits(week_ref=monday, created_by=actor_id)
+
+    current_app.logger.info(
+        "[LEDGER] auto_generate_for_today date=%s weekday=%s alvo=%s criados=%s",
+        today,
+        weekday,
+        len(vendedores_a_pagar),
+        result["created"],
+    )
+    return {
+        "date": today.isoformat(),
+        "vendedores_processados": len(vendedores_a_pagar),
+        **result,
+    }
+
+
+def void_salary_entry(entry_id: int, actor_id: int) -> dict:
+    """
+    Apaga (soft-delete via voided=True) um lançamento de salário.
+
+    Restrições:
+      - Apenas categorias fixo_semanal | almoco | transporte (nunca comissão).
+      - Não pode estar liquidado (settled_by_id != NULL).
+      - Não pode já estar voidado.
+
+    Mantém a entrada no banco (auditoria); o índice parcial uq_ledger_weekly_active
+    libera o slot pra um novo lançamento da mesma (user, week, category).
+    """
+    from flask import current_app
+
+    from app import db
+    from app.models.ledger_entry import LedgerEntry, datetime_now_brazil
+
+    SALARY_CATEGORIES = {"fixo_semanal", "almoco", "transporte"}
+
+    entry = LedgerEntry.query.get(entry_id)
+    if entry is None:
+        raise LookupError(f"Lançamento #{entry_id} não encontrado")
+    if entry.category not in SALARY_CATEGORIES:
+        raise PermissionError("Apenas salários (fixo_semanal/almoco/transporte) podem ser apagados")
+    if entry.settled_by_id is not None or entry.status == "settled":
+        raise ValueError("Lançamento já liquidado não pode ser apagado")
+    if entry.voided:
+        raise ValueError("Lançamento já estava apagado")
+
+    entry.voided = True
+    entry.description = (entry.description or "") + (
+        f" [voided em {datetime_now_brazil().strftime('%Y-%m-%d %H:%M')} por user#{actor_id}]"
+    )
+    db.session.commit()
+
+    current_app.logger.info(
+        "[LEDGER] void salary entry=%s user=%s actor=%s",
+        entry_id,
+        entry.user_id,
+        actor_id,
+    )
+    return entry.to_dict()
 
 
 def generate_calendar(n_weeks: int, created_by: int, from_week: Optional[date] = None) -> dict:
@@ -339,7 +450,9 @@ def get_period_summary(user_id: int) -> dict:
 
     pedido_ids = [e.pedido_id for e in entries if e.pedido_id is not None]
     pedidos_by_id = (
-        {p.id: p for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()} if pedido_ids else {}
+        {p.id: p for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()}
+        if pedido_ids
+        else {}
     )
 
     periods: dict = defaultdict(

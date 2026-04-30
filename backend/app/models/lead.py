@@ -46,6 +46,32 @@ class Lead(db.Model):
     meta_event_id_lead = db.Column(db.String(100), nullable=True, index=True)
     client_user_agent = db.Column(db.String(512), nullable=True)
     pedido_id = db.Column(db.Integer, db.ForeignKey("pedidos.id"), nullable=True, index=True)
+    # Atribuição: utm_* deste lead refletem o ÚLTIMO toque pago (last non-direct).
+    # first_touch_id congela o toque que descobriu o lead; last_touch_id segue
+    # o toque pago mais recente. Toques diretos viram histórico mas não mexem em last.
+    first_touch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("lead_touchpoints.id", use_alter=True, name="fk_leads_first_touch"),
+        nullable=True,
+    )
+    last_touch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("lead_touchpoints.id", use_alter=True, name="fk_leads_last_touch"),
+        nullable=True,
+    )
+
+    first_touch = db.relationship(
+        "LeadTouchpoint",
+        foreign_keys=[first_touch_id],
+        post_update=True,
+        lazy="joined",
+    )
+    last_touch = db.relationship(
+        "LeadTouchpoint",
+        foreign_keys=[last_touch_id],
+        post_update=True,
+        lazy="joined",
+    )
 
     def to_dict(self):
         return {
@@ -72,4 +98,8 @@ class Lead(db.Model):
             "meta_event_id_contact": self.meta_event_id_contact,
             "meta_event_id_lead": self.meta_event_id_lead,
             "pedido_id": self.pedido_id,
+            "first_touch_id": self.first_touch_id,
+            "last_touch_id": self.last_touch_id,
+            "first_touch": self.first_touch.to_dict() if self.first_touch else None,
+            "last_touch": self.last_touch.to_dict() if self.last_touch else None,
         }

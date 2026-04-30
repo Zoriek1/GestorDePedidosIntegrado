@@ -7,6 +7,7 @@ from app.models.cliente import Cliente
 from app.models.endereco_cliente import EnderecoCliente
 from app.models.fonte_pedido import FontePedido
 from app.models.lead import Lead
+from app.models.lead_touchpoint import LeadTouchpoint
 from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
 from app.models.meta_capi_outbox import MetaCapiOutbox
 from app.models.nuvemshop_store import NuvemshopStore
@@ -24,6 +25,7 @@ __all__ = [
     "EnderecoCliente",
     "FontePedido",
     "Lead",
+    "LeadTouchpoint",
     "AuditLog",
     "MetaCapiOutbox",
     "MetaCapiLeadOutbox",

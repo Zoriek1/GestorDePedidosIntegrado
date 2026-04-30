@@ -144,6 +144,11 @@ function leadStatusLabel(status: string | null): string {
   return LEAD_STATUS_LABELS[status] ?? status;
 }
 
+function displayAdSet(name: string | null | undefined): string {
+  if (name === 'LAL | 6km | ADV+') return 'OPEN | 6km | ADV+';
+  return name ?? '—';
+}
+
 function canEditLeadPhone(lead: Lead): boolean {
   return lead.status === 'pendente_whatsapp' || lead.status === 'nao_entrou_em_contato';
 }
@@ -523,7 +528,7 @@ export default function LeadsPage() {
                     ) : '—'}
                   </TableCell>
                   <TableCell>{lead.utm_campaign ?? '—'}</TableCell>
-                  <TableCell>{lead.utm_term ?? '—'}</TableCell>
+                  <TableCell>{displayAdSet(lead.utm_term)}</TableCell>
                   <TableCell>{lead.utm_content ?? '—'}</TableCell>
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{lead.ip_address ?? '—'}</TableCell>

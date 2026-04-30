@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.middleware import requires_any_role
 from app.models.lead import Lead
+from app.models.lead_touchpoint import LeadTouchpoint, derive_is_paid
 from app.models.pedido import datetime_now_brazil
 from app.repositories.meta_capi_lead_outbox_repository import MetaCapiLeadOutboxRepository
 from app.utils.meta_capi_lead_helper import (
@@ -119,6 +120,54 @@ def _is_whatsapp_event(event: str | None) -> bool:
     return (event or "").strip().lower() == WHATSAPP_EVENT
 
 
+def _build_touchpoint_fields(data: dict, ip_address: str | None, user_agent: str | None) -> dict:
+    """Extrai a UTM bag do payload + calcula is_paid pra inserção em lead_touchpoints."""
+    fbclid = _extract_fbclid(data)
+    utm_id = _clip(data.get("utm_id"), 100)
+    utm_medium = _clip(data.get("utm_medium"), 100)
+    return {
+        "utm_source": _clip(data.get("utm_source"), 100),
+        "utm_medium": utm_medium,
+        "utm_campaign": _clip(data.get("utm_campaign"), 100),
+        "utm_content": _clip(data.get("utm_content"), 100),
+        "utm_term": _clip(data.get("utm_term"), 100),
+        "utm_id": utm_id,
+        "src": _clip(data.get("src"), 100),
+        "placement": _clip(data.get("placement"), 100),
+        "sck": _clip(data.get("sck"), 200),
+        "fbclid": fbclid,
+        "fbp": _normalize_fbp(data.get("fbp")),
+        "referrer": _clip(data.get("referrer"), 10_000),
+        "url": _clip(data.get("url") or data.get("destination_url"), 10_000),
+        "ip_address": ip_address,
+        "client_user_agent": user_agent,
+        "is_paid": derive_is_paid(utm_medium=utm_medium, fbclid=fbclid, utm_id=utm_id),
+    }
+
+
+def _record_touchpoint(lead: Lead, tp_fields: dict) -> LeadTouchpoint:
+    """
+    Insere touchpoint vinculado ao lead. Se for pago (is_paid=True), promove o
+    touchpoint para last_touch e copia utm_*/fbclid/fbp pro lead. Toques diretos
+    apenas viram histórico (last non-direct).
+    """
+    tp = LeadTouchpoint(lead_id=lead.id, **tp_fields)
+    db.session.add(tp)
+    db.session.flush()
+    if tp.is_paid:
+        lead.utm_source = tp.utm_source
+        lead.utm_medium = tp.utm_medium
+        lead.utm_campaign = tp.utm_campaign
+        lead.utm_content = tp.utm_content
+        lead.utm_term = tp.utm_term
+        if tp.fbclid:
+            lead.fbclid = tp.fbclid
+        if tp.fbp:
+            lead.fbp = tp.fbp
+        lead.last_touch_id = tp.id
+    return tp
+
+
 def _resolve_lead_by_token_payload(data: dict) -> tuple[Lead | None, tuple | None]:
     """
     Busca lead mais recente com este token_rastreio.
@@ -151,9 +200,7 @@ def _serialize_lead(lead: Lead, pedido_valores: dict | None = None) -> dict:
         if payload.get("status") == "pendente_whatsapp":
             payload["status"] = None
     payload["valor_pedido"] = (
-        pedido_valores.get(lead.pedido_id)
-        if (pedido_valores and lead.pedido_id)
-        else None
+        pedido_valores.get(lead.pedido_id) if (pedido_valores and lead.pedido_id) else None
     )
     return payload
 
@@ -189,10 +236,9 @@ def criar_lead():
     event = _clip(data.get("event"), 50)
     is_whatsapp = _is_whatsapp_event(event)
 
-    client_ua = None
-    if is_whatsapp:
-        ua_raw = (request.headers.get("User-Agent") or "").strip()
-        client_ua = ua_raw[:512] if ua_raw else None
+    ua_raw = (request.headers.get("User-Agent") or "").strip()
+    full_ua = ua_raw[:512] if ua_raw else None
+    client_ua = full_ua if is_whatsapp else None
 
     meta_event_id_contact = None
     if is_whatsapp and is_lead_funnel_enabled():
@@ -229,6 +275,24 @@ def criar_lead():
     elif not status or status == "pendente_whatsapp":
         status = ""
 
+    tp_fields = _build_touchpoint_fields(data, ip_address, full_ua)
+
+    existing = Lead.query.filter(Lead.dedup_key == dedup_key).first()
+    if existing is not None:
+        _record_touchpoint(existing, tp_fields)
+        db.session.commit()
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "id": existing.id,
+                    "duplicated": True,
+                    "token_valido": token_valido,
+                }
+            ),
+            200,
+        )
+
     lead = Lead(
         dedup_key=dedup_key,
         ip_address=ip_address,
@@ -254,6 +318,12 @@ def criar_lead():
 
     try:
         db.session.add(lead)
+        db.session.flush()
+        tp = LeadTouchpoint(lead_id=lead.id, **tp_fields)
+        db.session.add(tp)
+        db.session.flush()
+        lead.first_touch_id = tp.id
+        lead.last_touch_id = tp.id
         db.session.commit()
         flush_ids: list[int] = []
         if is_lead_funnel_enabled() and is_whatsapp and meta_event_id_contact:
@@ -265,9 +335,7 @@ def criar_lead():
                 if not lead.meta_event_id_lead:
                     lead.meta_event_id_lead = str(uuid.uuid4())
                     db.session.commit()
-                row_l = repo.create_lead_stage_from_lead(
-                    lead, event_time=datetime_now_brazil()
-                )
+                row_l = repo.create_lead_stage_from_lead(lead, event_time=datetime_now_brazil())
                 if row_l:
                     flush_ids.append(row_l.id)
         try_flush_pending_meta_capi_lead_entries(flush_ids)
@@ -283,8 +351,12 @@ def criar_lead():
             201,
         )
     except IntegrityError:
+        # Race: outro request inseriu o mesmo dedup_key entre nosso SELECT e INSERT.
         db.session.rollback()
         existing = Lead.query.filter(Lead.dedup_key == dedup_key).first()
+        if existing is not None:
+            _record_touchpoint(existing, tp_fields)
+            db.session.commit()
         return (
             jsonify(
                 {
@@ -407,11 +479,7 @@ def _apply_lead_phone_update(lead: Lead, data: dict):
         return jsonify({"ok": False, "error": "Telefone é obrigatório"}), 400
 
     phone_was_empty = not (lead.phone or "").strip()
-    if (
-        is_lead_funnel_enabled()
-        and _is_whatsapp_event(lead.event)
-        and phone_was_empty
-    ):
+    if is_lead_funnel_enabled() and _is_whatsapp_event(lead.event) and phone_was_empty:
         if is_truthy_meta_pixel_lead(data):
             new_lead_eid = extract_lead_stage_event_id_from_payload(data)
             if not new_lead_eid:
@@ -441,11 +509,7 @@ def _apply_lead_phone_update(lead: Lead, data: dict):
     db.session.commit()
 
     flush_ids: list[int] = []
-    if (
-        is_lead_funnel_enabled()
-        and _is_whatsapp_event(lead.event)
-        and phone_was_empty
-    ):
+    if is_lead_funnel_enabled() and _is_whatsapp_event(lead.event) and phone_was_empty:
         repo = MetaCapiLeadOutboxRepository()
         row_l = repo.create_lead_stage_from_lead(lead, event_time=datetime_now_brazil())
         if row_l:
@@ -475,6 +539,32 @@ def atualizar_telefone_lead(lead_id: int):
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
     return _apply_lead_phone_update(lead, data)
+
+
+@leads_bp.route("/<int:lead_id>/touchpoints", methods=["GET"])
+@requires_any_role("admin", "vendedor")
+def listar_touchpoints(lead_id: int):
+    """Histórico completo de toques de um lead, do mais antigo ao mais recente."""
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
+    touchpoints = (
+        LeadTouchpoint.query.filter(LeadTouchpoint.lead_id == lead_id)
+        .order_by(LeadTouchpoint.created_at.asc(), LeadTouchpoint.id.asc())
+        .all()
+    )
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "lead_id": lead_id,
+                "first_touch_id": lead.first_touch_id,
+                "last_touch_id": lead.last_touch_id,
+                "touchpoints": [tp.to_dict() for tp in touchpoints],
+            }
+        ),
+        200,
+    )
 
 
 @leads_bp.route("", methods=["GET"])
@@ -542,24 +632,24 @@ def listar_leads():
     pedido_valores: dict = {}
     pedido_ids = [lead.pedido_id for lead in pagination.items if lead.pedido_id]
     if pedido_ids:
-        pedidos = Pedido.query.filter(Pedido.id.in_(pedido_ids)).with_entities(
-            Pedido.id, Pedido.valor
-        ).all()
+        pedidos = (
+            Pedido.query.filter(Pedido.id.in_(pedido_ids))
+            .with_entities(Pedido.id, Pedido.valor)
+            .all()
+        )
         pedido_valores = {p.id: p.valor for p in pedidos}
 
     # 2. Backfill preguiçoso: leads compra_realizada sem pedido_id → busca por telefone
     unlinked = [
-        lead for lead in pagination.items
-        if not lead.pedido_id
-        and lead.status == "compra_realizada"
-        and lead.phone
+        lead
+        for lead in pagination.items
+        if not lead.pedido_id and lead.status == "compra_realizada" and lead.phone
     ]
     if unlinked:
         phones = list({lead.phone for lead in unlinked})
         norm_expr = func.regexp_replace(Pedido.telefone_cliente, "[^0-9]", "", "g")
         matched = (
-            Pedido.query
-            .filter(
+            Pedido.query.filter(
                 norm_expr.in_(phones),
                 Pedido.deleted_at.is_(None),
                 Pedido.status != "cancelado",

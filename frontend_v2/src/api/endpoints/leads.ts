@@ -7,6 +7,27 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 
+export interface LeadTouchpoint {
+  id: number;
+  lead_id: number;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
+  utm_id: string | null;
+  src: string | null;
+  placement: string | null;
+  sck: string | null;
+  fbclid: string | null;
+  fbp: string | null;
+  referrer: string | null;
+  url: string | null;
+  ip_address: string | null;
+  is_paid: boolean;
+  created_at: string | null;
+}
+
 export interface Lead {
   id: number;
   event: string | null;
@@ -29,6 +50,18 @@ export interface Lead {
   created_at: string | null;
   pedido_id: number | null;
   valor_pedido: string | null;
+  first_touch_id: number | null;
+  last_touch_id: number | null;
+  first_touch: LeadTouchpoint | null;
+  last_touch: LeadTouchpoint | null;
+}
+
+export interface LeadTouchpointsResponse {
+  ok: boolean;
+  lead_id: number;
+  first_touch_id: number | null;
+  last_touch_id: number | null;
+  touchpoints: LeadTouchpoint[];
 }
 
 export interface LeadsResponse {

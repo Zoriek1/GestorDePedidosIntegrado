@@ -14,7 +14,7 @@ import {
   Button,
   FormHelperText,
 } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { FloristDatePicker } from '../FloristDatePicker';
 import LocalFloristIcon from '@mui/icons-material/LocalFlorist';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import dayjs from 'dayjs';
@@ -132,7 +132,7 @@ export function StepProduto() {
                 name="dia_entrega"
                 control={control}
                 render={({ field }) => (
-                  <DatePicker
+                  <FloristDatePicker
                     label="Data de Entrega"
                     value={field.value ? dayjs(field.value) : null}
                     onChange={(newValue) => {

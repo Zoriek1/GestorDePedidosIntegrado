@@ -152,6 +152,52 @@ def create():
 
 ---
 
+## Wizard de Pedidos — Checklist obrigatório
+
+Sempre que alterar o wizard (`features/pedidos/CreateOrderWizard.tsx` ou
+`features/pedidos/components/WizardSteps/*`), passar por TODOS os itens
+abaixo antes de marcar a tarefa como pronta:
+
+**Adicionar / alterar campo:**
+- [ ] Adicionado em `pedidoFormSchema` (`schemas.ts`) com validação Zod
+- [ ] Adicionado em `pedidoFormDefaultValues`
+- [ ] Adicionado ao `stepNSchema` correspondente (validação parcial)
+- [ ] Listado em `STEPS[].fields` em `CreateOrderWizard.tsx` (gating Próximo)
+- [ ] Mapeado em `transformFormToApiPayload` (snake_case backend)
+- [ ] Coluna existe em `backend/app/models/pedido.py` (criar migration em
+      `backend/scripts/migrations/` se for novo)
+- [ ] Repository (`pedido_repository.py`) e route (`routes/pedidos.py`)
+      aceitam o campo no payload
+
+**Selector (dropdown vinculado a DB):**
+- [ ] Endpoint `GET /api/<recurso>` retorna `[{id, label}]`
+- [ ] Hook React Query em `services/<recurso>Api.ts` com cache razoável
+- [ ] Componente usa `Autocomplete` MUI (não `Select` puro) com
+      `freeSolo` se permite criar novo
+- [ ] Se permite criar novo: `POST /api/<recurso>` invalida a query
+- [ ] FK no model do `Pedido` (campo `<recurso>_id` + `relationship`)
+
+**Parse automático (WhatsApp / Catálogo):**
+- [ ] Adicionado caso em `utils/quickEntryParser.ts` (regex / detector)
+- [ ] Test em `__tests__/quickEntryParser.test.ts` cobrindo o novo formato
+- [ ] Botão "Colar do WhatsApp" no `QuickEntryModal` continua funcionando
+
+**Tracking:**
+- [ ] Logger (`createLogger('CreateOrderWizard')`) em pontos relevantes
+- [ ] Se for evento de negócio (ex: pedido salvo): outbox Meta CAPI
+      (`MetaCapiOutbox`) preenchido em `pedido_repository.criar`
+- [ ] Persistência localStorage continua salvando o campo novo
+      (verificar key `puf_pedido_draft_v2`)
+
+**UX:**
+- [ ] Validação roda no `onBlur` (mode do `useForm`)
+- [ ] Erro do step destaca o `StepLabel` (via `stepErrors` state)
+- [ ] Funciona no mobile (`MobileStepper`) — testar `useMediaQuery`
+- [ ] Calendário usa `<FloristDatePicker>` (não `<DatePicker>` cru) —
+      `features/pedidos/components/FloristDatePicker.tsx`
+
+---
+
 ## External integrations
 
 | Integration | Config vars | Purpose |

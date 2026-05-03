@@ -1,4 +1,3 @@
-import { Tooltip } from '@mui/material';
 import { DatePicker, DatePickerProps } from '@mui/x-date-pickers/DatePicker';
 import { PickersDay, PickersDayProps } from '@mui/x-date-pickers/PickersDay';
 import type { Dayjs } from 'dayjs';
@@ -18,36 +17,69 @@ function HolidayDay(props: PickersDayProps) {
     return <PickersDay {...props} />;
   }
 
+  const tint = `${holiday.color}1f`;
+  const tintHover = `${holiday.color}33`;
+
   return (
-    <Tooltip title={holiday.name} arrow placement="top">
-      <PickersDay
-        {...props}
-        sx={{
-          ...(props.sx || {}),
-          ...(selected
-            ? {
+    <PickersDay
+      {...props}
+      title={holiday.name}
+      sx={{
+        ...(selected
+          ? {
+              backgroundColor: holiday.color,
+              color: '#fff',
+              fontWeight: 700,
+              '&.Mui-selected': {
                 backgroundColor: holiday.color,
-                color: '#fff',
-                '&:hover': { backgroundColor: holiday.color },
-                '&.Mui-selected': {
-                  backgroundColor: holiday.color,
-                  '&:hover': { backgroundColor: holiday.color },
-                  '&:focus': { backgroundColor: holiday.color },
-                },
-              }
-            : {
-                border: `2px solid ${holiday.color}`,
-                color: holiday.color,
-                fontWeight: 600,
-              }),
-        }}
-      />
-    </Tooltip>
+                '&:hover, &:focus': { backgroundColor: holiday.color },
+              },
+            }
+          : {
+              backgroundColor: tint,
+              color: holiday.color,
+              fontWeight: 700,
+              '&:hover': { backgroundColor: tintHover },
+            }),
+      }}
+    />
   );
 }
 
+const POPUP_SX = {
+  '& .MuiDateCalendar-root': {
+    width: 360,
+    maxHeight: 380,
+  },
+  '& .MuiPickersCalendarHeader-root': {
+    paddingLeft: '12px',
+    paddingRight: '8px',
+  },
+  '& .MuiDayCalendar-header, & .MuiDayCalendar-weekContainer': {
+    justifyContent: 'space-around',
+  },
+  '& .MuiDayCalendar-weekDayLabel': {
+    width: 40,
+    height: 32,
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  '& .MuiPickersDay-root': {
+    width: 40,
+    height: 40,
+    margin: 0,
+    fontSize: 14,
+  },
+  '& .MuiPickersSlideTransition-root': {
+    minHeight: 260,
+  },
+};
+
 export function FloristDatePicker(props: DatePickerProps) {
   const { slots, slotProps, dayOfWeekFormatter: customFormatter, ...rest } = props;
+  const userPaperSx = (slotProps?.desktopPaper as { sx?: object } | undefined)?.sx;
+  const userMobilePaperSx = (slotProps?.mobilePaper as { sx?: object } | undefined)?.sx;
 
   return (
     <DatePicker
@@ -57,7 +89,17 @@ export function FloristDatePicker(props: DatePickerProps) {
         day: HolidayDay,
         ...(slots || {}),
       }}
-      slotProps={slotProps}
+      slotProps={{
+        ...(slotProps || {}),
+        desktopPaper: {
+          ...(slotProps?.desktopPaper || {}),
+          sx: { ...POPUP_SX, ...(userPaperSx || {}) },
+        },
+        mobilePaper: {
+          ...(slotProps?.mobilePaper || {}),
+          sx: { ...POPUP_SX, ...(userMobilePaperSx || {}) },
+        },
+      }}
     />
   );
 }

@@ -1,4 +1,4 @@
-import type { Dayjs } from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 
 export type HolidayTier = 'peak' | 'high' | 'normal';
 
@@ -46,9 +46,8 @@ export function getFloristHoliday(date: Dayjs): FloristHoliday | null {
 
   const fixed: Array<[number, number, string, HolidayTier]> = [
     [0, 1, 'Ano Novo', 'normal'],
-    [1, 14, "Dia dos Namorados (Valentine's)", 'normal'],
     [2, 8, 'Dia Internacional da Mulher', 'high'],
-    [4, 12, 'Dia dos Namorados', 'peak'],
+    [5, 12, 'Dia dos Namorados', 'peak'],
     [6, 26, 'Dia dos Avós', 'normal'],
     [8, 30, 'Dia das Secretárias', 'normal'],
     [9, 15, 'Dia dos Professores', 'normal'],
@@ -82,4 +81,27 @@ export function getFloristHoliday(date: Dayjs): FloristHoliday | null {
   }
 
   return null;
+}
+
+export interface UpcomingHoliday {
+  date: Dayjs;
+  holiday: FloristHoliday;
+  daysAway: number;
+}
+
+export function getUpcomingHolidays(from: Dayjs, daysAhead = 120): UpcomingHoliday[] {
+  const start = from.startOf('day');
+  const result: UpcomingHoliday[] = [];
+  for (let i = 0; i <= daysAhead; i++) {
+    const d = start.add(i, 'day');
+    const holiday = getFloristHoliday(d);
+    if (holiday) {
+      result.push({ date: d, holiday, daysAway: i });
+    }
+  }
+  return result;
+}
+
+export function getNextHoliday(from: Dayjs = dayjs()): UpcomingHoliday | null {
+  return getUpcomingHolidays(from, 365)[0] ?? null;
 }

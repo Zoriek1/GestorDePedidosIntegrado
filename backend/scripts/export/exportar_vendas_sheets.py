@@ -471,7 +471,9 @@ def _compute_pedidos_hash(pedidos):
     """
     import hashlib
 
-    parts = []
+    # Bump quando o formato de saida mudar para invalidar hashes antigos.
+    # v2: valor enviado como float puro (era "R$ X,XX" string).
+    parts = ["fmt=v2"]
     for ped in sorted(pedidos, key=lambda x: x.id):
         created = ped.created_at.isoformat() if ped.created_at else ""
         deleted = ped.deleted_at.isoformat() if ped.deleted_at else ""
@@ -626,7 +628,7 @@ def _exportar_mes(client, mes, ano):
             for p in pedidos_aba[dia]:
                 linhas_pedidos.append(
                     [
-                        f"R$ {p['valor']:.2f}".replace(".", ","),
+                        float(p["valor"]),
                         p["cliente"],
                         p["telefone"],
                         p["data_venda"],
@@ -655,7 +657,7 @@ def _exportar_mes(client, mes, ano):
             # Domingo precisa continuar aparecendo visualmente como "DOMINGO",
             # mas não pode perder vendas do dia.
             dia_label = "DOMINGO" if dia_semana == 6 else str(dia)
-            total_label = f"R$ {total_dia:.2f}".replace(".", ",") if total_dia > 0 else "-"
+            total_label = float(total_dia) if total_dia > 0 else "-"
             totais_data.append([dia_label, total_label])
 
         # Atualizar totais com retry

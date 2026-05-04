@@ -127,6 +127,10 @@ MESES_PT = {
     12: "DEZEMBRO",
 }
 
+# Nos primeiros N dias do mês, também atualiza a planilha do mês anterior.
+# Cobre o caso do usuário esquecer de clicar em "Exportar" antes da virada do mês.
+JANELA_RETROATIVA_DIAS = 7
+
 
 def parse_valor(valor_str):
     """Converte string de valor para float"""
@@ -460,190 +464,270 @@ def _get_or_rename_worksheet(spreadsheet, canonical_title: str):
     return spreadsheet.add_worksheet(title=canonical_title, rows=100, cols=10)
 
 
-def exportar_vendas():
-    """FunÃ§Ã£o principal de exportaÃ§Ã£o"""
+def _compute_pedidos_hash(pedidos):
+    """
+    Hash SHA-256 (truncado) dos pedidos do mes. Determinitistico, ordenado por id.
+    Usado para detectar se algo mudou desde a ultima exportacao e pular re-upload.
+    """
+    import hashlib
+
+    parts = []
+    for ped in sorted(pedidos, key=lambda x: x.id):
+        created = ped.created_at.isoformat() if ped.created_at else ""
+        deleted = ped.deleted_at.isoformat() if ped.deleted_at else ""
+        parts.append(
+            "|".join(
+                [
+                    str(ped.id),
+                    str(ped.valor or ""),
+                    str(ped.cliente or ""),
+                    str(ped.telefone_cliente or ""),
+                    created,
+                    str(ped.status or ""),
+                    str(ped.status_pagamento or ""),
+                    str(ped.fonte_pedido_id or ""),
+                    str(ped.fonte_pedido or ""),
+                    str(getattr(ped, "plataforma", None) or ""),
+                    deleted,
+                ]
+            )
+        )
+    payload = chr(10).join(parts).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def _exportar_mes(client, mes, ano):
+    """Exporta um Ãºnico mÃªs para a planilha VENDAS_<MES>_<ANO>."""
+    # Verifica se a planilha existe ANTES de buscar pedidos (com retry)
+    nome_planilha = f"VENDAS_{MESES_PT[mes]}_{ano}"
+    try:
+        spreadsheet = retry_google_operation(
+            lambda: client.open(nome_planilha), max_retries=2, backoff_delays=[1, 2]
+        )
+        print(f"âœ“ Planilha encontrada: {nome_planilha}")
+    except gspread.SpreadsheetNotFound:
+        print(f"\nâš  Planilha '{nome_planilha}' nÃ£o encontrada.")
+        print("ExportaÃ§Ã£o cancelada. A planilha deve existir no Google Sheets.")
+        return False  # Retorna False sem lanÃ§ar exceÃ§Ã£o (graceful failure)
+    except Exception as e:
+        print(f"âœ— Erro ao acessar planilha apÃ³s mÃºltiplas tentativas: {e}")
+        return False
+
+    # Filtra por created_at (data de venda), pois a planilha é métrica de vendas —
+    # o que foi vendido no dia, não quando será entregue.
+    primeiro_dia = date(ano, mes, 1)
+    _, ultimo = calendar.monthrange(ano, mes)
+    ultimo_dia = date(ano, mes, ultimo)
+
+    # Query por intervalo (SQLite pode armazenar UTC; filtro definitivo é em Python pelo mês Brasil)
+    pedidos = (
+        Pedido.query.filter(
+            Pedido.deleted_at.is_(None),  # alinhar com API (soft delete)
+            func.date(Pedido.created_at) >= primeiro_dia,
+            func.date(Pedido.created_at) <= ultimo_dia,
+            func.lower(func.trim(Pedido.status)) != "cancelado",  # alinhar com tela de vendas
+        )
+        .order_by(Pedido.created_at)
+        .all()
+    )
+
+    # Filtro por mês no fuso Brasil (evita vendas de jan aparecerem em fev por causa de UTC)
+    pedidos = [
+        p
+        for p in pedidos
+        if _created_at_date_brazil(p.created_at)
+        and (
+            _created_at_date_brazil(p.created_at).year,
+            _created_at_date_brazil(p.created_at).month,
+        )
+        == (ano, mes)
+    ]
+
+    print(f"Total de pedidos no mÃªs: {len(pedidos)}")
+
+    # Hash check: pula upload se nada mudou desde a ultima exportacao.
+    # Hash fica em H1 da aba WhatsApp; ws.update("A1:G1") e batch_clear("A2:D100") nao tocam H1.
+    new_hash = _compute_pedidos_hash(pedidos)
+    ws_hash_holder = _get_or_rename_worksheet(spreadsheet, ABA_WHATSAPP)
+    try:
+        existing_hash = ws_hash_holder.acell("H1").value
+    except Exception:
+        existing_hash = None
+    if existing_hash and existing_hash.strip() == new_hash:
+        print(f"  Sem mudancas desde a ultima exportacao (hash={new_hash}). Pulando upload.")
+        print(f"  Planilha: {spreadsheet.url}")
+        return True
+
+    # Organiza pedidos por aba e dia
+    dados_por_aba = {ABA_WHATSAPP: {}, ABA_CATALOGO: {}, ABA_SITE: {}}
+
+    for pedido in pedidos:
+        fonte = get_fonte_nome(pedido)
+        aba = identificar_aba(fonte)
+        # Nuvemshop = subclasse de Site: se fonte não mapeou mas plataforma é Nuvemshop, vai para Site
+        if not aba and getattr(pedido, "plataforma", None) == "Nuvemshop":
+            aba = ABA_SITE
+        if not aba:
+            continue
+
+        # Dia da venda no fuso Brasil (mesmo critério do filtro por mês)
+        data_br = _created_at_date_brazil(pedido.created_at)
+        dia = data_br.day if data_br else None
+        if dia is None:
+            continue
+
+        if dia not in dados_por_aba[aba]:
+            dados_por_aba[aba][dia] = []
+
+        # Data/hora da venda no fuso Brasil para exibição
+        dt_br = (
+            pedido.created_at.astimezone(TIMEZONE_BRASIL)
+            if getattr(pedido.created_at, "tzinfo", None)
+            else pedido.created_at
+        )
+        data_venda_str = dt_br.strftime("%d/%m/%Y %H:%M") if pedido.created_at else ""
+
+        dados_por_aba[aba][dia].append(
+            {
+                "valor": parse_valor(pedido.valor),
+                "cliente": pedido.cliente or "",
+                "telefone": pedido.telefone_cliente or "",
+                "data_venda": data_venda_str,
+            }
+        )
+
+    # Atualiza cada aba
+    for nome_aba in [ABA_WHATSAPP, ABA_CATALOGO, ABA_SITE]:
+        worksheet = _get_or_rename_worksheet(spreadsheet, nome_aba)
+
+        # Garantir cabeçalho (idempotente)
+        headers = [
+            "Valor",
+            "Cliente",
+            "Telefone",
+            "Data Venda",
+            "",
+            "Dia",
+            "Total",
+        ]
+        retry_google_operation(
+            lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
+            max_retries=2,
+        )
+
+        # Limpa dados antigos (mantÃ©m cabeÃ§alho)
+        worksheet.batch_clear(["A2:D100"])
+
+        # Prepara dados de pedidos (esquerda)
+        pedidos_aba = dados_por_aba.get(nome_aba, {})
+        linhas_pedidos = []
+
+        for dia in sorted(pedidos_aba.keys()):
+            for p in pedidos_aba[dia]:
+                linhas_pedidos.append(
+                    [
+                        f"R$ {p['valor']:.2f}".replace(".", ","),
+                        p["cliente"],
+                        p["telefone"],
+                        p["data_venda"],
+                    ]
+                )
+
+        if linhas_pedidos:
+            # Atualizar pedidos com retry
+            num_linhas = len(linhas_pedidos)
+            retry_google_operation(
+                lambda ws=worksheet, nl=num_linhas, lp=linhas_pedidos: ws.update(
+                    f"A2:D{nl + 1}", lp
+                ),
+                max_retries=2,
+            )
+
+        # Atualiza totais por dia (direita)
+        _, num_dias = calendar.monthrange(ano, mes)
+        totais_data = []
+
+        for dia in range(1, num_dias + 1):
+            data_dia = date(ano, mes, dia)
+            dia_semana = data_dia.weekday()
+            total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
+
+            # Domingo precisa continuar aparecendo visualmente como "DOMINGO",
+            # mas não pode perder vendas do dia.
+            dia_label = "DOMINGO" if dia_semana == 6 else str(dia)
+            total_label = f"R$ {total_dia:.2f}".replace(".", ",") if total_dia > 0 else "-"
+            totais_data.append([dia_label, total_label])
+
+        # Atualizar totais com retry
+        retry_google_operation(
+            lambda ws=worksheet, nd=num_dias, td=totais_data: ws.update(f"F2:G{nd + 1}", td),
+            max_retries=2,
+        )
+
+        total_aba = sum(p["valor"] for dia_pedidos in pedidos_aba.values() for p in dia_pedidos)
+        print(
+            f"  {nome_aba}: {sum(len(v) for v in pedidos_aba.values())} pedidos - R$ {total_aba:.2f}"
+        )
+
+    # Persiste o hash para o proximo run pular o upload se nada mudar.
+    try:
+        retry_google_operation(
+            lambda ws=ws_hash_holder, h=new_hash: ws.update_acell("H1", h),
+            max_retries=2,
+        )
+    except Exception as e:
+        print(f"  Aviso: falha ao gravar hash em H1: {e}")
+
+    print("\nâœ“ ExportaÃ§Ã£o concluÃ­da!")
+    print(f"  Planilha: {spreadsheet.url}")
+
+    return True
+
+
+def exportar_vendas(mes=None, ano=None, janela_dias=JANELA_RETROATIVA_DIAS):
+    """
+    FunÃ§Ã£o principal de exportaÃ§Ã£o.
+
+    Sem argumentos: exporta o mÃªs corrente. Adicionalmente, se hoje.day <= janela_dias,
+    tambÃ©m atualiza a planilha do mÃªs anterior â cobre o caso do
+    usuÃ¡rio esquecer de clicar em "Exportar" antes da virada do mÃªs.
+
+    Com (mes, ano) explÃ­citos: exporta apenas o mÃªs solicitado (Ãºtil para backfill).
+
+    Retorna True se o mÃªs corrente (ou o explÃ­cito) exportou. O mÃªs anterior
+    na janela retroativa Ã© best-effort: nÃ£o derruba o resultado.
+    """
     app = create_app()
 
     with app.app_context():
-        hoje = date.today()
-        mes = hoje.month
-        ano = hoje.year
-
-        print("=" * 50)
-        print(f"EXPORTAÃ‡ÃƒO DE VENDAS - {MESES_PT[mes]}/{ano}")
-        print("=" * 50)
-
-        # 1. Conecta ao Google Sheets (verifica autenticaÃ§Ã£o primeiro)
         try:
             client = get_google_client()
-            print("âœ“ AutenticaÃ§Ã£o Google OK")
+            print("â AutenticaÃ§Ã£o Google OK")
         except Exception as e:
-            print(f"âœ— Erro ao conectar: {e}")
+            print(f"â Erro ao conectar: {e}")
             return False
 
-        # 2. Verifica se a planilha existe ANTES de buscar pedidos (com retry)
-        nome_planilha = f"VENDAS_{MESES_PT[mes]}_{ano}"
-        try:
-            spreadsheet = retry_google_operation(
-                lambda: client.open(nome_planilha), max_retries=2, backoff_delays=[1, 2]
-            )
-            print(f"âœ“ Planilha encontrada: {nome_planilha}")
-        except gspread.SpreadsheetNotFound:
-            print(f"\nâš  Planilha '{nome_planilha}' nÃ£o encontrada.")
-            print("ExportaÃ§Ã£o cancelada. A planilha deve existir no Google Sheets.")
-            return False  # Retorna False sem lanÃ§ar exceÃ§Ã£o (graceful failure)
-        except Exception as e:
-            print(f"âœ— Erro ao acessar planilha apÃ³s mÃºltiplas tentativas: {e}")
-            return False
+        # Modo explÃ­cito: exporta sÃ³ o mÃªs solicitado
+        if mes is not None and ano is not None:
+            return _exportar_mes(client, mes, ano)
 
-        # 3. Só busca pedidos se a planilha existe
-        # Filtra por created_at (data de venda), pois a planilha é métrica de vendas —
-        # o que foi vendido no dia, não quando será entregue.
-        primeiro_dia = date(ano, mes, 1)
-        _, ultimo = calendar.monthrange(ano, mes)
-        ultimo_dia = date(ano, mes, ultimo)
+        # Modo automÃ¡tico: mÃªs corrente
+        hoje = date.today()
+        ok_atual = _exportar_mes(client, hoje.month, hoje.year)
 
-        # Query por intervalo (SQLite pode armazenar UTC; filtro definitivo é em Python pelo mês Brasil)
-        pedidos = (
-            Pedido.query.filter(
-                Pedido.deleted_at.is_(None),  # alinhar com API (soft delete)
-                func.date(Pedido.created_at) >= primeiro_dia,
-                func.date(Pedido.created_at) <= ultimo_dia,
-                func.lower(func.trim(Pedido.status)) != "cancelado",  # alinhar com tela de vendas
-            )
-            .order_by(Pedido.created_at)
-            .all()
-        )
-
-        # Filtro por mês no fuso Brasil (evita vendas de jan aparecerem em fev por causa de UTC)
-        pedidos = [
-            p
-            for p in pedidos
-            if _created_at_date_brazil(p.created_at)
-            and (
-                _created_at_date_brazil(p.created_at).year,
-                _created_at_date_brazil(p.created_at).month,
-            )
-            == (ano, mes)
-        ]
-
-        print(f"Total de pedidos no mÃªs: {len(pedidos)}")
-
-        # Organiza pedidos por aba e dia
-        dados_por_aba = {ABA_WHATSAPP: {}, ABA_CATALOGO: {}, ABA_SITE: {}}
-
-        for pedido in pedidos:
-            fonte = get_fonte_nome(pedido)
-            aba = identificar_aba(fonte)
-            # Nuvemshop = subclasse de Site: se fonte não mapeou mas plataforma é Nuvemshop, vai para Site
-            if not aba and getattr(pedido, "plataforma", None) == "Nuvemshop":
-                aba = ABA_SITE
-            if not aba:
-                continue
-
-            # Dia da venda no fuso Brasil (mesmo critério do filtro por mês)
-            data_br = _created_at_date_brazil(pedido.created_at)
-            dia = data_br.day if data_br else None
-            if dia is None:
-                continue
-
-            if dia not in dados_por_aba[aba]:
-                dados_por_aba[aba][dia] = []
-
-            # Data/hora da venda no fuso Brasil para exibição
-            dt_br = (
-                pedido.created_at.astimezone(TIMEZONE_BRASIL)
-                if getattr(pedido.created_at, "tzinfo", None)
-                else pedido.created_at
-            )
-            data_venda_str = dt_br.strftime("%d/%m/%Y %H:%M") if pedido.created_at else ""
-
-            dados_por_aba[aba][dia].append(
-                {
-                    "valor": parse_valor(pedido.valor),
-                    "cliente": pedido.cliente or "",
-                    "telefone": pedido.telefone_cliente or "",
-                    "data_venda": data_venda_str,
-                }
-            )
-
-        # Atualiza cada aba
-        for nome_aba in [ABA_WHATSAPP, ABA_CATALOGO, ABA_SITE]:
-            worksheet = _get_or_rename_worksheet(spreadsheet, nome_aba)
-
-            # Garantir cabeçalho (idempotente)
-            headers = [
-                "Valor",
-                "Cliente",
-                "Telefone",
-                "Data Venda",
-                "",
-                "Dia",
-                "Total",
-            ]
-            retry_google_operation(
-                lambda ws=worksheet, hdrs=headers: ws.update("A1:G1", [hdrs]),
-                max_retries=2,
-            )
-
-            # Limpa dados antigos (mantÃ©m cabeÃ§alho)
-            worksheet.batch_clear(["A2:D100"])
-
-            # Prepara dados de pedidos (esquerda)
-            pedidos_aba = dados_por_aba.get(nome_aba, {})
-            linhas_pedidos = []
-
-            for dia in sorted(pedidos_aba.keys()):
-                for p in pedidos_aba[dia]:
-                    linhas_pedidos.append(
-                        [
-                            f"R$ {p['valor']:.2f}".replace(".", ","),
-                            p["cliente"],
-                            p["telefone"],
-                            p["data_venda"],
-                        ]
-                    )
-
-            if linhas_pedidos:
-                # Atualizar pedidos com retry
-                num_linhas = len(linhas_pedidos)
-                retry_google_operation(
-                    lambda ws=worksheet, nl=num_linhas, lp=linhas_pedidos: ws.update(
-                        f"A2:D{nl + 1}", lp
-                    ),
-                    max_retries=2,
-                )
-
-            # Atualiza totais por dia (direita)
-            _, num_dias = calendar.monthrange(ano, mes)
-            totais_data = []
-
-            for dia in range(1, num_dias + 1):
-                data_dia = date(ano, mes, dia)
-                dia_semana = data_dia.weekday()
-                total_dia = sum(p["valor"] for p in pedidos_aba.get(dia, []))
-
-                # Domingo precisa continuar aparecendo visualmente como "DOMINGO",
-                # mas não pode perder vendas do dia.
-                dia_label = "DOMINGO" if dia_semana == 6 else str(dia)
-                total_label = f"R$ {total_dia:.2f}".replace(".", ",") if total_dia > 0 else "-"
-                totais_data.append([dia_label, total_label])
-
-            # Atualizar totais com retry
-            retry_google_operation(
-                lambda ws=worksheet, nd=num_dias, td=totais_data: ws.update(f"F2:G{nd + 1}", td),
-                max_retries=2,
-            )
-
-            total_aba = sum(p["valor"] for dia_pedidos in pedidos_aba.values() for p in dia_pedidos)
+        # Janela retroativa: tambÃ©m atualiza o mÃªs anterior nos primeiros N dias
+        if hoje.day <= janela_dias:
+            if hoje.month == 1:
+                mes_ant, ano_ant = 12, hoje.year - 1
+            else:
+                mes_ant, ano_ant = hoje.month - 1, hoje.year
             print(
-                f"  {nome_aba}: {sum(len(v) for v in pedidos_aba.values())} pedidos - R$ {total_aba:.2f}"
+                f"\n[Janela retroativa - dia {hoje.day} <= {janela_dias}] "
+                f"Atualizando tambÃ©m {MESES_PT[mes_ant]}/{ano_ant}"
             )
+            _exportar_mes(client, mes_ant, ano_ant)
 
-        print("\nâœ“ ExportaÃ§Ã£o concluÃ­da!")
-        print(f"  Planilha: {spreadsheet.url}")
-
-        return True
+        return ok_atual
 
 
 def teste_conexao():

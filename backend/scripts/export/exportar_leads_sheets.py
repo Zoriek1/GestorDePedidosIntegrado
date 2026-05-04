@@ -81,7 +81,6 @@ def _headers() -> List[str]:
         "utm_campaign",
         "utm_content",
         "utm_term",
-        "placement",
         "url",
         "referrer",
         "src",
@@ -98,12 +97,6 @@ def _headers() -> List[str]:
 def _lead_row(lead: Lead) -> List[str]:
     tv = lead.token_valido
     token_valido_str = "" if tv is None else ("1" if tv else "0")
-    # Placement vem do toque pago mais recente; fallback para first_touch se vazio.
-    placement = ""
-    if lead.last_touch and lead.last_touch.placement:
-        placement = lead.last_touch.placement
-    elif lead.first_touch and lead.first_touch.placement:
-        placement = lead.first_touch.placement
     return [
         str(lead.id),
         _fmt_dt_br(lead.created_at),
@@ -115,7 +108,6 @@ def _lead_row(lead: Lead) -> List[str]:
         lead.utm_campaign or "",
         lead.utm_content or "",
         lead.utm_term or "",
-        placement,
         _clip_text(lead.url, URL_MAX_LEN),
         _clip_text(lead.referrer, URL_MAX_LEN),
         lead.src or "",

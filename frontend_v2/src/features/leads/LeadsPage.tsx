@@ -30,6 +30,13 @@ import {
   DialogActions,
   Button,
   Menu,
+  FormControlLabel,
+  Checkbox,
+  Card,
+  CardContent,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
@@ -155,6 +162,8 @@ function canEditLeadPhone(lead: Lead): boolean {
 
 export default function LeadsPage() {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { success, error: showError } = useToast();
   const [filters, setFilters] = useState<LeadsFilters>({
     page: 1,
@@ -163,6 +172,7 @@ export default function LeadsPage() {
   });
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [manualPhone, setManualPhone] = useState('');
+  const [respondeuPrimeiraMensagem, setRespondeuPrimeiraMensagem] = useState(false);
   const [statusMenuAnchor, setStatusMenuAnchor] = useState<null | HTMLElement>(null);
   const [statusMenuLead, setStatusMenuLead] = useState<Lead | null>(null);
   const { data, isLoading, error, refetch } = useLeads(filters);
@@ -190,15 +200,22 @@ export default function LeadsPage() {
   const handleOpenPhoneDialog = useCallback((lead: Lead) => {
     setEditingLead(lead);
     setManualPhone(lead.phone ?? '');
+    setRespondeuPrimeiraMensagem(false);
   }, []);
 
   const handleClosePhoneDialog = useCallback(() => {
     setEditingLead(null);
     setManualPhone('');
+    setRespondeuPrimeiraMensagem(false);
   }, []);
 
   const handleSavePhone = useCallback(async () => {
     if (!editingLead) return;
+
+    if (!respondeuPrimeiraMensagem) {
+      showError('Confirme que o cliente respondeu a primeira mensagem');
+      return;
+    }
 
     const digits = manualPhone.replace(/\D/g, '');
     if (digits.length < 10) {
@@ -218,7 +235,7 @@ export default function LeadsPage() {
       const message = err instanceof Error ? err.message : 'Erro ao atualizar telefone';
       showError(message);
     }
-  }, [editingLead, handleClosePhoneDialog, manualPhone, showError, success, updateLeadPhone]);
+  }, [editingLead, handleClosePhoneDialog, manualPhone, respondeuPrimeiraMensagem, showError, success, updateLeadPhone]);
 
   const handleOpenStatusMenu = useCallback((event: MouseEvent<HTMLElement>, lead: Lead) => {
     event.stopPropagation();
@@ -368,7 +385,174 @@ export default function LeadsPage() {
         </Stack>
       </Paper>
 
-      {/* Tabela */}
+      {/* Cards (mobile) */}
+      {isMobile ? (
+        <Box>
+          {leads.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                Nenhum lead encontrado
+              </Typography>
+            </Paper>
+          ) : (
+            <Stack spacing={1.5}>
+              {leads.map((lead) => (
+                <Card key={lead.id} variant="outlined">
+                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                    {/* Linha 1: Status (ação principal) + ações */}
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      justifyContent="space-between"
+                      sx={{ mb: 1 }}
+                    >
+                      {canEditLeadPhone(lead) ? (
+                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexGrow: 1, minWidth: 0 }}>
+                          <Chip
+                            size="medium"
+                            color={leadStatusColor(lead.status)}
+                            label={leadStatusLabel(lead.status)}
+                            variant="filled"
+                            clickable
+                            onClick={() => handleOpenPhoneDialog(lead)}
+                            sx={{ fontWeight: 600 }}
+                          />
+                          {lead.status === 'pendente_whatsapp' ? (
+                            <IconButton
+                              size="small"
+                              aria-label="Ações do status"
+                              onClick={(e) => handleOpenStatusMenu(e, lead)}
+                            >
+                              <MoreVertIcon fontSize="small" />
+                            </IconButton>
+                          ) : null}
+                        </Stack>
+                      ) : (
+                        <Chip
+                          size="medium"
+                          color={leadStatusColor(lead.status)}
+                          label={leadStatusLabel(lead.status)}
+                          variant={lead.status ? 'filled' : 'outlined'}
+                          sx={{ fontWeight: 600 }}
+                        />
+                      )}
+                      <Stack direction="row" spacing={0.5}>
+                        {lead.phone ? (
+                          <IconButton
+                            size="small"
+                            color="success"
+                            component="a"
+                            href={buildWhatsAppUrl(lead.phone) ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <WhatsAppIcon fontSize="small" />
+                          </IconButton>
+                        ) : (
+                          <IconButton size="small" disabled>
+                            <WhatsAppIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                        {lead.pedido_id ? (
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            onClick={() => handleViewOrder(lead.pedido_id!)}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        ) : lead.status === 'compra_realizada' ? (
+                          <IconButton size="small" disabled>
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        ) : (
+                          <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
+                            <AddShoppingCartIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </Stack>
+                    </Stack>
+
+                    {/* Linha 2: telefone + valor */}
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {lead.phone ?? 'Sem telefone'}
+                      </Typography>
+                      {lead.valor_pedido ? (
+                        <Chip
+                          size="small"
+                          label={lead.valor_pedido}
+                          color="success"
+                          variant="outlined"
+                        />
+                      ) : null}
+                    </Stack>
+
+                    <Divider sx={{ my: 1 }} />
+
+                    {/* Linha 3: metadados secundários */}
+                    <Stack spacing={0.5}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDate(lead.created_at)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">·</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatEventLabel(lead.event)}
+                        </Typography>
+                        {lead.token_rastreio ? (
+                          <>
+                            <Typography variant="caption" color="text.secondary">·</Typography>
+                            <Typography
+                              variant="caption"
+                              sx={{ fontFamily: 'monospace' }}
+                              color="text.secondary"
+                            >
+                              {lead.token_rastreio}
+                            </Typography>
+                          </>
+                        ) : null}
+                      </Stack>
+                      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+                        {lead.utm_source ? (
+                          <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} />
+                        ) : null}
+                        {lead.utm_campaign ? (
+                          <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                            {lead.utm_campaign}
+                          </Typography>
+                        ) : null}
+                        {lead.utm_term ? (
+                          <Typography variant="caption" color="text.secondary">
+                            · {displayAdSet(lead.utm_term)}
+                          </Typography>
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          )}
+
+          <Paper sx={{ mt: 1.5 }}>
+            <TablePagination
+              component="div"
+              count={total}
+              page={(filters.page ?? 1) - 1}
+              onPageChange={(_e, newPage) => setFilters((f) => ({ ...f, page: newPage + 1 }))}
+              rowsPerPage={filters.per_page ?? 25}
+              onRowsPerPageChange={(e) =>
+                setFilters((f) => ({ ...f, per_page: parseInt(e.target.value, 10), page: 1 }))
+              }
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              labelRowsPerPage="Por página"
+              labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+            />
+          </Paper>
+        </Box>
+      ) : (
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
@@ -381,21 +565,17 @@ export default function LeadsPage() {
               <TableCell>Código WhatsApp</TableCell>
               <TableCell>Token válido</TableCell>
               <TableCell>Evento</TableCell>
-              <TableCell>fbclid</TableCell>
-              <TableCell>fbp</TableCell>
               <TableCell>Origem</TableCell>
               <TableCell>Campanha</TableCell>
               <TableCell>Grupo de Anúncio</TableCell>
               <TableCell>Conteúdo</TableCell>
-              <TableCell>Placement</TableCell>
               <TableCell>Meio</TableCell>
-              <TableCell>IP</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={17} align="center">
+                <TableCell colSpan={13} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
                     Nenhum lead encontrado
                   </Typography>
@@ -517,12 +697,6 @@ export default function LeadsPage() {
                     )}
                   </TableCell>
                   <TableCell>{formatEventLabel(lead.event)}</TableCell>
-                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {lead.fbclid ?? '—'}
-                  </TableCell>
-                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {lead.fbp ?? '—'}
-                  </TableCell>
                   <TableCell>
                     {lead.utm_source ? (
                       <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} />
@@ -531,9 +705,7 @@ export default function LeadsPage() {
                   <TableCell>{lead.utm_campaign ?? '—'}</TableCell>
                   <TableCell>{displayAdSet(lead.utm_term)}</TableCell>
                   <TableCell>{lead.utm_content ?? '—'}</TableCell>
-                  <TableCell>{lead.last_touch?.placement ?? '—'}</TableCell>
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{lead.ip_address ?? '—'}</TableCell>
                 </TableRow>
               ))
             )}
@@ -554,23 +726,43 @@ export default function LeadsPage() {
           labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
         />
       </TableContainer>
+      )}
 
       <Dialog open={!!editingLead} onClose={handleClosePhoneDialog} fullWidth maxWidth="xs">
         <DialogTitle>Atualizar WhatsApp do lead</DialogTitle>
         <DialogContent>
+          <FormControlLabel
+            sx={{ mt: 0.5, mb: 0.5 }}
+            control={
+              <Checkbox
+                checked={respondeuPrimeiraMensagem}
+                onChange={(e) => setRespondeuPrimeiraMensagem(e.target.checked)}
+              />
+            }
+            label="Respondeu primeira mensagem?"
+          />
           <TextField
-            autoFocus
             margin="dense"
             label="Telefone/WhatsApp"
             placeholder="(62) 99999-0000"
             fullWidth
+            disabled={!respondeuPrimeiraMensagem}
+            helperText={
+              respondeuPrimeiraMensagem
+                ? undefined
+                : 'Marque a confirmação acima para liberar o campo'
+            }
             value={manualPhone}
             onChange={(e) => setManualPhone(e.target.value)}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClosePhoneDialog} disabled={updateLeadPhone.isPending}>Cancelar</Button>
-          <Button onClick={handleSavePhone} variant="contained" disabled={updateLeadPhone.isPending}>
+          <Button
+            onClick={handleSavePhone}
+            variant="contained"
+            disabled={updateLeadPhone.isPending || !respondeuPrimeiraMensagem}
+          >
             Salvar
           </Button>
         </DialogActions>

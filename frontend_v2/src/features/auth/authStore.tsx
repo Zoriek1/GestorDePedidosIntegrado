@@ -288,10 +288,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) return true;
-        // Token expirado
-        clearJwt();
-        setJwtToken(null);
-        setJwtUser(null);
+        // Token expirado/inválido — só limpa se o servidor respondeu 401/403.
+        // Erro de rede (catch) não deve apagar a sessão local.
+        if (response.status === 401 || response.status === 403) {
+          clearJwt();
+          setJwtToken(null);
+          setJwtUser(null);
+        }
         return false;
       } catch {
         return false;
@@ -307,11 +310,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Basic ${creds}` },
       });
       const data = await response.json();
-      return !!(data.success && data.authenticated);
+      const ok = !!(data.success && data.authenticated);
+      if (!ok && (response.status === 401 || response.status === 403)) {
+        clearLegacyCreds();
+      }
+      return ok;
     } catch {
       return false;
     }
   }, [jwtToken]);
+
+  // Validação de auth no boot — confirma que sessão local ainda é válida no servidor.
+  // Só revalida se já existe credencial; offline é ignorado para não invalidar à toa.
+  useEffect(() => {
+    const hasJwt = !!(jwtToken || readJwtToken());
+    const hasLegacy = !!readLegacyCreds();
+    if (!hasJwt && !hasLegacy) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    void checkAuth().then((ok) => {
+      if (!ok) {
+        // Sessão expirada/inválida — dispara fluxo padrão de logout + redirect.
+        window.dispatchEvent(new Event('puf_auth_invalid'));
+      }
+    });
+    // Executa apenas uma vez no boot do AuthProvider.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---------------------------------------------------------------------------
   // @deprecated compatibility shims

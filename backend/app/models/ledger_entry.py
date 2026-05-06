@@ -130,6 +130,7 @@ class LedgerEntry(db.Model):
             "pedido_id",
             unique=True,
             sqlite_where=db.text("voided=0 AND pedido_id IS NOT NULL"),
+            postgresql_where=db.text("voided = FALSE AND pedido_id IS NOT NULL"),
         ),
         db.Index(
             "uq_ledger_weekly_active",

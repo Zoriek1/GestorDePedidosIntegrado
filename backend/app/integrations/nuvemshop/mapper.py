@@ -3,7 +3,9 @@ Mapeamento de Order (Nuvemshop) -> Pedido (sistema interno).
 """
 
 import json
+import os
 import re
+import unicodedata
 from datetime import date, datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
@@ -525,6 +527,65 @@ def _is_pickup_shipping_text(text: str) -> bool:
     return any(keyword in lowered for keyword in _PICKUP_KEYWORDS)
 
 
+_STREET_PREFIXES = (
+    "rua ", "r. ", "r ",
+    "avenida ", "av. ", "av ",
+    "alameda ", "al. ", "al ",
+    "travessa ", "tv. ", "tv ",
+    "praca ", "pca. ", "pca ",
+    "rodovia ", "rod. ", "rod ",
+)
+
+
+def _normalize_street(value: str) -> str:
+    """Normaliza nome de rua para comparação: sem acento, lowercase, sem prefixo genérico, sem pontuação."""
+    if not value:
+        return ""
+    nfkd = unicodedata.normalize("NFD", value)
+    ascii_val = "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
+    lowered = ascii_val.lower().strip()
+    for prefix in _STREET_PREFIXES:
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix):]
+            break
+    lowered = re.sub(r"[^\w\s]", " ", lowered)
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+def _get_store_address_parts() -> Optional[Tuple[str, str]]:
+    """Lê ENDERECO_FLORICULTURA e retorna (rua_normalizada, numero) ou None."""
+    raw = os.environ.get("ENDERECO_FLORICULTURA", "")
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.split(",")]
+    if len(parts) < 2:
+        return None
+    rua = _normalize_street(parts[0])
+    numero = re.sub(r"[^\d]", "", parts[1])
+    if not rua or not numero:
+        return None
+    return rua, numero
+
+
+def _shipping_matches_store_address(shipping_address: Dict[str, Any]) -> bool:
+    """True quando o endereço de envio bate com o endereço cadastrado da loja.
+
+    Cobre o caso comum de cliente que escolhe retirada mas o checkout da
+    Nuvemshop força preenchimento de endereço — ele cola o próprio endereço
+    da loja para passar.
+    """
+    store = _get_store_address_parts()
+    if not store:
+        return False
+    store_rua, store_numero = store
+
+    rua = _normalize_street(_safe_str(shipping_address.get("address")))
+    numero = re.sub(r"[^\d]", "", _safe_str(shipping_address.get("number")))
+    if not rua or not numero:
+        return False
+    return rua == store_rua and numero == store_numero
+
+
 def _extract_shipping_lines_text(order: Dict[str, Any]) -> str:
     shipping_lines = order.get("shipping_lines")
     if not isinstance(shipping_lines, list):
@@ -573,13 +634,19 @@ def _is_pickup_order(order: Dict[str, Any], shipping_option_text: str) -> bool:
     if _is_pickup_shipping_text(shipping_option_text):
         return True
 
-    # 4) Heurística: ausência total de sinais de entrega.
+    shipping_address = order.get("shipping_address") or {}
+
+    # 4) Endereço de envio é o próprio endereço da loja: cliente escolheu
+    # retirada mas o checkout obrigou preencher endereço — ele copiou o da loja.
+    if _shipping_matches_store_address(shipping_address):
+        return True
+
+    # 5) Heurística: ausência total de sinais de entrega.
     # Quando o pedido não tem endereço de envio real (CEP/rua), não tem
     # shipping_lines, custo de envio é zero e nenhuma opção de envio foi
     # selecionada, é praticamente certo que é retirada — o cliente só tem
     # billing_address por estar cadastrado, mas o pedido em si não envia
     # nada.
-    shipping_address = order.get("shipping_address") or {}
     has_real_shipping_address = bool(
         _safe_str(shipping_address.get("zipcode"))
         or _safe_str(shipping_address.get("address"))

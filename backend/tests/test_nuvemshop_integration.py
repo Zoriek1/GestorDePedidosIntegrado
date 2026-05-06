@@ -185,6 +185,70 @@ def test_map_order_custom_fields_prioridade_sobre_frete():
     assert "custom_field" in (agendamento_source or "")
 
 
+def test_map_order_pickup_por_endereco_da_loja(monkeypatch):
+    """Classifica retirada quando o endereço de envio bate com o cadastrado da loja."""
+    monkeypatch.setenv(
+        "ENDERECO_FLORICULTURA",
+        "Rua 132,289,Setor Sul,Goiania,GO,74093-210",
+    )
+    order = {
+        "id": 1905409900,
+        "number": 200,
+        "token": "abc",
+        "contact_name": "Cliente",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-20T10:00:00-0300",
+        "currency": "BRL",
+        "total": "120.00",
+        "shipping_option": "Entrega Agendada (Huapps)",
+        "shipping_lines": [{"shipping_method": "Entrega Padrão"}],
+        "shipping_address": {
+            "name": "Destinatário",
+            "address": "Rua 132",
+            "number": "289",
+            "locality": "Setor Sul",
+            "city": "Goiânia",
+            "zipcode": "74093210",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["tipo_pedido"] == "Retirada"
+
+
+def test_map_order_endereco_diferente_continua_entrega(monkeypatch):
+    """Endereço de envio fora do endereço da loja permanece Entrega."""
+    monkeypatch.setenv(
+        "ENDERECO_FLORICULTURA",
+        "Rua 132,289,Setor Sul,Goiania,GO,74093-210",
+    )
+    order = {
+        "id": 1905409901,
+        "number": 201,
+        "token": "abc",
+        "contact_name": "Cliente",
+        "contact_phone": "+55 (62) 98402-4028",
+        "created_at": "2026-02-20T10:00:00-0300",
+        "currency": "BRL",
+        "total": "120.00",
+        "shipping_option": "Entrega Agendada (Huapps)",
+        "shipping_lines": [{"shipping_method": "Entrega Padrão"}],
+        "shipping_address": {
+            "name": "Destinatário",
+            "address": "Rua T 55",
+            "number": "930",
+            "locality": "Setor Bueno",
+            "city": "Goiânia",
+            "zipcode": "74215170",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["tipo_pedido"] == "Entrega"
+
+
 def test_map_order_pickup_por_shipping_lines():
     """Classifica retirada quando shipping_lines indicar pickup/retirada."""
     order = {

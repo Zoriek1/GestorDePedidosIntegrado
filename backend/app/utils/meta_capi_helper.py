@@ -38,9 +38,19 @@ def _normalize_source_text(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
+# Fontes/canais com tracking próprio (pixel da Nuvemshop, etc).
+# Enviar Purchase via CAPI duplica conversões — pular sempre.
+_SKIP_SOURCE_TOKENS = ("site", "nuvemshop", "nuvem shop", "loja virtual")
+
+
+def _matches_skip_token(value: str) -> bool:
+    return any(token in value for token in _SKIP_SOURCE_TOKENS)
+
+
 def should_skip_purchase_for_meta_capi(pedido: Pedido) -> bool:
     """
-    Evita duplicação quando a compra já tem tracking próprio.
+    Evita duplicação quando a compra já tem tracking próprio (pixel do site /
+    Nuvemshop). Cobre tanto a fonte (Site/Nuvemshop) quanto a plataforma/canal.
     """
     fonte_rel = _normalize_source_text(
         getattr(getattr(pedido, "fonte_pedido_rel", None), "nome", "")
@@ -49,11 +59,9 @@ def should_skip_purchase_for_meta_capi(pedido: Pedido) -> bool:
     plataforma = _normalize_source_text(getattr(pedido, "plataforma", ""))
     canal = _normalize_source_text(getattr(pedido, "canal", ""))
 
-    if fonte_rel == "site" or fonte_legacy == "site" or canal == "site":
-        return True
-
-    if plataforma == "nuvemshop":
-        return True
+    for value in (fonte_rel, fonte_legacy, plataforma, canal):
+        if value and _matches_skip_token(value):
+            return True
 
     return False
 

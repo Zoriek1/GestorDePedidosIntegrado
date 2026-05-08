@@ -479,6 +479,18 @@ class TestMetaCapiSourceFilter:
                 status_pagamento="Pago",
                 plataforma="Nuvemshop",
             )
+            pedido_fonte_nuvemshop = Pedido(
+                cliente="Cliente Nuvem (fonte)",
+                telefone_cliente="62999990003",
+                destinatario="Destinatário",
+                tipo_pedido="Entrega",
+                produto="Buquê",
+                dia_entrega=date.today(),
+                horario="10:00",
+                cidade="Goiânia",
+                status_pagamento="Pago",
+                fonte_pedido="Nuvemshop",
+            )
             pedido_manual = Pedido(
                 cliente="Cliente Manual",
                 telefone_cliente="62999990002",
@@ -494,6 +506,7 @@ class TestMetaCapiSourceFilter:
 
             assert should_skip_purchase_for_meta_capi(pedido_site) is True
             assert should_skip_purchase_for_meta_capi(pedido_nuvemshop) is True
+            assert should_skip_purchase_for_meta_capi(pedido_fonte_nuvemshop) is True
             assert should_skip_purchase_for_meta_capi(pedido_manual) is False
 
 

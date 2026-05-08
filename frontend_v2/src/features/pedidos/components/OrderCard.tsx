@@ -55,6 +55,8 @@ import { useDeletePedido } from '../../../api/endpoints/pedidos';
 import dayjs from 'dayjs';
 import { formatOrderSourceLabel } from '../utils/sourceLabel';
 
+export type SelectionMode = 'route' | 'print';
+
 interface OrderCardProps {
   pedido: Pedido;
   sellerNameById?: Record<number, string>;
@@ -62,6 +64,7 @@ interface OrderCardProps {
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (pedido: Pedido) => void;
+  selectionMode?: SelectionMode;
 }
 
 export function OrderCard({
@@ -71,6 +74,7 @@ export function OrderCard({
   selectable = false,
   selected = false,
   onToggleSelect,
+  selectionMode = 'route',
 }: OrderCardProps) {
   const navigate = useNavigate();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -359,23 +363,32 @@ export function OrderCard({
               </Stack>
             </Box>
             <Box display="flex" alignItems="center" gap={1}>
-              {selectable && (
-                <Tooltip title={pedido.tipo_pedido === 'Entrega' ? 'Selecionar para rota' : 'Apenas entregas podem ser roteirizadas'}>
-                  <span>
-                    <Checkbox
-                      size="small"
-                      checked={selected}
-                      disabled={pedido.tipo_pedido !== 'Entrega'}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (pedido.tipo_pedido === 'Entrega') {
-                          onToggleSelect?.(pedido);
-                        }
-                      }}
-                    />
-                  </span>
-                </Tooltip>
-              )}
+              {selectable && (() => {
+                const isRouteMode = selectionMode === 'route';
+                const blockedForRoute = isRouteMode && pedido.tipo_pedido !== 'Entrega';
+                const tooltip = isRouteMode
+                  ? pedido.tipo_pedido === 'Entrega'
+                    ? 'Selecionar para rota'
+                    : 'Apenas entregas podem ser roteirizadas'
+                  : 'Selecionar para imprimir em lote';
+                return (
+                  <Tooltip title={tooltip}>
+                    <span>
+                      <Checkbox
+                        size="small"
+                        checked={selected}
+                        disabled={blockedForRoute}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!blockedForRoute) {
+                            onToggleSelect?.(pedido);
+                          }
+                        }}
+                      />
+                    </span>
+                  </Tooltip>
+                );
+              })()}
               <IconButton
                 size="small"
                 onClick={handleMenuOpen}

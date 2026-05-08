@@ -52,7 +52,7 @@ export default function OrdersPage() {
     page: 1,
     per_page: 20,
   });
-  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<null | 'route' | 'print'>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
 
@@ -132,13 +132,17 @@ export default function OrdersPage() {
     }
   };
 
-  const handleToggleSelectionMode = () => {
-    setSelectionMode((prev) => {
-      if (prev) {
-        setSelectedIds(new Set());
-      }
-      return !prev;
-    });
+  const setMode = (mode: null | 'route' | 'print') => {
+    setSelectionMode(mode);
+    setSelectedIds(new Set());
+  };
+
+  const handleToggleRouteMode = () => {
+    setMode(selectionMode === 'route' ? null : 'route');
+  };
+
+  const handleTogglePrintMode = () => {
+    setMode(selectionMode === 'print' ? null : 'print');
   };
 
   const handleToggleSelectPedido = (pedido: { id: number; tipo_pedido?: string }) => {
@@ -147,23 +151,16 @@ export default function OrdersPage() {
       if (next.has(pedido.id)) {
         next.delete(pedido.id);
       } else {
+        // Em modo rota só aceita Entrega; em modo impressão aceita qualquer tipo
+        if (selectionMode === 'route' && pedido.tipo_pedido !== 'Entrega') return next;
         next.add(pedido.id);
       }
       return next;
     });
   };
 
-  const getEntregaIdsSelecionados = (): number[] => {
-    const entregaIds = new Set(
-      visiblePedidos
-        .filter((p) => p.tipo_pedido === 'Entrega')
-        .map((p) => p.id),
-    );
-    return Array.from(selectedIds).filter((id) => entregaIds.has(id));
-  };
-
   const handleCalcularDistanciasSelecionados = async () => {
-    const ids = getEntregaIdsSelecionados();
+    const ids = Array.from(selectedIds);
     if (ids.length === 0) {
       info('Selecione ao menos 1 pedido de entrega');
       return;
@@ -178,9 +175,9 @@ export default function OrdersPage() {
   };
 
   const handleIrParaMapa = () => {
-    const ids = getEntregaIdsSelecionados();
+    const ids = Array.from(selectedIds);
     if (ids.length === 0) {
-      info('Selecione ao menos 1 pedido de entrega para roteirizar');
+      info('Selecione pedidos para roteirizar');
       return;
     }
     const query = `ids=${ids.join(',')}`;
@@ -286,19 +283,35 @@ export default function OrdersPage() {
             gap: { xs: 0.5, sm: 1 },
           }}
         >
-          {/* Botão Roteirizar - sempre visível no topo */}
-          <Tooltip title={selectionMode ? 'Sair do modo de seleção' : 'Selecionar pedidos para roteirizar ou imprimir em lote'}>
+          {/* Botão Roteirizar */}
+          <Tooltip title={selectionMode === 'route' ? 'Sair do modo de roteirização' : 'Selecionar entregas para criar rota'}>
             <Button
-              variant={selectionMode ? 'contained' : 'outlined'}
+              variant={selectionMode === 'route' ? 'contained' : 'outlined'}
               size="small"
               color="primary"
               startIcon={<Route />}
-              onClick={handleToggleSelectionMode}
-              sx={{
-                fontWeight: selectionMode ? 600 : 400,
-              }}
+              onClick={handleToggleRouteMode}
+              sx={{ fontWeight: selectionMode === 'route' ? 600 : 400 }}
             >
-              {isMobile ? (selectionMode ? 'Sair' : 'Rota') : (selectionMode ? 'Sair do modo de rota' : 'Roteirizar')}
+              {isMobile
+                ? (selectionMode === 'route' ? 'Sair' : 'Rota')
+                : (selectionMode === 'route' ? 'Sair do modo de rota' : 'Roteirizar')}
+            </Button>
+          </Tooltip>
+
+          {/* Botão Imprimir lote */}
+          <Tooltip title={selectionMode === 'print' ? 'Sair do modo de impressão em lote' : 'Selecionar até 4 pedidos para imprimir em uma folha'}>
+            <Button
+              variant={selectionMode === 'print' ? 'contained' : 'outlined'}
+              size="small"
+              color="primary"
+              startIcon={<Print />}
+              onClick={handleTogglePrintMode}
+              sx={{ fontWeight: selectionMode === 'print' ? 600 : 400 }}
+            >
+              {isMobile
+                ? (selectionMode === 'print' ? 'Sair' : 'Lote')
+                : (selectionMode === 'print' ? 'Sair do modo de impressão' : 'Imprimir lote')}
             </Button>
           </Tooltip>
           
@@ -426,13 +439,13 @@ export default function OrdersPage() {
           mb: 3,
         }}
       >
-        {/* Ações do modo de roteirização */}
+        {/* Barra de ações do modo de seleção */}
         {selectionMode && (
-          <Stack 
-            direction={{ xs: 'column', sm: 'row' }} 
-            spacing={2} 
-            alignItems={{ xs: 'stretch', sm: 'center' }} 
-            justifyContent="space-between" 
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            justifyContent="space-between"
             mb={2}
             sx={{
               p: 2,
@@ -442,64 +455,76 @@ export default function OrdersPage() {
               borderColor: 'primary.200',
             }}
           >
-            <Stack 
-              direction={{ xs: 'column', sm: 'row' }} 
-              spacing={1} 
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
               alignItems={{ xs: 'stretch', sm: 'center' }}
               flexWrap="wrap"
               sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={handleCalcularDistanciasSelecionados}
-                disabled={calcDistanciasLote.isPending}
-                fullWidth={isMobile}
-              >
-                {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                color="primary"
-                onClick={handleIrParaMapa}
-                disabled={selectedIds.size === 0}
-                fullWidth={isMobile}
-              >
-                Ir para o mapa
-              </Button>
-              <Tooltip
-                title={
-                  selectedIds.size === 0
-                    ? 'Selecione 1 a 4 pedidos para imprimir'
-                    : selectedIds.size > MAX_BATCH_PRINT
-                      ? `Máximo de ${MAX_BATCH_PRINT} pedidos por folha`
-                      : 'Imprime em uma folha A4 (até 4 por página)'
-                }
-              >
-                <span>
+              {selectionMode === 'route' && (
+                <>
                   <Button
                     size="small"
                     variant="outlined"
-                    color="primary"
-                    startIcon={<Print />}
-                    onClick={handleImprimirSelecionados}
-                    disabled={selectedIds.size === 0 || selectedIds.size > MAX_BATCH_PRINT}
+                    onClick={handleCalcularDistanciasSelecionados}
+                    disabled={calcDistanciasLote.isPending || selectedIds.size === 0}
                     fullWidth={isMobile}
                   >
-                    Imprimir selecionados
+                    {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
                   </Button>
-                </span>
-              </Tooltip>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    onClick={handleIrParaMapa}
+                    disabled={selectedIds.size === 0}
+                    fullWidth={isMobile}
+                  >
+                    Ir para o mapa
+                  </Button>
+                </>
+              )}
+              {selectionMode === 'print' && (
+                <Tooltip
+                  title={
+                    selectedIds.size === 0
+                      ? 'Selecione 1 a 4 pedidos'
+                      : selectedIds.size > MAX_BATCH_PRINT
+                        ? `Máximo de ${MAX_BATCH_PRINT} pedidos por folha`
+                        : 'Imprime em uma folha A4'
+                  }
+                >
+                  <span>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="primary"
+                      startIcon={<Print />}
+                      onClick={handleImprimirSelecionados}
+                      disabled={selectedIds.size === 0 || selectedIds.size > MAX_BATCH_PRINT}
+                      fullWidth={isMobile}
+                    >
+                      Imprimir {selectedIds.size > 0 ? `(${selectedIds.size})` : 'selecionados'}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
             </Stack>
             <Stack direction="column" spacing={0.5} alignItems={{ xs: 'center', sm: 'flex-end' }}>
               <Chip
                 color={selectedIds.size > 0 ? 'primary' : 'default'}
-                label={`${selectedIds.size} selecionado(s)`}
+                label={
+                  selectionMode === 'route'
+                    ? `${selectedIds.size} selecionado(s) para rota`
+                    : `${selectedIds.size} selecionado(s) para imprimir`
+                }
               />
-              <Typography variant="caption" color="text.secondary">
-                Até {MAX_BATCH_PRINT} pedidos por folha
-              </Typography>
+              {selectionMode === 'print' && (
+                <Typography variant="caption" color="text.secondary">
+                  Até {MAX_BATCH_PRINT} pedidos por folha
+                </Typography>
+              )}
             </Stack>
           </Stack>
         )}
@@ -527,7 +552,8 @@ export default function OrdersPage() {
           <OrderList
             pedidos={visiblePedidos}
             onOrderClick={handleOrderClick}
-            selectionMode={selectionMode}
+            selectionMode={selectionMode !== null}
+            selectionKind={selectionMode ?? 'route'}
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelectPedido}
           />

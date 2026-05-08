@@ -6,7 +6,7 @@ import { useState, useMemo } from 'react';
 import { Grid, Box, Typography, Paper, Collapse, IconButton } from '@mui/material';
 import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import type { Pedido } from '../../../api/endpoints/pedidos';
-import { OrderCard } from './OrderCard';
+import { OrderCard, type SelectionMode } from './OrderCard';
 import { groupOrdersByDate } from '../utils/dateGrouping';
 import { useUsers } from '../../users/services/userApi';
 import { useAuth } from '../../auth/authStore';
@@ -15,11 +15,12 @@ interface OrderListProps {
   pedidos: Pedido[];
   onOrderClick?: (pedido: Pedido) => void;
   selectionMode?: boolean;
+  selectionKind?: SelectionMode;
   selectedIds?: Set<number>;
   onToggleSelect?: (pedido: Pedido) => void;
 }
 
-export function OrderList({ pedidos, onOrderClick, selectionMode = false, selectedIds, onToggleSelect }: OrderListProps) {
+export function OrderList({ pedidos, onOrderClick, selectionMode = false, selectionKind = 'route', selectedIds, onToggleSelect }: OrderListProps) {
   const { getUserRole, getUser } = useAuth();
   const userRole = getUserRole();
   const currentUser = getUser();
@@ -175,6 +176,7 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
                       sellerNameById={sellerNameById}
                       onClick={onOrderClick ? () => onOrderClick(pedido) : undefined}
                       selectable={selectionMode}
+                      selectionMode={selectionKind}
                       selected={selectedIds ? selectedIds.has(pedido.id) : false}
                       onToggleSelect={onToggleSelect}
                     />

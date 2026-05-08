@@ -8,6 +8,105 @@ from datetime import datetime
 from app.repositories.pedido_repository import PedidoRepository
 
 
+def fmt(val):
+    return str(val) if val is not None and val != "" else "-"
+
+
+def parse_valor_to_float(val):
+    """
+    Parse valor de qualquer formato para float
+    Suporta:
+    - Números: 10.00, 65
+    - Formato BR: "R$ 65,00", "65,00", "1.234,56"
+    - Formato US: "10.00", "65.5"
+    - String simples: "10", "65"
+    """
+    if val is None or val == "":
+        return 0.0
+
+    if isinstance(val, (int, float)):
+        return float(val)
+
+    val_str = str(val).strip().replace("R$", "").strip()
+    if not val_str:
+        return 0.0
+
+    if "," in val_str:
+        clean = val_str.replace(".", "").replace(",", ".")
+        try:
+            return float(clean)
+        except (ValueError, TypeError):
+            return 0.0
+
+    if "." in val_str:
+        dot_count = val_str.count(".")
+        if dot_count == 1:
+            try:
+                return float(val_str)
+            except (ValueError, TypeError):
+                return 0.0
+        else:
+            clean = val_str.replace(".", "")
+            try:
+                return float(clean)
+            except (ValueError, TypeError):
+                return 0.0
+
+    try:
+        return float(val_str)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def fmt_brl(val):
+    if val is None or val == "":
+        return "-"
+    try:
+        num = parse_valor_to_float(val)
+        return f"R$ {num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return str(val)
+
+
+def build_pedido_context(pedido) -> dict:
+    """Constrói o data bag de contexto a partir do model Pedido."""
+    cliente_norm = (pedido.cliente or "").strip().lower()
+    destinatario_norm = (pedido.destinatario or "").strip().lower()
+    is_mesma_pessoa = cliente_norm == destinatario_norm
+
+    is_retirada = (pedido.tipo_pedido or "").lower() == "retirada"
+
+    return {
+        "id": pedido.id,
+        "status": pedido.status,
+        "tipo": pedido.tipo_pedido,
+        "fonte": pedido.fonte_pedido_rel.nome
+        if pedido.fonte_pedido_rel
+        else (pedido.fonte_pedido or ""),
+        "cliente_nome": pedido.cliente,
+        "cliente_tel": pedido.telefone_cliente,
+        "destinatario_nome": pedido.destinatario,
+        "show_destinatario": not is_mesma_pessoa,
+        "produto": pedido.produto,
+        "flores_cor": pedido.flores_cor,
+        "mensagem": pedido.mensagem,
+        "quantidade": pedido.quantidade,
+        "valor": pedido.valor,
+        "data_entrega": pedido.dia_entrega.strftime("%d/%m/%Y") if pedido.dia_entrega else "",
+        "horario": pedido.horario,
+        "endereco": None if is_retirada else pedido.endereco,
+        "cidade": None if is_retirada else pedido.cidade,
+        "cep": None if is_retirada else pedido.cep,
+        "distancia": None if is_retirada else pedido.distancia_km,
+        "taxa": None if is_retirada else pedido.taxa_entrega,
+        "obs_entrega": None if is_retirada else pedido.obs_entrega,
+        "pagamento": pedido.pagamento,
+        "status_pagto": pedido.status_pagamento,
+        "obs": pedido.observacoes,
+        "impresso_em": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+    }
+
+
 class GerarComprovanteCommand:
     def __init__(self, pedido_id: int):
         self.pedido_id = pedido_id
@@ -20,58 +119,11 @@ class GerarComprovanteCommand:
         2. Aplica regras de negócio (Business Logic)
         3. Renderiza visual (Template)
         """
-        # 1. Busca dados
         pedido = self.pedido_repo.get_by_id(self.pedido_id)
         if not pedido:
             raise ValueError("Pedido não encontrado")
 
-        # 2. Regras de Negócio
-
-        # Regra de Atores: Cliente == Destinatário?
-        cliente_norm = (pedido.cliente or "").strip().lower()
-        destinatario_norm = (pedido.destinatario or "").strip().lower()
-        is_mesma_pessoa = cliente_norm == destinatario_norm
-
-        # Regra de Contexto: Retirada vs Entrega
-        is_retirada = (pedido.tipo_pedido or "").lower() == "retirada"
-
-        # Preparação do Contexto (Data Bag)
-        ctx = {
-            "id": pedido.id,
-            "status": pedido.status,
-            "tipo": pedido.tipo_pedido,
-            "fonte": pedido.fonte_pedido_rel.nome
-            if pedido.fonte_pedido_rel
-            else (pedido.fonte_pedido or ""),
-            # Atores
-            "cliente_nome": pedido.cliente,
-            "cliente_tel": pedido.telefone_cliente,
-            "destinatario_nome": pedido.destinatario,
-            "show_destinatario": not is_mesma_pessoa,  # Flag para o template
-            # Produto
-            "produto": pedido.produto,
-            "flores_cor": pedido.flores_cor,
-            "mensagem": pedido.mensagem,
-            "quantidade": pedido.quantidade,
-            "valor": pedido.valor,
-            # Logística
-            "data_entrega": pedido.dia_entrega.strftime("%d/%m/%Y") if pedido.dia_entrega else "",
-            "horario": pedido.horario,
-            "endereco": None if is_retirada else pedido.endereco,  # Null Check Rule
-            "cidade": None if is_retirada else pedido.cidade,
-            "cep": None if is_retirada else pedido.cep,
-            "distancia": None if is_retirada else pedido.distancia_km,
-            "taxa": None if is_retirada else pedido.taxa_entrega,
-            "obs_entrega": None if is_retirada else pedido.obs_entrega,
-            # Pagamento
-            "pagamento": pedido.pagamento,
-            "status_pagto": pedido.status_pagamento,
-            "obs": pedido.observacoes,
-            # Meta
-            "impresso_em": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-        }
-
-        # 3. Renderiza Template
+        ctx = build_pedido_context(pedido)
         return self._render_template(ctx)
 
     def _render_template(self, ctx: dict) -> str:
@@ -80,84 +132,10 @@ class GerarComprovanteCommand:
         Gera HTML otimizado para impressão térmica/A4
         """
 
-        # Helpers de formatação
-        def fmt(val):
-            return str(val) if val is not None and val != "" else "-"
-
-        def parse_valor_to_float(val):
-            """
-            Parse valor de qualquer formato para float
-            Suporta:
-            - Números: 10.00, 65
-            - Formato BR: "R$ 65,00", "65,00", "1.234,56"
-            - Formato US: "10.00", "65.5"
-            - String simples: "10", "65"
-            """
-            if val is None or val == "":
-                return 0.0
-
-            # Se já é número, retornar diretamente
-            if isinstance(val, (int, float)):
-                return float(val)
-
-            val_str = str(val).strip().replace("R$", "").strip()
-            if not val_str:
-                return 0.0
-
-            # Detectar formato brasileiro (tem vírgula)
-            if "," in val_str:
-                # Formato BR: "65,00" ou "1.234,56"
-                # Remover pontos (separadores de milhar) e substituir vírgula por ponto
-                clean = val_str.replace(".", "").replace(",", ".")
-                try:
-                    return float(clean)
-                except (ValueError, TypeError):
-                    return 0.0
-
-            # Detectar formato americano ou número simples (tem ponto decimal ou não)
-            if "." in val_str:
-                # Contar pontos - se tiver mais de 1, pode ser separador de milhar
-                dot_count = val_str.count(".")
-                if dot_count == 1:
-                    # Um ponto = decimal americano: "10.00"
-                    try:
-                        return float(val_str)
-                    except (ValueError, TypeError):
-                        return 0.0
-                else:
-                    # Múltiplos pontos = separadores de milhar: "1.234.567"
-                    # Remover todos os pontos
-                    clean = val_str.replace(".", "")
-                    try:
-                        return float(clean)
-                    except (ValueError, TypeError):
-                        return 0.0
-
-            # String simples sem formatação: "10", "65"
-            try:
-                return float(val_str)
-            except (ValueError, TypeError):
-                return 0.0
-
-        def fmt_brl(val):
-            if val is None or val == "":
-                return "-"
-            try:
-                # Usar função unificada de parsing
-                num = parse_valor_to_float(val)
-                # Formatar como R$ X.XXX,XX
-                return f"R$ {num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            except (ValueError, TypeError):
-                return str(val)
-
-        # Badges e Estilos Condicionais
         status_pagto_class = (
             "badge-black" if str(ctx.get("status_pagto")).lower() == "pendente" else "badge"
         )
 
-        # Lógica de renderização de seções (simulando 'if' do template engine)
-
-        # Seção Destinatário (só renderiza se show_destinatario for True)
         html_destinatario = ""
         if ctx["show_destinatario"]:
             html_destinatario = f"""
@@ -167,7 +145,6 @@ class GerarComprovanteCommand:
             </div>
             """
 
-        # Seção Endereço (só renderiza se não for Retirada e tiver endereço)
         html_endereco = ""
         if ctx["endereco"]:
             html_endereco = f"""
@@ -190,7 +167,6 @@ class GerarComprovanteCommand:
              </div>
              """
 
-        # HTML Structure
         return f"""
 <!DOCTYPE html>
 <html lang="pt-BR">

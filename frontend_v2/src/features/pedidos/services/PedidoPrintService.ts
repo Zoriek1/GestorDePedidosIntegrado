@@ -26,17 +26,17 @@ export class PedidoPrintService implements IPedidoPrintService {
       'Accept': 'text/html',
       ...authHeaders,
     };
-    
+
     const url = `${getApiBaseUrl()}/pedidos/${pedidoId}/comprovante`;
     const response = await fetch(url, { headers });
-    
+
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Erro desconhecido');
       throw new Error(`Erro ${response.status} ao gerar comprovante: ${errorText}`);
     }
 
     const html = await response.text();
-    
+
     // 2. Abre janela e injeta HTML
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -50,6 +50,51 @@ export class PedidoPrintService implements IPedidoPrintService {
     // 3. Marca como impresso (Best Effort)
     if (this.marcarImpresso) {
         this.marcarImpresso(pedidoId).catch(() => {});
+    }
+  }
+
+  async printBatch(pedidoIds: number[]): Promise<void> {
+    if (pedidoIds.length === 0) {
+      throw new Error('Selecione ao menos 1 pedido para imprimir');
+    }
+    if (pedidoIds.length > 4) {
+      throw new Error('Máximo de 4 pedidos por folha');
+    }
+
+    const authHeaders = this.getAuthHeader();
+    const headers: Record<string, string> = {
+      'Accept': 'text/html',
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    };
+
+    const url = `${getApiBaseUrl()}/pedidos/comprovante-lote`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ pedido_ids: pedidoIds }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Erro desconhecido');
+      throw new Error(`Erro ${response.status} ao gerar comprovante em lote: ${errorText}`);
+    }
+
+    const html = await response.text();
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      throw new Error('Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.');
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+
+    if (this.marcarImpresso) {
+      pedidoIds.forEach((id) => {
+        this.marcarImpresso?.(id).catch(() => {});
+      });
     }
   }
 }

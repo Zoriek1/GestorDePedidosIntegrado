@@ -11,6 +11,10 @@ from flask import Blueprint, g, request
 
 # Command Pattern Imports
 from app.commands.gerar_comprovante_command import GerarComprovanteCommand
+from app.commands.gerar_comprovante_lote_command import (
+    MAX_PEDIDOS_POR_LOTE,
+    GerarComprovanteLoteCommand,
+)
 from app.middleware import requires_any_role, requires_edit_auth, requires_role
 from app.models.lead import Lead
 from app.models.pedido import datetime_now_brazil
@@ -1154,6 +1158,38 @@ def obter_comprovante(pedido_id):
 
         traceback.print_exc()
         return error_response(f"Erro ao gerar comprovante: {str(e)}", 500)
+
+
+@pedidos_bp.route("/comprovante-lote", methods=["POST"])
+def obter_comprovante_lote():
+    """Gera comprovante em lote (HTML A4 com até 4 pedidos por folha)."""
+    try:
+        from flask import Response
+
+        payload = request.get_json(silent=True) or {}
+        pedido_ids = payload.get("pedido_ids", [])
+
+        if not isinstance(pedido_ids, list) or not pedido_ids:
+            return error_response("Informe ao menos 1 pedido em 'pedido_ids'", 400)
+
+        try:
+            pedido_ids = [int(pid) for pid in pedido_ids]
+        except (TypeError, ValueError):
+            return error_response("IDs de pedido inválidos", 400)
+
+        if len(pedido_ids) > MAX_PEDIDOS_POR_LOTE:
+            return error_response(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por folha", 400)
+
+        command = GerarComprovanteLoteCommand(pedido_ids)
+        html = command.execute()
+        return Response(html, mimetype="text/html")
+    except ValueError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return error_response(f"Erro ao gerar comprovante em lote: {str(e)}", 500)
 
 
 @pedidos_bp.route("/ocultar-concluidos", methods=["POST"])

@@ -3,12 +3,10 @@ import {
   Box,
   Typography,
   Paper,
-  Grid,
   Stack,
   Divider,
   Button,
   Chip,
-  Avatar,
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -26,10 +24,16 @@ import { buildEncaminharMensagem } from './components/OrderCardHelpers';
 import { copyToClipboard } from '../../lib/utils/clipboard';
 import { formatOrderSourceLabel } from './utils/sourceLabel';
 import { useUsers } from '../users/services/userApi';
-import PersonIcon from '@mui/icons-material/Person';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import PaidIcon from '@mui/icons-material/Paid';
+
+type StatusPagamentoColor = 'success' | 'warning' | 'default' | 'error';
+
+const getStatusPagamentoColor = (status?: string | null): StatusPagamentoColor => {
+  const s = (status || '').toLowerCase();
+  if (s === 'pago') return 'success';
+  if (s === 'parcial') return 'warning';
+  if (s === 'cancelado') return 'error';
+  return 'default';
+};
 
 export default function OrderDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -56,18 +60,6 @@ export default function OrderDetailsPage() {
     }
     return map;
   }, [users, currentUser]);
-
-  const renderRow = (label: string, value?: string | number | null) => {
-    if (value === undefined || value === null || value === '') return null;
-    return (
-      <Box>
-        <Typography variant="caption" color="text.secondary">
-          {label}
-        </Typography>
-        <Typography variant="body1">{value}</Typography>
-      </Box>
-    );
-  };
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message={error.message || 'Erro ao carregar pedido'} onRetry={() => refetch()} />;
@@ -129,7 +121,12 @@ export default function OrderDetailsPage() {
   const statusColor = getStatusColor(pedido.status);
   const valorTotal = pedido.valor ? formatBRL(pedido.valor) : 'R$ 0,00';
   const entregaData = pedido.dia_entrega ? dayjs(pedido.dia_entrega).format('DD/MM/YYYY') : '-';
-  const entregaHora = pedido.horario || '-';
+  const entregaHora = pedido.horario || '';
+  const isRetirada = (pedido.tipo_pedido || '').toLowerCase() === 'retirada';
+  const isMesmaPessoa =
+    (pedido.cliente || '').trim().toLowerCase() ===
+    (pedido.destinatario || '').trim().toLowerCase();
+
   const sourceLabel = formatOrderSourceLabel({
     sourceName: pedido.fonte_pedido_nome,
     legacySource: pedido.fonte_pedido,
@@ -137,8 +134,49 @@ export default function OrderDetailsPage() {
     vendedorName: pedido.vendedor_id ? sellerNameById[pedido.vendedor_id] : undefined,
   });
 
+  const statusPagtoColor = getStatusPagamentoColor(pedido.status_pagamento);
+  const enderecoCompleto = pedido.endereco
+    ? pedido.endereco
+    : [pedido.rua, pedido.numero].filter(Boolean).join(', ') || null;
+
+  const heroItem = (label: string, value: React.ReactNode, emphasis = false) => (
+    <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </Typography>
+      <Typography
+        variant={emphasis ? 'h5' : 'body1'}
+        fontWeight={emphasis ? 700 : 500}
+        sx={{ wordBreak: 'break-word' }}
+      >
+        {value}
+      </Typography>
+    </Stack>
+  );
+
+  const inlineRow = (label: string, value?: string | number | null) => {
+    if (value === undefined || value === null || value === '') return null;
+    return (
+      <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
+        <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 110 }}>
+          {label}
+        </Typography>
+        <Typography variant="body1" fontWeight={500} sx={{ wordBreak: 'break-word' }}>
+          {value}
+        </Typography>
+      </Stack>
+    );
+  };
+
+  const sectionTitle = (text: string) => (
+    <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2, fontWeight: 700 }}>
+      {text}
+    </Typography>
+  );
+
   return (
     <Box>
+      {/* Action bar */}
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -178,136 +216,207 @@ export default function OrderDetailsPage() {
         </Stack>
       </Stack>
 
-      {/* Resumo rápido */}
+      {/* Hero card — informação prioritária */}
       <Paper
         sx={{
-          p: 3,
-          mb: 3,
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 3,
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          p: { xs: 2.5, md: 3 },
+          mb: 2,
+          background: (theme) =>
+            `linear-gradient(135deg, ${theme.palette.primary.light}1A, ${theme.palette.background.paper})`,
+          borderLeft: (theme) => `4px solid ${theme.palette.primary.main}`,
         }}
       >
-        <Stack spacing={0.5}>
-          <Typography variant="body2" color="text.secondary">
-            Valor Total
-          </Typography>
-          <Typography variant="h5" fontWeight="bold">
-            {valorTotal}
-          </Typography>
-        </Stack>
-        <Stack spacing={0.5}>
-          <Typography variant="body2" color="text.secondary">
-            Entrega
-          </Typography>
-          <Typography variant="body1">
-            {entregaData} {entregaHora && `• ${entregaHora}`}
-          </Typography>
-        </Stack>
-        <Stack spacing={0.5}>
-          <Typography variant="body2" color="text.secondary">
-            Tipo
-          </Typography>
-          <Typography variant="body1">{pedido.tipo_pedido || '-'}</Typography>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={{ xs: 2, md: 4 }}
+          divider={<Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', md: 'block' } }} />}
+          alignItems={{ xs: 'flex-start', md: 'center' }}
+        >
+          {heroItem('Cliente', pedido.cliente || '-', true)}
+          {heroItem(
+            isRetirada ? 'Retirada' : 'Entrega',
+            <>
+              {entregaData}
+              {entregaHora && (
+                <Typography component="span" variant="body1" color="text.secondary" sx={{ ml: 1 }}>
+                  {entregaHora}
+                </Typography>
+              )}
+            </>,
+          )}
+          {heroItem('Valor', valorTotal, true)}
+          {heroItem('Pagamento', (
+            <Chip
+              label={pedido.status_pagamento || 'Pendente'}
+              color={statusPagtoColor}
+              size="small"
+              sx={{ fontWeight: 700 }}
+            />
+          ))}
         </Stack>
       </Paper>
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-              <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main', width: 32, height: 32 }}>
-                <PersonIcon fontSize="small" />
-              </Avatar>
-              <Typography variant="h6">Cliente</Typography>
-            </Stack>
-            <Divider sx={{ mb: 2 }} />
-            <Stack spacing={1.5}>
-              {renderRow('Nome', pedido.cliente)}
-              {renderRow('Telefone', pedido.telefone_cliente)}
-              {renderRow('Destinatário', pedido.destinatario)}
-              {renderRow('Fonte do Pedido', sourceLabel)}
-            </Stack>
-          </Paper>
-        </Grid>
+      {/* Mensagem do cartão — destaque */}
+      {pedido.mensagem && (
+        <Paper
+          sx={{
+            p: { xs: 2.5, md: 3 },
+            mb: 2,
+            border: '2px dashed',
+            borderColor: 'warning.light',
+            backgroundColor: '#fff8e1',
+          }}
+        >
+          {sectionTitle('Mensagem do cartão')}
+          <Typography
+            variant="h6"
+            sx={{
+              mt: 1,
+              fontStyle: 'italic',
+              fontWeight: 500,
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.5,
+            }}
+          >
+            “{pedido.mensagem}”
+          </Typography>
+        </Paper>
+      )}
 
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-              <Avatar sx={{ bgcolor: 'warning.light', color: 'warning.main', width: 32, height: 32 }}>
-                <Inventory2Icon fontSize="small" />
-              </Avatar>
-              <Typography variant="h6">Produto</Typography>
-            </Stack>
-            <Divider sx={{ mb: 2 }} />
-            <Stack spacing={1.5}>
-              {renderRow('Descrição', pedido.produto)}
-              {renderRow('Flores / Cor', pedido.flores_cor)}
-              {renderRow('Mensagem', pedido.mensagem)}
-              {renderRow('Quantidade', pedido.quantidade)}
-              {renderRow('Valor', valorTotal)}
-            </Stack>
-          </Paper>
-        </Grid>
+      {/* Destinatário (se diferente do cliente) */}
+      {!isMesmaPessoa && pedido.destinatario && (
+        <Paper sx={{ p: 2.5, mb: 2 }}>
+          {sectionTitle('Destinatário')}
+          <Stack spacing={1} mt={1}>
+            {inlineRow('Nome', pedido.destinatario)}
+            {inlineRow('Telefone', pedido.telefone_cliente)}
+          </Stack>
+        </Paper>
+      )}
 
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-              <Avatar sx={{ bgcolor: 'info.light', color: 'info.main', width: 32, height: 32 }}>
-                <LocalShippingIcon fontSize="small" />
-              </Avatar>
-              <Typography variant="h6">Logística</Typography>
-            </Stack>
-            <Divider sx={{ mb: 2 }} />
-            <Stack spacing={1.5}>
-              {renderRow('Tipo', pedido.tipo_pedido)}
-              {renderRow('Data', entregaData)}
-              {renderRow('Horário', pedido.horario)}
-              {renderRow('CEP', pedido.cep)}
-              {renderRow('Endereço', pedido.endereco)}
-              {renderRow('Bairro', pedido.bairro)}
-              {renderRow('Cidade', pedido.cidade)}
-              {renderRow('Observações de Entrega', pedido.obs_entrega)}
-              {renderRow(
-                'Taxa de Entrega',
-                pedido.taxa_entrega !== undefined ? formatBRL(pedido.taxa_entrega) : undefined,
-              )}
-              {renderRow(
-                'Distância',
-                pedido.distancia_km !== undefined && pedido.distancia_km !== null
-                  ? `${pedido.distancia_km.toFixed(2)} km`
-                  : undefined,
-              )}
-            </Stack>
-          </Paper>
-        </Grid>
+      {/* Produto */}
+      <Paper sx={{ p: 2.5, mb: 2 }}>
+        {sectionTitle('Produto')}
+        <Stack spacing={1} mt={1}>
+          {inlineRow('Descrição', pedido.produto)}
+          {inlineRow('Flores / Cor', pedido.flores_cor)}
+          {inlineRow('Quantidade', pedido.quantidade)}
+        </Stack>
+      </Paper>
 
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-              <Avatar sx={{ bgcolor: 'success.light', color: 'success.main', width: 32, height: 32 }}>
-                <PaidIcon fontSize="small" />
-              </Avatar>
-              <Typography variant="h6">Financeiro</Typography>
-            </Stack>
-            <Divider sx={{ mb: 2 }} />
-            <Stack spacing={1.5}>
-              {renderRow('Pagamento', pedido.pagamento)}
-              {renderRow('Status Pagamento', pedido.status_pagamento)}
-              {renderRow('Observações', pedido.observacoes)}
-              {renderRow('Criado em', pedido.created_at ? dayjs(pedido.created_at).format('DD/MM/YYYY HH:mm') : undefined)}
-              {renderRow(
-                'Atualizado em',
-                pedido.updated_at ? dayjs(pedido.updated_at).format('DD/MM/YYYY HH:mm') : undefined,
+      {/* Logística */}
+      <Paper sx={{ p: 2.5, mb: 2 }}>
+        {sectionTitle(isRetirada ? 'Retirada' : 'Endereço de entrega')}
+        <Stack spacing={1} mt={1}>
+          {isRetirada ? (
+            <Typography variant="body1" fontWeight={600}>
+              Retirada na loja em {entregaData}
+              {entregaHora && ` · ${entregaHora}`}
+            </Typography>
+          ) : (
+            <>
+              {enderecoCompleto && (
+                <Typography variant="body1" fontWeight={600}>
+                  {enderecoCompleto}
+                </Typography>
               )}
-              {renderRow('Impresso', pedido.impresso ? 'Sim' : 'Não')}
-              {renderRow('Oculto', pedido.oculto ? 'Sim' : 'Não')}
-            </Stack>
-          </Paper>
-        </Grid>
-      </Grid>
+              <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+                {pedido.bairro && inlineRow('Bairro', pedido.bairro)}
+                {pedido.cidade && inlineRow('Cidade', pedido.cidade)}
+                {pedido.cep && inlineRow('CEP', pedido.cep)}
+                {pedido.distancia_km !== undefined &&
+                  pedido.distancia_km !== null &&
+                  inlineRow('Distância', `${pedido.distancia_km.toFixed(2)} km`)}
+                {pedido.taxa_entrega !== undefined &&
+                  pedido.taxa_entrega !== null &&
+                  inlineRow('Taxa', formatBRL(pedido.taxa_entrega))}
+              </Stack>
+              {pedido.obs_entrega && (
+                <Box
+                  sx={{
+                    mt: 1,
+                    p: 1.5,
+                    bgcolor: '#e3f2fd',
+                    borderLeft: '3px solid',
+                    borderColor: 'info.main',
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+                    Observação de entrega
+                  </Typography>
+                  <Typography variant="body1" fontWeight={500} sx={{ whiteSpace: 'pre-wrap' }}>
+                    {pedido.obs_entrega}
+                  </Typography>
+                </Box>
+              )}
+            </>
+          )}
+        </Stack>
+      </Paper>
+
+      {/* Pagamento */}
+      <Paper sx={{ p: 2.5, mb: 2 }}>
+        {sectionTitle('Pagamento')}
+        <Stack spacing={1} mt={1}>
+          {inlineRow('Forma', pedido.pagamento)}
+          <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
+            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 110 }}>
+              Status
+            </Typography>
+            <Chip
+              label={pedido.status_pagamento || 'Pendente'}
+              color={statusPagtoColor}
+              size="small"
+              sx={{ fontWeight: 700 }}
+            />
+          </Stack>
+          {pedido.observacoes && (
+            <Box
+              sx={{
+                mt: 1,
+                p: 1.5,
+                bgcolor: 'grey.100',
+                borderRadius: 1,
+              }}
+            >
+              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+                Observações
+              </Typography>
+              <Typography variant="body1" fontWeight={500} sx={{ whiteSpace: 'pre-wrap' }}>
+                {pedido.observacoes}
+              </Typography>
+            </Box>
+          )}
+        </Stack>
+      </Paper>
+
+      {/* Metadados — rodapé discreto */}
+      <Divider sx={{ my: 2 }} />
+      <Stack
+        direction="row"
+        spacing={2}
+        flexWrap="wrap"
+        useFlexGap
+        sx={{ pb: 2 }}
+      >
+        {pedido.created_at && (
+          <Typography variant="caption" color="text.secondary">
+            Criado em {dayjs(pedido.created_at).format('DD/MM/YYYY HH:mm')}
+          </Typography>
+        )}
+        {pedido.updated_at && (
+          <Typography variant="caption" color="text.secondary">
+            Atualizado em {dayjs(pedido.updated_at).format('DD/MM/YYYY HH:mm')}
+          </Typography>
+        )}
+        <Typography variant="caption" color="text.secondary">
+          Impresso: {pedido.impresso ? 'Sim' : 'Não'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Oculto: {pedido.oculto ? 'Sim' : 'Não'}
+        </Typography>
+      </Stack>
     </Box>
   );
 }

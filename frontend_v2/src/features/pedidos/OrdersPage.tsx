@@ -20,7 +20,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Refresh, DeleteSweep, FileDownload, FilterList, Route } from '@mui/icons-material';
+import { Refresh, DeleteSweep, FileDownload, FilterList, Route, Print } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
@@ -36,6 +36,9 @@ import { useConfirm } from '../../components/system/useConfirm';
 import { OrdersKPIGrid } from './components/OrdersKPIGrid';
 import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
 import { OrdersPagination } from './components/OrdersPagination';
+import { usePedidoPrintService } from './services/PedidoPrintService';
+
+const MAX_BATCH_PRINT = 4;
 
 export default function OrdersPage() {
   const theme = useTheme();
@@ -58,6 +61,7 @@ export default function OrdersPage() {
   const { success, error: showError, info } = useToast();
   const confirm = useConfirm();
   const _gerarRotaMaps = useGerarRotaMaps();
+  const printService = usePedidoPrintService();
   
   const userRole = getUserRole() || 'admin'; // Default para admin se não especificado
   const isAdmin = userRole === 'admin';
@@ -143,15 +147,23 @@ export default function OrdersPage() {
       if (next.has(pedido.id)) {
         next.delete(pedido.id);
       } else {
-        if (pedido.tipo_pedido !== 'Entrega') return next;
         next.add(pedido.id);
       }
       return next;
     });
   };
 
+  const getEntregaIdsSelecionados = (): number[] => {
+    const entregaIds = new Set(
+      visiblePedidos
+        .filter((p) => p.tipo_pedido === 'Entrega')
+        .map((p) => p.id),
+    );
+    return Array.from(selectedIds).filter((id) => entregaIds.has(id));
+  };
+
   const handleCalcularDistanciasSelecionados = async () => {
-    const ids = Array.from(selectedIds);
+    const ids = getEntregaIdsSelecionados();
     if (ids.length === 0) {
       info('Selecione ao menos 1 pedido de entrega');
       return;
@@ -166,13 +178,32 @@ export default function OrdersPage() {
   };
 
   const handleIrParaMapa = () => {
-    const ids = Array.from(selectedIds);
+    const ids = getEntregaIdsSelecionados();
     if (ids.length === 0) {
-      info('Selecione pedidos para roteirizar');
+      info('Selecione ao menos 1 pedido de entrega para roteirizar');
       return;
     }
     const query = `ids=${ids.join(',')}`;
     window.open(`/rota-entrega?${query}`, '_blank');
+  };
+
+  const handleImprimirSelecionados = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
+      info('Selecione ao menos 1 pedido para imprimir');
+      return;
+    }
+    if (ids.length > MAX_BATCH_PRINT) {
+      showError(`Máximo de ${MAX_BATCH_PRINT} pedidos por folha`);
+      return;
+    }
+    try {
+      await printService.printBatch(ids);
+      success('Impressão iniciada');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao imprimir em lote';
+      showError(errorMessage);
+    }
   };
 
   const handleOcultarConcluidos = async () => {
@@ -256,7 +287,7 @@ export default function OrdersPage() {
           }}
         >
           {/* Botão Roteirizar - sempre visível no topo */}
-          <Tooltip title={selectionMode ? 'Sair do modo de roteirização' : 'Selecionar pedidos para criar rota de entrega'}>
+          <Tooltip title={selectionMode ? 'Sair do modo de seleção' : 'Selecionar pedidos para roteirizar ou imprimir em lote'}>
             <Button
               variant={selectionMode ? 'contained' : 'outlined'}
               size="small"
@@ -437,12 +468,39 @@ export default function OrdersPage() {
               >
                 Ir para o mapa
               </Button>
+              <Tooltip
+                title={
+                  selectedIds.size === 0
+                    ? 'Selecione 1 a 4 pedidos para imprimir'
+                    : selectedIds.size > MAX_BATCH_PRINT
+                      ? `Máximo de ${MAX_BATCH_PRINT} pedidos por folha`
+                      : 'Imprime em uma folha A4 (até 4 por página)'
+                }
+              >
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    startIcon={<Print />}
+                    onClick={handleImprimirSelecionados}
+                    disabled={selectedIds.size === 0 || selectedIds.size > MAX_BATCH_PRINT}
+                    fullWidth={isMobile}
+                  >
+                    Imprimir selecionados
+                  </Button>
+                </span>
+              </Tooltip>
             </Stack>
-            <Chip
-              color={selectedIds.size > 0 ? 'primary' : 'default'}
-              label={`${selectedIds.size} selecionado(s) para rota`}
-              sx={{ alignSelf: { xs: 'center', sm: 'auto' } }}
-            />
+            <Stack direction="column" spacing={0.5} alignItems={{ xs: 'center', sm: 'flex-end' }}>
+              <Chip
+                color={selectedIds.size > 0 ? 'primary' : 'default'}
+                label={`${selectedIds.size} selecionado(s)`}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Até {MAX_BATCH_PRINT} pedidos por folha
+              </Typography>
+            </Stack>
           </Stack>
         )}
         <OrdersFilterToolbar

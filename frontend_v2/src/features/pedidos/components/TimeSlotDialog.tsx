@@ -125,8 +125,6 @@ export function TimeSlotDialog({
   };
 
   const handleSelectSlot = (slot: SlotAvailability) => {
-    if (slot.status === 'full') return;
-    
     if (selectionMode === 'simple') {
       setSelectedSlot(slot.slot);
     } else {
@@ -303,12 +301,27 @@ export function TimeSlotDialog({
           />
           <Chip
             icon={<BlockIcon />}
-            label="Lotado"
+            label="Lotado (com aviso)"
             color="error"
             variant="outlined"
             size="small"
           />
         </Box>
+
+        {/* Aviso quando seleciona horário lotado */}
+        {(() => {
+          const overSelected = availability?.slots.some(
+            (s) =>
+              s.status === 'full' &&
+              (selectedSlot === s.slot || intervalStart === s.slot || intervalEnd === s.slot)
+          );
+          return overSelected ? (
+            <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 2 }}>
+              Atenção: este horário já atingiu o limite recomendado de pedidos.
+              Confirme se a equipe consegue atender mais um.
+            </Alert>
+          ) : null;
+        })()}
 
         {/* Loading */}
         {isLoading && (
@@ -486,12 +499,16 @@ function SlotButton({ slot, isSelected, onClick }: SlotButtonProps) {
       case 'full':
         return {
           ...baseStyles,
-          bgcolor: 'grey.200',
-          color: 'grey.500',
-          border: '1px solid',
-          borderColor: 'grey.300',
-          cursor: 'not-allowed',
-          opacity: 0.6,
+          bgcolor: 'error.light',
+          color: 'error.contrastText',
+          border: '1px dashed',
+          borderColor: 'error.main',
+          opacity: 0.85,
+          '&:hover': {
+            bgcolor: 'error.main',
+            opacity: 1,
+            transform: 'scale(1.02)',
+          },
         };
       default:
         return baseStyles;
@@ -515,7 +532,7 @@ function SlotButton({ slot, isSelected, onClick }: SlotButtonProps) {
     <Box
       component="button"
       type="button"
-      onClick={slot.status !== 'full' ? onClick : undefined}
+      onClick={onClick}
       sx={getButtonStyles(slot.status, isSelected)}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>

@@ -395,6 +395,9 @@ def listar_pedidos():
         # Aplicar filtros
         if status:
             query = query.filter(Pedido.status == status)
+        else:
+            # "Todos" (sem filtro de status): pedidos em rota ficam só na aba dedicada.
+            query = query.filter(Pedido.status != "em_rota")
 
         # Busca por cliente ou destinatário
         if search:

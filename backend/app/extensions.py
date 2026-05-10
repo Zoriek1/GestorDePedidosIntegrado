@@ -238,22 +238,34 @@ def init_database(app):
 def _ensure_runtime_columns():
     """Adiciona colunas novas idempotentemente (para evitar migration manual em prod).
 
-    Cada entrada: (tabela, coluna, definição SQL pós-`ADD COLUMN`).
+    Cada entrada: (tabela, coluna, tipo_lógico). O default/SQL é resolvido
+    conforme o dialeto (SQLite usa 0/1; PostgreSQL exige FALSE/TRUE).
     """
     runtime_columns = [
-        ("pedidos", "cartao_impresso", "BOOLEAN DEFAULT 0"),
+        ("pedidos", "cartao_impresso", "boolean_false"),
     ]
     try:
         from sqlalchemy import inspect
 
+        dialect = db.engine.dialect.name  # 'sqlite' | 'postgresql' | ...
+        is_postgres = dialect == "postgresql"
+
+        def _column_def(kind: str) -> str:
+            if kind == "boolean_false":
+                if is_postgres:
+                    return "BOOLEAN NOT NULL DEFAULT FALSE"
+                return "BOOLEAN NOT NULL DEFAULT 0"
+            raise ValueError(f"Tipo desconhecido: {kind}")
+
         inspector = inspect(db.engine)
-        for table, column, definition in runtime_columns:
+        for table, column, kind in runtime_columns:
             if table not in inspector.get_table_names():
                 continue
             existing = {c["name"] for c in inspector.get_columns(table)}
             if column in existing:
                 continue
-            print(f"[DB] Adicionando coluna {table}.{column} (auto-ensure)...")
+            definition = _column_def(kind)
+            print(f"[DB] Adicionando coluna {table}.{column} ({dialect})...")
             db.session.execute(
                 text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             )

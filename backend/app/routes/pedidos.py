@@ -1141,6 +1141,41 @@ def marcar_impresso(pedido_id):
         return error_response(f"Erro ao marcar como impresso: {str(e)}", 500)
 
 
+@pedidos_bp.route(
+    "/<int:pedido_id>/toggle-cartao-impresso", methods=["POST", "PUT", "OPTIONS"]
+)
+@requires_any_role("admin", "atendente")
+def toggle_cartao_impresso(pedido_id):
+    """Alterna a flag 'cartao_impresso' do pedido (cartão/cartinha já impresso)."""
+    try:
+        from app import db
+
+        pedido = pedido_repo.get_by_id(pedido_id)
+        if not pedido:
+            return error_response("Pedido não encontrado", 404)
+
+        payload = request.get_json(silent=True) or {}
+        if "cartao_impresso" in payload:
+            pedido.cartao_impresso = bool(payload["cartao_impresso"])
+        else:
+            pedido.cartao_impresso = not bool(pedido.cartao_impresso)
+        pedido.updated_at = datetime_now_brazil()
+        db.session.commit()
+
+        msg = (
+            "Cartão marcado como impresso"
+            if pedido.cartao_impresso
+            else "Cartão desmarcado"
+        )
+        return success_response({"pedido": pedido.to_dict()}, message=msg)
+
+    except Exception as e:
+        from app import db
+
+        db.session.rollback()
+        return error_response(f"Erro ao alternar cartao_impresso: {str(e)}", 500)
+
+
 @pedidos_bp.route("/<int:pedido_id>/comprovante", methods=["GET"])
 def obter_comprovante(pedido_id):
     """Gera comprovante de pedido (HTML)"""

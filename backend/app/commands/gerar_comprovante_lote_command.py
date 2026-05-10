@@ -49,7 +49,14 @@ class GerarComprovanteLoteCommand:
         return self._render_grid(contexts)
 
     def _render_slip(self, ctx: dict) -> str:
-        """Renderiza um comprovante compacto (cabe em 1/2 ou 1/4 de A4)."""
+        """Renderiza um comprovante compacto com hierarquia visual forte
+        (cabe em 1/2 ou 1/4 de A4). Prioridade de leitura:
+        1. Destinatário (Para) — XL bold
+        2. Produto — L bold
+        3. Mensagem do cartão — destacada em bloco
+        4. Endereço / Data / Cliente — médio
+        5. Metadados (telefone, pagamento, taxa) — pequeno/discreto
+        """
         endereco_html = ""
         is_retirada = str(ctx.get("tipo", "")).lower() == "retirada"
         if ctx.get("endereco"):
@@ -58,22 +65,23 @@ class GerarComprovanteLoteCommand:
             taxa = fmt_brl(ctx.get("taxa")) if ctx.get("taxa") else ""
             distancia = f"{ctx['distancia']:.2f} km" if ctx.get("distancia") is not None else ""
             extras = " · ".join(p for p in [cidade, cep, distancia, taxa] if p and p != "-")
+            extras_html = f'<div class="slip-sub">{extras}</div>' if extras else ""
             endereco_html = f"""
-              <div class="slip-line">
-                <span class="slip-lbl">Endereço:</span>
-                <span class="slip-val">{fmt(ctx['endereco'])}</span>
+              <div class="slip-block">
+                <div class="slip-lbl">Endereço</div>
+                <div class="slip-val-md">{fmt(ctx['endereco'])}</div>
+                {extras_html}
               </div>
-              <div class="slip-line slip-sub">{extras}</div>
             """
         elif is_retirada:
-            endereco_html = '<div class="slip-line slip-pickup">RETIRADA NA LOJA</div>'
+            endereco_html = '<div class="slip-pickup">RETIRADA NA LOJA</div>'
 
         destinatario_html = ""
         if ctx.get("show_destinatario") and ctx.get("destinatario_nome"):
             destinatario_html = f"""
-              <div class="slip-line">
-                <span class="slip-lbl">Para:</span>
-                <span class="slip-val">{fmt(ctx['destinatario_nome'])}</span>
+              <div class="slip-block slip-priority">
+                <div class="slip-lbl">Para</div>
+                <div class="slip-val-xl">{fmt(ctx['destinatario_nome'])}</div>
               </div>
             """
 
@@ -81,7 +89,7 @@ class GerarComprovanteLoteCommand:
         if ctx.get("mensagem"):
             mensagem_html = f"""
               <div class="slip-msg">
-                <div class="slip-msg-lbl">Mensagem do cartão</div>
+                <div class="slip-msg-lbl">✉ Mensagem do cartão</div>
                 <div class="slip-msg-val">{fmt(ctx['mensagem'])}</div>
               </div>
             """
@@ -92,7 +100,7 @@ class GerarComprovanteLoteCommand:
         if ctx.get("quantidade"):
             flores_qtd.append(f"Qtd: {ctx['quantidade']}")
         flores_qtd_html = (
-            f'<div class="slip-line slip-sub">{" · ".join(flores_qtd)}</div>' if flores_qtd else ""
+            f'<div class="slip-sub">{" · ".join(flores_qtd)}</div>' if flores_qtd else ""
         )
 
         pagamento_parts = [fmt(ctx.get("pagamento"))]
@@ -100,35 +108,43 @@ class GerarComprovanteLoteCommand:
             pagamento_parts.append(fmt(ctx["status_pagto"]))
         pagamento_str = " · ".join(p for p in pagamento_parts if p and p != "-")
 
+        cliente_tel_html = (
+            f'<span class="slip-tel"> · {fmt(ctx.get("cliente_tel"))}</span>'
+            if ctx.get("cliente_tel") and fmt(ctx.get("cliente_tel")) != "-"
+            else ""
+        )
+
         return f"""
         <div class="slip">
           <div class="slip-head">
             <div class="slip-head-l">
-              <strong>Pedido #{ctx['id']}</strong>
+              <span class="slip-id">#{ctx['id']}</span>
               <span class="slip-tipo">{fmt(ctx.get('tipo')).upper()}</span>
             </div>
             <div class="slip-head-r">
               <span class="slip-data">{fmt(ctx.get('data_entrega'))} {fmt(ctx.get('horario')) if ctx.get('horario') else ''}</span>
-              <strong class="slip-valor">{fmt_brl(ctx.get('valor'))}</strong>
+              <span class="slip-valor">{fmt_brl(ctx.get('valor'))}</span>
             </div>
           </div>
           <div class="slip-body">
-            <div class="slip-line">
-              <span class="slip-lbl">Cliente:</span>
-              <span class="slip-val">{fmt(ctx.get('cliente_nome'))}</span>
-              <span class="slip-tel">{fmt(ctx.get('cliente_tel'))}</span>
-            </div>
             {destinatario_html}
-            <div class="slip-line">
-              <span class="slip-lbl">Produto:</span>
-              <span class="slip-val">{fmt(ctx.get('produto'))}</span>
+            <div class="slip-block slip-priority">
+              <div class="slip-lbl">Produto</div>
+              <div class="slip-val-lg">{fmt(ctx.get('produto'))}</div>
+              {flores_qtd_html}
             </div>
-            {flores_qtd_html}
             {mensagem_html}
             {endereco_html}
-            <div class="slip-line slip-pagto">
-              <span class="slip-lbl">Pagto:</span>
-              <span class="slip-val">{pagamento_str}</span>
+            <div class="slip-foot">
+              <div class="slip-foot-line">
+                <span class="slip-foot-lbl">Cliente:</span>
+                <span class="slip-foot-val">{fmt(ctx.get('cliente_nome'))}</span>
+                {cliente_tel_html}
+              </div>
+              <div class="slip-foot-line">
+                <span class="slip-foot-lbl">Pagto:</span>
+                <span class="slip-foot-val">{pagamento_str}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -194,96 +210,172 @@ class GerarComprovanteLoteCommand:
     }}
 
     .slip {{
-      border: 1px dashed #999;
+      border: 1.5px dashed #555;
       border-radius: 4px;
-      padding: 6mm;
+      padding: 5mm 6mm;
       overflow: hidden;
       page-break-inside: avoid;
       display: flex;
       flex-direction: column;
-      gap: 3mm;
+      gap: 2.5mm;
     }}
     .slip-empty {{
       border: 1px dashed #ddd;
     }}
 
+    /* ===== HEAD: identificador discreto (id, tipo, data, valor) ===== */
     .slip-head {{
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       gap: 4mm;
       border-bottom: 1px solid #000;
-      padding-bottom: 2mm;
+      padding-bottom: 1.5mm;
     }}
-    .slip-head-l strong {{ font-size: 14px; }}
+    .slip-head-l {{
+      display: flex;
+      align-items: center;
+      gap: 3mm;
+    }}
+    .slip-id {{
+      font-size: 11px;
+      font-weight: 700;
+      color: #444;
+    }}
     .slip-tipo {{
       display: inline-block;
-      margin-left: 4mm;
-      padding: 1mm 2mm;
-      border: 1px solid #000;
+      padding: 0.8mm 2mm;
+      background: #000;
+      color: #fff;
       border-radius: 2px;
       font-size: 9px;
       font-weight: 700;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.6px;
     }}
     .slip-head-r {{
       text-align: right;
       display: flex;
-      flex-direction: column;
-      gap: 1mm;
+      align-items: baseline;
+      gap: 4mm;
     }}
-    .slip-data {{ font-size: 11px; font-weight: 600; }}
-    .slip-valor {{ font-size: 14px; }}
+    .slip-data {{ font-size: 12px; font-weight: 700; color: #000; }}
+    .slip-valor {{ font-size: 13px; font-weight: 700; color: #000; }}
 
+    /* ===== BODY ===== */
     .slip-body {{
       display: flex;
       flex-direction: column;
-      gap: 1.5mm;
+      gap: 2.5mm;
       flex: 1;
     }}
-    .slip-line {{
+
+    /* Bloco genérico: label discreto + valor destacado */
+    .slip-block {{
       display: flex;
-      flex-wrap: wrap;
-      gap: 2mm;
-      align-items: baseline;
-      line-height: 1.3;
+      flex-direction: column;
+      gap: 0.5mm;
+    }}
+    .slip-priority {{
+      padding-left: 2mm;
+      border-left: 3px solid #000;
     }}
     .slip-lbl {{
-      font-size: 9px;
+      font-size: 8px;
       text-transform: uppercase;
-      color: #555;
+      color: #777;
       font-weight: 700;
-      flex-shrink: 0;
+      letter-spacing: 0.5px;
     }}
-    .slip-val {{ font-weight: 600; }}
-    .slip-tel {{ color: #333; font-size: 10px; }}
-    .slip-sub {{ font-size: 10px; color: #444; }}
+
+    /* Hierarquia tipográfica dos valores */
+    .slip-val-xl {{
+      font-size: 18px;
+      font-weight: 800;
+      color: #000;
+      line-height: 1.15;
+      letter-spacing: -0.2px;
+    }}
+    .slip-val-lg {{
+      font-size: 14px;
+      font-weight: 700;
+      color: #000;
+      line-height: 1.2;
+    }}
+    .slip-val-md {{
+      font-size: 12px;
+      font-weight: 600;
+      color: #000;
+      line-height: 1.25;
+    }}
+    .slip-sub {{
+      font-size: 9.5px;
+      color: #555;
+      font-weight: 500;
+      margin-top: 0.5mm;
+    }}
+
     .slip-pickup {{
       text-align: center;
-      padding: 2mm;
-      border: 1px dashed #999;
-      font-weight: 700;
+      padding: 2.5mm;
+      border: 2px solid #000;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 1px;
     }}
-    .slip-pagto {{ margin-top: auto; padding-top: 1.5mm; border-top: 1px solid #ddd; }}
 
+    /* Mensagem do cartão — bloco destacado, alta prioridade visual */
     .slip-msg {{
-      border: 1px dashed #888;
-      background: #fafafa;
-      padding: 2mm 3mm;
-      border-radius: 2px;
+      border: 1.5px solid #000;
+      background: #f5f5f0;
+      padding: 2.5mm 3mm;
+      border-radius: 3px;
     }}
     .slip-msg-lbl {{
       font-size: 8px;
       text-transform: uppercase;
-      color: #555;
+      color: #444;
       font-weight: 700;
+      letter-spacing: 0.5px;
       margin-bottom: 1mm;
     }}
     .slip-msg-val {{
       font-weight: 600;
       white-space: pre-wrap;
-      font-size: 11px;
+      font-size: 12px;
+      line-height: 1.3;
+      color: #000;
+      font-style: italic;
     }}
+
+    /* Rodapé do slip: cliente + pagamento (informações secundárias) */
+    .slip-foot {{
+      margin-top: auto;
+      padding-top: 1.5mm;
+      border-top: 1px dotted #aaa;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8mm;
+    }}
+    .slip-foot-line {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5mm;
+      align-items: baseline;
+      font-size: 9.5px;
+      line-height: 1.25;
+    }}
+    .slip-foot-lbl {{
+      text-transform: uppercase;
+      color: #777;
+      font-weight: 700;
+      font-size: 8px;
+      letter-spacing: 0.4px;
+    }}
+    .slip-foot-val {{
+      color: #333;
+      font-weight: 600;
+    }}
+    .slip-tel {{ color: #555; font-weight: 500; }}
 
     .meta-foot {{
       position: fixed;

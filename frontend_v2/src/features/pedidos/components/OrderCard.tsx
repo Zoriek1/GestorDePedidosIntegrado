@@ -30,6 +30,8 @@ import {
   WhatsApp,
   PlayArrow,
   LocalShipping as LocalShippingIcon,
+  CheckCircle,
+  RadioButtonUnchecked,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -44,7 +46,7 @@ import {
   getEnderecoCompleto,
   buildEncaminharMensagem,
 } from './OrderCardHelpers';
-import { useCalcularDistanciaPedido, useCalcularTaxaEntrega, useUpdatePedido } from '../../../api/endpoints/pedidos';
+import { useCalcularDistanciaPedido, useCalcularTaxaEntrega, useUpdatePedido, useToggleCartaoImpresso } from '../../../api/endpoints/pedidos';
 import { useToast } from '../../../components/system/useToast';
 import { CopyOnClick } from '../../../components/common/CopyOnClick';
 import { copyToClipboard } from '../../../lib/utils/clipboard';
@@ -86,6 +88,7 @@ export function OrderCard({
   const calcTaxa = useCalcularTaxaEntrega();
   const updatePedido = useUpdatePedido();
   const deletePedido = useDeletePedido();
+  const toggleCartaoImpresso = useToggleCartaoImpresso();
   const { success, error: showError } = useToast();
   const { getUserRole, getCredentials, isJwtUser } = useAuth();
   const printService = usePedidoPrintService();
@@ -175,6 +178,17 @@ export function OrderCard({
       success('Impressão iniciada');
     } catch (err) {
       showError(err?.message || 'Erro ao imprimir');
+    }
+  };
+
+  const handleToggleCartaoImpresso = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await toggleCartaoImpresso.mutateAsync({ id: pedido.id });
+      success(pedido.cartao_impresso ? 'Cartão desmarcado' : 'Cartão marcado como impresso');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar cartão';
+      showError(errorMessage);
     }
   };
 
@@ -503,20 +517,45 @@ export function OrderCard({
         {/* Mensagem/Cartinha Clicável */}
         <Box mb={2}>
           {pedido.mensagem ? (
-            <CopyOnClick textToCopy={pedido.mensagem}>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  p: 1,
-                  borderRadius: 1,
-                }}
-              >
-                {pedido.mensagem}
-              </Typography>
-            </CopyOnClick>
+            <>
+              <CopyOnClick textToCopy={pedido.mensagem}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    p: 1,
+                    borderRadius: 1,
+                  }}
+                >
+                  {pedido.mensagem}
+                </Typography>
+              </CopyOnClick>
+              <Box mt={1} display="flex" alignItems="center" justifyContent="flex-end">
+                <Tooltip
+                  title={
+                    pedido.cartao_impresso
+                      ? 'Cartão já impresso — clique para desmarcar'
+                      : 'Marcar cartão como impresso'
+                  }
+                >
+                  <Button
+                    size="small"
+                    variant={pedido.cartao_impresso ? 'contained' : 'outlined'}
+                    color={pedido.cartao_impresso ? 'success' : 'primary'}
+                    startIcon={
+                      pedido.cartao_impresso ? <CheckCircle /> : <RadioButtonUnchecked />
+                    }
+                    onClick={handleToggleCartaoImpresso}
+                    disabled={toggleCartaoImpresso.isPending}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    {pedido.cartao_impresso ? 'Cartão impresso' : 'Marcar cartão impresso'}
+                  </Button>
+                </Tooltip>
+              </Box>
+            </>
           ) : (
             <Typography variant="body2" color="text.secondary">
               Sem mensagem

@@ -103,6 +103,11 @@ class Pedido(db.Model):
     impresso = db.Column(
         db.Boolean, default=False, comment="Se True, pedido já foi impresso no painel"
     )
+    cartao_impresso = db.Column(
+        db.Boolean,
+        default=False,
+        comment="Se True, o cartão/cartinha do pedido já foi impresso",
+    )
 
     # Relacionamentos
     cliente_id = db.Column(
@@ -224,6 +229,7 @@ class Pedido(db.Model):
             "quantidade": self.quantidade or 1,
             "oculto": self.oculto or False,
             "impresso": self.impresso or False,
+            "cartao_impresso": self.cartao_impresso or False,
             "cliente_id": self.cliente_id,
             "vendedor_id": self.vendedor_id,
             "distancia_km": self.distancia_km,

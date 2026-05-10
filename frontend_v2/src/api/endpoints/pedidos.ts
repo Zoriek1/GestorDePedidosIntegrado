@@ -41,6 +41,7 @@ export interface Pedido {
   quantidade: number;
   oculto: boolean;
   impresso: boolean;
+  cartao_impresso?: boolean;
   cliente_id?: number;
   vendedor_id?: number;
   distancia_km?: number;
@@ -312,6 +313,35 @@ export function useMarcarImpresso() {
     },
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['pedido', id] });
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    },
+  });
+}
+
+/**
+ * Alterna flag de "cartão impresso" do pedido.
+ * POST /pedidos/:id/toggle-cartao-impresso
+ */
+export function useToggleCartaoImpresso() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: { id: number; value?: boolean }) => {
+      const { id, value } = params;
+      const response = await apiRequest<{ success: boolean; data?: { pedido: Pedido } }>(
+        `/pedidos/${id}/toggle-cartao-impresso`,
+        {
+          method: 'POST',
+          body: value !== undefined ? JSON.stringify({ cartao_impresso: value }) : undefined,
+        }
+      );
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['pedido', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['pedidos'] });
     },
   });

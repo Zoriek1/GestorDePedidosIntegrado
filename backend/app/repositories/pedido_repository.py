@@ -157,6 +157,10 @@ class PedidoRepository(BaseRepository):
                     query = query.filter(Pedido.status.in_(status_list))
             else:
                 query = query.filter_by(status=status)
+        else:
+            # "Todos" (sem filtro de status): pedidos em rota ficam apenas
+            # na aba "Em Rota" e na tela de Rotas. Evita poluir a lista geral.
+            query = query.filter(Pedido.status != "em_rota")
 
         if filtrar_por_criacao and data_inicio and data_fim:
             # Filtrar por created_at com intervalo exclusivo [início, fim_exclusivo)

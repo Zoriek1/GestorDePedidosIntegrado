@@ -230,3 +230,38 @@ def init_database(app):
             print(f"[OK] Tabelas criadas: {list(db.metadata.tables.keys())}")
         else:
             print("[OK] Banco de dados verificado")
+
+        # Garante colunas adicionadas em versões posteriores sem migration manual.
+        _ensure_runtime_columns()
+
+
+def _ensure_runtime_columns():
+    """Adiciona colunas novas idempotentemente (para evitar migration manual em prod).
+
+    Cada entrada: (tabela, coluna, definição SQL pós-`ADD COLUMN`).
+    """
+    runtime_columns = [
+        ("pedidos", "cartao_impresso", "BOOLEAN DEFAULT 0"),
+    ]
+    try:
+        from sqlalchemy import inspect
+
+        inspector = inspect(db.engine)
+        for table, column, definition in runtime_columns:
+            if table not in inspector.get_table_names():
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            if column in existing:
+                continue
+            print(f"[DB] Adicionando coluna {table}.{column} (auto-ensure)...")
+            db.session.execute(
+                text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            )
+            db.session.commit()
+            print(f"[OK] Coluna {table}.{column} adicionada")
+    except Exception as e:
+        print(f"[DB] AVISO: ensure_runtime_columns falhou: {e}")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass

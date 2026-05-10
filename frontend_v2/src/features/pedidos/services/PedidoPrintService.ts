@@ -57,8 +57,8 @@ export class PedidoPrintService implements IPedidoPrintService {
     if (pedidoIds.length === 0) {
       throw new Error('Selecione ao menos 1 pedido para imprimir');
     }
-    if (pedidoIds.length > 4) {
-      throw new Error('Máximo de 4 pedidos por folha');
+    if (pedidoIds.length > 20) {
+      throw new Error('Máximo de 20 pedidos por lote (5 folhas × 4)');
     }
 
     const authHeaders = this.getAuthHeader();

@@ -230,20 +230,24 @@ function parseValor(value: string): string | null {
  * Extrai telefone e formata
  */
 function parseTelefone(value: string): string | null {
-  // Extrair apenas dígitos
-  const digits = value.replace(/\D/g, '');
-  
-  // Deve ter entre 10 e 11 dígitos
+  const trimmed = value.trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+
+  // Internacional (com + ou mais de 11 dígitos): retorna em formato E.164
+  if (hasPlus || digits.length > 11) {
+    if (digits.length < 8 || digits.length > 15) return null;
+    return `+${digits}`;
+  }
+
+  // BR: 10 ou 11 dígitos
   if (digits.length < 10 || digits.length > 11) {
     return null;
   }
-  
-  // Formatar como (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
   if (digits.length === 11) {
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  } else {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
   }
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
 }
 
 /**

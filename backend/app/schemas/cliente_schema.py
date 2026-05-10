@@ -10,7 +10,7 @@ class ClienteSchema(Schema):
 
     id = fields.Int(dump_only=True)
     nome = fields.Str(required=True, validate=validate.Length(min=1, max=100))
-    telefone = fields.Str(required=True, validate=validate.Length(min=10, max=20))
+    telefone = fields.Str(required=True, validate=validate.Length(min=8, max=20))
     email = fields.Email(allow_none=True, validate=validate.Length(max=100))
     observacoes = fields.Str(allow_none=True)
     created_at = fields.DateTime(dump_only=True)

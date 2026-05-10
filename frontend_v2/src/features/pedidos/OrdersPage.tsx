@@ -38,7 +38,8 @@ import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
 import { OrdersPagination } from './components/OrdersPagination';
 import { usePedidoPrintService } from './services/PedidoPrintService';
 
-const MAX_BATCH_PRINT = 4;
+const MAX_BATCH_PRINT = 20;
+const PEDIDOS_POR_FOLHA = 4;
 
 export default function OrdersPage() {
   const theme = useTheme();
@@ -191,7 +192,7 @@ export default function OrdersPage() {
       return;
     }
     if (ids.length > MAX_BATCH_PRINT) {
-      showError(`Máximo de ${MAX_BATCH_PRINT} pedidos por folha`);
+      showError(`Máximo de ${MAX_BATCH_PRINT} pedidos por lote`);
       return;
     }
     try {
@@ -300,7 +301,7 @@ export default function OrdersPage() {
           </Tooltip>
 
           {/* Botão Imprimir lote */}
-          <Tooltip title={selectionMode === 'print' ? 'Sair do modo de impressão em lote' : 'Selecionar até 4 pedidos para imprimir em uma folha'}>
+          <Tooltip title={selectionMode === 'print' ? 'Sair do modo de impressão em lote' : `Selecionar até ${MAX_BATCH_PRINT} pedidos (4 por folha A4)`}>
             <Button
               variant={selectionMode === 'print' ? 'contained' : 'outlined'}
               size="small"
@@ -489,10 +490,10 @@ export default function OrdersPage() {
                 <Tooltip
                   title={
                     selectedIds.size === 0
-                      ? 'Selecione 1 a 4 pedidos'
+                      ? `Selecione 1 a ${MAX_BATCH_PRINT} pedidos`
                       : selectedIds.size > MAX_BATCH_PRINT
-                        ? `Máximo de ${MAX_BATCH_PRINT} pedidos por folha`
-                        : 'Imprime em uma folha A4'
+                        ? `Máximo de ${MAX_BATCH_PRINT} pedidos por lote`
+                        : `${Math.ceil(selectedIds.size / PEDIDOS_POR_FOLHA)} folha(s) A4 — ${PEDIDOS_POR_FOLHA} pedidos por folha`
                   }
                 >
                   <span>
@@ -522,7 +523,7 @@ export default function OrdersPage() {
               />
               {selectionMode === 'print' && (
                 <Typography variant="caption" color="text.secondary">
-                  Até {MAX_BATCH_PRINT} pedidos por folha
+                  Até {MAX_BATCH_PRINT} pedidos · {PEDIDOS_POR_FOLHA} por folha A4
                 </Typography>
               )}
             </Stack>

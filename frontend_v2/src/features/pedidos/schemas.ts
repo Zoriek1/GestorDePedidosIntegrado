@@ -55,10 +55,14 @@ export const pedidoFormSchema = z.object({
   cliente_modo: z.enum(['busca', 'novo']).default('novo'),
   
   telefone_cliente: z.string()
-    .min(10, 'Telefone deve ter pelo menos 10 dígitos')
+    .min(8, 'Telefone deve ter pelo menos 8 dígitos')
     .max(20, 'Telefone inválido')
     .refine(
-      (val) => /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/.test(val) || /^\d{10,11}$/.test(val.replace(/\D/g, '')),
+      (val) => {
+        const digits = val.replace(/\D/g, '');
+        // Aceita BR (10-11 dígitos) ou internacional (8-15 dígitos, com ou sem +)
+        return digits.length >= 8 && digits.length <= 15;
+      },
       'Formato de telefone inválido'
     ),
 
@@ -311,10 +315,14 @@ export function formatCurrency(value: number | undefined): string {
 }
 
 /**
- * Remove máscara do telefone, deixando apenas dígitos
+ * Remove máscara do telefone, deixando apenas dígitos.
+ * Preserva o prefixo "+" para números internacionais (E.164).
  */
 export function parsePhoneToDigits(phone: string): string {
-  return phone.replace(/\D/g, '');
+  const trimmed = phone.trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  return hasPlus ? `+${digits}` : digits;
 }
 
 /**

@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Command para geração de comprovantes em lote (até 4 pedidos por folha A4).
+Command para geração de comprovantes em lote (até 20 pedidos, 4 por folha A4).
 
-Layouts:
+Layout por folha:
 - 1 pedido  → A4 cheio (delega ao GerarComprovanteCommand)
 - 2 pedidos → A4 retrato com 2 metades horizontais empilhadas
 - 3 pedidos → grid 2x2 com 1 célula vazia
 - 4 pedidos → grid 2x2 cheio
 
+Para mais de 4 pedidos, são empilhadas múltiplas folhas (até 5 folhas / 20 pedidos).
 Espaçamento de ~6mm entre células e borda dashed para corte com tesoura.
 """
 from app.commands.gerar_comprovante_command import (
@@ -18,7 +19,9 @@ from app.commands.gerar_comprovante_command import (
 )
 from app.repositories.pedido_repository import PedidoRepository
 
-MAX_PEDIDOS_POR_LOTE = 4
+PEDIDOS_POR_FOLHA = 4
+MAX_FOLHAS_POR_LOTE = 5
+MAX_PEDIDOS_POR_LOTE = PEDIDOS_POR_FOLHA * MAX_FOLHAS_POR_LOTE  # 20
 
 
 class GerarComprovanteLoteCommand:
@@ -131,17 +134,24 @@ class GerarComprovanteLoteCommand:
         </div>
         """
 
-    def _render_grid(self, contexts: list[dict]) -> str:
-        n = len(contexts)
-        slips_html = "".join(self._render_slip(c) for c in contexts)
+    def _render_sheet(self, page_contexts: list[dict]) -> str:
+        n = len(page_contexts)
+        slips_html = "".join(self._render_slip(c) for c in page_contexts)
         # Em grid 2x2 com 3 pedidos, completar a 4ª célula com placeholder vazio
         if n == 3:
             slips_html += '<div class="slip slip-empty"></div>'
 
-        if n == 2:
-            grid_class = "grid-2"
-        else:
-            grid_class = "grid-4"
+        grid_class = "grid-2" if n == 2 else "grid-4"
+        return f'<div class="sheet {grid_class}">{slips_html}</div>'
+
+    def _render_grid(self, contexts: list[dict]) -> str:
+        n = len(contexts)
+        # Quebra em folhas de PEDIDOS_POR_FOLHA pedidos
+        pages = [
+            contexts[i : i + PEDIDOS_POR_FOLHA]
+            for i in range(0, n, PEDIDOS_POR_FOLHA)
+        ]
+        sheets_html = "".join(self._render_sheet(p) for p in pages)
 
         ids_str = ", ".join(f"#{c['id']}" for c in contexts)
 
@@ -164,9 +174,15 @@ class GerarComprovanteLoteCommand:
 
     .sheet {{
       width: 100%;
-      height: calc(100vh - 0mm);
+      height: 281mm; /* A4 portrait (297mm) menos margens (8mm cada) */
       display: grid;
       gap: 6mm;
+      page-break-after: always;
+      break-after: page;
+    }}
+    .sheet:last-child {{
+      page-break-after: auto;
+      break-after: auto;
     }}
     .grid-2 {{
       grid-template-columns: 1fr;
@@ -287,9 +303,7 @@ class GerarComprovanteLoteCommand:
   </style>
 </head>
 <body>
-  <div class="sheet {grid_class}">
-    {slips_html}
-  </div>
+  {sheets_html}
   <div class="meta-foot no-print-screen">
     <span>Lote: {ids_str}</span>
     <span>{contexts[0]['impresso_em']}</span>

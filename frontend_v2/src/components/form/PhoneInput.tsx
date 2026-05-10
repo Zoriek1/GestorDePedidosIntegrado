@@ -14,26 +14,28 @@ interface PhoneInputProps extends Omit<TextFieldProps, 'onChange' | 'value'> {
 
 /**
  * Aplica máscara dinâmica ao telefone
- * - 10 dígitos: (XX) XXXX-XXXX
- * - 11 dígitos: (XX) XXXXX-XXXX
+ * - BR fixo (10 dígitos): (XX) XXXX-XXXX
+ * - BR celular (11 dígitos): (XX) XXXXX-XXXX
+ * - Internacional (prefixo + ou >11 dígitos): mantém + e dígitos sem máscara BR
  */
 function applyPhoneMask(value: string): string {
-  // Remove tudo que não é dígito
-  const digits = value.replace(/\D/g, '');
-  
-  // Limita a 11 dígitos
+  const trimmed = value.trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+
+  // Internacional: usuário digitou "+" ou já passou de 11 dígitos
+  if (hasPlus || digits.length > 11) {
+    const limited = digits.slice(0, 15); // E.164 máximo
+    return limited ? `+${limited}` : '+';
+  }
+
   const limited = digits.slice(0, 11);
-  
   if (limited.length === 0) return '';
   if (limited.length <= 2) return `(${limited}`;
   if (limited.length <= 6) return `(${limited.slice(0, 2)}) ${limited.slice(2)}`;
-  
-  // Telefone fixo (10 dígitos)
   if (limited.length <= 10) {
     return `(${limited.slice(0, 2)}) ${limited.slice(2, 6)}-${limited.slice(6)}`;
   }
-  
-  // Celular (11 dígitos)
   return `(${limited.slice(0, 2)}) ${limited.slice(2, 7)}-${limited.slice(7)}`;
 }
 
@@ -75,9 +77,9 @@ export const PhoneInput = forwardRef<HTMLInputElement, PhoneInputProps>(
         ref={ref}
         type="tel"
         inputProps={{
-          maxLength: 16, // (XX) XXXXX-XXXX = 15 chars + margem
+          maxLength: 20, // suporta internacional (+, código país, etc.)
         }}
-        placeholder="(00) 00000-0000"
+        placeholder="(00) 00000-0000 ou +código"
       />
     );
   }

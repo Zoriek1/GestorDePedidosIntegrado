@@ -12,7 +12,7 @@ export interface AppUser {
   id: number;
   name: string;
   email: string;
-  role: 'admin' | 'vendedor' | 'viewer';
+  role: 'admin' | 'vendedor' | 'atendente' | 'entregador' | 'viewer';
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -51,7 +51,7 @@ export interface CreateUserPayload {
   name: string;
   email: string;
   password: string;
-  role: 'admin' | 'vendedor' | 'viewer';
+  role: 'admin' | 'vendedor' | 'atendente' | 'entregador' | 'viewer';
 }
 
 export interface UpdateUserPayload {

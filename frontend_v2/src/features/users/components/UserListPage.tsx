@@ -103,6 +103,8 @@ function CreateUserDialog({
           >
             <MenuItem value="admin">Admin — acesso total</MenuItem>
             <MenuItem value="vendedor">Vendedor — vê seus recebíveis</MenuItem>
+            <MenuItem value="atendente">Atendente — operação de pedidos</MenuItem>
+            <MenuItem value="entregador">Entregador — pega entregas e recebe taxa</MenuItem>
             <MenuItem value="viewer">Viewer — somente visualização</MenuItem>
           </TextField>
         </Stack>
@@ -122,9 +124,11 @@ function CreateUserDialog({
   );
 }
 
-function roleColor(role: string): 'error' | 'primary' | 'default' {
+function roleColor(role: string): 'error' | 'primary' | 'success' | 'warning' | 'default' {
   if (role === 'admin') return 'error';
   if (role === 'vendedor') return 'primary';
+  if (role === 'entregador') return 'success';
+  if (role === 'atendente') return 'warning';
   return 'default';
 }
 

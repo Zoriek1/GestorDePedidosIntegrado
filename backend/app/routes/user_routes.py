@@ -44,8 +44,10 @@ def create_user():
             return error_response("email, name e password são obrigatórios", 400)
         if len(password) < 8:
             return error_response("Senha deve ter pelo menos 8 caracteres", 400)
-        if role not in ("admin", "vendedor", "viewer"):
-            return error_response("role deve ser admin, vendedor ou viewer", 400)
+        if role not in ("admin", "vendedor", "atendente", "entregador", "viewer"):
+            return error_response(
+                "role deve ser admin, vendedor, atendente, entregador ou viewer", 400
+            )
 
         if user_repo.get_by_email(email):
             return error_response(f"Email '{email}' já cadastrado", 409)
@@ -79,8 +81,10 @@ def update_user(user_id):
         if "name" in data:
             updates["name"] = data["name"].strip()
         if "role" in data:
-            if data["role"] not in ("admin", "vendedor", "viewer"):
-                return error_response("role deve ser admin, vendedor ou viewer", 400)
+            if data["role"] not in ("admin", "vendedor", "atendente", "entregador", "viewer"):
+                return error_response(
+                    "role deve ser admin, vendedor, atendente, entregador ou viewer", 400
+                )
             updates["role"] = data["role"]
         if "is_active" in data:
             updates["is_active"] = bool(data["is_active"])

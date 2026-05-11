@@ -24,15 +24,20 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import RestoreIcon from '@mui/icons-material/Restore';
 import {
   useUsers,
   useCreateUser,
   useDeleteUser,
+  useHardDeleteUser,
+  useReactivateUser,
   CreateUserPayload,
   AppUser,
 } from '../services/userApi';
 import { UserConfigDialog } from './UserConfigDialog';
 import { useToast } from '../../../components/system/useToast';
+import { useConfirm } from '../../../components/system/useConfirm';
 
 function CreateUserDialog({
   open,
@@ -134,14 +139,24 @@ function roleColor(role: string): 'error' | 'primary' | 'success' | 'warning' | 
 
 export default function UserListPage() {
   const toast = useToast();
-  const { data: users, isLoading, error } = useUsers();
+  const confirm = useConfirm();
+  // Sempre inclui inativos — admin precisa ver pra reativar/apagar definitivamente
+  const { data: users, isLoading, error } = useUsers(true, true);
   const [createOpen, setCreateOpen] = useState(false);
   const [configUser, setConfigUser] = useState<AppUser | null>(null);
 
-  function DeleteBtn({ user }: { user: AppUser }) {
+  function DeactivateBtn({ user }: { user: AppUser }) {
     const { mutateAsync, isPending } = useDeleteUser(user.id);
-    const handleDelete = async () => {
-      if (!confirm(`Desativar "${user.name}"?`)) return;
+    const handle = async () => {
+      const ok = await confirm({
+        title: `Desativar "${user.name}"?`,
+        description:
+          'O usuário deixa de poder entrar, mas continua aparecendo aqui como Inativo. ' +
+          'Você pode reativar a qualquer momento.',
+        confirmText: 'Desativar',
+        confirmColor: 'warning',
+      });
+      if (!ok) return;
       try {
         await mutateAsync();
         toast.success(`${user.name} desativado`);
@@ -150,9 +165,57 @@ export default function UserListPage() {
       }
     };
     return (
-      <Tooltip title="Desativar usuário">
-        <IconButton size="small" onClick={handleDelete} disabled={isPending} color="error">
+      <Tooltip title="Desativar (mantém histórico)">
+        <IconButton size="small" onClick={handle} disabled={isPending} color="warning">
           {isPending ? <CircularProgress size={16} /> : <PersonOffIcon fontSize="small" />}
+        </IconButton>
+      </Tooltip>
+    );
+  }
+
+  function ReactivateBtn({ user }: { user: AppUser }) {
+    const { mutateAsync, isPending } = useReactivateUser(user.id);
+    const handle = async () => {
+      try {
+        await mutateAsync();
+        toast.success(`${user.name} reativado`);
+      } catch (e) {
+        toast.error(`Erro: ${(e as Error).message}`);
+      }
+    };
+    return (
+      <Tooltip title="Reativar usuário">
+        <IconButton size="small" onClick={handle} disabled={isPending} color="success">
+          {isPending ? <CircularProgress size={16} /> : <RestoreIcon fontSize="small" />}
+        </IconButton>
+      </Tooltip>
+    );
+  }
+
+  function HardDeleteBtn({ user }: { user: AppUser }) {
+    const { mutateAsync, isPending } = useHardDeleteUser(user.id);
+    const handle = async () => {
+      const ok = await confirm({
+        title: `Apagar definitivamente "${user.name}"?`,
+        description:
+          `Isto LIBERA o email "${user.email}" e o nome "${user.name}" para serem ` +
+          'usados em um novo cadastro. O histórico de pedidos e recebíveis dele é mantido ' +
+          'como "Usuário removido". Esta ação não pode ser desfeita.',
+        confirmText: 'Apagar definitivamente',
+        confirmColor: 'error',
+      });
+      if (!ok) return;
+      try {
+        await mutateAsync();
+        toast.success(`${user.name} apagado · email liberado`);
+      } catch (e) {
+        toast.error(`Erro: ${(e as Error).message}`);
+      }
+    };
+    return (
+      <Tooltip title="Apagar definitivamente (libera email e nome)">
+        <IconButton size="small" onClick={handle} disabled={isPending} color="error">
+          {isPending ? <CircularProgress size={16} /> : <DeleteForeverIcon fontSize="small" />}
         </IconButton>
       </Tooltip>
     );
@@ -219,7 +282,14 @@ export default function UserListPage() {
                       <SettingsIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  {user.is_active && <DeleteBtn user={user} />}
+                  {user.is_active ? (
+                    <DeactivateBtn user={user} />
+                  ) : (
+                    <>
+                      <ReactivateBtn user={user} />
+                      <HardDeleteBtn user={user} />
+                    </>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

@@ -27,8 +27,32 @@ class UserRepository(BaseRepository[User]):
     def get_all_active(self) -> List[User]:
         return User.query.filter_by(is_active=True).order_by(User.name).all()
 
+    def get_all(self) -> List[User]:
+        return User.query.order_by(User.is_active.desc(), User.name).all()
+
     def soft_delete(self, user: User) -> User:
         user.is_active = False
+        db.session.commit()
+        return user
+
+    def reactivate(self, user: User) -> User:
+        user.is_active = True
+        db.session.commit()
+        return user
+
+    def anonymize(self, user: User) -> User:
+        """
+        Anonimiza um usuário desativado para liberar email e nome para reuso.
+        A linha é mantida para preservar referências em pedidos e ledger entries.
+        """
+        from datetime import datetime
+
+        ts = int(datetime.utcnow().timestamp())
+        user.name = "Usuário removido"
+        user.email = f"deleted_{user.id}_{ts}@deleted.local"
+        user.is_active = False
+        # Invalida a senha: força reset se de alguma forma alguém reativar via DB direto
+        user.password_hash = "!deleted"
         db.session.commit()
         return user
 

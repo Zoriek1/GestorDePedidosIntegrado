@@ -916,3 +916,159 @@ class TestLedgerPedidosAtribuidos:
         body = resp.get_json()
         assert body["total_credits"] == pytest.approx(20.0)
         assert body["balance"] == pytest.approx(20.0)
+
+
+# ===========================================================================
+# 8. Fluxo desativar → apagar → libera email/nome
+# ===========================================================================
+
+
+class TestUserDeleteFlow:
+    def test_desativar_apenas_marca_inativo(self, client, session):
+        admin = make_user(session, "del_a@t.com", role="admin", name="A")
+        target = make_user(session, "del_t@t.com", role="vendedor", name="Joao")
+        token = generate_token(admin)
+
+        resp = client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
+        assert resp.status_code == 200
+
+        # Refetch direto do banco
+        from app.models.user import User as UserModel
+
+        u = db.session.get(UserModel, target.id)
+        assert u.is_active is False
+        assert u.email == "del_t@t.com"  # email intacto
+        assert u.name == "Joao"          # nome intacto
+
+    def test_hard_delete_em_usuario_ativo_400(self, client, session):
+        """Admin não pode pular o passo de desativação."""
+        admin = make_user(session, "del_a2@t.com", role="admin", name="A")
+        target = make_user(session, "del_t2@t.com", role="vendedor", name="Maria")
+        token = generate_token(admin)
+
+        resp = client.delete(f"/api/users/{target.id}/hard", headers=auth_headers(token))
+        assert resp.status_code == 400
+        assert "Desative" in (resp.get_json().get("error") or resp.get_json().get("message", ""))
+
+    def test_hard_delete_libera_email_e_nome(self, client, session):
+        admin = make_user(session, "del_a3@t.com", role="admin", name="A")
+        target = make_user(session, "del_t3@t.com", role="vendedor", name="Pedro")
+        token = generate_token(admin)
+
+        # 1) desativar
+        client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
+        # 2) apagar definitivamente
+        resp = client.delete(f"/api/users/{target.id}/hard", headers=auth_headers(token))
+        assert resp.status_code == 200
+
+        # Email original liberado: cadastro novo com mesmo email deve passar
+        resp2 = client.post(
+            "/api/users",
+            json={
+                "email": "del_t3@t.com",
+                "name": "Pedro",
+                "password": "senha1234",
+                "role": "vendedor",
+            },
+            headers=auth_headers(token),
+        )
+        assert resp2.status_code == 201
+        assert resp2.get_json()["user"]["email"] == "del_t3@t.com"
+
+    def test_hard_delete_mantem_linha_anonimizada(self, client, session):
+        """Tombstone preserva FK histórica em pedidos/ledger."""
+        admin = make_user(session, "del_a4@t.com", role="admin", name="A")
+        target = make_user(session, "del_t4@t.com", role="vendedor", name="Ana")
+        # Pedido com FK no vendedor
+        p = make_pedido(session, vendedor_id=target.id)
+        session.commit()
+        original_id = target.id
+        token = generate_token(admin)
+
+        client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
+        client.delete(f"/api/users/{target.id}/hard", headers=auth_headers(token))
+
+        from app.models.user import User as UserModel
+
+        u = db.session.get(UserModel, original_id)
+        assert u is not None  # linha mantida
+        assert u.is_active is False
+        assert u.name == "Usuário removido"
+        assert u.email.startswith("deleted_")
+        # Pedido continua apontando para o mesmo id
+        from app.models.pedido import Pedido as PedidoModel
+
+        p_db = db.session.get(PedidoModel, p.id)
+        assert p_db.vendedor_id == original_id
+
+    def test_listar_include_inactive_traz_desativados(self, client, session):
+        admin = make_user(session, "del_a5@t.com", role="admin", name="A")
+        ativo = make_user(session, "del_at@t.com", role="vendedor", name="Ativo")
+        inativo = make_user(session, "del_in@t.com", role="vendedor", name="Inativo")
+        token = generate_token(admin)
+        client.delete(f"/api/users/{inativo.id}", headers=auth_headers(token))
+
+        # Sem include_inactive: só ativos
+        resp = client.get("/api/users", headers=auth_headers(token))
+        ids = {u["id"] for u in resp.get_json()["users"]}
+        assert ativo.id in ids
+        assert inativo.id not in ids
+        assert admin.id in ids
+
+        # Com include_inactive: inativos aparecem
+        resp = client.get("/api/users?include_inactive=true", headers=auth_headers(token))
+        ids = {u["id"] for u in resp.get_json()["users"]}
+        assert inativo.id in ids
+        assert ativo.id in ids
+
+    def test_listar_esconde_tombstones(self, client, session):
+        """Após hard delete, o usuário some da listagem mesmo com include_inactive."""
+        admin = make_user(session, "del_a6@t.com", role="admin", name="A")
+        target = make_user(session, "del_t6@t.com", role="vendedor", name="Some")
+        token = generate_token(admin)
+
+        client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
+        client.delete(f"/api/users/{target.id}/hard", headers=auth_headers(token))
+
+        resp = client.get("/api/users?include_inactive=true", headers=auth_headers(token))
+        ids = {u["id"] for u in resp.get_json()["users"]}
+        assert target.id not in ids
+
+    def test_reactivate_volta_para_ativo(self, client, session):
+        admin = make_user(session, "del_a7@t.com", role="admin", name="A")
+        target = make_user(session, "del_t7@t.com", role="vendedor", name="Volta")
+        token = generate_token(admin)
+
+        client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
+        resp = client.post(
+            f"/api/users/{target.id}/reactivate", headers=auth_headers(token)
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["user"]["is_active"] is True
+
+    def test_reactivate_em_tombstone_400(self, client, session):
+        admin = make_user(session, "del_a8@t.com", role="admin", name="A")
+        target = make_user(session, "del_t8@t.com", role="vendedor", name="Morto")
+        token = generate_token(admin)
+
+        client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
+        client.delete(f"/api/users/{target.id}/hard", headers=auth_headers(token))
+
+        resp = client.post(
+            f"/api/users/{target.id}/reactivate", headers=auth_headers(token)
+        )
+        assert resp.status_code == 400
+
+    def test_hard_delete_proprio_user_400(self, client, session):
+        admin = make_user(session, "del_self@t.com", role="admin", name="Self")
+        admin.is_active = False  # cenário improvável mas força a checagem
+        session.commit()
+        token = generate_token(admin)
+        # generate_token captura o role no momento; mas a checagem usa user_id == self
+        # Reativa antes pra checar a regra de "próprio usuário"
+        admin.is_active = True
+        session.commit()
+        # Desativa via API por outro admin? Não — vamos só testar a regra: precisa estar inativo
+        # então este caso retorna 400 por causa do "ainda ativo".
+        resp = client.delete(f"/api/users/{admin.id}/hard", headers=auth_headers(token))
+        assert resp.status_code == 400

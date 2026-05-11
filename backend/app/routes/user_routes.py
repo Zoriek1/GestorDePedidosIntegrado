@@ -18,8 +18,15 @@ user_repo = UserRepository()
 @users_bp.route("", methods=["GET"])
 @require_auth(roles=["admin"])
 def list_users():
+    """Lista usuários. Use ?include_inactive=true para incluir desativados."""
     try:
-        users = user_repo.get_all_active()
+        include_inactive = request.args.get("include_inactive", "").lower() == "true"
+        if include_inactive:
+            users = user_repo.get_all()
+        else:
+            users = user_repo.get_all_active()
+        # Esconde tombstones (já apagados): email começa com "deleted_"
+        users = [u for u in users if not (u.email or "").startswith("deleted_")]
         return success_response({"users": [u.to_dict() for u in users]})
     except Exception as e:
         return error_response(str(e), 500)
@@ -118,6 +125,58 @@ def delete_user(user_id):
 
         user_repo.soft_delete(user)
         return success_response({}, message="Usuário desativado")
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/users/<id>/hard — apaga definitivamente (anonimiza)
+# Libera email e nome para reuso. Exige usuário já inativo (fluxo 2 passos).
+# Não remove a linha — anonimiza para preservar FKs históricas (pedidos, ledger).
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>/hard", methods=["DELETE"])
+@require_auth(roles=["admin"])
+def hard_delete_user(user_id):
+    try:
+        user = user_repo.get_by_id(user_id)
+        if not user:
+            return error_response("Usuário não encontrado", 404)
+
+        current = request.current_user
+        if current["user_id"] == user_id:
+            return error_response("Não é possível apagar o próprio usuário", 400)
+
+        if user.is_active:
+            return error_response(
+                "Desative o usuário antes de apagar definitivamente", 400
+            )
+
+        # Já é um tombstone? Idempotente.
+        if (user.email or "").startswith("deleted_"):
+            return success_response({}, message="Usuário já apagado")
+
+        user_repo.anonymize(user)
+        return success_response({}, message="Usuário apagado · email e nome liberados")
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/users/<id>/reactivate — reativa usuário desativado
+# ---------------------------------------------------------------------------
+@users_bp.route("/<int:user_id>/reactivate", methods=["POST"])
+@require_auth(roles=["admin"])
+def reactivate_user(user_id):
+    try:
+        user = user_repo.get_by_id(user_id)
+        if not user:
+            return error_response("Usuário não encontrado", 404)
+        if (user.email or "").startswith("deleted_"):
+            return error_response("Usuário foi apagado e não pode ser reativado", 400)
+        if user.is_active:
+            return success_response({"user": user.to_dict()}, message="Já está ativo")
+        user_repo.reactivate(user)
+        return success_response({"user": user.to_dict()}, message="Usuário reativado")
     except Exception as e:
         return error_response(str(e), 500)
 

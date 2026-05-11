@@ -71,12 +71,13 @@ function useApi() {
 // Hooks
 // ---------------------------------------------------------------------------
 
-export function useUsers(enabled = true) {
+export function useUsers(enabled = true, includeInactive = false) {
   const api = useApi();
   return useQuery<AppUser[]>({
-    queryKey: ['users'],
+    queryKey: ['users', { includeInactive }],
     queryFn: async () => {
-      const res = await api<{ users: AppUser[] }>('/users');
+      const qs = includeInactive ? '?include_inactive=true' : '';
+      const res = await api<{ users: AppUser[] }>(`/users${qs}`);
       if (!res.ok) throw new Error(res.message);
       return (res.data as { users: AppUser[] }).users ?? [];
     },
@@ -143,6 +144,32 @@ export function useDeleteUser(userId: number) {
   return useMutation({
     mutationFn: async () => {
       const res = await api(`/users/${userId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((res as { message: string }).message);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+/** Apaga definitivamente (anonimiza). Exige usuário já desativado. */
+export function useHardDeleteUser(userId: number) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api(`/users/${userId}/hard`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((res as { message: string }).message);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+/** Reativa usuário desativado. */
+export function useReactivateUser(userId: number) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api(`/users/${userId}/reactivate`, { method: 'POST' });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),

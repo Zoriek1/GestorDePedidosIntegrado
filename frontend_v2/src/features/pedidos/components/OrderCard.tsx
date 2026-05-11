@@ -90,13 +90,19 @@ export function OrderCard({
   const deletePedido = useDeletePedido();
   const toggleCartaoImpresso = useToggleCartaoImpresso();
   const { success, error: showError } = useToast();
-  const { getUserRole, getCredentials, isJwtUser } = useAuth();
+  const { getUserRole, getCredentials, isJwtUser, getUser } = useAuth();
   const printService = usePedidoPrintService();
   const confirm = useConfirm();
 
   const userRole = getUserRole();
   const canEdit = userRole === 'admin' || userRole === 'atendente' || userRole === 'vendedor';
-  const canDelete = userRole === 'admin';
+  // Admin sempre; vendedor apenas se for dono (o backend reforça)
+  const currentUser = getUser();
+  const canDelete =
+    userRole === 'admin' ||
+    (userRole === 'vendedor' &&
+      !!pedido.vendedor_id &&
+      currentUser?.id === pedido.vendedor_id);
 
   const paymentStatus = getPaymentStatusLabel(pedido.status_pagamento);
   const paymentStatusColor = getPaymentStatusColor(pedido.status_pagamento);

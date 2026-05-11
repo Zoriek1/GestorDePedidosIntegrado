@@ -18,6 +18,7 @@ import {
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
+  Fab,
 } from '@mui/material';
 import {
   LocalFlorist,
@@ -30,6 +31,7 @@ import {
   Add as AddIcon,
   Bolt as BoltIcon,
   AddShoppingCart as AddShoppingCartIcon,
+  LocalShipping as LocalShippingIcon,
   Settings,
 } from '@mui/icons-material';
 
@@ -37,6 +39,7 @@ import { useAuth } from '../features/auth/authStore';
 import { NotificationManager } from '../features/notifications/NotificationManager';
 import { useOffline } from '../lib/offline/useOffline';
 import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
+import { AssignDeliveryDialog } from '../features/entregas/AssignDeliveryDialog';
 
 interface AppShellProps {
   children: ReactNode;
@@ -52,6 +55,7 @@ export function AppShell({ children }: AppShellProps) {
   const [navMenuEl, setNavMenuEl] = React.useState<null | HTMLElement>(null);
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
+  const [assignDeliveryOpen, setAssignDeliveryOpen] = useState(false);
   
   // Full width para páginas de wizard de pedido
   const isOrderWizardPage =
@@ -71,7 +75,7 @@ export function AppShell({ children }: AppShellProps) {
   const isVendedor = userRole === 'vendedor';
   // Recebíveis e Usuários são rotas JWT-only — ocultar para usuários legados (Basic Auth)
   const jwtUser = isJwtUser();
-  const canViewLedger = jwtUser && (isAdmin || isVendedor);
+  const canViewLedger = jwtUser && (isAdmin || isVendedor || isEntregador);
   const ledgerLabel = isAdmin ? 'Funcionários' : 'Recebíveis';
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -312,13 +316,25 @@ export function AppShell({ children }: AppShellProps) {
           )}
         </Toolbar>
       </AppBar>
-      {/* SpeedDial com opções de criar pedido */}
-      {authenticated && isOrdersPage && (
+      {/* FAB principal — entregador vê "Entregar"; demais veem SpeedDial de criação */}
+      {authenticated && isOrdersPage && isEntregador && (
+        <Fab
+          color="primary"
+          aria-label="Pegar entregas"
+          variant="extended"
+          onClick={() => setAssignDeliveryOpen(true)}
+          sx={{ position: 'fixed', bottom: 24, right: 24, gap: 1 }}
+        >
+          <LocalShippingIcon />
+          Entregar
+        </Fab>
+      )}
+      {authenticated && isOrdersPage && !isEntregador && (
         <SpeedDial
           ariaLabel="Opções de criação"
-          sx={{ 
-            position: 'fixed', 
-            bottom: 24, 
+          sx={{
+            position: 'fixed',
+            bottom: 24,
             right: 24,
             '& .MuiFab-primary': {
               bgcolor: 'primary.main',
@@ -362,6 +378,12 @@ export function AppShell({ children }: AppShellProps) {
             }}
           />
         </SpeedDial>
+      )}
+      {authenticated && (
+        <AssignDeliveryDialog
+          open={assignDeliveryOpen}
+          onClose={() => setAssignDeliveryOpen(false)}
+        />
       )}
 
       {/* Push Notification Manager (invisível, registra subscription) */}

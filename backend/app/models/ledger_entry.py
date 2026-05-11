@@ -31,6 +31,7 @@ CREDIT_CATEGORIES = {
     "comissao_indicacao",
     "comissao_lucro",
     "custom_credit",
+    "taxa_entrega",
 }
 DEBIT_CATEGORIES = {
     "pagamento",
@@ -69,6 +70,12 @@ class LedgerEntry(db.Model):
         nullable=True,
         # UNIQUE removido — substituído por índice parcial WHERE voided=0 no migration script
         comment="Só para comissões — índice parcial garante idempotência por pedido ativo",
+    )
+    delivery_pedido_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pedidos.id"),
+        nullable=True,
+        comment="Só para CREDIT de taxa_entrega — idempotência por pedido entregue (entregador)",
     )
     week_ref = db.Column(
         db.Date,
@@ -133,6 +140,13 @@ class LedgerEntry(db.Model):
             postgresql_where=db.text("voided = FALSE AND pedido_id IS NOT NULL"),
         ),
         db.Index(
+            "uq_ledger_delivery_pedido_active",
+            "delivery_pedido_id",
+            unique=True,
+            sqlite_where=db.text("voided=0 AND delivery_pedido_id IS NOT NULL"),
+            postgresql_where=db.text("voided = FALSE AND delivery_pedido_id IS NOT NULL"),
+        ),
+        db.Index(
             "uq_ledger_weekly_active",
             "user_id",
             "week_ref",
@@ -164,6 +178,7 @@ class LedgerEntry(db.Model):
             "amount": float(self.amount),
             "description": self.description or "",
             "pedido_id": self.pedido_id,
+            "delivery_pedido_id": self.delivery_pedido_id,
             "week_ref": self.week_ref.strftime("%Y-%m-%d") if self.week_ref else "",
             "due_date": self.due_date.strftime("%Y-%m-%d") if self.due_date else None,
             "status": self.status,

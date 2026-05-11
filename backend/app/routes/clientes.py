@@ -18,7 +18,7 @@ clientes_bp = Blueprint("clientes", __name__, url_prefix="/api/clientes")
 
 
 @clientes_bp.route("", methods=["POST"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def criar_cliente():
     """
     Cria novo cliente
@@ -88,7 +88,7 @@ def criar_cliente():
 
 
 @clientes_bp.route("", methods=["GET"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def listar_clientes():
     """
     Lista todos os clientes com filtros e paginação
@@ -244,7 +244,7 @@ def obter_cliente(cliente_id):
 
 
 @clientes_bp.route("/<int:cliente_id>", methods=["PUT"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def atualizar_cliente(cliente_id):
     """
     Atualiza dados do cliente

@@ -15,7 +15,7 @@ rotas_bp = Blueprint("rotas", __name__, url_prefix="/api/pedidos")
 
 
 @rotas_bp.route("/rota-otimizada", methods=["POST"])
-@requires_any_role("admin", "atendente", "entregador")
+@requires_any_role("admin", "atendente", "entregador", "vendedor")
 def calcular_rota_otimizada():
     """
     Calcula rota otimizada para múltiplos pedidos.
@@ -167,7 +167,7 @@ def calcular_rota_otimizada():
 
 
 @rotas_bp.route("/rota-otimizada/<int:rota_id>", methods=["GET"])
-@requires_any_role("admin", "atendente", "entregador")
+@requires_any_role("admin", "atendente", "entregador", "vendedor")
 def obter_rota_otimizada(rota_id):
     """Obtém rota otimizada por ID e gera Google Maps URLs."""
     try:
@@ -206,7 +206,7 @@ def obter_rota_otimizada(rota_id):
 
 
 @rotas_bp.route("/gerar-rota-maps", methods=["POST"])
-@requires_any_role("admin", "atendente", "entregador")
+@requires_any_role("admin", "atendente", "entregador", "vendedor")
 def gerar_rota_maps():
     """
     Gera link do Google Maps respeitando a ordem dos IDs recebidos.

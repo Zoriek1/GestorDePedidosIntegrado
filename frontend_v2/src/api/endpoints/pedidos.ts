@@ -44,6 +44,9 @@ export interface Pedido {
   cartao_impresso?: boolean;
   cliente_id?: number;
   vendedor_id?: number;
+  entregador_id?: number | null;
+  delivery_assigned_at?: string | null;
+  delivery_completed_at?: string | null;
   distancia_km?: number;
   taxa_entrega?: number;
   coords_lat?: number;

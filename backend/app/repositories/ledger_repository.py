@@ -36,6 +36,31 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
             .first()
         )
 
+    def get_active_by_delivery_pedido_id(self, pedido_id: int) -> Optional[LedgerEntry]:
+        """Retorna o CREDIT de taxa_entrega ativo para o pedido (entregador)."""
+        return (
+            LedgerEntry.query.filter(
+                LedgerEntry.delivery_pedido_id == pedido_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.status == "active",
+                LedgerEntry.voided.is_(False),
+            )
+            .order_by(LedgerEntry.id.desc())
+            .first()
+        )
+
+    def get_by_delivery_pedido_id(self, pedido_id: int) -> Optional[LedgerEntry]:
+        """Retorna qualquer CREDIT de taxa_entrega válido (active ou settled) do pedido."""
+        return (
+            LedgerEntry.query.filter(
+                LedgerEntry.delivery_pedido_id == pedido_id,
+                LedgerEntry.type == "CREDIT",
+                LedgerEntry.voided.is_(False),
+            )
+            .order_by(LedgerEntry.id.desc())
+            .first()
+        )
+
     # Alias para retrocompatibilidade interna: qualquer CREDIT histórico
     # ainda válido para o pedido, mesmo que já tenha sido quitado.
     def get_by_pedido_id(self, pedido_id: int) -> Optional[LedgerEntry]:

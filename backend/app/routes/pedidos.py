@@ -292,10 +292,291 @@ def atualizar_status(pedido_id):
         return error_response(f"Erro ao atualizar status: {str(e)}", 500)
 
 
+def _get_current_user_id() -> int | None:
+    """Resolve o user_id do usuário atual (JWT ou Basic Auth).
+
+    Espelha `_get_current_vendedor_id`, mas sem restrição de role.
+    """
+    current_user = getattr(request, "current_user", None)
+    if current_user and current_user.get("user_id"):
+        return current_user.get("user_id")
+
+    authenticated_user = getattr(request, "authenticated_user", None)
+    if authenticated_user:
+        from app.models.user import User as _User
+
+        u = (
+            _User.query.filter(_User.is_active.is_(True))
+            .filter((_User.email == authenticated_user) | (_User.name == authenticated_user))
+            .first()
+        )
+        return u.id if u else None
+    return None
+
+
+def _current_role() -> str | None:
+    current_user = getattr(request, "current_user", None)
+    if current_user:
+        return current_user.get("role")
+    return getattr(request, "user_role", None)
+
+
+# ====================================================================
+# Endpoints do Entregador
+# ====================================================================
+
+ENTREGA_OPEN_STATUSES = ("agendado", "em_producao", "pronto_entrega", "em_rota")
+
+
+@pedidos_bp.route("/disponiveis-entrega", methods=["GET"])
+@requires_any_role("admin", "entregador")
+def listar_disponiveis_entrega():
+    """Lista pedidos do tipo Entrega ainda sem entregador atribuído."""
+    try:
+        from app.models import Pedido
+
+        pedidos = (
+            Pedido.query.filter(
+                Pedido.tipo_pedido == "Entrega",
+                Pedido.entregador_id.is_(None),
+                Pedido.status.in_(ENTREGA_OPEN_STATUSES),
+                Pedido.deleted_at.is_(None),
+                Pedido.oculto.is_(False),
+            )
+            .order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc())
+            .all()
+        )
+        return success_response(
+            {"pedidos": [p.to_dict() for p in pedidos], "total": len(pedidos)}
+        )
+    except Exception as e:
+        return error_response(f"Erro ao listar entregas disponíveis: {str(e)}", 500)
+
+
+@pedidos_bp.route("/minhas-entregas", methods=["GET"])
+@requires_any_role("admin", "entregador")
+def listar_minhas_entregas():
+    """Lista entregas atribuídas ao entregador atual (admin pode passar ?entregador_id=N)."""
+    try:
+        from app.models import Pedido
+
+        role = _current_role()
+        entregador_id: int | None = None
+        if role == "admin":
+            qid = request.args.get("entregador_id", type=int)
+            entregador_id = qid
+        else:
+            entregador_id = _get_current_user_id()
+
+        if not entregador_id:
+            return error_response("entregador_id não resolvido", 400)
+
+        incluir_concluidos = request.args.get("incluir_concluidos", "").lower() == "true"
+
+        q = Pedido.query.filter(
+            Pedido.entregador_id == entregador_id,
+            Pedido.deleted_at.is_(None),
+        )
+        if not incluir_concluidos:
+            q = q.filter(Pedido.status != "concluido")
+
+        pedidos = q.order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc()).all()
+        return success_response(
+            {
+                "pedidos": [p.to_dict() for p in pedidos],
+                "total": len(pedidos),
+                "entregador_id": entregador_id,
+            }
+        )
+    except Exception as e:
+        return error_response(f"Erro ao listar minhas entregas: {str(e)}", 500)
+
+
+def _atribuir_um(pedido, target_entregador_id: int, override: bool) -> tuple[bool, str]:
+    if pedido.deleted_at is not None:
+        return False, "pedido deletado"
+    if (pedido.tipo_pedido or "").lower() != "entrega":
+        return False, "pedido não é de Entrega"
+    if pedido.entregador_id and pedido.entregador_id != target_entregador_id and not override:
+        return False, "já atribuído a outro entregador"
+    pedido.entregador_id = target_entregador_id
+    pedido.delivery_assigned_at = datetime_now_brazil()
+    pedido.updated_at = datetime_now_brazil()
+    return True, "ok"
+
+
+@pedidos_bp.route("/<int:pedido_id>/atribuir-entregador", methods=["POST"])
+@requires_any_role("admin", "entregador")
+def atribuir_entregador(pedido_id):
+    """Atribui um pedido a um entregador. Entregador só pode atribuir a si mesmo."""
+    try:
+        from app import db
+
+        pedido = pedido_repo.get_by_id(pedido_id)
+        if not pedido:
+            return error_response("Pedido não encontrado", 404)
+
+        role = _current_role()
+        body = request.get_json(silent=True) or {}
+        override = bool(body.get("override")) and role == "admin"
+
+        if role == "entregador":
+            target_id = _get_current_user_id()
+        else:  # admin
+            target_id = body.get("entregador_id") or _get_current_user_id()
+            try:
+                target_id = int(target_id) if target_id else None
+            except (TypeError, ValueError):
+                target_id = None
+
+        if not target_id:
+            return error_response("entregador_id não resolvido", 400)
+
+        ok, msg = _atribuir_um(pedido, target_id, override=override)
+        if not ok:
+            return error_response(msg, 409 if "atribuído" in msg else 400)
+
+        db.session.commit()
+        return success_response(
+            {"pedido": pedido.to_dict()}, message="Entrega atribuída"
+        )
+    except Exception as e:
+        from app import db
+
+        db.session.rollback()
+        return error_response(f"Erro ao atribuir entregador: {str(e)}", 500)
+
+
+@pedidos_bp.route("/atribuir-entregadores-lote", methods=["POST"])
+@requires_any_role("admin", "entregador")
+def atribuir_entregadores_lote():
+    """Atribui vários pedidos ao entregador atual (ou ao informado, se admin)."""
+    try:
+        from app import db
+        from app.models import Pedido
+
+        body = request.get_json(silent=True) or {}
+        ids = body.get("pedido_ids") or []
+        if not isinstance(ids, list) or not ids:
+            return error_response("Informe 'pedido_ids' (lista não vazia)", 400)
+        try:
+            ids = [int(x) for x in ids]
+        except (TypeError, ValueError):
+            return error_response("IDs inválidos", 400)
+
+        role = _current_role()
+        override = bool(body.get("override")) and role == "admin"
+        if role == "entregador":
+            target_id = _get_current_user_id()
+        else:
+            target_id = body.get("entregador_id") or _get_current_user_id()
+            try:
+                target_id = int(target_id) if target_id else None
+            except (TypeError, ValueError):
+                target_id = None
+
+        if not target_id:
+            return error_response("entregador_id não resolvido", 400)
+
+        pedidos = Pedido.query.filter(Pedido.id.in_(ids)).all()
+        found_ids = {p.id for p in pedidos}
+        atribuidos: list[int] = []
+        ignorados: list[dict] = []
+
+        for pedido in pedidos:
+            ok, msg = _atribuir_um(pedido, target_id, override=override)
+            if ok:
+                atribuidos.append(pedido.id)
+            else:
+                ignorados.append({"pedido_id": pedido.id, "motivo": msg})
+
+        for missing in [i for i in ids if i not in found_ids]:
+            ignorados.append({"pedido_id": missing, "motivo": "não encontrado"})
+
+        db.session.commit()
+        return success_response(
+            {
+                "atribuidos": atribuidos,
+                "ignorados": ignorados,
+                "entregador_id": target_id,
+            },
+            message=f"{len(atribuidos)} entrega(s) atribuída(s)",
+        )
+    except Exception as e:
+        from app import db
+
+        db.session.rollback()
+        return error_response(f"Erro ao atribuir entregas: {str(e)}", 500)
+
+
+@pedidos_bp.route("/<int:pedido_id>/finalizar-entrega", methods=["POST"])
+@requires_any_role("admin", "entregador")
+def finalizar_entrega(pedido_id):
+    """Marca a entrega como concluída e gera o CREDIT da taxa_entrega no ledger do entregador."""
+    try:
+        from app import db
+
+        pedido = pedido_repo.get_by_id(pedido_id)
+        if not pedido:
+            return error_response("Pedido não encontrado", 404)
+
+        role = _current_role()
+        current_id = _get_current_user_id()
+
+        if not pedido.entregador_id:
+            return error_response("Pedido sem entregador atribuído", 400)
+        if role != "admin" and pedido.entregador_id != current_id:
+            return error_response("Esta entrega não está atribuída a você", 403)
+
+        # Idempotência: se já concluído, retorna o estado atual sem erro
+        if (pedido.status or "").lower() == "concluido" and pedido.delivery_completed_at:
+            return success_response(
+                {"pedido": pedido.to_dict()},
+                message="Entrega já finalizada",
+            )
+
+        snapshot = snapshot_commission_fields(pedido)
+        status_anterior = pedido.status
+        status_pagamento_anterior = pedido.status_pagamento
+
+        pedido.status = "concluido"
+        pedido.delivery_completed_at = datetime_now_brazil()
+        if not pedido.status_pagamento or pedido.status_pagamento.upper() == "PENDENTE":
+            pedido.status_pagamento = "Pago"
+
+        # Reusa o lifecycle (comissão + taxa_entrega via apply_delivery_credit_lifecycle)
+        apply_commission_lifecycle(pedido, previous=snapshot, actor_id=current_id)
+        pedido.updated_at = datetime_now_brazil()
+        db.session.commit()
+
+        try:
+            from app.utils.meta_capi_helper import create_outbox_if_purchase
+
+            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+
+        try:
+            from app.utils.utmify_helper import send_utmify_if_purchase
+
+            send_utmify_if_purchase(pedido, status_anterior, status_pagamento_anterior)
+        except Exception as e:
+            print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
+
+        return success_response(
+            {"pedido": pedido.to_dict()}, message="Entrega finalizada"
+        )
+    except Exception as e:
+        from app import db
+
+        db.session.rollback()
+        return error_response(f"Erro ao finalizar entrega: {str(e)}", 500)
+
+
 @pedidos_bp.route("/<int:pedido_id>", methods=["DELETE"])
-@requires_role("admin")
+@requires_any_role("admin", "vendedor")
 def deletar_pedido(pedido_id):
-    """Deleta pedido"""
+    """Deleta pedido (admin sempre; vendedor apenas os próprios)."""
 
     # Fail-closed: garantir backup antes de operação destrutiva (P0.2)
     # IMPORTANTE: Esta verificação deve estar FORA do try/except genérico
@@ -331,14 +612,25 @@ def deletar_pedido(pedido_id):
             )
             return error_response("Pedido já foi deletado", 400)
 
+        # Ownership check: vendedor só pode deletar pedido próprio
+        role = _current_role()
+        if role == "vendedor":
+            uid = _get_current_user_id()
+            if pedido.vendedor_id != uid:
+                return error_response(
+                    "Vendedor só pode deletar pedidos próprios", 403
+                )
+
         # Obter actor (usuário) se disponível
         actor = "system"  # TODO: extrair de autenticação se disponível
 
         # Antes do soft delete: voidar comissão ativa, se houver, para evitar
         # crédito órfão no ledger apontando para um pedido inexistente.
         from app.services.commission_service import void_active_commission
+        from app.services.delivery_credit_service import void_delivery_credit
 
         void_active_commission(pedido, reason="soft_delete")
+        void_delivery_credit(pedido, reason="soft_delete")
 
         # Executar soft delete via repository (já registra auditoria)
         print(f"[DELETE_PEDIDO] Chamando soft_delete_pedido para pedido #{pedido_id}")
@@ -1116,7 +1408,7 @@ def get_pedidos_por_data():
 
 
 @pedidos_bp.route("/<int:pedido_id>/marcar-impresso", methods=["POST", "PUT", "OPTIONS"])
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def marcar_impresso(pedido_id):
     """Marca pedido como impresso"""
     try:
@@ -1144,7 +1436,7 @@ def marcar_impresso(pedido_id):
 @pedidos_bp.route(
     "/<int:pedido_id>/toggle-cartao-impresso", methods=["POST", "PUT", "OPTIONS"]
 )
-@requires_any_role("admin", "atendente")
+@requires_any_role("admin", "atendente", "vendedor")
 def toggle_cartao_impresso(pedido_id):
     """Alterna a flag 'cartao_impresso' do pedido (cartão/cartinha já impresso)."""
     try:

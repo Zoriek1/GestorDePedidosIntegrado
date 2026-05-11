@@ -124,6 +124,23 @@ class Pedido(db.Model):
         index=True,
         comment="Vendedor responsável pela venda (módulo recebíveis)",
     )
+    entregador_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+        comment="Entregador atribuído (módulo entrega)",
+    )
+    delivery_assigned_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Momento da atribuição da entrega ao entregador",
+    )
+    delivery_completed_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Momento em que o entregador deu baixa na entrega (imutável após set)",
+    )
     fonte_pedido_rel = db.relationship(
         "FontePedido", backref="pedidos", lazy="joined", foreign_keys=[fonte_pedido_id]
     )
@@ -232,6 +249,13 @@ class Pedido(db.Model):
             "cartao_impresso": self.cartao_impresso or False,
             "cliente_id": self.cliente_id,
             "vendedor_id": self.vendedor_id,
+            "entregador_id": self.entregador_id,
+            "delivery_assigned_at": self.delivery_assigned_at.strftime("%Y-%m-%d %H:%M:%S")
+            if self.delivery_assigned_at
+            else None,
+            "delivery_completed_at": self.delivery_completed_at.strftime("%Y-%m-%d %H:%M:%S")
+            if self.delivery_completed_at
+            else None,
             "distancia_km": self.distancia_km,
             "taxa_entrega": self.taxa_entrega,
             # Frete (vindo da Order API)

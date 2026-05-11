@@ -32,7 +32,7 @@ class User(db.Model):
         db.String(20),
         nullable=False,
         default="vendedor",
-        comment="admin | vendedor | viewer",
+        comment="admin | vendedor | atendente | entregador | viewer",
     )
     is_active = db.Column(db.Boolean, nullable=False, default=True, comment="Soft-disable")
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, nullable=False)

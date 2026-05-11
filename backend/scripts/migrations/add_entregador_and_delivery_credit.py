@@ -48,10 +48,13 @@ def add_column_if_missing(table: str, col: str, ddl_type: str, fk: str | None = 
 def migrate() -> None:
     print(f"[MIGRATION] add_entregador_and_delivery_credit (banco: {db.engine.dialect.name})")
 
+    # Postgres usa TIMESTAMP; SQLite aceita TIMESTAMP também (alias de DATETIME).
+    ts_type = "TIMESTAMP NULL"
+
     # 1) Colunas em pedidos
     add_column_if_missing("pedidos", "entregador_id", "INTEGER NULL", fk="users(id)")
-    add_column_if_missing("pedidos", "delivery_assigned_at", "DATETIME NULL")
-    add_column_if_missing("pedidos", "delivery_completed_at", "DATETIME NULL")
+    add_column_if_missing("pedidos", "delivery_assigned_at", ts_type)
+    add_column_if_missing("pedidos", "delivery_completed_at", ts_type)
 
     # Index auxiliar em entregador_id (não-único) para acelerar filtros
     if not index_exists("pedidos", "ix_pedidos_entregador_id"):

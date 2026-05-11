@@ -57,7 +57,7 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
 # GET /api/ledger/balance
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/balance", methods=["GET"])
-@require_auth(roles=["admin", "vendedor"])
+@require_auth(roles=["admin", "vendedor", "entregador"])
 def get_balance():
     try:
         user_id, err = _resolve_user_id()
@@ -74,7 +74,7 @@ def get_balance():
 # POST /api/ledger/settle — quitação em lote (substitui confirm individual)
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/settle", methods=["POST"])
-@require_auth(roles=["admin", "vendedor"])
+@require_auth(roles=["admin", "vendedor", "entregador"])
 def settle():
     """
     Quita CREDITs ativos selecionados por entry_ids e/ou pedido_ids em uma transação atômica.
@@ -152,7 +152,7 @@ def settle():
 # GET /api/ledger/entries
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/entries", methods=["GET"])
-@require_auth(roles=["admin", "vendedor"])
+@require_auth(roles=["admin", "vendedor", "entregador"])
 def get_entries():
     try:
         user_id, err = _resolve_user_id()
@@ -264,7 +264,7 @@ def generate_weekly():
 # GET /api/ledger/periods — recebíveis agrupados por período (due_date)
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/periods", methods=["GET"])
-@require_auth(roles=["admin", "vendedor"])
+@require_auth(roles=["admin", "vendedor", "entregador"])
 def get_periods():
     try:
         user_id, err = _resolve_user_id()
@@ -280,13 +280,17 @@ def get_periods():
 # GET /api/ledger/pedidos — pedidos atribuídos com detalhes de comissão (admin)
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/pedidos", methods=["GET"])
-@require_auth(roles=["admin", "vendedor"])
+@require_auth(roles=["admin", "vendedor", "entregador"])
 def get_pedidos_atribuidos():
     """
-    Retorna pedidos com comissão gerada para o vendedor (view administrativa).
-    Lê diretamente dos ledger entries com pedido_id, sem recalcular em tempo real.
+    Retorna pedidos com CREDIT gerado para o usuário (view administrativa):
+      - Comissões do vendedor (via pedido_id, categoria comissao_*).
+      - Taxas de entrega do entregador (via delivery_pedido_id, categoria taxa_entrega).
+    Lê diretamente dos ledger entries sem recalcular em tempo real.
     """
     try:
+        from sqlalchemy import or_
+
         user_id, err = _resolve_user_id()
         if err:
             return err
@@ -302,14 +306,26 @@ def get_pedidos_atribuidos():
         query = LedgerEntry.query.filter(
             LedgerEntry.user_id == user_id,
             LedgerEntry.type == "CREDIT",
-            LedgerEntry.pedido_id.isnot(None),
-            LedgerEntry.category.like("comissao_%"),
             LedgerEntry.voided.is_(False),
+            or_(
+                # Comissão do vendedor: pedido_id preenchido + categoria comissao_*
+                (LedgerEntry.pedido_id.isnot(None))
+                & (LedgerEntry.category.like("comissao_%")),
+                # Taxa de entrega do entregador: delivery_pedido_id preenchido + categoria taxa_entrega
+                (LedgerEntry.delivery_pedido_id.isnot(None))
+                & (LedgerEntry.category == "taxa_entrega"),
+            ),
         )
 
         entries = query.order_by(LedgerEntry.week_ref.desc(), LedgerEntry.created_at.desc()).all()
 
-        pedido_ids = [e.pedido_id for e in entries]
+        # Coleta ids dos pedidos (de qualquer dos dois campos)
+        pedido_ids: list[int] = []
+        for e in entries:
+            pid = e.pedido_id or e.delivery_pedido_id
+            if pid:
+                pedido_ids.append(pid)
+
         pedidos_by_id = (
             {p.id: p for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()}
             if pedido_ids
@@ -319,7 +335,8 @@ def get_pedidos_atribuidos():
 
         result = []
         for entry in entries:
-            pedido = pedidos_by_id.get(entry.pedido_id)
+            pid = entry.pedido_id or entry.delivery_pedido_id
+            pedido = pedidos_by_id.get(pid) if pid else None
             if from_date and pedido and pedido.dia_entrega and pedido.dia_entrega < from_date:
                 continue
             if to_date and pedido and pedido.dia_entrega and pedido.dia_entrega > to_date:
@@ -329,6 +346,8 @@ def get_pedidos_atribuidos():
             fonte_pedido_id = None
             valor_pedido = None
             rate = None
+            is_delivery = entry.category == "taxa_entrega"
+
             if pedido:
                 fonte_pedido_id = pedido.fonte_pedido_id
                 if pedido.fonte_pedido_rel:
@@ -339,18 +358,23 @@ def get_pedidos_atribuidos():
                     valor_pedido = float(pedido.total_pago())
                 except Exception:
                     valor_pedido = None
-                cfg = user_repo.get_active_commission(
-                    user_id=user_id,
-                    fonte_pedido_id=fonte_pedido_id,
-                    source=map_fonte_to_source(fonte_nome or ""),
-                )
-                if cfg:
-                    rate = round(float(cfg.rate) * 100, 2)
+                if not is_delivery:
+                    cfg = user_repo.get_active_commission(
+                        user_id=user_id,
+                        fonte_pedido_id=fonte_pedido_id,
+                        source=map_fonte_to_source(fonte_nome or ""),
+                    )
+                    if cfg:
+                        rate = round(float(cfg.rate) * 100, 2)
+
+            # Para CREDIT de taxa_entrega, sobrescrever o rótulo de "fonte"
+            # com "Taxa de entrega" para a UI ficar clara.
+            display_fonte = "Taxa de entrega" if is_delivery else fonte_nome
 
             result.append(
                 {
                     "entry_id": entry.id,
-                    "pedido_id": entry.pedido_id,
+                    "pedido_id": pid,
                     "cliente": pedido.cliente if pedido else None,
                     "dia_entrega": pedido.dia_entrega.isoformat()
                     if pedido and pedido.dia_entrega
@@ -360,7 +384,7 @@ def get_pedidos_atribuidos():
                     "commission_amount": float(entry.amount),
                     "category": entry.category,
                     "fonte_pedido_id": fonte_pedido_id,
-                    "fonte": fonte_nome,
+                    "fonte": display_fonte,
                     "rate": rate,
                     "valor_pedido": valor_pedido,
                     "status": entry.status,
@@ -393,7 +417,7 @@ def get_summary():
 # GET /api/ledger/pending — CREDITs active do vendedor
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/pending", methods=["GET"])
-@require_auth(roles=["admin", "vendedor"])
+@require_auth(roles=["admin", "vendedor", "entregador"])
 def get_pending():
     try:
         user_id, err = _resolve_user_id()
@@ -447,7 +471,7 @@ def generate_calendar():
 # GET /api/ledger/export — exporta extrato em CSV
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/export", methods=["GET"])
-@require_auth(roles=["admin", "vendedor"])
+@require_auth(roles=["admin", "vendedor", "entregador"])
 def export_csv():
     try:
         user_id, err = _resolve_user_id()

@@ -703,3 +703,216 @@ class TestPermissoesVendedor:
 
         resp = client.delete(f"/api/pedidos/{p.id}", headers=auth_headers(token))
         assert resp.status_code == 403
+
+
+# ===========================================================================
+# 6. POST/PUT /api/users — validação de roles
+# ===========================================================================
+
+
+class TestUserRoleValidation:
+    """O dropdown de criação de usuário agora oferece 5 roles. O backend precisa
+    aceitar todos e rejeitar valores fora do conjunto."""
+
+    @pytest.mark.parametrize(
+        "role", ["admin", "vendedor", "atendente", "entregador", "viewer"]
+    )
+    def test_create_user_aceita_role_valido(self, client, session, role):
+        admin = make_user(session, f"ur_a_{role}@t.com", role="admin", name="A")
+        token = generate_token(admin)
+
+        resp = client.post(
+            "/api/users",
+            json={
+                "email": f"novo_{role}@t.com",
+                "name": f"Novo {role}",
+                "password": "senha1234",
+                "role": role,
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["user"]["role"] == role
+
+    def test_create_user_rejeita_role_invalido(self, client, session):
+        admin = make_user(session, "ur_inv@t.com", role="admin", name="A")
+        token = generate_token(admin)
+
+        resp = client.post(
+            "/api/users",
+            json={
+                "email": "novo_x@t.com",
+                "name": "X",
+                "password": "senha1234",
+                "role": "superadmin",
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+        msg = resp.get_json().get("error") or resp.get_json().get("message", "")
+        # Mensagem deve mencionar pelo menos um dos roles aceitos
+        assert "entregador" in msg or "atendente" in msg
+
+    def test_create_user_default_role_vendedor(self, client, session):
+        """Sem `role` no body, default é 'vendedor'."""
+        admin = make_user(session, "ur_def@t.com", role="admin", name="A")
+        token = generate_token(admin)
+
+        resp = client.post(
+            "/api/users",
+            json={
+                "email": "novo_def@t.com",
+                "name": "Default",
+                "password": "senha1234",
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["user"]["role"] == "vendedor"
+
+    def test_create_user_nao_admin_recebe_403(self, client, session):
+        vendedor = make_user(session, "ur_v@t.com", role="vendedor", name="V")
+        token = generate_token(vendedor)
+
+        resp = client.post(
+            "/api/users",
+            json={
+                "email": "novo_neg@t.com",
+                "name": "Negado",
+                "password": "senha1234",
+                "role": "entregador",
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.parametrize(
+        "role", ["admin", "vendedor", "atendente", "entregador", "viewer"]
+    )
+    def test_update_user_aceita_role_valido(self, client, session, role):
+        admin = make_user(session, f"upd_a_{role}@t.com", role="admin", name="A")
+        target = make_user(session, f"upd_t_{role}@t.com", role="viewer", name="T")
+        token = generate_token(admin)
+
+        resp = client.put(
+            f"/api/users/{target.id}",
+            json={"role": role},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["user"]["role"] == role
+
+    def test_update_user_rejeita_role_invalido(self, client, session):
+        admin = make_user(session, "upd_inv@t.com", role="admin", name="A")
+        target = make_user(session, "upd_inv_t@t.com", role="viewer", name="T")
+        token = generate_token(admin)
+
+        resp = client.put(
+            f"/api/users/{target.id}",
+            json={"role": "superuser"},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+
+
+# ===========================================================================
+# 7. GET /api/ledger/pedidos — Pedidos Atribuídos inclui taxa_entrega do entregador
+# ===========================================================================
+
+
+class TestLedgerPedidosAtribuidos:
+    """O card 'Pedidos Atribuídos' precisa mostrar tanto comissão (vendedor) quanto
+    taxa_entrega (entregador)."""
+
+    def _setup_pedido_finalizado_com_credits(self, session):
+        """Cria pedido com vendedor + entregador, gera comissão e taxa_entrega."""
+        from datetime import datetime
+
+        from app.services.delivery_credit_service import generate_delivery_credit
+        from app.services.order_commission_lifecycle import apply_commission_lifecycle
+
+        vendedor = make_user(session, "lpa_v@t.com", role="vendedor", name="V")
+        entregador = make_user(session, "lpa_e@t.com", role="entregador", name="E")
+        fonte = FontePedido(nome="WhatsApp")
+        session.add(fonte)
+        session.flush()
+        session.add(
+            CommissionConfig(
+                user_id=vendedor.id, fonte_pedido_id=fonte.id, source="whatsapp", rate=0.10
+            )
+        )
+        session.commit()
+
+        p = make_pedido(
+            session,
+            vendedor_id=vendedor.id,
+            entregador_id=entregador.id,
+            fonte_pedido_id=fonte.id,
+            status="concluido",
+            status_pagamento="Pago",
+            taxa_entrega=20.0,
+            valor="R$ 120,00",
+        )
+        p.delivery_completed_at = datetime.utcnow()
+        session.commit()
+        apply_commission_lifecycle(p, previous=None, actor_id=vendedor.id)
+        generate_delivery_credit(p, entregador.id)
+        session.commit()
+        return vendedor, entregador, p
+
+    def test_entregador_ve_proprios_taxa_entrega(self, client, session):
+        """Entregador chamando /api/ledger/pedidos vê o CREDIT da taxa_entrega."""
+        _, entregador, p = self._setup_pedido_finalizado_com_credits(session)
+        token = generate_token(entregador)
+
+        resp = client.get("/api/ledger/pedidos", headers=auth_headers(token))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 1
+        item = body["pedidos"][0]
+        assert item["pedido_id"] == p.id
+        assert item["category"] == "taxa_entrega"
+        assert item["commission_amount"] == pytest.approx(20.0)
+        assert item["fonte"] == "Taxa de entrega"
+
+    def test_vendedor_ve_propria_comissao_e_nao_taxa(self, client, session):
+        """Vendedor vê apenas CREDIT de comissão (com pedido_id), não taxa_entrega."""
+        vendedor, _, p = self._setup_pedido_finalizado_com_credits(session)
+        token = generate_token(vendedor)
+
+        resp = client.get("/api/ledger/pedidos", headers=auth_headers(token))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 1
+        item = body["pedidos"][0]
+        assert item["pedido_id"] == p.id
+        assert item["category"].startswith("comissao_")
+        assert item["fonte"] != "Taxa de entrega"
+
+    def test_admin_pode_ver_taxa_entrega_de_outro(self, client, session):
+        """Admin com ?user_id=<entregador> vê o CREDIT da taxa_entrega dele."""
+        _, entregador, p = self._setup_pedido_finalizado_com_credits(session)
+        admin = make_user(session, "lpa_a@t.com", role="admin", name="A")
+        token = generate_token(admin)
+
+        resp = client.get(
+            f"/api/ledger/pedidos?user_id={entregador.id}",
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 1
+        assert body["pedidos"][0]["category"] == "taxa_entrega"
+        assert body["pedidos"][0]["pedido_id"] == p.id
+
+    def test_entregador_pode_ver_balance(self, client, session):
+        """Antes do fix, entregador recebia 403 em /ledger/balance."""
+        _, entregador, _ = self._setup_pedido_finalizado_com_credits(session)
+        token = generate_token(entregador)
+
+        resp = client.get("/api/ledger/balance", headers=auth_headers(token))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total_credits"] == pytest.approx(20.0)
+        assert body["balance"] == pytest.approx(20.0)

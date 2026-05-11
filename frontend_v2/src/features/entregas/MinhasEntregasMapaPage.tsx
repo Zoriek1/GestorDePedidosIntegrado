@@ -81,7 +81,7 @@ export default function MinhasEntregasMapaPage() {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '90vh' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
       <Stack direction="row" alignItems="center" spacing={1} p={2}>
         <IconButton onClick={() => navigate(-1)} size="small">
           <ArrowBack />
@@ -93,8 +93,24 @@ export default function MinhasEntregasMapaPage() {
         <Chip label={`${pedidos.length} entrega(s)`} size="small" />
       </Stack>
 
-      <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flex: 1, gap: 1, px: 1 }}>
-        <Paper sx={{ flex: 1, minHeight: isMobile ? 300 : '70vh', overflow: 'hidden' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: 1,
+          px: 1,
+          pb: 1,
+        }}
+      >
+        {/* Altura fixa em px/vh: o GoogleMap usa height:100% e colapsa se o pai só tem minHeight */}
+        <Paper
+          sx={{
+            flex: 1,
+            height: isMobile ? '50vh' : '75vh',
+            minHeight: isMobile ? 320 : 480,
+            overflow: 'hidden',
+          }}
+        >
           {!GOOGLE_MAPS_API_KEY ? (
             <Box p={3} textAlign="center" color="text.secondary">
               <Map sx={{ fontSize: 48, opacity: 0.5 }} />
@@ -109,6 +125,12 @@ export default function MinhasEntregasMapaPage() {
               mapContainerStyle={{ width: '100%', height: '100%' }}
               center={center}
               zoom={12}
+              options={{
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: !isMobile,
+                gestureHandling: 'greedy',
+              }}
             >
               {pedidos
                 .filter((p) => p.coords_lat && p.coords_lon)

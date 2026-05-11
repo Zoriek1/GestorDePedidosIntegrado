@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -58,6 +58,25 @@ export default function MinhasEntregasMapaPage() {
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
   });
 
+  // Mantém referência do mapa para forçar resize/recentro quando o container
+  // ganha tamanho depois do mount (problema clássico em layouts flex no mobile).
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const onMapLoad = (map: google.maps.Map) => {
+    mapRef.current = map;
+  };
+
+  // Quando pedidos chegam ou o viewport muda, reaplicar o center.
+  useEffect(() => {
+    if (!mapRef.current || !mapsLoaded) return;
+    const m = mapRef.current;
+    // pequeno delay garante que o container já tem largura/altura final
+    const t = window.setTimeout(() => {
+      google.maps.event.trigger(m, 'resize');
+      m.setCenter(center);
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [center, mapsLoaded, isMobile, pedidos.length]);
+
   const handleFinalizar = async (id: number) => {
     setBusyId(id);
     try {
@@ -106,8 +125,9 @@ export default function MinhasEntregasMapaPage() {
         <Paper
           sx={{
             flex: 1,
-            height: isMobile ? '50vh' : '75vh',
-            minHeight: isMobile ? 320 : 480,
+            // Altura em PX (vh resolve pra 0 em alguns contextos no mobile,
+            // e o GoogleMap captura o tamanho no mount sem re-medir).
+            height: isMobile ? 360 : 520,
             overflow: 'hidden',
           }}
         >
@@ -125,6 +145,7 @@ export default function MinhasEntregasMapaPage() {
               mapContainerStyle={{ width: '100%', height: '100%' }}
               center={center}
               zoom={12}
+              onLoad={onMapLoad}
               options={{
                 streetViewControl: false,
                 mapTypeControl: false,

@@ -165,6 +165,13 @@ export const pedidoFormSchema = z.object({
 
   pagamento: z.string().max(50).optional(),
 
+  parcelas_cartao: z
+    .number()
+    .int('Parcelas deve ser um número inteiro')
+    .min(1, 'Mínimo 1 parcela')
+    .max(24, 'Máximo 24 parcelas')
+    .optional(),
+
   status_pagamento: z.enum(STATUS_PAGAMENTO).default('Pendente'),
 
   observacoes: z.string().max(1000).optional(),
@@ -267,6 +274,7 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   quantidade: 1,
   taxa_entrega: '',
   pagamento: '',
+  parcelas_cartao: undefined,
   status_pagamento: 'Pendente',
   observacoes: '',
   origem_anuncio: false,
@@ -398,6 +406,10 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     })(),
     taxa_entrega: parseCurrencyToFloat(formData.taxa_entrega),
     pagamento: formData.pagamento?.trim() || undefined,
+    parcelas_cartao:
+      formData.pagamento === 'Cartão de Crédito' && formData.parcelas_cartao
+        ? formData.parcelas_cartao
+        : undefined,
     status_pagamento: formData.status_pagamento || 'Pendente',
     observacoes: observacoesFinal,
     quantidade: formData.quantidade ?? 1,
@@ -487,6 +499,7 @@ export const step3Schema = pedidoFormSchema.pick({
 export const step4Schema = pedidoFormSchema.pick({
   taxa_entrega: true,
   pagamento: true,
+  parcelas_cartao: true,
   status_pagamento: true,
   observacoes: true,
 });

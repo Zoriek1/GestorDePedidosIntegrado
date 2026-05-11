@@ -5,6 +5,7 @@ from datetime import date
 from flask import Blueprint, jsonify, request
 
 from app.middleware import requires_edit_auth
+from app.services.taxa_cartao import taxa_cartao_service
 from app.services.taxa_entrega import taxa_entrega_service
 
 config_bp = Blueprint("config", __name__, url_prefix="/api/config")
@@ -112,5 +113,92 @@ def update_meta_faturamento():
         _save_meta_faturamento(data)
 
         return jsonify({"success": True, "mes": mes, "valor": valor_num})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@config_bp.route("/taxa-cartao", methods=["GET"])
+@requires_edit_auth
+def get_taxa_cartao_config():
+    """Retorna a configuração atual da taxa de cartão (débito + crédito)."""
+    try:
+        taxa_cartao_service.recarregar()
+        return jsonify({"success": True, "config": taxa_cartao_service.config})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@config_bp.route("/taxa-cartao", methods=["POST"])
+@requires_edit_auth
+def update_taxa_cartao_config():
+    """Atualiza a configuração da taxa de cartão."""
+    try:
+        data = request.get_json() or {}
+
+        if "debito_pct" not in data or "credito" not in data:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Campos 'debito_pct' e 'credito' obrigatórios",
+                    }
+                ),
+                400,
+            )
+
+        try:
+            debito_pct = float(data["debito_pct"])
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "debito_pct inválido"}), 400
+        if debito_pct < 0 or debito_pct > 100:
+            return (
+                jsonify({"success": False, "error": "debito_pct fora do intervalo 0-100"}),
+                400,
+            )
+
+        credito_raw = data["credito"]
+        if not isinstance(credito_raw, list) or not credito_raw:
+            return (
+                jsonify({"success": False, "error": "credito deve ser uma lista não-vazia"}),
+                400,
+            )
+
+        credito_validado = []
+        for item in credito_raw:
+            try:
+                parcelas = int(item["parcelas"])
+                taxa_pct = float(item["taxa_pct"])
+            except (KeyError, TypeError, ValueError):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Cada faixa precisa de 'parcelas' (int) e 'taxa_pct' (float)",
+                        }
+                    ),
+                    400,
+                )
+            if parcelas < 1 or parcelas > 24:
+                return (
+                    jsonify({"success": False, "error": "parcelas fora do intervalo 1-24"}),
+                    400,
+                )
+            if taxa_pct < 0 or taxa_pct > 100:
+                return (
+                    jsonify({"success": False, "error": "taxa_pct fora do intervalo 0-100"}),
+                    400,
+                )
+            credito_validado.append({"parcelas": parcelas, "taxa_pct": taxa_pct})
+
+        credito_validado.sort(key=lambda f: f["parcelas"])
+        novo = {"debito_pct": debito_pct, "credito": credito_validado}
+
+        os.makedirs(os.path.dirname(taxa_cartao_service.config_path), exist_ok=True)
+        with open(taxa_cartao_service.config_path, "w", encoding="utf-8") as f:
+            json.dump(novo, f, indent=4, ensure_ascii=False)
+
+        taxa_cartao_service.recarregar()
+
+        return jsonify({"success": True, "message": "Configuração atualizada", "config": novo})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

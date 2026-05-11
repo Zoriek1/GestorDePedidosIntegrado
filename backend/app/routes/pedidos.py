@@ -346,9 +346,7 @@ def listar_disponiveis_entrega():
             .order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc())
             .all()
         )
-        return success_response(
-            {"pedidos": [p.to_dict() for p in pedidos], "total": len(pedidos)}
-        )
+        return success_response({"pedidos": [p.to_dict() for p in pedidos], "total": len(pedidos)})
     except Exception as e:
         return error_response(f"Erro ao listar entregas disponíveis: {str(e)}", 500)
 
@@ -429,14 +427,16 @@ def atribuir_entregador(pedido_id):
         override = role in ("admin", "vendedor")
 
         # Desatribuir: admin ou vendedor podem passar entregador_id=null
-        if role in ("admin", "vendedor") and "entregador_id" in body and body["entregador_id"] in (None, ""):
+        if (
+            role in ("admin", "vendedor")
+            and "entregador_id" in body
+            and body["entregador_id"] in (None, "")
+        ):
             pedido.entregador_id = None
             pedido.delivery_assigned_at = None
             pedido.updated_at = datetime_now_brazil()
             db.session.commit()
-            return success_response(
-                {"pedido": pedido.to_dict()}, message="Entrega desatribuída"
-            )
+            return success_response({"pedido": pedido.to_dict()}, message="Entrega desatribuída")
 
         if role == "entregador":
             target_id = _get_current_user_id()
@@ -456,9 +456,7 @@ def atribuir_entregador(pedido_id):
             return error_response(msg, 409 if "atribuído" in msg else 400)
 
         db.session.commit()
-        return success_response(
-            {"pedido": pedido.to_dict()}, message="Entrega atribuída"
-        )
+        return success_response({"pedido": pedido.to_dict()}, message="Entrega atribuída")
     except Exception as e:
         from app import db
 
@@ -582,9 +580,7 @@ def finalizar_entrega(pedido_id):
         except Exception as e:
             print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
 
-        return success_response(
-            {"pedido": pedido.to_dict()}, message="Entrega finalizada"
-        )
+        return success_response({"pedido": pedido.to_dict()}, message="Entrega finalizada")
     except Exception as e:
         from app import db
 
@@ -636,9 +632,7 @@ def deletar_pedido(pedido_id):
         if role == "vendedor":
             uid = _get_current_user_id()
             if pedido.vendedor_id != uid:
-                return error_response(
-                    "Vendedor só pode deletar pedidos próprios", 403
-                )
+                return error_response("Vendedor só pode deletar pedidos próprios", 403)
 
         # Obter actor (usuário) se disponível
         actor = "system"  # TODO: extrair de autenticação se disponível
@@ -897,6 +891,13 @@ def criar_pedido():
 
         mensagem = _clean_str(data.get("mensagem"))
         pagamento = _clean_str(data.get("pagamento"))
+        parcelas_cartao_raw = data.get("parcelas_cartao")
+        try:
+            parcelas_cartao = (
+                int(parcelas_cartao_raw) if parcelas_cartao_raw not in (None, "", 0) else None
+            )
+        except (ValueError, TypeError):
+            parcelas_cartao = None
         observacoes = _clean_str(data.get("observacoes"))
         status_pagamento = _clean_str(data.get("status_pagamento"))
         codigo_whatsapp = _extract_whatsapp_token_from_payload(data)
@@ -1076,6 +1077,7 @@ def criar_pedido():
             obs_entrega=obs_entrega if obs_entrega else None,
             mensagem=mensagem if mensagem else None,
             pagamento=pagamento if pagamento else None,
+            parcelas_cartao=parcelas_cartao,
             observacoes=observacoes if observacoes else None,
             status_pagamento=status_pagamento if status_pagamento else None,
             status="agendado",
@@ -1089,6 +1091,9 @@ def criar_pedido():
         db.session.add(pedido)
         db.session.flush()  # gera pedido.id antes de vincular o lead
         _link_lead_by_whatsapp_code(codigo_whatsapp, telefone_cliente, pedido_id=pedido.id)
+        from app.services.taxa_cartao import aplicar_taxa_cartao_snapshot
+
+        aplicar_taxa_cartao_snapshot(pedido)
         apply_commission_lifecycle(pedido, previous=None, actor_id=vendedor_id_final)
         db.session.commit()
 
@@ -1264,6 +1269,14 @@ def atualizar_pedido(pedido_id):
         if "pagamento" in data:
             track_change("pagamento", pedido.pagamento, data["pagamento"])
             pedido.pagamento = data["pagamento"]
+        if "parcelas_cartao" in data:
+            raw = data["parcelas_cartao"]
+            try:
+                novas_parcelas = int(raw) if raw not in (None, "", 0) else None
+            except (ValueError, TypeError):
+                novas_parcelas = None
+            track_change("parcelas_cartao", pedido.parcelas_cartao, novas_parcelas)
+            pedido.parcelas_cartao = novas_parcelas
         if "observacoes" in data:
             track_change("observacoes", pedido.observacoes, data["observacoes"])
             pedido.observacoes = data["observacoes"]
@@ -1334,6 +1347,9 @@ def atualizar_pedido(pedido_id):
             )
 
         actor_id = current_user.get("user_id") if current_user else None
+        from app.services.taxa_cartao import aplicar_taxa_cartao_snapshot
+
+        aplicar_taxa_cartao_snapshot(pedido)
         apply_commission_lifecycle(pedido, previous=previous_commission_snapshot, actor_id=actor_id)
         db.session.commit()
 
@@ -1452,9 +1468,7 @@ def marcar_impresso(pedido_id):
         return error_response(f"Erro ao marcar como impresso: {str(e)}", 500)
 
 
-@pedidos_bp.route(
-    "/<int:pedido_id>/toggle-cartao-impresso", methods=["POST", "PUT", "OPTIONS"]
-)
+@pedidos_bp.route("/<int:pedido_id>/toggle-cartao-impresso", methods=["POST", "PUT", "OPTIONS"])
 @requires_any_role("admin", "atendente", "vendedor")
 def toggle_cartao_impresso(pedido_id):
     """Alterna a flag 'cartao_impresso' do pedido (cartão/cartinha já impresso)."""
@@ -1473,11 +1487,7 @@ def toggle_cartao_impresso(pedido_id):
         pedido.updated_at = datetime_now_brazil()
         db.session.commit()
 
-        msg = (
-            "Cartão marcado como impresso"
-            if pedido.cartao_impresso
-            else "Cartão desmarcado"
-        )
+        msg = "Cartão marcado como impresso" if pedido.cartao_impresso else "Cartão desmarcado"
         return success_response({"pedido": pedido.to_dict()}, message=msg)
 
     except Exception as e:

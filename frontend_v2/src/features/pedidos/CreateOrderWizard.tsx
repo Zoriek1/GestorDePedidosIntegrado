@@ -57,7 +57,7 @@ const STEPS = [
   { label: 'Cliente', component: StepCliente, fields: ['cliente', 'telefone_cliente', 'destinatario', 'tipo_pedido'] as const },
   { label: 'Produto', component: StepProduto, fields: ['produto', 'valor', 'dia_entrega', 'horario'] as const },
   { label: 'Entrega', component: StepEntrega, fields: ['rua', 'numero', 'cidade', 'endereco'] as const },
-  { label: 'Pagamento', component: StepPagamento, fields: ['pagamento', 'status_pagamento'] as const },
+  { label: 'Pagamento', component: StepPagamento, fields: ['pagamento', 'parcelas_cartao', 'status_pagamento'] as const },
 ];
 
 // ============================================================================

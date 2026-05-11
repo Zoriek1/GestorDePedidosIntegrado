@@ -1,7 +1,8 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
-import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People } from '@mui/icons-material';
+import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People, CreditCard } from '@mui/icons-material';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
+import { TaxaCartaoSettings } from './components/TaxaCartaoSettings';
 import { Loading } from '../../components/common/Loading';
 import { DailyFreightDialog } from '../pedidos/components/DailyFreightDialog';
 import { createApiRequest } from '../../api/http';
@@ -132,6 +133,7 @@ export default function SettingsPage() {
           scrollButtons="auto"
         >
           <Tab icon={<LocalShipping />} label="Taxa de Entrega" iconPosition="start" />
+          {isAdmin && <Tab icon={<CreditCard />} label="Taxa de Cartão" iconPosition="start" />}
           <Tab icon={<Build />} label="Ações em Lote" iconPosition="start" />
           {!isEntregador && <Tab icon={<Build />} label="Fontes" iconPosition="start" />}
           {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
@@ -143,11 +145,12 @@ export default function SettingsPage() {
       <Box sx={{ mt: 2 }}>
         <Suspense fallback={<Loading />}>
           {tabValue === 0 && <TaxaEntregaSettings />}
-          {tabValue === 1 && <BatchActionsTab />}
-          {!isEntregador && tabValue === 2 && <FontesPage />}
-          {!isEntregador && tabValue === 3 && <CustomersPage />}
-          {!isEntregador && tabValue === 4 && <NuvemshopPage />}
-          {isAdmin && tabValue === 5 && <UserListPage />}
+          {isAdmin && tabValue === 1 && <TaxaCartaoSettings />}
+          {tabValue === (isAdmin ? 2 : 1) && <BatchActionsTab />}
+          {!isEntregador && tabValue === (isAdmin ? 3 : 2) && <FontesPage />}
+          {!isEntregador && tabValue === (isAdmin ? 4 : 3) && <CustomersPage />}
+          {!isEntregador && tabValue === (isAdmin ? 5 : 4) && <NuvemshopPage />}
+          {isAdmin && tabValue === 6 && <UserListPage />}
         </Suspense>
       </Box>
     </Box>

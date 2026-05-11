@@ -1,0 +1,17 @@
+{
+    "debito_pct": 0,
+    "credito": [
+        {"parcelas": 1, "taxa_pct": 0},
+        {"parcelas": 2, "taxa_pct": 0},
+        {"parcelas": 3, "taxa_pct": 0},
+        {"parcelas": 4, "taxa_pct": 0},
+        {"parcelas": 5, "taxa_pct": 0},
+        {"parcelas": 6, "taxa_pct": 0},
+        {"parcelas": 7, "taxa_pct": 0},
+        {"parcelas": 8, "taxa_pct": 0},
+        {"parcelas": 9, "taxa_pct": 0},
+        {"parcelas": 10, "taxa_pct": 0},
+        {"parcelas": 11, "taxa_pct": 0},
+        {"parcelas": 12, "taxa_pct": 0}
+    ]
+}

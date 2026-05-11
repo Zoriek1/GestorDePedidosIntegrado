@@ -59,6 +59,17 @@ class Pedido(db.Model):
     # Step 4 - Finalização
     mensagem = db.Column(db.Text, nullable=True, comment="Carta/Mensagem")
     pagamento = db.Column(db.String(50), nullable=True, comment="Forma de pagamento")
+    parcelas_cartao = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Número de parcelas no cartão de crédito (1 para à vista)",
+    )
+    taxa_cartao_valor = db.Column(
+        db.Float,
+        nullable=True,
+        default=0.0,
+        comment="Snapshot do valor da taxa do adquirente cobrada (R$)",
+    )
     observacoes = db.Column(db.Text, nullable=True, comment="Observações gerais")
 
     # Novos campos solicitados
@@ -233,6 +244,8 @@ class Pedido(db.Model):
             # Step 4
             "mensagem": self.mensagem or "",
             "pagamento": self.pagamento or "",
+            "parcelas_cartao": self.parcelas_cartao,
+            "taxa_cartao_valor": float(self.taxa_cartao_valor or 0.0),
             "observacoes": self.observacoes or "",
             "fonte_pedido": self.fonte_pedido or "",  # Mantido para compatibilidade
             "fonte_pedido_id": self.fonte_pedido_id,

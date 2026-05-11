@@ -4,6 +4,7 @@
  * Resumo lateral/sticky em desktop
  */
 
+import { useEffect } from 'react';
 import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import {
   Box,
@@ -26,6 +27,8 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import dayjs from 'dayjs';
 import { parseCurrencyToFloat, formatCurrency, FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from '../../schemas';
 import type { PedidoFormData } from '../../schemas';
+import { useTaxaCartaoConfig } from '../../../config/hooks/useConfig';
+import { calcularTaxaCartao } from '../../../config/services/configService';
 
 // ============================================================================
 // Componente
@@ -37,6 +40,7 @@ export function StepPagamento() {
 
   const {
     control,
+    setValue,
     formState: { errors },
   } = useFormContext<PedidoFormData>();
 
@@ -51,11 +55,37 @@ export function StepPagamento() {
   const tipoPedido = useWatch({ control, name: 'tipo_pedido' });
   const cidade = useWatch({ control, name: 'cidade' });
   const statusPagamento = useWatch({ control, name: 'status_pagamento' });
+  const formaPagamento = useWatch({ control, name: 'pagamento' });
+  const parcelasCartao = useWatch({ control, name: 'parcelas_cartao' });
 
-  // Calcula o valor líquido (valor do pedido menos frete)
+  // Carrega config de taxa de cartão (cache 5 min do React Query)
+  const { config: taxaCartaoConfig } = useTaxaCartaoConfig();
+
+  // Calcula valores em tempo real
   const valorFloat = parseCurrencyToFloat(valorProduto) || 0;
   const taxaFloat = parseCurrencyToFloat(taxaEntrega) || 0;
-  const valorLiquido = valorFloat - taxaFloat;
+  const taxaCartaoFloat = calcularTaxaCartao(
+    taxaCartaoConfig,
+    formaPagamento,
+    parcelasCartao,
+    valorFloat,
+  );
+  const valorLiquido = Math.max(0, valorFloat - taxaFloat - taxaCartaoFloat);
+
+  const isCredito = formaPagamento === 'Cartão de Crédito';
+  const opcoesParcelas = (taxaCartaoConfig?.credito ?? [])
+    .map((f) => Number(f.parcelas))
+    .filter((n) => Number.isFinite(n) && n >= 1)
+    .sort((a, b) => a - b);
+
+  // Reset parcelas quando muda forma de pagamento
+  useEffect(() => {
+    if (!isCredito && parcelasCartao !== undefined) {
+      setValue('parcelas_cartao', undefined, { shouldDirty: true });
+    } else if (isCredito && !parcelasCartao && opcoesParcelas.length > 0) {
+      setValue('parcelas_cartao', opcoesParcelas[0], { shouldDirty: true });
+    }
+  }, [isCredito, parcelasCartao, opcoesParcelas, setValue]);
 
   // Componente de Resumo
   const ResumoContent = (
@@ -150,9 +180,20 @@ export function StepPagamento() {
             Taxa de Entrega:
           </Typography>
           <Typography variant="body2">
-            {taxaFloat > 0 ? formatCurrency(taxaFloat) : 'Grátis'}
+            {taxaFloat > 0 ? `- ${formatCurrency(taxaFloat)}` : 'Grátis'}
           </Typography>
         </Box>
+
+        {taxaCartaoFloat > 0 && (
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2" color="text.secondary">
+              Taxa Cartão{isCredito && parcelasCartao ? ` (${parcelasCartao}x)` : ''}:
+            </Typography>
+            <Typography variant="body2">
+              - {formatCurrency(taxaCartaoFloat)}
+            </Typography>
+          </Box>
+        )}
 
         <Divider sx={{ my: 1 }} />
 
@@ -245,6 +286,41 @@ export function StepPagamento() {
                 </FormControl>
               )}
             />
+
+            {/* Parcelas (apenas para Cartão de Crédito) */}
+            {isCredito && (
+              <Controller
+                name="parcelas_cartao"
+                control={control}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.parcelas_cartao}>
+                    <InputLabel>Parcelas</InputLabel>
+                    <Select
+                      label="Parcelas"
+                      value={field.value ?? ''}
+                      onChange={(e) =>
+                        field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+                      }
+                    >
+                      {opcoesParcelas.length === 0 && (
+                        <MenuItem value="">
+                          <em>Configure as taxas em Configurações</em>
+                        </MenuItem>
+                      )}
+                      {opcoesParcelas.map((n) => (
+                        <MenuItem key={n} value={n}>
+                          {n}x
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <FormHelperText>
+                      {errors.parcelas_cartao?.message ||
+                        'A taxa varia conforme o número de parcelas'}
+                    </FormHelperText>
+                  </FormControl>
+                )}
+              />
+            )}
 
             {/* Status do Pagamento */}
             <Controller

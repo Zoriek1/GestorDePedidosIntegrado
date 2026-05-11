@@ -19,7 +19,14 @@ from app.services.delivery_credit_service import (
     void_delivery_credit,
 )
 
-SENSITIVE_FIELDS = ("vendedor_id", "fonte_pedido_id", "valor", "tipo_pedido", "taxa_entrega")
+SENSITIVE_FIELDS = (
+    "vendedor_id",
+    "fonte_pedido_id",
+    "valor",
+    "tipo_pedido",
+    "taxa_entrega",
+    "taxa_cartao_valor",
+)
 DELIVERY_SENSITIVE_FIELDS = ("entregador_id", "taxa_entrega")
 
 
@@ -34,6 +41,7 @@ def snapshot_commission_fields(pedido) -> dict[str, Any]:
         "valor": getattr(pedido, "valor", None),
         "tipo_pedido": getattr(pedido, "tipo_pedido", None),
         "taxa_entrega": getattr(pedido, "taxa_entrega", None),
+        "taxa_cartao_valor": getattr(pedido, "taxa_cartao_valor", None),
         "delivery_completed_at": getattr(pedido, "delivery_completed_at", None),
     }
 
@@ -49,7 +57,9 @@ def _sensitive_fields_changed(previous: dict[str, Any], pedido) -> bool:
     return False
 
 
-def apply_commission_lifecycle(pedido, previous: dict[str, Any] | None = None, actor_id: int | None = None) -> dict:
+def apply_commission_lifecycle(
+    pedido, previous: dict[str, Any] | None = None, actor_id: int | None = None
+) -> dict:
     """
     Aplica regras de comissão para create/update/status.
 
@@ -140,9 +150,7 @@ def apply_commission_lifecycle(pedido, previous: dict[str, Any] | None = None, a
     return result
 
 
-def apply_delivery_credit_lifecycle(
-    pedido, previous: dict[str, Any] | None = None
-) -> dict:
+def apply_delivery_credit_lifecycle(pedido, previous: dict[str, Any] | None = None) -> dict:
     """
     Espelha o lifecycle de comissão, porém para o CREDIT de taxa_entrega do entregador.
 

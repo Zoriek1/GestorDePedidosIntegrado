@@ -83,21 +83,38 @@ def commission_base(pedido) -> float:
     """
     Retorna o valor líquido usado como base de cálculo da comissão.
 
-    - Retirada: valor bruto do pedido (sem taxa de entrega).
-    - Entrega:  valor bruto − taxa_entrega (nunca negativo).
+    - Retirada: valor bruto − taxa_cartao_valor.
+    - Entrega:  valor bruto − taxa_entrega − taxa_cartao_valor (nunca negativo).
+
+    taxa_cartao_valor é um snapshot gravado no save do pedido (ver
+    services/taxa_cartao.aplicar_taxa_cartao_snapshot), garantindo que
+    mudanças posteriores na config global não recalculem comissões antigas.
     """
     from flask import current_app
 
     valor = pedido.total_pago()
+    taxa_cartao = float(getattr(pedido, "taxa_cartao_valor", None) or 0.0)
     tipo = (getattr(pedido, "tipo_pedido", None) or "Entrega").strip()
+
     if tipo.lower() == "retirada":
-        return valor
-    taxa = float(getattr(pedido, "taxa_entrega", None) or 0.0)
-    base = max(0.0, valor - taxa)
-    if taxa > valor:
+        base = max(0.0, valor - taxa_cartao)
+        if taxa_cartao > valor:
+            current_app.logger.warning(
+                "[COMISSAO] taxa_cartao (%.2f) > valor (%.2f) no pedido #%s — base zerada",
+                taxa_cartao,
+                valor,
+                getattr(pedido, "id", "?"),
+            )
+        return base
+
+    taxa_entrega = float(getattr(pedido, "taxa_entrega", None) or 0.0)
+    base = max(0.0, valor - taxa_entrega - taxa_cartao)
+    if (taxa_entrega + taxa_cartao) > valor:
         current_app.logger.warning(
-            "[COMISSAO] taxa_entrega (%.2f) > valor (%.2f) no pedido #%s — base zerada",
-            taxa, valor, getattr(pedido, "id", "?"),
+            "[COMISSAO] taxa_entrega+taxa_cartao (%.2f) > valor (%.2f) no pedido #%s — base zerada",
+            taxa_entrega + taxa_cartao,
+            valor,
+            getattr(pedido, "id", "?"),
         )
     return base
 
@@ -143,7 +160,10 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
         current_app.logger.warning(
             "[COMISSAO] Pedido #%s sem CommissionConfig ativa "
             "(vendedor=%s fonte_pedido_id=%s source=%r); comissão pulada.",
-            pedido.id, vendedor_id, fonte_pedido_id, source,
+            pedido.id,
+            vendedor_id,
+            fonte_pedido_id,
+            source,
         )
         return
 
@@ -197,7 +217,10 @@ def generate_commission(pedido, vendedor_id: int, reference_date: date | None = 
     db.session.flush()
     current_app.logger.info(
         "[COMISSAO] Pedido #%s: R$%.2f (%s) → user %s",
-        pedido.id, commission_amount, category, vendedor_id,
+        pedido.id,
+        commission_amount,
+        category,
+        vendedor_id,
     )
 
 
@@ -252,9 +275,11 @@ def void_and_recreate_commission(pedido, vendedor_id: int) -> None:
     db.session.flush()
 
     current_app.logger.info(
-        "[COMISSAO] Estorno Pedido #%s: R$%.2f voidado (rate=%s source=%s), "
-        "DEBIT ajuste criado",
-        pedido.id, old_amount, old_rate, old_source,
+        "[COMISSAO] Estorno Pedido #%s: R$%.2f voidado (rate=%s source=%s), " "DEBIT ajuste criado",
+        pedido.id,
+        old_amount,
+        old_rate,
+        old_source,
     )
 
     # Gerar nova comissão com valores atuais
@@ -287,6 +312,8 @@ def void_active_commission(pedido, reason: str) -> bool:
 
     current_app.logger.info(
         "[COMISSAO] Pedido #%s: CREDIT R$%.2f voidado (reason=%s)",
-        pedido.id, float(existing.amount), reason,
+        pedido.id,
+        float(existing.amount),
+        reason,
     )
     return True

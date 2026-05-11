@@ -163,11 +163,16 @@ abaixo antes de marcar a tarefa como pronta:
 - [ ] Adicionado em `pedidoFormDefaultValues`
 - [ ] Adicionado ao `stepNSchema` correspondente (validação parcial)
 - [ ] Listado em `STEPS[].fields` em `CreateOrderWizard.tsx` (gating Próximo)
-- [ ] Mapeado em `transformFormToApiPayload` (snake_case backend)
-- [ ] Coluna existe em `backend/app/models/pedido.py` (criar migration em
-      `backend/scripts/migrations/` se for novo)
+- [ ] Mapeado em `transformFormToApiPayload` (form → backend, snake_case).
+      Use `null` (não `undefined`) quando precisar limpar valor anterior no PUT
+- [ ] Mapeado em `useCases/orderToForm.ts` (backend → form na edição) —
+      sem isso o campo vem vazio ao reabrir um pedido salvo
+- [ ] Tipo `Pedido` em `api/endpoints/pedidos.ts` inclui o campo (e
+      `CreatePedidoPayload` se for enviado)
+- [ ] Coluna existe em `backend/app/models/pedido.py` + `to_dict()` retorna
+      o campo (criar migration em `backend/scripts/migrations/` se for novo)
 - [ ] Repository (`pedido_repository.py`) e route (`routes/pedidos.py`)
-      aceitam o campo no payload
+      aceitam o campo no payload (POST e PUT)
 
 **Selector (dropdown vinculado a DB):**
 - [ ] Endpoint `GET /api/<recurso>` retorna `[{id, label}]`

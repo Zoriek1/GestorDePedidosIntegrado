@@ -85,6 +85,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     quantidade: pedido.quantidade ?? 1,
     taxa_entrega: pedido.taxa_entrega !== undefined && pedido.taxa_entrega !== null ? String(pedido.taxa_entrega) : '',
     pagamento: pedido.pagamento || '',
+    parcelas_cartao: pedido.parcelas_cartao ?? undefined,
     status_pagamento: statusPagamento,
     observacoes: pedido.observacoes || '',
     origem_anuncio: !!pedido.fbc,

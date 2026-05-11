@@ -32,6 +32,8 @@ export interface Pedido {
   obs_entrega?: string;
   mensagem?: string;
   pagamento?: string;
+  parcelas_cartao?: number | null;
+  taxa_cartao_valor?: number | null;
   observacoes?: string;
   fonte_pedido?: string;
   fonte_pedido_id?: number;
@@ -180,6 +182,7 @@ export interface CreatePedidoPayload {
   obs_entrega?: string;
   mensagem?: string;
   pagamento?: string;
+  parcelas_cartao?: number | null;
   observacoes?: string;
   status_pagamento?: string;
   fonte_pedido?: string;

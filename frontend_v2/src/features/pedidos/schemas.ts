@@ -409,7 +409,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     parcelas_cartao:
       formData.pagamento === 'Cartão de Crédito' && formData.parcelas_cartao
         ? formData.parcelas_cartao
-        : undefined,
+        : null,
     status_pagamento: formData.status_pagamento || 'Pendente',
     observacoes: observacoesFinal,
     quantidade: formData.quantidade ?? 1,

@@ -171,7 +171,13 @@ export function AppShell({ children }: AppShellProps) {
                   <MenuItem onClick={() => handleNavigate('/leads')}>Leads UTM</MenuItem>
                 </>
               )}
-              <MenuItem onClick={() => handleNavigate('/rota-entrega')}>Rota</MenuItem>
+              <MenuItem
+                onClick={() =>
+                  handleNavigate(isEntregador ? '/entregador/mapa' : '/rota-entrega')
+                }
+              >
+                {isEntregador ? 'Minhas entregas' : 'Rota'}
+              </MenuItem>
               {canViewLedger && (
                 <MenuItem onClick={() => handleNavigate('/recebiveis')}>{ledgerLabel}</MenuItem>
               )}
@@ -234,8 +240,14 @@ export function AppShell({ children }: AppShellProps) {
                 </Button>
               </>
             )}
-            <Button color="inherit" onClick={() => handleNavigate('/rota-entrega')} sx={{ textTransform: 'none' }}>
-              Rota
+            <Button
+              color="inherit"
+              onClick={() =>
+                handleNavigate(isEntregador ? '/entregador/mapa' : '/rota-entrega')
+              }
+              sx={{ textTransform: 'none' }}
+            >
+              {isEntregador ? 'Minhas entregas' : 'Rota'}
             </Button>
             {canViewLedger && (
               <Button color="inherit" onClick={() => handleNavigate('/recebiveis')} sx={{ textTransform: 'none' }}>

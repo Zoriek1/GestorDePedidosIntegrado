@@ -1,8 +1,20 @@
 import { useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Typography, Breadcrumbs, Link, Container, Paper } from '@mui/material';
+import {
+  Typography,
+  Breadcrumbs,
+  Link,
+  Container,
+  Paper,
+  Box,
+  TextField,
+  MenuItem,
+  Stack,
+  Chip,
+} from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import { usePedido, useUpdatePedido, type CreatePedidoPayload } from '../../api/endpoints/pedidos';
 import { useToast } from '../../components/system/useToast';
 import { Loading } from '../../components/common/Loading';
@@ -10,6 +22,87 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { CreateOrderWizard } from './CreateOrderWizard';
 import { orderToForm } from './useCases/orderToForm';
 import { OrderFormProvider } from './contexts/OrderFormContext';
+import { useAuth } from '../auth/authStore';
+import { isAdmin, isVendedor } from '../auth/roleHelpers';
+import {
+  useEntregadores,
+  useAtribuirEntregadorPedido,
+} from '../entregas/services/entregasApi';
+
+interface EntregadorSelectorProps {
+  pedido: {
+    id: number;
+    tipo_pedido: 'Entrega' | 'Retirada';
+    entregador_id?: number | null;
+    status: string;
+  };
+}
+
+function EntregadorSelector({ pedido }: EntregadorSelectorProps) {
+  const { getUserRole } = useAuth();
+  const role = getUserRole();
+  const podeEditar = isAdmin(role) || isVendedor(role);
+  const toast = useToast();
+  const { data: entregadores, isLoading } = useEntregadores();
+  const atribuir = useAtribuirEntregadorPedido();
+
+  if (!podeEditar) return null;
+  if (pedido.tipo_pedido !== 'Entrega') return null;
+
+  const isConcluido = pedido.status === 'concluido';
+  const currentId = pedido.entregador_id ?? '';
+
+  const handleChange = async (value: string) => {
+    const entregadorId = value === '' ? null : Number(value);
+    if (entregadorId === pedido.entregador_id) return;
+    try {
+      await atribuir.mutateAsync({ pedidoId: pedido.id, entregadorId });
+      toast.success(entregadorId ? 'Entregador atribuído' : 'Atribuição removida');
+    } catch (e) {
+      toast.error(`Erro: ${(e as Error).message}`);
+    }
+  };
+
+  const currentEntregador = entregadores?.find((u) => u.id === pedido.entregador_id);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 180 }}>
+          <LocalShippingIcon fontSize="small" color="action" />
+          <Typography variant="subtitle2" fontWeight={600}>
+            Entregador
+          </Typography>
+          {currentEntregador && (
+            <Chip size="small" label={currentEntregador.name} color="success" variant="outlined" />
+          )}
+        </Stack>
+        <Box sx={{ flex: 1 }}>
+          <TextField
+            select
+            fullWidth
+            size="small"
+            value={currentId}
+            onChange={(e) => handleChange(e.target.value)}
+            disabled={isLoading || atribuir.isPending || isConcluido}
+            helperText={
+              isConcluido
+                ? 'Pedido já concluído — não é possível alterar'
+                : 'Selecione um entregador para atribuir esta entrega'
+            }
+          >
+            <MenuItem value="">— Nenhum (desatribuir) —</MenuItem>
+            {(entregadores ?? []).map((u) => (
+              <MenuItem key={u.id} value={u.id}>
+                {u.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Box>
+      </Stack>
+    </Paper>
+  );
+}
 
 export default function EditOrderPage() {
   const { id } = useParams<{ id: string }>();
@@ -78,6 +171,8 @@ export default function EditOrderPage() {
           <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 3 }}>
             Editar Pedido #{pedidoId}
           </Typography>
+
+          <EntregadorSelector pedido={data.pedido} />
 
           <CreateOrderWizard
             onSubmit={handleSubmit}

@@ -36,6 +36,9 @@ import { useCalcularRotaOtimizada, useRotaOtimizada, useGerarRotaMaps, type Rota
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
+import { useAuth } from '../auth/authStore';
+import { isEntregador } from '../auth/roleHelpers';
+import { AssignDeliveryDialog } from '../entregas/AssignDeliveryDialog';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
@@ -127,6 +130,12 @@ export default function RoutePage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
+  const { getUser, getUserRole } = useAuth();
+  const me = getUser();
+  const role = getUserRole();
+  const viewerIsEntregador = isEntregador(role);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+
   const [onlyAgendados, setOnlyAgendados] = useState(false);
   const [searchParams] = useSearchParams();
   const idsParam = searchParams.get('ids');
@@ -183,12 +192,15 @@ export default function RoutePage() {
   }, [data?.pedidos, selectedIds]);
 
   // Filtro: apenas pedidos tipo 'Entrega' com dia_entrega == data selecionada
+  // Para entregador, restringe aos pedidos atribuídos a ele.
   const pedidosFiltrados = useMemo(() => {
-    return pedidos.filter(p =>
-      p.tipo_pedido === 'Entrega' &&
-      p.dia_entrega === dateStr
-    );
-  }, [pedidos, dateStr]);
+    return pedidos.filter((p) => {
+      if (p.tipo_pedido !== 'Entrega') return false;
+      if (p.dia_entrega !== dateStr) return false;
+      if (viewerIsEntregador && p.entregador_id !== me?.id) return false;
+      return true;
+    });
+  }, [pedidos, dateStr, viewerIsEntregador, me?.id]);
 
   const pedidosFiltradosKey = useMemo(
     () => pedidosFiltrados.map(p => p.id).join(','),
@@ -663,10 +675,38 @@ export default function RoutePage() {
 
               <Paper sx={{ p: isMobile ? 1 : 2 }}>
                 {pedidosOrdenados.length === 0 ? (
-                  <Box p={1}>
-                    <Typography variant={isMobile ? 'caption' : 'body2'} color="text.secondary">
-                      Nenhum pedido de entrega para {isToday ? 'hoje' : selectedDate.format('DD/MM/YYYY')}.
-                    </Typography>
+                  <Box p={2} textAlign="center">
+                    {viewerIsEntregador ? (
+                      <Stack alignItems="center" spacing={1}>
+                        <Typography
+                          variant={isMobile ? 'body2' : 'subtitle1'}
+                          fontWeight={600}
+                        >
+                          Selecione pedidos para entregar
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Você ainda não tem entregas atribuídas para{' '}
+                          {isToday ? 'hoje' : selectedDate.format('DD/MM/YYYY')}.
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          size="small"
+                          startIcon={<RouteIcon fontSize="small" />}
+                          onClick={() => setAssignDialogOpen(true)}
+                          sx={{ mt: 1 }}
+                        >
+                          Pegar entregas
+                        </Button>
+                      </Stack>
+                    ) : (
+                      <Typography
+                        variant={isMobile ? 'caption' : 'body2'}
+                        color="text.secondary"
+                      >
+                        Nenhum pedido de entrega para{' '}
+                        {isToday ? 'hoje' : selectedDate.format('DD/MM/YYYY')}.
+                      </Typography>
+                    )}
                   </Box>
                 ) : (
                   <>
@@ -752,6 +792,12 @@ export default function RoutePage() {
             </Grid>
           </Grid>
         </>
+      )}
+      {viewerIsEntregador && (
+        <AssignDeliveryDialog
+          open={assignDialogOpen}
+          onClose={() => setAssignDialogOpen(false)}
+        />
       )}
     </Box>
   );

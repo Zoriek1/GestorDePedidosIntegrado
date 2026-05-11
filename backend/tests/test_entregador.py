@@ -409,6 +409,105 @@ class TestEndpointAtribuir:
         body = resp.get_json()
         assert body["pedido"]["entregador_id"] == e.id
 
+    def test_vendedor_pode_atribuir_entregador(self, client, session):
+        """Vendedor atribui entregador a um pedido via PUT no body."""
+        v = make_user(session, "vatr_v@t.com", role="vendedor", name="V")
+        e = make_user(session, "vatr_e@t.com", role="entregador", name="E")
+        p = make_pedido(session, vendedor_id=v.id)
+        session.commit()
+        token = generate_token(v)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={"entregador_id": e.id},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["pedido"]["entregador_id"] == e.id
+
+    def test_vendedor_pode_trocar_entregador(self, client, session):
+        """Vendedor reatribui pedido que já tinha entregador (sem precisar override)."""
+        v = make_user(session, "vatr2_v@t.com", role="vendedor", name="V")
+        e1 = make_user(session, "vatr2_e1@t.com", role="entregador", name="E1")
+        e2 = make_user(session, "vatr2_e2@t.com", role="entregador", name="E2")
+        p = make_pedido(session, vendedor_id=v.id, entregador_id=e1.id)
+        session.commit()
+        token = generate_token(v)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={"entregador_id": e2.id},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["pedido"]["entregador_id"] == e2.id
+
+    def test_vendedor_pode_desatribuir_entregador(self, client, session):
+        v = make_user(session, "vatr3_v@t.com", role="vendedor", name="V")
+        e = make_user(session, "vatr3_e@t.com", role="entregador", name="E")
+        p = make_pedido(session, vendedor_id=v.id, entregador_id=e.id)
+        session.commit()
+        token = generate_token(v)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={"entregador_id": None},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["pedido"]["entregador_id"] is None
+
+    def test_entregador_nao_pode_roubar_pedido_alheio(self, client, session):
+        """Entregador continua bloqueado de pegar pedido já atribuído a outro."""
+        e1 = make_user(session, "rob_e1@t.com", role="entregador", name="E1")
+        e2 = make_user(session, "rob_e2@t.com", role="entregador", name="E2")
+        p = make_pedido(session, entregador_id=e1.id)
+        session.commit()
+        token = generate_token(e2)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={"override": True},  # tentativa de bypass
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 409
+
+    def test_lista_entregadores_endpoint(self, client, session):
+        """GET /api/users/entregadores lista entregadores ativos para vendedor/admin/atendente."""
+        admin = make_user(session, "le_a@t.com", role="admin", name="A")
+        make_user(session, "le_e1@t.com", role="entregador", name="E1")
+        make_user(session, "le_e2@t.com", role="entregador", name="E2")
+        # outros roles não aparecem
+        make_user(session, "le_v@t.com", role="vendedor", name="V")
+        session.commit()
+        token = generate_token(admin)
+
+        resp = client.get("/api/users/entregadores", headers=auth_headers(token))
+        assert resp.status_code == 200
+        users = resp.get_json()["users"]
+        names = {u["name"] for u in users}
+        assert names == {"E1", "E2"}
+        # Cada entrada tem só id/name/email
+        assert set(users[0].keys()) == {"id", "name", "email"}
+
+    def test_lista_entregadores_acessivel_para_vendedor(self, client, session):
+        v = make_user(session, "le_acc_v@t.com", role="vendedor", name="V")
+        make_user(session, "le_acc_e@t.com", role="entregador", name="E")
+        session.commit()
+        token = generate_token(v)
+
+        resp = client.get("/api/users/entregadores", headers=auth_headers(token))
+        assert resp.status_code == 200
+        assert len(resp.get_json()["users"]) == 1
+
+    def test_lista_entregadores_negada_para_entregador(self, client, session):
+        e = make_user(session, "le_deny@t.com", role="entregador", name="E")
+        session.commit()
+        token = generate_token(e)
+
+        resp = client.get("/api/users/entregadores", headers=auth_headers(token))
+        assert resp.status_code == 403
+
     def test_atribuir_lote_atribui_pedidos_a_self(self, client, session):
         e = make_user(session, "lot1@t.com")
         p1 = make_pedido(session, destinatario="A")
@@ -814,6 +913,68 @@ class TestUserRoleValidation:
             headers=auth_headers(token),
         )
         assert resp.status_code == 400
+
+    def test_admin_nao_pode_se_auto_rebaixar(self, client, session):
+        """Admin alterando próprio cargo para qualquer outro role → 400."""
+        admin = make_user(session, "self_demote@t.com", role="admin", name="A")
+        token = generate_token(admin)
+
+        resp = client.put(
+            f"/api/users/{admin.id}",
+            json={"role": "vendedor"},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 400
+        msg = resp.get_json().get("error") or resp.get_json().get("message", "")
+        assert "próprio cargo" in msg.lower() or "outro admin" in msg.lower()
+
+        # Confirma que o role não mudou
+        from app.models.user import User as UserModel
+
+        u = db.session.get(UserModel, admin.id)
+        assert u.role == "admin"
+
+    def test_admin_pode_alterar_role_de_outro_usuario(self, client, session):
+        """Admin promove vendedor para entregador, depois para admin, depois rebaixa."""
+        admin = make_user(session, "promo_a@t.com", role="admin", name="A")
+        target = make_user(session, "promo_t@t.com", role="vendedor", name="T")
+        token = generate_token(admin)
+
+        for new_role in ("entregador", "admin", "viewer"):
+            resp = client.put(
+                f"/api/users/{target.id}",
+                json={"role": new_role},
+                headers=auth_headers(token),
+            )
+            assert resp.status_code == 200
+            assert resp.get_json()["user"]["role"] == new_role
+
+    def test_outro_admin_pode_rebaixar_admin(self, client, session):
+        """Restrição é só auto-rebaixamento. Outro admin pode trocar o cargo."""
+        a1 = make_user(session, "two_a1@t.com", role="admin", name="A1")
+        a2 = make_user(session, "two_a2@t.com", role="admin", name="A2")
+        token = generate_token(a1)
+
+        resp = client.put(
+            f"/api/users/{a2.id}",
+            json={"role": "vendedor"},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["user"]["role"] == "vendedor"
+
+    def test_nao_admin_nao_pode_alterar_role(self, client, session):
+        """Já coberto em test_create_user_nao_admin_recebe_403, mas confirma para PUT."""
+        vendedor = make_user(session, "nadm_v@t.com", role="vendedor", name="V")
+        target = make_user(session, "nadm_t@t.com", role="viewer", name="T")
+        token = generate_token(vendedor)
+
+        resp = client.put(
+            f"/api/users/{target.id}",
+            json={"role": "admin"},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 403
 
 
 # ===========================================================================

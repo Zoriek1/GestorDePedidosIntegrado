@@ -406,9 +406,15 @@ def _atribuir_um(pedido, target_entregador_id: int, override: bool) -> tuple[boo
 
 
 @pedidos_bp.route("/<int:pedido_id>/atribuir-entregador", methods=["POST"])
-@requires_any_role("admin", "entregador")
+@requires_any_role("admin", "entregador", "vendedor")
 def atribuir_entregador(pedido_id):
-    """Atribui um pedido a um entregador. Entregador só pode atribuir a si mesmo."""
+    """
+    Atribui um pedido a um entregador.
+
+    - Entregador: força entregador_id = self (ignora body).
+    - Admin/Vendedor: lê body.entregador_id (pode ser null para desatribuir).
+    - Admin: pode forçar override quando o pedido já está atribuído (body.override).
+    """
     try:
         from app import db
 
@@ -418,12 +424,24 @@ def atribuir_entregador(pedido_id):
 
         role = _current_role()
         body = request.get_json(silent=True) or {}
-        override = bool(body.get("override")) and role == "admin"
+        # Admin e vendedor podem reatribuir livremente (override implícito).
+        # Entregador NÃO pode "roubar" pedido alheio: override fica False.
+        override = role in ("admin", "vendedor")
+
+        # Desatribuir: admin ou vendedor podem passar entregador_id=null
+        if role in ("admin", "vendedor") and "entregador_id" in body and body["entregador_id"] in (None, ""):
+            pedido.entregador_id = None
+            pedido.delivery_assigned_at = None
+            pedido.updated_at = datetime_now_brazil()
+            db.session.commit()
+            return success_response(
+                {"pedido": pedido.to_dict()}, message="Entrega desatribuída"
+            )
 
         if role == "entregador":
             target_id = _get_current_user_id()
-        else:  # admin
-            target_id = body.get("entregador_id") or _get_current_user_id()
+        else:  # admin ou vendedor
+            target_id = body.get("entregador_id")
             try:
                 target_id = int(target_id) if target_id else None
             except (TypeError, ValueError):
@@ -432,6 +450,7 @@ def atribuir_entregador(pedido_id):
         if not target_id:
             return error_response("entregador_id não resolvido", 400)
 
+        # Vendedor (não-admin) não pode override em pedido já atribuído
         ok, msg = _atribuir_um(pedido, target_id, override=override)
         if not ok:
             return error_response(msg, 409 if "atribuído" in msg else 400)

@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Menu,
   MenuItem,
   Stack,
   Tooltip,
@@ -32,12 +33,14 @@ import {
   useDeleteUser,
   useHardDeleteUser,
   useReactivateUser,
+  useUpdateUser,
   CreateUserPayload,
   AppUser,
 } from '../services/userApi';
 import { UserConfigDialog } from './UserConfigDialog';
 import { useToast } from '../../../components/system/useToast';
 import { useConfirm } from '../../../components/system/useConfirm';
+import { useAuth } from '../../auth/authStore';
 
 function CreateUserDialog({
   open,
@@ -135,6 +138,86 @@ function roleColor(role: string): 'error' | 'primary' | 'success' | 'warning' | 
   if (role === 'entregador') return 'success';
   if (role === 'atendente') return 'warning';
   return 'default';
+}
+
+type RoleValue = AppUser['role'];
+
+const ROLE_OPTIONS: { value: RoleValue; label: string; desc: string }[] = [
+  { value: 'admin', label: 'Admin', desc: 'Acesso total' },
+  { value: 'vendedor', label: 'Vendedor', desc: 'Vê seus recebíveis' },
+  { value: 'atendente', label: 'Atendente', desc: 'Operação de pedidos' },
+  { value: 'entregador', label: 'Entregador', desc: 'Pega entregas e recebe taxa' },
+  { value: 'viewer', label: 'Viewer', desc: 'Somente visualização' },
+];
+
+function RoleSelectorChip({ user }: { user: AppUser }) {
+  const [anchor, setAnchor] = useState<null | HTMLElement>(null);
+  const toast = useToast();
+  const { getUser } = useAuth();
+  const me = getUser();
+  const { mutateAsync, isPending } = useUpdateUser(user.id);
+
+  // Admin não pode mudar o próprio cargo (perderia acesso). Backend também bloqueia.
+  const isSelf = me?.id === user.id;
+  const locked = isSelf || isPending;
+
+  const handlePick = async (newRole: RoleValue) => {
+    setAnchor(null);
+    if (newRole === user.role) return;
+    try {
+      await mutateAsync({ role: newRole });
+      toast.success(`Cargo atualizado para ${newRole}`);
+    } catch (e) {
+      toast.error(`Erro: ${(e as Error).message}`);
+    }
+  };
+
+  if (locked) {
+    return (
+      <Tooltip
+        title={isSelf ? 'Você não pode alterar o próprio cargo' : 'Atualizando…'}
+      >
+        <Chip label={user.role} size="small" color={roleColor(user.role)} />
+      </Tooltip>
+    );
+  }
+
+  return (
+    <>
+      <Tooltip title="Alterar cargo">
+        <Chip
+          label={user.role}
+          size="small"
+          color={roleColor(user.role)}
+          onClick={(e) => setAnchor(e.currentTarget)}
+          sx={{ cursor: 'pointer' }}
+        />
+      </Tooltip>
+      <Menu
+        anchorEl={anchor}
+        open={Boolean(anchor)}
+        onClose={() => setAnchor(null)}
+        slotProps={{ paper: { sx: { minWidth: 220 } } }}
+      >
+        {ROLE_OPTIONS.map((opt) => (
+          <MenuItem
+            key={opt.value}
+            selected={opt.value === user.role}
+            onClick={() => handlePick(opt.value)}
+          >
+            <Box>
+              <Typography variant="body2" fontWeight={600}>
+                {opt.label}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {opt.desc}
+              </Typography>
+            </Box>
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
 }
 
 export default function UserListPage() {
@@ -262,7 +345,7 @@ export default function UserListPage() {
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
-                  <Chip label={user.role} size="small" color={roleColor(user.role)} />
+                  <RoleSelectorChip user={user} />
                 </TableCell>
                 <TableCell>
                   <Chip

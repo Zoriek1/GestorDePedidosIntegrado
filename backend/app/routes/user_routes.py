@@ -33,6 +33,26 @@ def list_users():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/users/entregadores — listagem leve (id, name) de entregadores ativos
+# Disponível para admin, vendedor e atendente (precisam atribuir entregas).
+# ---------------------------------------------------------------------------
+@users_bp.route("/entregadores", methods=["GET"])
+@require_auth(roles=["admin", "vendedor", "atendente"])
+def list_entregadores():
+    try:
+        users = user_repo.get_active_by_role("entregador")
+        return success_response(
+            {
+                "users": [
+                    {"id": u.id, "name": u.name, "email": u.email} for u in users
+                ]
+            }
+        )
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+# ---------------------------------------------------------------------------
 # POST /api/users — cria usuário
 # ---------------------------------------------------------------------------
 @users_bp.route("", methods=["POST"])
@@ -91,6 +111,17 @@ def update_user(user_id):
             if data["role"] not in ("admin", "vendedor", "atendente", "entregador", "viewer"):
                 return error_response(
                     "role deve ser admin, vendedor, atendente, entregador ou viewer", 400
+                )
+            # Admin não pode se auto-rebaixar (perderia acesso ao painel)
+            current = request.current_user
+            if (
+                current["user_id"] == user_id
+                and current.get("role") == "admin"
+                and data["role"] != "admin"
+            ):
+                return error_response(
+                    "Admin não pode alterar o próprio cargo. Peça a outro admin.",
+                    400,
                 )
             updates["role"] = data["role"]
         if "is_active" in data:

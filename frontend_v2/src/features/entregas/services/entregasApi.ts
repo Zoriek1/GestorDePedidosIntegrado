@@ -75,6 +75,54 @@ export function useAtribuirEntregasLote() {
   });
 }
 
+interface EntregadorOption {
+  id: number;
+  name: string;
+  email: string;
+}
+
+/** Lista leve de entregadores ativos (admin/vendedor/atendente). */
+export function useEntregadores() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  return useQuery<EntregadorOption[]>({
+    queryKey: ['entregadores'],
+    queryFn: async () => {
+      const r = await apiRequest<{ users: EntregadorOption[] }>('/users/entregadores');
+      if (!r.ok) throw new Error(r.message);
+      return (r.data as { users: EntregadorOption[] }).users ?? [];
+    },
+    staleTime: 60_000,
+  });
+}
+
+/** Atribui (ou desatribui se entregadorId=null) um entregador a um pedido. */
+export function useAtribuirEntregadorPedido() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: { pedidoId: number; entregadorId: number | null }) => {
+      const r = await apiRequest<{ success: boolean; data?: { pedido: Pedido } }>(
+        `/pedidos/${params.pedidoId}/atribuir-entregador`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entregador_id: params.entregadorId }),
+        }
+      );
+      if (!r.ok) throw new Error(r.message);
+      return r.data;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['pedido', vars.pedidoId] });
+      qc.invalidateQueries({ queryKey: ['pedidos'] });
+      qc.invalidateQueries({ queryKey: ['minhas-entregas'] });
+      qc.invalidateQueries({ queryKey: ['entregas-disponiveis'] });
+    },
+  });
+}
+
 export function useFinalizarEntrega() {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);

@@ -25,6 +25,7 @@ import { PaymentDialog } from './components/PaymentDialog';
 import { WeeklyGenerateBtn } from './components/WeeklyGenerateBtn';
 import { AttributedOrdersCard } from './components/AttributedOrdersCard';
 import { PaymentPeriodsCard } from './components/PaymentPeriodsCard';
+import { EntregadorTodayView } from './EntregadorTodayView';
 import {
   useLedgerBalance,
   useLedgerEntries,
@@ -36,7 +37,16 @@ import { useAuth } from '../auth/authStore';
 import { getApiBaseUrl } from '../../api/http';
 
 export default function LedgerPage() {
-  const { getUserRole, getUser, getAuthHeader } = useAuth();
+  const { getUserRole } = useAuth();
+  // Entregador recebe diariamente — usa tela simplificada
+  if (getUserRole() === 'entregador') {
+    return <EntregadorTodayView />;
+  }
+  return <LedgerPageDefault />;
+}
+
+function LedgerPageDefault() {
+  const { getUser, getAuthHeader, getUserRole } = useAuth();
   const role = getUserRole();
   const user = getUser();
   const isAdmin = role === 'admin';

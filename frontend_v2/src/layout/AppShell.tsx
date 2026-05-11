@@ -76,7 +76,11 @@ export function AppShell({ children }: AppShellProps) {
   // Recebíveis e Usuários são rotas JWT-only — ocultar para usuários legados (Basic Auth)
   const jwtUser = isJwtUser();
   const canViewLedger = jwtUser && (isAdmin || isVendedor || isEntregador);
-  const ledgerLabel = isAdmin ? 'Funcionários' : 'Recebíveis';
+  const ledgerLabel = isAdmin
+    ? 'Funcionários'
+    : isEntregador
+      ? 'Recebíveis Hoje'
+      : 'Recebíveis';
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);

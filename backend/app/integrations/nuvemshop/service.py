@@ -114,7 +114,7 @@ class NuvemshopOrderImporter:
 
         Janela total ≈ attempts × ~1s API + (attempts-1) × gap = ~13s com defaults.
         Seguro chamar daqui porque o webhook é processado em background thread
-        (ack-first em routes/integrations/nuvemshop.py), sem afetar o ACK ao Nuvemshop.
+        (ack-first em routes/nuvemshop.py), sem afetar o ACK ao Nuvemshop.
         """
         last: Dict[str, Any] = {}
         for i in range(attempts):

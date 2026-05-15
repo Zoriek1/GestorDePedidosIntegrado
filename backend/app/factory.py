@@ -57,8 +57,8 @@ def create_app(config=None):
         from app.routes.auth import auth_bp
         from app.routes.clientes import clientes_bp
         from app.routes.config import config_bp
-        from app.routes.develop.backup import backup_admin_bp
-        from app.routes.integrations.nuvemshop import nuvemshop_bp
+        from app.routes.backup_admin import backup_admin_bp
+        from app.routes.nuvemshop import nuvemshop_bp
         from app.routes.leads import leads_bp
         from app.routes.ledger_routes import ledger_bp
         from app.routes.meta_gateway import meta_gateway_bp

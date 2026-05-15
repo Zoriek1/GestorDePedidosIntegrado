@@ -470,7 +470,7 @@ def nuvemshop_process_pending():
             400,
             details={
                 "required_env": ["NUVEMSHOP_USER_AGENT"],
-                "hint": "Configure no .env/servidor e reinicie o backend. Veja backend/docs/NUVEMSHOP_CREDENTIALS.md",
+                "hint": "Configure no .env/servidor e reinicie o backend. Veja docs/integrations.md.",
             },
         )
 

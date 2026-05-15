@@ -1,216 +1,110 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Referência rápida para agentes IA trabalhando neste repositório.
 
 ---
 
-## Commands
+## Stack real
 
-### Backend (from `backend/`)
+- **Banco**: PostgreSQL 16 Alpine (Docker, service `db`). SQLite só como fallback em testes/dev local sem Docker (ver [docs/database.md](docs/database.md)).
+- **Backend**: Flask 3 + SQLAlchemy 2, JWT seletivo via `@require_auth`.
+- **Frontend**: React 19 + Vite + MUI + React Query + Zustand (auth) + Dexie (PWA offline).
+- **Deploy**: Docker Compose. Comandos backend rodam via `docker compose exec backend ...`.
+
+## Comandos canônicos
+
 ```bash
-pip install -r requirements.txt
-python main.py                        # dev server on :5000
-
-# Tests
-pytest                                # all tests
-pytest tests/test_recebiveis.py       # single file
-pytest tests/test_recebiveis.py::test_settle_idempotente  # single test
-pytest --timeout=30
-
-# Lint / format
-ruff check . --fix
-black .
-```
-
-### Frontend (from `frontend_v2/`)
-```bash
-npm install
-npm run dev        # Vite dev server on :5173
-npm run build
-npm run lint
-```
-
-### Combined fix (Windows, from root)
-```powershell
-scripts/fix.ps1    # ruff + black + eslint --fix
-scripts/check.ps1  # same checks without writing
-```
-
-### Create first admin user
-```bash
-cd backend && flask create-admin
-```
-
-### Database migrations (custom scripts — not Alembic)
-```bash
-python scripts/migrations/add_auth_and_ledger.py
-python scripts/migrations/add_payroll_calendar.py
-# etc. — run each migration script once in order
-```
-
-### Docker (VPS deploy)
-```bash
-cp backend/.env.example .env  # fill in secrets
 docker compose up -d
+docker compose exec backend pytest
+docker compose exec backend ruff check . --fix
+docker compose exec backend black .
+docker compose exec backend python scripts/migrations/<arquivo>.py
+docker compose exec backend flask create-admin       # primeiro admin
+docker compose exec backend python scripts/dump_routes.py
+
+cd frontend_v2 && npm run dev      # Vite :5173 (dev sem Docker)
+cd frontend_v2 && npm run build && npm run lint
 ```
 
 ---
 
-## Architecture
+## Backend — arquitetura
 
-### Backend — Flask 3 + SQLAlchemy 2
+Camadas: `routes/` → `services/` → `repositories/` → `models/`. Routes validam input e chamam service; service contém lógica de negócio; repository faz queries; model é SQLAlchemy.
 
-**Layer stack** (top → bottom):
-```
-routes/          Blueprint HTTP handlers — validate input, call service/repo, return JSON
-services/        Pure business logic (no HTTP, no db.session.commit)
-repositories/    DB queries; extend BaseRepository[Model]
-models/          SQLAlchemy models + to_dict()
-```
+### Blueprints registrados ([backend/app/factory.py](backend/app/factory.py))
 
-All routes return via `success_response()` / `error_response()` from `app/schemas/common.py`.
+- `pedidos_bp` — `/api/pedidos/*`
+- `rotas_bp` — `/api/pedidos/rota-otimizada` (otimização)
+- `clientes_bp` — `/api/clientes/*`
+- `fontes_bp` — `/api/fontes-pedido/*` e `/api/pedidos/fonte/<id>/*`
+- `core_bp` — `/api/health`, `/api/cep/<cep>`, `/api/stats`, `/api/backup/status`, `/api/cleanup`, `/api/pedidos/overdue`, `/api/pedidos/<id>/distancia`, `/api/pedidos/calcular-distancias`, `/api/pedidos/<id>/calcular-taxa`, `/api/exportar-planilha-leads`
+- `auth_bp` — `/api/auth/*` (JWT)
+- `config_bp` — `/api/config/*` (taxa entrega, taxa cartão, meta faturamento)
+- `backup_admin_bp` — `/api/admin/backup/*`
+- `nuvemshop_bp` — `/api/integrations/nuvemshop/*`
+- `notifications_bp` — `/api/notifications/*` (VAPID push)
+- `leads_bp` — `/api/leads/*`
+- `users_bp` — `/api/users/*` (CRUD + payroll + commission configs)
+- `ledger_bp` — `/api/ledger/*` (recebíveis)
+- `meta_gateway_bp` — `/capig/*` e `/meta-gateway/<pixel_id>/events`
+- `storefront_bp` — `/storefront/*` (público, scripts Nuvemshop)
+- `debug_bp` — `/api/debug/*` — **só registrado se `ENABLE_DEBUG_ENDPOINTS=true`**
 
-**Blueprints registered in `factory.py`:**
-- `api_bp` — legacy catch-all (routes/api.py, ~3k lines, being migrated away)
-- `pedidos_bp`, `clientes_bp`, `rotas_bp`, `leads_bp` — domain blueprints
-- `ledger_bp` — recebíveis module (`/api/ledger/*`)
-- `users_bp` — user management (`/api/users/*`)
-- `auth_bp` — JWT auth (`/api/auth/*`)
-- `config_bp`, `notifications_bp`, `nuvemshop_bp`, `storefront_bp`, `meta_gateway_bp`
+Não existe mais `api_bp` legado (foi quebrado em `fontes_bp` + `core_bp` + `debug_bp`).
 
-**Auth:** Selective JWT via `@require_auth()` decorator (`app/decorators/auth_decorator.py`). Most read routes are open; write/financial routes require JWT. The decorator injects `request.current_user = {user_id, role, name, email}`.
+### Roles
 
-Roles: `admin` | `vendedor` | `viewer`.
+`admin | vendedor | atendente | entregador | viewer` — definido em [backend/app/models/user.py:35](backend/app/models/user.py#L35). Auth global está OFF; só rotas decoradas com `@require_auth` exigem JWT.
 
-**Database:** SQLite in dev (`~/var/lib/database/database.db`), PostgreSQL in prod (`DATABASE_URL`). WAL mode + FK enforcement set in `extensions.py`. Tables created via `db.create_all()` on startup — no Alembic. Schema changes use standalone migration scripts in `backend/scripts/migrations/` (each checks `column_exists()` before ALTER).
+### Money & timestamps
 
-**Money:** Pedido.valor is a BRL-formatted string; use `parse_brl_money()` from `app/utils/money.py` to convert. LedgerEntry.amount is `db.Numeric(12, 2)` (positive only, use `float(entry.amount)` when serializing).
+- `Pedido.valor` é `String` no formato BR. Use `parse_brl_money()` em [backend/app/utils/money.py](backend/app/utils/money.py).
+- `LedgerEntry.amount` é `Numeric(12,2)` positivo. Sempre `float(entry.amount)` ao serializar.
+- Timestamps usam `datetime_now_brazil()` (TZ `America/Sao_Paulo`). Existe duplicado em [models/pedido.py](backend/app/models/pedido.py), [models/ledger_entry.py](backend/app/models/ledger_entry.py), [models/user.py](backend/app/models/user.py).
 
-**Timestamps:** Always use `datetime_now_brazil()` (Brazil/São Paulo tz). Defined in `app/models/pedido.py` and duplicated in `app/models/ledger_entry.py` / `app/models/user.py`.
+### Migrations
 
-### Recebíveis Module (Ledger)
+Scripts Python idempotentes em [backend/scripts/migrations/](backend/scripts/migrations/) — **não** Alembic/Flask-Migrate. Template em [docs/database.md](docs/database.md). [backend/entrypoint.sh](backend/entrypoint.sh) roda os essenciais no boot do container.
 
-Three new models in `app/models/user.py`: `User`, `PayrollConfig`, `CommissionConfig`.  
-One model in `app/models/ledger_entry.py`: `LedgerEntry`.
+## Frontend — arquitetura
 
-**Flow (double-entry):**
-1. When a `Pedido.status_pagamento` transitions to `Pago` or `Parcial` in `pedido_repository.atualizar_status`, `commission_service.generate_commission()` is called → inserts a `CREDIT` entry (`status='active'`) with `category=comissao_{source}`.
-2. `ledger_service.generate_weekly_credits()` (called via admin endpoint or CLI) creates `fixo_semanal`/`almoco`/`transporte` credits for all active vendedores — idempotent by `(user_id, week_ref, category)`.
-3. Vendedor (or admin) settles all active credits at once via `POST /api/ledger/settle` → creates one DEBIT (`category='pagamento'`) and links all CREDIT entries to it via `settled_by_id`.
-4. `GET /api/ledger/balance` returns `{total_credits, overdue_credits, due_today_credits, upcoming_credits, total_debits, balance}`. Balance = all active CREDITs − unallocated DEBITs.
+Feature-based em [frontend_v2/src/features/](frontend_v2/src/features/). Cada feature: `components/`, `services/<feature>Api.ts`, `useCases/`, `schemas.ts`.
 
-**Commission idempotency:** Partial UNIQUE index `WHERE voided=0 AND pedido_id IS NOT NULL` — one active commission per order. Estorno (pedido edit) voids the old CREDIT and creates a new one.
+- `pedidos/` — wizard de criação, edição, lista, mapa do entregador
+- `ledger/` — recebíveis (admin vê todos, vendedor vê próprio, entregador vê `Recebíveis Hoje`)
+- `customers`, `leads`, `sales`, `rotas`, `entregas`, `fontes`, `integrations` (Nuvemshop), `notifications`, `offline`, `auth`, `config`
 
-**`get_due_date_for_commission(ref_date, payment_day)`** in `commission_service.py` is wired into `generate_commission` using the vendedor's `PayrollConfig.payment_day`. `get_monday()` is centralized in `app/utils/date_utils.py`.
+API client em [frontend_v2/src/api/http.ts](frontend_v2/src/api/http.ts) injeta JWT do Zustand auth store. Router em [frontend_v2/src/app/router.tsx](frontend_v2/src/app/router.tsx) com `<RequireAuth>` wrapper.
 
-### Frontend — React 19 + TypeScript + Vite
+## Convenções
 
-Feature-based structure under `src/features/`. Each feature owns its components, hooks, and API layer.
+- Routes retornam via `success_response()` / `error_response()` de [backend/app/schemas/common.py](backend/app/schemas/common.py).
+- Auth: `@require_auth(roles=["admin"])` injeta `request.current_user = {user_id, role, name, email}`.
+- Frontend: validação de form com Zod, formulários do wizard em [frontend_v2/src/features/pedidos/schemas.ts](frontend_v2/src/features/pedidos/schemas.ts), transformações form↔API em [frontend_v2/src/features/pedidos/useCases/](frontend_v2/src/features/pedidos/useCases/).
 
-**State management:** React Query (`@tanstack/react-query`) for server state. Auth state in Zustand store (`features/auth/authStore.tsx`). Offline state in Dexie (IndexedDB).
+## Recebíveis (resumo)
 
-**API layer:** `src/api/http.ts` — `createApiRequest()` factory attaches JWT from auth store. Feature-specific hooks live in `features/<feature>/services/<feature>Api.ts`.
+Ver detalhes em [docs/recebiveis.md](docs/recebiveis.md). Pontos chave:
 
-**Ledger UI:** `features/ledger/` — `LedgerPage.tsx` with subcomponents: `BalanceCard`, `EntryList`, `PendingPaymentsCard`, `AttributedOrdersCard`, `PaymentDialog`, `WeeklyGenerateBtn`.
+- Transição `status_pagamento → Pago` chama `commission_service.generate_commission()` → CREDIT `comissao_<source>` com `pedido_id`. Taxa de cartão desconta da base.
+- `POST /api/ledger/generate-weekly` cria CREDITs `fixo_semanal`, `almoco`, `transporte` para todos os vendedores ativos (idempotente por `(user_id, week_ref, category)`).
+- `POST /api/ledger/settle` cria um DEBIT `pagamento` que quita todos os CREDITs ativos do usuário.
+- Edição de pedido com regressão de status: CREDIT antigo vira `voided=true`, novo CREDIT criado ([order_commission_lifecycle.py](backend/app/services/order_commission_lifecycle.py)).
+- Entregador ganha CREDIT `taxa_entrega` ao finalizar entrega ([delivery_credit_service.py](backend/app/services/delivery_credit_service.py)).
 
-**Router:** `src/app/router.tsx` — uses React Router v6 with lazy loading. `RequireAuth` wrapper redirects unauthenticated users to `/login`. Routes `capig/*` and `meta-gateway/*` are intentionally empty (handled by Flask).
+## Integrações (resumo)
 
-**PWA:** Service Worker via Workbox. Offline data in Dexie. Push notifications via VAPID (`PushSubscription` model in backend).
+Ver [docs/integrations.md](docs/integrations.md). Padrão **outbox** para Meta CAPI: `MetaCapiOutbox` / `MetaCapiLeadOutbox` flushed pelo serviço `scheduler` ([backend/meta_scheduler_entrypoint.py](backend/meta_scheduler_entrypoint.py)).
 
----
+Nuvemshop: webhook ACK-first; processamento em background; pedido importado fica pendente de agendamento manual.
 
-## Key patterns
+## Testes
 
-**New migration script template:**
-```python
-from app import create_app, db
-
-def column_exists(table, col):
-    from sqlalchemy import inspect
-    return col in [c["name"] for c in inspect(db.engine).get_columns(table)]
-
-if __name__ == "__main__":
-    with create_app().app_context():
-        if not column_exists("my_table", "new_col"):
-            db.session.execute(db.text("ALTER TABLE my_table ADD COLUMN new_col TEXT"))
-            db.session.commit()
-```
-
-**New route blueprint pattern:**
-```python
-bp = Blueprint("feature", __name__, url_prefix="/api/feature")
-
-@bp.post("/")
-@require_auth(roles=["admin"])
-def create():
-    current = request.current_user  # {user_id, role, name, email}
-    ...
-    return success_response(data, status_code=201)
+```bash
+docker compose exec backend pytest                                   # tudo
+docker compose exec backend pytest tests/test_recebiveis.py          # arquivo
+docker compose exec backend pytest tests/test_recebiveis.py::test_X  # caso
 ```
 
-**Test fixtures:** `conftest.py` provides `app` fixture with in-memory SQLite. Tests set `BCRYPT_LOG_ROUNDS=4` and `JWT_SECRET_KEY` before importing auth services. Admin password forced to `testpass` unless `PYTEST_KEEP_ADMIN_PASSWORD=1`.
-
----
-
-## Wizard de Pedidos — Checklist obrigatório
-
-Sempre que alterar o wizard (`features/pedidos/CreateOrderWizard.tsx` ou
-`features/pedidos/components/WizardSteps/*`), passar por TODOS os itens
-abaixo antes de marcar a tarefa como pronta:
-
-**Adicionar / alterar campo:**
-- [ ] Adicionado em `pedidoFormSchema` (`schemas.ts`) com validação Zod
-- [ ] Adicionado em `pedidoFormDefaultValues`
-- [ ] Adicionado ao `stepNSchema` correspondente (validação parcial)
-- [ ] Listado em `STEPS[].fields` em `CreateOrderWizard.tsx` (gating Próximo)
-- [ ] Mapeado em `transformFormToApiPayload` (form → backend, snake_case).
-      Use `null` (não `undefined`) quando precisar limpar valor anterior no PUT
-- [ ] Mapeado em `useCases/orderToForm.ts` (backend → form na edição) —
-      sem isso o campo vem vazio ao reabrir um pedido salvo
-- [ ] Tipo `Pedido` em `api/endpoints/pedidos.ts` inclui o campo (e
-      `CreatePedidoPayload` se for enviado)
-- [ ] Coluna existe em `backend/app/models/pedido.py` + `to_dict()` retorna
-      o campo (criar migration em `backend/scripts/migrations/` se for novo)
-- [ ] Repository (`pedido_repository.py`) e route (`routes/pedidos.py`)
-      aceitam o campo no payload (POST e PUT)
-
-**Selector (dropdown vinculado a DB):**
-- [ ] Endpoint `GET /api/<recurso>` retorna `[{id, label}]`
-- [ ] Hook React Query em `services/<recurso>Api.ts` com cache razoável
-- [ ] Componente usa `Autocomplete` MUI (não `Select` puro) com
-      `freeSolo` se permite criar novo
-- [ ] Se permite criar novo: `POST /api/<recurso>` invalida a query
-- [ ] FK no model do `Pedido` (campo `<recurso>_id` + `relationship`)
-
-**Parse automático (WhatsApp / Catálogo):**
-- [ ] Adicionado caso em `utils/quickEntryParser.ts` (regex / detector)
-- [ ] Test em `__tests__/quickEntryParser.test.ts` cobrindo o novo formato
-- [ ] Botão "Colar do WhatsApp" no `QuickEntryModal` continua funcionando
-
-**Tracking:**
-- [ ] Logger (`createLogger('CreateOrderWizard')`) em pontos relevantes
-- [ ] Se for evento de negócio (ex: pedido salvo): outbox Meta CAPI
-      (`MetaCapiOutbox`) preenchido em `pedido_repository.criar`
-- [ ] Persistência localStorage continua salvando o campo novo
-      (verificar key `puf_pedido_draft_v2`)
-
-**UX:**
-- [ ] Validação roda no `onBlur` (mode do `useForm`)
-- [ ] Erro do step destaca o `StepLabel` (via `stepErrors` state)
-- [ ] Funciona no mobile (`MobileStepper`) — testar `useMediaQuery`
-- [ ] Calendário usa `<FloristDatePicker>` (não `<DatePicker>` cru) —
-      `features/pedidos/components/FloristDatePicker.tsx`
-
----
-
-## External integrations
-
-| Integration | Config vars | Purpose |
-|---|---|---|
-| Meta CAPI | `META_PIXEL_ID`, `META_CAPI_ACCESS_TOKEN` | Purchase/Lead events via outbox |
-| Nuvemshop | `NUVEMSHOP_APP_ID`, `NUVEMSHOP_CLIENT_SECRET` | Import site orders |
-| UTMify | `UTMIFY_ENABLED`, `UTMIFY_API_TOKEN` | Revenue attribution |
-| Google Sheets/Drive | `GOOGLE_CREDENTIALS_JSON` | Backup + leads export |
-| GraphHopper / ORS | `GRAPHHOPPER_API_KEY` | Delivery route optimization |
-
-Meta CAPI uses an **outbox pattern**: events are written to `MetaCapiOutbox` / `MetaCapiLeadOutbox` tables and flushed by a background scheduler (`meta_scheduler_entrypoint.py`).
+502 testes na suite. Em dev local pode usar `./venv/Scripts/pytest.exe` direto no Windows.

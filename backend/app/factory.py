@@ -3,6 +3,8 @@
 Application Factory - Criação e configuração da aplicação Flask
 Orquestra a inicialização de todos os componentes da aplicação
 """
+import os
+
 from flask import Flask
 
 from app.cors import setup_cors
@@ -53,16 +55,17 @@ def create_app(config=None):
 
     # 4. Blueprints e Database (dentro de app_context)
     with app.app_context():
-        from app.routes.api import api_bp
         from app.routes.auth import auth_bp
+        from app.routes.backup_admin import backup_admin_bp
         from app.routes.clientes import clientes_bp
         from app.routes.config import config_bp
-        from app.routes.backup_admin import backup_admin_bp
-        from app.routes.nuvemshop import nuvemshop_bp
+        from app.routes.core import core_bp
+        from app.routes.fontes import fontes_bp
         from app.routes.leads import leads_bp
         from app.routes.ledger_routes import ledger_bp
         from app.routes.meta_gateway import meta_gateway_bp
         from app.routes.notifications import notifications_bp
+        from app.routes.nuvemshop import nuvemshop_bp
         from app.routes.pedidos import pedidos_bp
         from app.routes.rotas import rotas_bp
         from app.routes.storefront import storefront_bp
@@ -72,13 +75,12 @@ def create_app(config=None):
         from app.models.user import User  # noqa: F401
         from app.models.ledger_entry import LedgerEntry  # noqa: F401
 
-        # Registrar blueprints existentes (mantidos para compatibilidade)
-        app.register_blueprint(api_bp)
-        app.register_blueprint(clientes_bp)
-
-        # Registrar novos blueprints organizados por domínio
+        # Blueprints por domínio
         app.register_blueprint(pedidos_bp)
         app.register_blueprint(rotas_bp)
+        app.register_blueprint(clientes_bp)
+        app.register_blueprint(fontes_bp)
+        app.register_blueprint(core_bp)
         app.register_blueprint(auth_bp)
         app.register_blueprint(config_bp)
         app.register_blueprint(backup_admin_bp)
@@ -90,11 +92,17 @@ def create_app(config=None):
         app.register_blueprint(users_bp)
         app.register_blueprint(ledger_bp)
 
-        # Registrar Meta Gateway (deve vir antes das rotas estáticas)
+        # Meta Gateway (antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)
 
         # Storefront: endpoints públicos para scripts Nuvemshop (CORS *)
         app.register_blueprint(storefront_bp)
+
+        # Debug endpoints: só registrar se ENABLE_DEBUG_ENDPOINTS=true
+        if os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true":
+            from app.routes.debug import debug_bp
+
+            app.register_blueprint(debug_bp)
 
         # Criar tabelas (APÓS todos os models serem importados)
         init_database(app)

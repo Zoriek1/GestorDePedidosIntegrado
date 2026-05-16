@@ -15,13 +15,13 @@ docker compose up -d
 docker compose exec backend flask create-admin
 ```
 
-Frontend em `http://localhost:5000`, backend API em `http://localhost:5000/api`. Em dev sem Docker, `cd frontend_v2 && npm run dev` levanta o Vite em `:5173`.
+Frontend em `http://localhost:5000`, backend API em `http://localhost:5000/api`. Em dev sem Docker, `cd frontend && npm run dev` levanta o Vite em `:5173`.
 
 ## Estrutura
 
 ```
 backend/           Flask app (app/), tests/, scripts/ (migrations, backup, export, meta)
-frontend_v2/       React 19 app (src/features/ feature-based, app/router.tsx)
+frontend/       React 19 app (src/features/ feature-based, app/router.tsx)
 docs/              Documentação principal (4 arquivos — ver abaixo)
 deploy/            Exemplos Caddy/Nginx/systemd
 docker/            Stage do build (prebuilt-dist) + docker-compose.yml na raiz
@@ -45,8 +45,8 @@ docker compose exec backend python scripts/migrations/<arquivo>.py
 docker compose exec backend python scripts/dump_routes.py
 
 # Frontend (local)
-cd frontend_v2 && npm install && npm run dev
-cd frontend_v2 && npm run build && npm run lint
+cd frontend && npm install && npm run dev
+cd frontend && npm run build && npm run lint
 ```
 
 ## Licença

@@ -180,12 +180,12 @@ def cache_command(action):
     """
     (LEGADO) Gerenciamento de cache do service worker.
 
-    O frontend atual (React/Vite PWA em frontend_v2) já faz versionamento por hash e autoUpdate.
+    O frontend atual (React/Vite PWA em frontend) já faz versionamento por hash e autoUpdate.
     Este comando existia apenas para o service worker do frontend legado (diretório frontend/),
     que foi removido.
     """
     raise click.ClickException(
-        "Comando legado removido: o frontend atual (frontend_v2) não usa este workflow."
+        "Comando legado removido: o frontend atual (frontend) não usa este workflow."
     )
 
 

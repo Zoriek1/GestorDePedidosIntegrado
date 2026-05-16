@@ -99,4 +99,4 @@ Todos sob `/api/ledger/`:
 | POST | `/generate-calendar` | admin | gera due_dates faltantes |
 | GET | `/export` | admin | export CSV |
 
-Frontend: [frontend_v2/src/features/ledger/](../frontend_v2/src/features/ledger/) — `LedgerPage.tsx` para admin/vendedor, `EntregadorTodayView.tsx` para entregador.
+Frontend: [frontend/src/features/ledger/](../frontend/src/features/ledger/) — `LedgerPage.tsx` para admin/vendedor, `EntregadorTodayView.tsx` para entregador.

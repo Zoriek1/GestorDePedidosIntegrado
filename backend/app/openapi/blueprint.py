@@ -2,7 +2,7 @@
 """
 OpenAPI Blueprint - Documentação dos endpoints prioritários
 
-Esta é uma versão inicial que documenta os endpoints principais do frontend_v2.
+Esta é uma versão inicial que documenta os endpoints principais do frontend.
 A documentação pode ser evoluída incrementalmente para incluir mais endpoints.
 """
 from flask_smorest import Blueprint
@@ -25,7 +25,7 @@ blp = Blueprint(
 )
 
 
-# Documentação dos endpoints prioritários do frontend_v2
+# Documentação dos endpoints prioritários do frontend
 # Nota: Estes endpoints são apenas para documentação no Swagger UI
 # Os endpoints reais continuam funcionando normalmente em app/routes/
 

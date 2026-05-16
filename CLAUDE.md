@@ -22,8 +22,8 @@ docker compose exec backend python scripts/migrations/<arquivo>.py
 docker compose exec backend flask create-admin       # primeiro admin
 docker compose exec backend python scripts/dump_routes.py
 
-cd frontend_v2 && npm run dev      # Vite :5173 (dev sem Docker)
-cd frontend_v2 && npm run build && npm run lint
+cd frontend && npm run dev      # Vite :5173 (dev sem Docker)
+cd frontend && npm run build && npm run lint
 ```
 
 ---
@@ -69,19 +69,19 @@ Scripts Python idempotentes em [backend/scripts/migrations/](backend/scripts/mig
 
 ## Frontend — arquitetura
 
-Feature-based em [frontend_v2/src/features/](frontend_v2/src/features/). Cada feature: `components/`, `services/<feature>Api.ts`, `useCases/`, `schemas.ts`.
+Feature-based em [frontend/src/features/](frontend/src/features/). Cada feature: `components/`, `services/<feature>Api.ts`, `useCases/`, `schemas.ts`.
 
 - `pedidos/` — wizard de criação, edição, lista, mapa do entregador
 - `ledger/` — recebíveis (admin vê todos, vendedor vê próprio, entregador vê `Recebíveis Hoje`)
 - `customers`, `leads`, `sales`, `rotas`, `entregas`, `fontes`, `integrations` (Nuvemshop), `notifications`, `offline`, `auth`, `config`
 
-API client em [frontend_v2/src/api/http.ts](frontend_v2/src/api/http.ts) injeta JWT do Zustand auth store. Router em [frontend_v2/src/app/router.tsx](frontend_v2/src/app/router.tsx) com `<RequireAuth>` wrapper.
+API client em [frontend/src/api/http.ts](frontend/src/api/http.ts) injeta JWT do Zustand auth store. Router em [frontend/src/app/router.tsx](frontend/src/app/router.tsx) com `<RequireAuth>` wrapper.
 
 ## Convenções
 
 - Routes retornam via `success_response()` / `error_response()` de [backend/app/schemas/common.py](backend/app/schemas/common.py).
 - Auth: `@require_auth(roles=["admin"])` injeta `request.current_user = {user_id, role, name, email}`.
-- Frontend: validação de form com Zod, formulários do wizard em [frontend_v2/src/features/pedidos/schemas.ts](frontend_v2/src/features/pedidos/schemas.ts), transformações form↔API em [frontend_v2/src/features/pedidos/useCases/](frontend_v2/src/features/pedidos/useCases/).
+- Frontend: validação de form com Zod, formulários do wizard em [frontend/src/features/pedidos/schemas.ts](frontend/src/features/pedidos/schemas.ts), transformações form↔API em [frontend/src/features/pedidos/useCases/](frontend/src/features/pedidos/useCases/).
 
 ## Recebíveis (resumo)
 

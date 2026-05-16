@@ -7,13 +7,13 @@
 # Estágio: assets do frontend (Vite na VPS OU cópia de docker/prebuilt-dist/)
 # ---------------------------------------------------------------------------
 FROM node:20-alpine AS frontend-assets
-WORKDIR /build/frontend_v2
+WORKDIR /build/frontend
 
 ARG USE_PREBUILT_DIST=0
 COPY docker/prebuilt-dist /prebuilt
 
-COPY frontend_v2/package.json frontend_v2/package-lock.json ./
-COPY frontend_v2/ ./
+COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/ ./
 
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
@@ -63,7 +63,7 @@ COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 COPY backend/ ./backend/
-COPY --from=frontend-assets /build/frontend_v2/dist ./frontend_v2/dist
+COPY --from=frontend-assets /build/frontend/dist ./frontend/dist
 
 ENV PYTHONPATH=/app/backend
 ENV FLASK_APP=wsgi:app

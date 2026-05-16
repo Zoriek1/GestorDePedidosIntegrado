@@ -51,7 +51,7 @@ def register_error_handlers(app):
             )
 
         # Para outras rotas, servir index.html (SPA routing)
-        frontend_dir = Path(__file__).parent.parent.parent / "frontend_v2" / "dist"
+        frontend_dir = Path(__file__).parent.parent.parent / "frontend" / "dist"
         return send_from_directory(str(frontend_dir), "index.html")
 
     @app.errorhandler(500)

@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
 """
-Rotas da aplicação
+Rotas da aplicação. Blueprints são importados em app.factory.create_app.
 """
-from app.routes.api import api_bp
-
-__all__ = ["api_bp"]

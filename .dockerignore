@@ -10,10 +10,10 @@
 docs/
 
 # Frontend - dependências (reconstruídas no build)
-frontend_v2/node_modules/
-frontend_v2/dist/
-frontend_v2/.vite/
-frontend_v2/coverage/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
 
 # Backend - cache e arquivos temporários
 backend/__pycache__/

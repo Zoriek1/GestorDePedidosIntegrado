@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 echo "📦 Build do frontend → docker/prebuilt-dist/"
-cd frontend_v2
+cd frontend
 npm ci --no-audit --no-fund
 export VITE_API_BASE_URL="${VITE_API_BASE_URL:-/api}"
 npm run build
@@ -19,7 +19,7 @@ cd "$ROOT"
 
 mkdir -p docker/prebuilt-dist
 find docker/prebuilt-dist -mindepth 1 -delete
-cp -a frontend_v2/dist/. docker/prebuilt-dist/
+cp -a frontend/dist/. docker/prebuilt-dist/
 
 echo "🐳 docker compose (USE_PREBUILT_DIST=1)"
 export USE_PREBUILT_DIST=1

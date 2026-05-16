@@ -2,7 +2,7 @@
 """
 Schemas Marshmallow para OpenAPI
 
-Schemas para documentação dos endpoints prioritários do frontend_v2.
+Schemas para documentação dos endpoints prioritários do frontend.
 Inicialmente permissivos (fields.Raw) para não quebrar compatibilidade.
 """
 from marshmallow import Schema, fields

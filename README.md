@@ -29,6 +29,7 @@ docker/            Stage do build (prebuilt-dist) + docker-compose.yml na raiz
 
 ## Documentação
 
+- [docs/structure.md](docs/structure.md) — arquitetura, camadas, feature-based, onde colocar uma coisa nova
 - [docs/database.md](docs/database.md) — Postgres em prod, SQLite só em fallback, models, money handling, migrations custom
 - [docs/deploy.md](docs/deploy.md) — Docker Compose, VPS, Cloudflare Tunnel, comandos operacionais
 - [docs/recebiveis.md](docs/recebiveis.md) — Ledger double-entry, comissões, créditos semanais, quitação

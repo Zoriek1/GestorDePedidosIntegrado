@@ -44,7 +44,14 @@ def create_app(config=None):
 
         app.config.from_object(BaseConfig)
 
-    # 1.1 Credenciais Google (escreve arquivo a partir de env var se necessário)
+    # 1.1 Validar SECRET_KEY obrigatória (falha rápida antes de qualquer inicialização)
+    if not app.config.get("SECRET_KEY"):
+        raise RuntimeError(
+            "SECRET_KEY não configurada.\n"
+            "Gere uma chave segura: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+
+    # 1.2 Credenciais Google (escreve arquivo a partir de env var se necessário)
     _setup_google_credentials(app)
 
     # 2. Extensões (ANTES de importar models)
@@ -172,6 +179,8 @@ def _setup_google_credentials(app):
         parsed = json.loads(creds_json)
         creds_path.parent.mkdir(parents=True, exist_ok=True)
         creds_path.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
+        if os.name != "nt":
+            creds_path.chmod(0o600)
         print(f"[GOOGLE] google_credentials.json criado em {creds_path}")
     except Exception as e:
         print(

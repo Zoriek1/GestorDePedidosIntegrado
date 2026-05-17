@@ -493,6 +493,31 @@ def requires_permission(permission: str):
 request_counts = {}
 
 
+def _get_client_ip() -> str:
+    """
+    Retorna o IP real do cliente de forma segura.
+    Só aceita X-Real-IP / X-Forwarded-For se o proxy (remote_addr) é uma rede privada
+    (Docker bridge, localhost, LAN). Previne spoofing de clientes externos.
+    """
+    import ipaddress
+
+    remote = request.remote_addr or ""
+    try:
+        is_trusted_proxy = ipaddress.ip_address(remote).is_private
+    except ValueError:
+        is_trusted_proxy = False
+
+    if is_trusted_proxy:
+        forwarded = (
+            request.headers.get("X-Real-IP")
+            or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        )
+        if forwarded:
+            return forwarded
+
+    return remote
+
+
 def rate_limit(max_per_minute=60, max_per_hour=1000):
     """
     Rate limiting simples por IP
@@ -503,15 +528,7 @@ def rate_limit(max_per_minute=60, max_per_hour=1000):
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
-            # Pegar IP do cliente
-            ip = request.remote_addr
-
-            # Se vier através de proxy (Nginx), pegar IP real
-            if request.headers.get("X-Real-IP"):
-                ip = request.headers.get("X-Real-IP")
-            elif request.headers.get("X-Forwarded-For"):
-                ip = request.headers.get("X-Forwarded-For").split(",")[0].strip()
-
+            ip = _get_client_ip()
             now = time.time()
 
             # Inicializar contador para este IP
@@ -622,12 +639,7 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
 
         # Rate limiting (aplicado a todas as rotas, exceto assets estáticos)
         if enable_rate_limit and not request.path.startswith("/assets/"):
-            ip = request.remote_addr
-            if request.headers.get("X-Real-IP"):
-                ip = request.headers.get("X-Real-IP")
-            elif request.headers.get("X-Forwarded-For"):
-                ip = request.headers.get("X-Forwarded-For").split(",")[0].strip()
-
+            ip = _get_client_ip()
             now = time.time()
             if ip not in request_counts:
                 request_counts[ip] = {"minute": [], "hour": []}

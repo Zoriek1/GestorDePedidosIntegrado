@@ -36,7 +36,7 @@ def get_base_url():
 def get_auth():
     """Retorna credenciais de autenticação"""
     username = "admin"
-    password = os.environ.get("ADMIN_PASSWORD", "plante1998")
+    password = os.environ.get("ADMIN_PASSWORD", "")
     return (username, password)
 
 

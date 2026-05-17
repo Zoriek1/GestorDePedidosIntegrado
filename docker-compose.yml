@@ -40,7 +40,7 @@ services:
       APP_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-gestor}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-gestor_pedidos}
       SECRET_KEY: ${SECRET_KEY:?Defina SECRET_KEY no .env}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       HOST: 0.0.0.0
       PORT: 5000
       USE_HTTPS: ${USE_HTTPS:-false}

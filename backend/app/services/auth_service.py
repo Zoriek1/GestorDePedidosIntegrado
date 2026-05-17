@@ -13,7 +13,13 @@ import jwt
 
 
 def _secret() -> str:
-    return os.environ.get("JWT_SECRET_KEY") or os.environ.get("SECRET_KEY") or "dev-jwt-secret"
+    key = os.environ.get("JWT_SECRET_KEY") or os.environ.get("SECRET_KEY")
+    if not key:
+        raise RuntimeError(
+            "JWT_SECRET_KEY (ou SECRET_KEY) não configurada. "
+            "Defina a variável de ambiente para assinar tokens JWT."
+        )
+    return key
 
 
 def _expiration_hours() -> int:

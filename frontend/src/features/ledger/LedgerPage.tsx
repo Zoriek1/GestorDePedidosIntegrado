@@ -94,6 +94,7 @@ function LedgerPageDefault() {
   const handleExport = async () => {
     try {
       const res = await fetch(exportUrl(), { headers: getAuthHeader() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -101,8 +102,8 @@ function LedgerPageDefault() {
       a.download = `extrato_${activeUserId}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      // silencioso
+    } catch (e) {
+      setSnackbarMsg(`Falha ao exportar extrato: ${(e as Error).message}`);
     }
   };
 

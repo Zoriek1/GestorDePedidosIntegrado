@@ -3,23 +3,45 @@
 Rotas do Meta Conversions API Gateway
 Implementa endpoints necessários para o Gateway funcionar
 """
+import logging
 import os
 
 from flask import Blueprint, jsonify, request
+
+logger = logging.getLogger(__name__)
 
 meta_gateway_bp = Blueprint("meta_gateway", __name__)
 
 
 def _add_cors_headers(response):
-    """Adiciona headers CORS completos para evitar CORB"""
+    """CORS público para /capig/autoconfig (setup wizard da Meta)."""
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
+    # Sem Access-Control-Allow-Credentials: inválido com origem *
     response.headers["Access-Control-Max-Age"] = "3600"
-    # Prevenir CORB - garantir que o navegador não tente "adivinhar" o tipo
     response.headers["X-Content-Type-Options"] = "nosniff"
-    # Headers de cache - nunca cachear rotas do Meta Gateway
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+def _add_cors_headers_events(response):
+    """CORS restrito para /meta-gateway/<pixel>/events: aceita apenas o domínio configurado."""
+    gateway_domain = os.environ.get("META_CAPI_GATEWAY_DOMAIN", "")
+    origin = request.headers.get("Origin", "")
+
+    if gateway_domain and origin and gateway_domain in origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    elif not gateway_domain:
+        # Sem domínio configurado: permissivo (setup inicial)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    # Domínio configurado mas origin não bate: não setar ACAO → browser bloqueia
+
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
+    response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -77,7 +99,7 @@ def capig_autoconfig():
         # Se não tem token na query string, não espera JSON, não é AJAX, e parece ser navegador, retornar HTML
         if token:
             # Tem token na query string - sempre retornar JSON (pode ser requisição da Meta)
-            print("[META_GATEWAY] Token na query string detectado - retornando JSON")
+            logger.debug("Token na query string detectado - retornando JSON")
             # Continuar para retornar JSON abaixo
         elif not is_ajax and not accepts_json and (is_browser or accepts_html):
             # Retornar página HTML que extrai token da hash e envia ao backend
@@ -300,16 +322,10 @@ def capig_autoconfig():
             response.headers["Content-Type"] = "text/html; charset=utf-8"
             return _add_cors_headers(response)
 
-        # Log para debug
-        print("[META_GATEWAY] Autoconfig chamado")
-        print(f"[META_GATEWAY] Method: {request.method}")
-        print(f"[META_GATEWAY] Token presente: {bool(token)}")
-        print(f"[META_GATEWAY] Accept: {request.headers.get('Accept', '')}")
-        print(f"[META_GATEWAY] User-Agent: {request.headers.get('User-Agent', '')[:100]}")
-        print(f"[META_GATEWAY] Is AJAX: {is_ajax}")
-        print(f"[META_GATEWAY] Accepts JSON: {accepts_json}")
-        print(f"[META_GATEWAY] Request path: {request.path}")
-        print(f"[META_GATEWAY] Request args: {dict(request.args)}")
+        logger.debug(
+            "Autoconfig: method=%s token_present=%s is_ajax=%s accepts_json=%s",
+            request.method, bool(token), is_ajax, accepts_json,
+        )
 
         # Verificar se o Gateway está configurado
         pixel_id = os.environ.get("META_PIXEL_ID", "")
@@ -338,14 +354,11 @@ def capig_autoconfig():
         response = jsonify(config)
         # Garantir Content-Type correto para evitar CORB
         response.headers["Content-Type"] = "application/json; charset=utf-8"
-        print(f"[META_GATEWAY] Retornando config: {config}")
+        logger.debug("Retornando config: %s", config)
         return _add_cors_headers(response), 200
 
     except Exception as e:
-        print(f"[META_GATEWAY] Erro: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("Erro no autoconfig")
         response = jsonify({"error": "Erro ao processar autoconfiguração", "message": str(e)})
         response.headers["Content-Type"] = "application/json; charset=utf-8"
         return _add_cors_headers(response), 500
@@ -366,20 +379,14 @@ def meta_gateway_events(pixel_id):
         request_host = request.host or ""
         gateway_domain = os.environ.get("META_CAPI_GATEWAY_DOMAIN") or ""
         if gateway_domain and gateway_domain not in request_host:
-            print(
-                "[META_GATEWAY] AVISO: host nao corresponde ao dominio esperado.",
-                {"host": request_host, "expected_domain": gateway_domain},
+            logger.warning(
+                "Host nao corresponde ao dominio esperado: host=%s expected=%s",
+                request_host, gateway_domain,
             )
 
-        print(
-            "[META_GATEWAY] Evento recebido",
-            {
-                "method": request.method,
-                "path": request.path,
-                "host": request_host,
-                "content_length": request.content_length,
-                "remote_addr": request.remote_addr,
-            },
+        logger.debug(
+            "Evento recebido: method=%s path=%s host=%s content_length=%s",
+            request.method, request.path, request_host, request.content_length,
         )
         # Verificar se pixel_id corresponde ao configurado
         configured_pixel_id = os.environ.get("META_PIXEL_ID", "")
@@ -391,7 +398,7 @@ def meta_gateway_events(pixel_id):
                 }
             )
             response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return _add_cors_headers(response), 400
+            return _add_cors_headers_events(response), 400
 
         # Obter payload do request
         payload = request.get_json()
@@ -400,7 +407,7 @@ def meta_gateway_events(pixel_id):
                 {"error": "Payload vazio", "message": "É necessário enviar um payload JSON"}
             )
             response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return _add_cors_headers(response), 400
+            return _add_cors_headers_events(response), 400
 
         # Validar estrutura básica
         if "data" not in payload:
@@ -408,13 +415,13 @@ def meta_gateway_events(pixel_id):
                 {"error": "Payload inválido", "message": "Campo 'data' é obrigatório"}
             )
             response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return _add_cors_headers(response), 400
+            return _add_cors_headers_events(response), 400
 
         # Extrair eventos do payload
         events = payload.get("data", [])
-        print(
-            "[META_GATEWAY] Payload recebido",
-            {"events_count": len(events), "has_test_event_code": "test_event_code" in payload},
+        logger.debug(
+            "Payload recebido: events_count=%d has_test_event_code=%s",
+            len(events), "test_event_code" in payload,
         )
 
         # Enviar para Meta usando integração direta (não Gateway recursivo)
@@ -433,7 +440,7 @@ def meta_gateway_events(pixel_id):
                 }
             )
             response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return _add_cors_headers(response), 500
+            return _add_cors_headers_events(response), 500
 
         # Montar payload para Meta (preservar test_event_code se fornecido)
         meta_payload = {"data": events}
@@ -459,17 +466,14 @@ def meta_gateway_events(pixel_id):
             response.raise_for_status()
             result = response.json()
             result["_status_code"] = response.status_code
-            print(
-                "[META_GATEWAY] Envio para Meta concluido",
-                {
-                    "status_code": response.status_code,
-                    "events_received": result.get("events_received", 0),
-                },
+            logger.info(
+                "Envio para Meta concluido: status=%d events_received=%s",
+                response.status_code, result.get("events_received", 0),
             )
 
             response_json = jsonify(result)
             response_json.headers["Content-Type"] = "application/json; charset=utf-8"
-            return _add_cors_headers(response_json), 200
+            return _add_cors_headers_events(response_json), 200
 
         except requests.exceptions.RequestException as e:
             # Capturar erro
@@ -486,17 +490,17 @@ def meta_gateway_events(pixel_id):
             response_json = jsonify(
                 {"error": error_msg, "details": error_response, "_status_code": status_code}
             )
-            print(
-                "[META_GATEWAY] Erro ao enviar para Meta",
-                {"status_code": status_code, "error": error_msg},
+            logger.error(
+                "Erro ao enviar para Meta: status=%d error=%s",
+                status_code, error_msg,
             )
             response_json.headers["Content-Type"] = "application/json; charset=utf-8"
-            return _add_cors_headers(response_json), status_code
+            return _add_cors_headers_events(response_json), status_code
 
     except Exception as e:
         response_json = jsonify({"error": "Erro ao processar eventos", "message": str(e)})
         response_json.headers["Content-Type"] = "application/json; charset=utf-8"
-        return _add_cors_headers(response_json), 500
+        return _add_cors_headers_events(response_json), 500
 
 
 @meta_gateway_bp.route("/meta-gateway/<pixel_id>/events", methods=["GET"])
@@ -508,11 +512,11 @@ def meta_gateway_events_get(pixel_id):
     if pixel_id != configured_pixel_id:
         response = jsonify({"error": "Pixel ID inválido"})
         response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return _add_cors_headers(response), 400
+        return _add_cors_headers_events(response), 400
 
     response_json = jsonify({"status": "ok", "pixel_id": pixel_id, "gateway": "active"})
     response_json.headers["Content-Type"] = "application/json; charset=utf-8"
-    return _add_cors_headers(response_json), 200
+    return _add_cors_headers_events(response_json), 200
 
 
 @meta_gateway_bp.route("/meta-gateway/<pixel_id>/health", methods=["GET"])
@@ -524,7 +528,7 @@ def meta_gateway_health(pixel_id):
     if pixel_id != configured_pixel_id:
         response = jsonify({"error": "Pixel ID inválido"})
         response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return _add_cors_headers(response), 400
+        return _add_cors_headers_events(response), 400
 
     gateway_domain = os.environ.get("META_CAPI_GATEWAY_DOMAIN") or ""
     response_json = jsonify(
@@ -537,4 +541,4 @@ def meta_gateway_health(pixel_id):
         }
     )
     response_json.headers["Content-Type"] = "application/json; charset=utf-8"
-    return _add_cors_headers(response_json), 200
+    return _add_cors_headers_events(response_json), 200

@@ -11,7 +11,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from app import db
-from app.middleware import requires_edit_auth
+from app.middleware import requires_any_role, requires_edit_auth
 from app.models import Cliente, FontePedido, Pedido
 from app.models.pedido import datetime_now_brazil
 from app.utils.backup_helper import (
@@ -41,6 +41,7 @@ def obter_estatisticas():
 
 
 @core_bp.route("/backup/status", methods=["GET"])
+@requires_any_role("admin")
 def obter_status_backup():
     """Retorna status dos backups do sistema"""
     try:
@@ -75,6 +76,7 @@ def obter_status_backup():
 
 
 @core_bp.route("/pedidos/overdue", methods=["GET"])
+@requires_any_role("admin", "atendente")
 def pedidos_atrasados():
     """Retorna pedidos atrasados"""
     try:
@@ -96,6 +98,7 @@ def pedidos_atrasados():
 
 
 @core_bp.route("/cleanup", methods=["POST"])
+@requires_any_role("admin")
 def limpar_pedidos_antigos():
     """Arquiva (oculta) pedidos antigos - NÃO deleta do banco de dados"""
     try:

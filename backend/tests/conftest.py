@@ -18,6 +18,7 @@ if str(backend_dir) not in sys.path:
 # Em Docker, ADMIN_PASSWORD vem do Compose e setdefault não sobrescreve → 401.
 if os.environ.get("PYTEST_KEEP_ADMIN_PASSWORD") != "1":
     os.environ["ADMIN_PASSWORD"] = "testpass"
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from app import create_app, db  # noqa: E402
 

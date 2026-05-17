@@ -41,7 +41,7 @@ class BaseConfig:
     )
 
     # Secret key para sessões
-    SECRET_KEY = os.environ.get("SECRET_KEY") or "plante-uma-flor-pwa-secret-key-2024"
+    SECRET_KEY = os.environ.get("SECRET_KEY") or ""
 
     # Banco de dados
     # PostgreSQL: use DATABASE_URL (ex: postgresql://user:pass@host:port/dbname)
@@ -67,7 +67,7 @@ class BaseConfig:
     DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
     # Autenticação
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "plante1998"
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or ""
 
     # JWT (módulo Recebíveis)
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
@@ -175,19 +175,7 @@ class ProductionConfig(BaseConfig):
     FLASK_ENV = "production"
     APP_ENV = "production"
 
-    # Em produção, usar secret key da variável de ambiente
-    SECRET_KEY = os.environ.get("SECRET_KEY") or "change-this-in-production-please"
-
-    @staticmethod
-    def init_app(app):
-        # Validar SECRET_KEY apenas quando a app for iniciada
-        if app.config.get("SECRET_KEY") == "change-this-in-production-please":
-            import warnings
-
-            warnings.warn(
-                "SECRET_KEY não definida! Configure a variável de ambiente SECRET_KEY em produção.",
-                stacklevel=2,
-            )
+    pass
 
 
 class TestingConfig(BaseConfig):

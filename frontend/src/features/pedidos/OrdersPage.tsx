@@ -120,7 +120,7 @@ export default function OrdersPage() {
     try {
       const apiRequest = createApiRequest(getAuthHeader);
       info('Exportando planilha...');
-      const response = await apiRequest<{ success: boolean; message?: string }>('/exportar-planilha', {
+      const response = await apiRequest<{ success: boolean; message?: string }>('/pedidos/exportar-planilha', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),

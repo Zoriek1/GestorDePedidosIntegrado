@@ -235,3 +235,28 @@ def test_export_sheets_verbose_summary():
     assert valor_brl == pytest.approx(150.0, abs=0.001)
     assert valor_decimal == pytest.approx(65.0, abs=0.001)
     assert dt_brasil == date(2026, 2, 28)
+
+
+# ---------------------------------------------------------------------------
+# Teste de contrato HTTP — garante que o endpoint está na URL correta
+# ---------------------------------------------------------------------------
+
+
+def test_exportar_planilha_endpoint_acessivel(client):
+    """
+    Garante que POST /api/pedidos/exportar-planilha está registrado no blueprint correto.
+    Detecta regressões onde a rota muda de url_prefix sem atualizar o frontend.
+    200 ou 500 (credenciais Google ausentes no CI) são válidos.
+    404 ou 405 indicam URL errada.
+    """
+    import base64
+
+    auth = base64.b64encode(b"admin:testpass").decode()
+    response = client.post(
+        "/api/pedidos/exportar-planilha",
+        headers={"Authorization": f"Basic {auth}"},
+    )
+    assert response.status_code not in (404, 405), (
+        f"Endpoint ausente ou método rejeitado (status {response.status_code}). "
+        "Verificar url_prefix do pedidos_bp e o path chamado em OrdersPage.tsx."
+    )

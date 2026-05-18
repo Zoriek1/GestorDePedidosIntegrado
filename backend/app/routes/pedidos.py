@@ -846,6 +846,100 @@ def daily_freight():
         return error_response("Erro ao buscar frete do dia", 500, details={"error": str(e)})
 
 
+@pedidos_bp.route("/freight-by-source", methods=["GET"])
+def freight_by_source():
+    """Média/total de frete agrupada por fonte para um intervalo de datas.
+
+    Query params:
+        start: data inicial (YYYY-MM-DD, inclusive). Default: hoje.
+        end:   data final   (YYYY-MM-DD, inclusive). Default: hoje.
+    """
+    try:
+        from datetime import date as date_type
+        from datetime import datetime as dt
+
+        from sqlalchemy import case, func
+
+        from app import db
+        from app.models import FontePedido, Pedido
+
+        start_str = request.args.get("start") or date_type.today().isoformat()
+        end_str = request.args.get("end") or start_str
+
+        try:
+            start_date = dt.strptime(start_str, "%Y-%m-%d").date()
+            end_date = dt.strptime(end_str, "%Y-%m-%d").date()
+        except ValueError:
+            return error_response("Datas inválidas (use YYYY-MM-DD)", 400)
+
+        if end_date < start_date:
+            start_date, end_date = end_date, start_date
+
+        fonte_label = func.coalesce(
+            FontePedido.nome,
+            case((Pedido.fonte_pedido != "", Pedido.fonte_pedido), else_=None),
+            "(sem fonte)",
+        ).label("fonte")
+
+        rows = (
+            db.session.query(
+                fonte_label,
+                func.count(Pedido.id).label("total_pedidos"),
+                func.avg(Pedido.taxa_entrega).label("media_taxa_entrega"),
+                func.sum(Pedido.taxa_entrega).label("total_taxa_entrega"),
+                func.count(Pedido.taxa_entrega).label("n_taxa_entrega"),
+                func.avg(Pedido.frete_cobrado_cliente).label("media_frete_cobrado"),
+                func.sum(Pedido.frete_cobrado_cliente).label("total_frete_cobrado"),
+                func.count(Pedido.frete_cobrado_cliente).label("n_frete_cobrado"),
+                func.avg(Pedido.frete_liquido_cliente).label("media_frete_liquido"),
+                func.sum(Pedido.frete_liquido_cliente).label("total_frete_liquido"),
+                func.count(Pedido.frete_liquido_cliente).label("n_frete_liquido"),
+            )
+            .outerjoin(FontePedido, Pedido.fonte_pedido_id == FontePedido.id)
+            .filter(
+                Pedido.deleted_at.is_(None),
+                Pedido.dia_entrega >= start_date,
+                Pedido.dia_entrega <= end_date,
+            )
+            .group_by(fonte_label)
+            .order_by(func.count(Pedido.id).desc())
+            .all()
+        )
+
+        def _f(v):
+            return float(v) if v is not None else None
+
+        items = [
+            {
+                "fonte": r.fonte or "(sem fonte)",
+                "total_pedidos": int(r.total_pedidos or 0),
+                "media_taxa_entrega": _f(r.media_taxa_entrega),
+                "total_taxa_entrega": _f(r.total_taxa_entrega),
+                "n_taxa_entrega": int(r.n_taxa_entrega or 0),
+                "media_frete_cobrado": _f(r.media_frete_cobrado),
+                "total_frete_cobrado": _f(r.total_frete_cobrado),
+                "n_frete_cobrado": int(r.n_frete_cobrado or 0),
+                "media_frete_liquido": _f(r.media_frete_liquido),
+                "total_frete_liquido": _f(r.total_frete_liquido),
+                "n_frete_liquido": int(r.n_frete_liquido or 0),
+            }
+            for r in rows
+        ]
+
+        return success_response(
+            {
+                "items": items,
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+                "count": len(items),
+            }
+        )
+    except Exception as e:
+        return error_response(
+            "Erro ao calcular frete por fonte", 500, details={"error": str(e)}
+        )
+
+
 @pedidos_bp.route("", methods=["POST"])
 @requires_any_role("admin", "atendente", "vendedor")
 def criar_pedido():

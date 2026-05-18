@@ -1,10 +1,11 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
-import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People, CreditCard } from '@mui/icons-material';
+import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People, CreditCard, BarChart } from '@mui/icons-material';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { TaxaCartaoSettings } from './components/TaxaCartaoSettings';
 import { Loading } from '../../components/common/Loading';
 import { DailyFreightDialog } from '../pedidos/components/DailyFreightDialog';
+import { FreightBySourceDialog } from '../pedidos/components/FreightBySourceDialog';
 import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
 import { useToast } from '../../components/system/useToast';
@@ -19,6 +20,7 @@ function BatchActionsTab() {
   const { success, error: showError } = useToast();
   const confirm = useConfirm();
   const [freightDialogOpen, setFreightDialogOpen] = useState(false);
+  const [freightBySourceOpen, setFreightBySourceOpen] = useState(false);
 
   const handleBatchMarkPaid = async () => {
     const confirmed = await confirm({
@@ -94,9 +96,21 @@ function BatchActionsTab() {
         >
           Frete do dia
         </Button>
+        <Button
+          variant="outlined"
+          startIcon={<BarChart />}
+          onClick={() => setFreightBySourceOpen(true)}
+          fullWidth
+        >
+          Frete médio por fonte
+        </Button>
       </Stack>
 
       <DailyFreightDialog open={freightDialogOpen} onClose={() => setFreightDialogOpen(false)} />
+      <FreightBySourceDialog
+        open={freightBySourceOpen}
+        onClose={() => setFreightBySourceOpen(false)}
+      />
     </Box>
   );
 }

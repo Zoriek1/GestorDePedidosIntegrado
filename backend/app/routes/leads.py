@@ -5,9 +5,10 @@ Rotas de Leads UTM — captura cliques da landing page e lista para o admin.
 import hashlib
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -34,6 +35,16 @@ leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 # Evento padrão quando nenhum filtro de evento é enviado pelo frontend
 DEFAULT_KEY_EVENTS = ("whatsapp_click",)
 WHATSAPP_EVENT = "whatsapp_click"
+
+# Transições de status permitidas para mutação operacional (PATCH individual e bulk).
+# Chave = status atual; valor = conjunto de status finais permitidos.
+ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "pendente_whatsapp": {"nao_entrou_em_contato", "descarte"},
+    "whatsapp_iniciado": {"descarte"},
+    "descarte": {"pendente_whatsapp"},
+}
+BULK_TARGET_STATUSES = {"descarte", "nao_entrou_em_contato", "pendente_whatsapp"}
+BULK_MAX_IDS = 500
 
 ALLOWED_FIELDS = (
     "event",
@@ -418,23 +429,26 @@ def marcar_whatsapp_iniciado():
 
 
 def _apply_lead_status_update(lead: Lead, data: dict):
-    """Mutação de status (nao_entrou_em_contato). Retorna (response, status_code)."""
+    """Mutação operacional de status. Aceita transições em ALLOWED_STATUS_TRANSITIONS."""
     new_status = _clip(data.get("status"), 50)
     if not new_status:
         return jsonify({"ok": False, "error": "status é obrigatório"}), 400
 
-    if new_status != "nao_entrou_em_contato":
+    if new_status not in BULK_TARGET_STATUSES:
         return jsonify({"ok": False, "error": "Status não suportado"}), 400
 
     if not _is_whatsapp_event(lead.event):
         return jsonify({"ok": False, "error": "Ação disponível apenas para leads WhatsApp"}), 400
 
-    if lead.status != "pendente_whatsapp":
+    allowed = ALLOWED_STATUS_TRANSITIONS.get(lead.status or "", set())
+    if new_status not in allowed:
         return (
             jsonify(
                 {
                     "ok": False,
-                    "error": "Só é possível marcar a partir de Pendente WhatsApp",
+                    "error": (
+                        f"Transição não permitida: {lead.status or '(vazio)'} → {new_status}"
+                    ),
                 }
             ),
             400,
@@ -608,19 +622,34 @@ def listar_leads():
         if token_norm:
             query = query.filter(Lead.token_rastreio == token_norm)
 
-    date_from = request.args.get("date_from")
-    if date_from:
-        try:
-            query = query.filter(Lead.created_at >= datetime.fromisoformat(date_from))
-        except ValueError:
-            pass
+    period = (request.args.get("period") or "").strip().lower()
+    if period in {"today", "14d"}:
+        # Backend resolve a janela em BRT — única fonte de verdade de fuso.
+        # Usar somente period; ignorar date_from/date_to nesse caso.
+        now_brt = datetime_now_brazil()
+        if period == "today":
+            start = now_brt.replace(hour=0, minute=0, second=0, microsecond=0)
+        else:  # "14d"
+            start = now_brt - timedelta(days=14)
+        query = query.filter(Lead.created_at >= start)
+    elif period == "all":
+        # Sem janela temporal.
+        pass
+    else:
+        # period == "custom" (ou omitido): respeita date_from/date_to atuais.
+        date_from = request.args.get("date_from")
+        if date_from:
+            try:
+                query = query.filter(Lead.created_at >= datetime.fromisoformat(date_from))
+            except ValueError:
+                pass
 
-    date_to = request.args.get("date_to")
-    if date_to:
-        try:
-            query = query.filter(Lead.created_at <= datetime.fromisoformat(date_to))
-        except ValueError:
-            pass
+        date_to = request.args.get("date_to")
+        if date_to:
+            try:
+                query = query.filter(Lead.created_at <= datetime.fromisoformat(date_to))
+            except ValueError:
+                pass
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
@@ -681,5 +710,110 @@ def listar_leads():
             "total": pagination.total,
             "page": pagination.page,
             "pages": pagination.pages,
+        }
+    )
+
+
+def _aggregate_lead_stats(start_dt: datetime) -> dict:
+    """Conta pendentes/com_telefone/compras/total a partir de `start_dt`."""
+    is_pendente = case((Lead.status == "pendente_whatsapp", 1), else_=0)
+    is_pendente_com_phone = case(
+        (
+            (Lead.status == "pendente_whatsapp") & Lead.phone.isnot(None) & (Lead.phone != ""),
+            1,
+        ),
+        else_=0,
+    )
+    is_compra = case((Lead.status == "compra_realizada", 1), else_=0)
+
+    row = (
+        db.session.query(
+            func.coalesce(func.sum(is_pendente), 0),
+            func.coalesce(func.sum(is_pendente_com_phone), 0),
+            func.coalesce(func.sum(is_compra), 0),
+            func.count(Lead.id),
+        )
+        .filter(Lead.event.in_(DEFAULT_KEY_EVENTS), Lead.created_at >= start_dt)
+        .one()
+    )
+    pendentes, com_telefone, compras, total = row
+    return {
+        "pendentes": int(pendentes or 0),
+        "com_telefone": int(com_telefone or 0),
+        "compras": int(compras or 0),
+        "total": int(total or 0),
+    }
+
+
+@leads_bp.route("/stats", methods=["GET"])
+@requires_any_role("admin", "vendedor")
+def leads_stats():
+    """
+    Contadores agregados por janela fixa (today + last_14d).
+    Não acompanha o filtro de período da listagem — visão gerencial constante.
+    """
+    now_brt = datetime_now_brazil()
+    today_start = now_brt.replace(hour=0, minute=0, second=0, microsecond=0)
+    last_14d_start = now_brt - timedelta(days=14)
+
+    return jsonify(
+        {
+            "ok": True,
+            "today": _aggregate_lead_stats(today_start),
+            "last_14d": _aggregate_lead_stats(last_14d_start),
+        }
+    )
+
+
+@leads_bp.route("/bulk/status", methods=["PATCH"])
+@requires_any_role("admin", "atendente", "vendedor")
+def atualizar_status_leads_em_lote():
+    """
+    Atualiza status de múltiplos leads em uma transação.
+    Body: {"ids": [...], "status": "<target>"}
+    Pula silenciosamente leads sem transição válida e retorna skipped_ids.
+    """
+    data = _parse_request_payload()
+    ids_raw = data.get("ids")
+    if not isinstance(ids_raw, list) or not ids_raw:
+        return jsonify({"ok": False, "error": "ids é obrigatório (lista não vazia)"}), 400
+    if len(ids_raw) > BULK_MAX_IDS:
+        return jsonify({"ok": False, "error": f"Máximo de {BULK_MAX_IDS} ids por chamada"}), 400
+
+    ids: list[int] = []
+    for v in ids_raw:
+        try:
+            ids.append(int(v))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "ids deve conter apenas inteiros"}), 400
+
+    new_status = _clip(data.get("status"), 50)
+    if not new_status or new_status not in BULK_TARGET_STATUSES:
+        return jsonify({"ok": False, "error": "status inválido para bulk update"}), 400
+
+    leads = Lead.query.filter(Lead.id.in_(ids)).all()
+    found_ids = {lead.id for lead in leads}
+
+    updated = 0
+    skipped_ids: list[int] = [i for i in ids if i not in found_ids]
+
+    for lead in leads:
+        if not _is_whatsapp_event(lead.event):
+            skipped_ids.append(lead.id)
+            continue
+        allowed = ALLOWED_STATUS_TRANSITIONS.get(lead.status or "", set())
+        if new_status not in allowed:
+            skipped_ids.append(lead.id)
+            continue
+        lead.status = new_status
+        updated += 1
+
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "updated": updated,
+            "skipped": len(skipped_ids),
+            "skipped_ids": skipped_ids,
         }
     )

@@ -71,6 +71,8 @@ export interface LeadsResponse {
   pages: number;
 }
 
+export type LeadsPeriod = 'today' | '14d' | 'all' | 'custom';
+
 export interface LeadsFilters {
   page?: number;
   per_page?: number;
@@ -84,8 +86,30 @@ export interface LeadsFilters {
   token_rastreio?: string;
   /** Filtra pelo status do lead */
   status?: string;
+  /** Janela temporal resolvida no backend (today, 14d, all). Use `custom` com date_from/date_to. */
+  period?: LeadsPeriod;
   date_from?: string;
   date_to?: string;
+}
+
+export interface LeadsStatsBucket {
+  pendentes: number;
+  com_telefone: number;
+  compras: number;
+  total: number;
+}
+
+export interface LeadsStatsResponse {
+  ok: boolean;
+  today: LeadsStatsBucket;
+  last_14d: LeadsStatsBucket;
+}
+
+export interface BulkStatusResponse {
+  ok: boolean;
+  updated: number;
+  skipped: number;
+  skipped_ids: number[];
 }
 
 export function useLeads(filters: LeadsFilters = {}) {
@@ -109,6 +133,7 @@ export function useLeads(filters: LeadsFilters = {}) {
         params.set('token_rastreio', filters.token_rastreio.trim());
       }
       if (filters.status) params.set('status', filters.status);
+      if (filters.period) params.set('period', filters.period);
       if (filters.date_from) params.set('date_from', filters.date_from);
       if (filters.date_to) params.set('date_to', filters.date_to);
 
@@ -163,6 +188,49 @@ export function useUpdateLeadStatus() {
       }
 
       return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+export function useLeadsStats() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useQuery<LeadsStatsResponse>({
+    queryKey: ['leads', 'stats'],
+    queryFn: async () => {
+      const response = await apiRequest<LeadsStatsResponse>('/leads/stats');
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao carregar stats de leads');
+      }
+      return response.data as LeadsStatsResponse;
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function useBulkUpdateLeadStatus() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { ids: number[]; status: string }) => {
+      if (!input.ids.length) {
+        throw new Error('Selecione ao menos um lead');
+      }
+      const response = await apiRequest<BulkStatusResponse>('/leads/bulk/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: input.ids, status: input.status }),
+      });
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao atualizar leads em lote');
+      }
+      return response.data as BulkStatusResponse;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });

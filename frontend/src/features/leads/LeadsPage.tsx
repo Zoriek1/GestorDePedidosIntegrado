@@ -2,9 +2,12 @@
  * Leads UTM - Listagem de cliques da landing page
  */
 
-import { useState, useCallback, type MouseEvent } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Typography,
   Paper,
@@ -27,6 +30,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Button,
   Menu,
@@ -35,6 +39,8 @@ import {
   Card,
   CardContent,
   Divider,
+  ToggleButton,
+  ToggleButtonGroup,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
@@ -43,11 +49,17 @@ import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   useLeads,
+  useLeadsStats,
+  useBulkUpdateLeadStatus,
   useUpdateLeadPhone,
   useUpdateLeadStatus,
   type LeadsFilters,
+  type LeadsPeriod,
   type Lead,
 } from '../../api/endpoints/leads';
 import dayjs from 'dayjs';
@@ -74,7 +86,71 @@ const LEAD_STATUS_LABELS: Record<string, string> = {
   whatsapp_iniciado: 'WhatsApp iniciado',
   compra_realizada: 'Compra realizada',
   nao_entrou_em_contato: 'Não entrou em contato',
+  descarte: 'Descarte',
 };
+
+const FILTERS_STORAGE_KEY = 'leads:filters:v1';
+
+const DEFAULT_FILTERS: LeadsFilters = {
+  page: 1,
+  per_page: 25,
+  event: 'whatsapp_click',
+  period: 'today',
+};
+
+type AgeBucket = 'fresh' | 'warm' | 'cold';
+
+function getLeadAgeBucket(createdAt: string | null): AgeBucket {
+  if (!createdAt) return 'fresh';
+  const normalized = createdAt.trim().replace(' ', 'T');
+  const d = isoStringHasOffset(normalized)
+    ? dayjs(normalized)
+    : dayjs.utc(normalized);
+  if (!d.isValid()) return 'fresh';
+  const hours = dayjs().diff(d, 'hour');
+  if (hours < 24) return 'fresh';
+  if (hours < 24 * 7) return 'warm';
+  return 'cold';
+}
+
+function formatLeadAge(createdAt: string | null): string {
+  if (!createdAt) return '—';
+  const normalized = createdAt.trim().replace(' ', 'T');
+  const d = isoStringHasOffset(normalized)
+    ? dayjs(normalized)
+    : dayjs.utc(normalized);
+  if (!d.isValid()) return '—';
+  const now = dayjs();
+  const minutes = now.diff(d, 'minute');
+  if (minutes < 60) return `${Math.max(0, minutes)}m`;
+  const hours = now.diff(d, 'hour');
+  if (hours < 24) return `${hours}h`;
+  const days = now.diff(d, 'day');
+  return `${days}d`;
+}
+
+function loadPersistedFilters(): LeadsFilters {
+  if (typeof window === 'undefined') return DEFAULT_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (!raw) return DEFAULT_FILTERS;
+    const parsed = JSON.parse(raw) as Partial<LeadsFilters> | null;
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_FILTERS;
+    return { ...DEFAULT_FILTERS, ...parsed, page: 1 };
+  } catch {
+    return DEFAULT_FILTERS;
+  }
+}
+
+function persistFilters(filters: LeadsFilters): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const { page: _ignored, ...rest } = filters;
+    window.localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(rest));
+  } catch {
+    /* ignore */
+  }
+}
 
 function buildWhatsAppUrl(phone: string): string | null {
   const digits = phone.replace(/\D/g, '');
@@ -133,7 +209,7 @@ function shouldShowTokenFields(lead: Lead): boolean {
   return lead.event === 'whatsapp_click' || !!lead.token_rastreio;
 }
 
-function leadStatusColor(status: string | null): 'warning' | 'info' | 'success' | 'default' {
+function leadStatusColor(status: string | null): 'warning' | 'info' | 'success' | 'error' | 'default' {
   switch (status) {
     case 'pendente_whatsapp':
       return 'warning';
@@ -141,6 +217,8 @@ function leadStatusColor(status: string | null): 'warning' | 'info' | 'success' 
       return 'info';
     case 'compra_realizada':
       return 'success';
+    case 'descarte':
+      return 'error';
     default:
       return 'default';
   }
@@ -165,19 +243,38 @@ export default function LeadsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { success, error: showError } = useToast();
-  const [filters, setFilters] = useState<LeadsFilters>({
-    page: 1,
-    per_page: 25,
-    event: 'whatsapp_click',
-  });
+  const [filters, setFilters] = useState<LeadsFilters>(loadPersistedFilters);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [manualPhone, setManualPhone] = useState('');
   const [respondeuPrimeiraMensagem, setRespondeuPrimeiraMensagem] = useState(false);
   const [statusMenuAnchor, setStatusMenuAnchor] = useState<null | HTMLElement>(null);
   const [statusMenuLead, setStatusMenuLead] = useState<Lead | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [confirmDiscardLead, setConfirmDiscardLead] = useState<Lead | null>(null);
+  const [confirmBulkAction, setConfirmBulkAction] = useState<null | 'descarte' | 'nao_entrou_em_contato'>(
+    null,
+  );
+  const lastSelectedIndexRef = useRef<number | null>(null);
   const { data, isLoading, error, refetch } = useLeads(filters);
+  const { data: statsData } = useLeadsStats();
   const updateLeadPhone = useUpdateLeadPhone();
   const updateLeadStatus = useUpdateLeadStatus();
+  const bulkUpdateStatus = useBulkUpdateLeadStatus();
+
+  useEffect(() => {
+    persistFilters(filters);
+  }, [filters]);
+
+  const setPeriod = useCallback((period: LeadsPeriod) => {
+    setFilters((prev) => {
+      const next: LeadsFilters = { ...prev, period, page: 1 };
+      if (period !== 'custom') {
+        delete next.date_from;
+        delete next.date_to;
+      }
+      return next;
+    });
+  }, []);
 
   const handleViewOrder = useCallback((pedidoId: number) => {
     navigate(`/pedidos/${pedidoId}`);
@@ -264,124 +361,308 @@ export default function LeadsPage() {
     }
   }, [handleCloseStatusMenu, showError, statusMenuLead, success, updateLeadStatus]);
 
+  const handleQuickMarkNoContact = useCallback(
+    async (lead: Lead) => {
+      try {
+        await updateLeadStatus.mutateAsync({ id: lead.id, status: 'nao_entrou_em_contato' });
+        success('Lead marcado como não entrou em contato');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao atualizar status';
+        showError(message);
+      }
+    },
+    [showError, success, updateLeadStatus],
+  );
+
+  const handleConfirmDiscard = useCallback(async () => {
+    if (!confirmDiscardLead) return;
+    try {
+      await updateLeadStatus.mutateAsync({ id: confirmDiscardLead.id, status: 'descarte' });
+      success('Lead descartado');
+      setConfirmDiscardLead(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao descartar lead';
+      showError(message);
+    }
+  }, [confirmDiscardLead, showError, success, updateLeadStatus]);
+
+  const total = data?.total ?? 0;
+
+  // Ordenação secundária client-side: dentro do dia, com telefone primeiro.
+  const orderedLeads = useMemo(() => {
+    const src = data?.leads ?? [];
+    if (!src.length) return src;
+    return [...src].sort((a, b) => {
+      const dayA = (a.created_at ?? '').slice(0, 10);
+      const dayB = (b.created_at ?? '').slice(0, 10);
+      if (dayA === dayB) {
+        const hasA = a.phone ? 1 : 0;
+        const hasB = b.phone ? 1 : 0;
+        return hasB - hasA;
+      }
+      return 0;
+    });
+  }, [data?.leads]);
+
+  const pageIds = useMemo(() => orderedLeads.map((l) => l.id), [orderedLeads]);
+  const allSelectedOnPage = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+  const someSelectedOnPage = pageIds.some((id) => selectedIds.has(id));
+
+  const togglePageSelection = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelectedOnPage) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
+    lastSelectedIndexRef.current = null;
+  }, [allSelectedOnPage, pageIds]);
+
+  const toggleLeadSelection = useCallback(
+    (leadId: number, index: number, shiftKey: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        const lastIdx = lastSelectedIndexRef.current;
+        if (shiftKey && lastIdx !== null && lastIdx !== index) {
+          const [start, end] = lastIdx < index ? [lastIdx, index] : [index, lastIdx];
+          const shouldSelect = !next.has(leadId);
+          for (let i = start; i <= end; i++) {
+            const id = pageIds[i];
+            if (id === undefined) continue;
+            if (shouldSelect) next.add(id);
+            else next.delete(id);
+          }
+        } else if (next.has(leadId)) {
+          next.delete(leadId);
+        } else {
+          next.add(leadId);
+        }
+        return next;
+      });
+      lastSelectedIndexRef.current = index;
+    },
+    [pageIds],
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    lastSelectedIndexRef.current = null;
+  }, []);
+
+  const handleConfirmBulkAction = useCallback(async () => {
+    if (!confirmBulkAction || selectedIds.size === 0) {
+      setConfirmBulkAction(null);
+      return;
+    }
+    const ids = Array.from(selectedIds);
+    try {
+      const res = await bulkUpdateStatus.mutateAsync({ ids, status: confirmBulkAction });
+      const skipped = res?.skipped ?? 0;
+      success(
+        `${res?.updated ?? 0} lead${(res?.updated ?? 0) === 1 ? '' : 's'} atualizado${
+          (res?.updated ?? 0) === 1 ? '' : 's'
+        }` + (skipped ? ` (${skipped} ignorado${skipped === 1 ? '' : 's'})` : ''),
+      );
+      clearSelection();
+      setConfirmBulkAction(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro na ação em lote';
+      showError(message);
+    }
+  }, [bulkUpdateStatus, clearSelection, confirmBulkAction, selectedIds, showError, success]);
+
+  // Atalho Ctrl+A para selecionar página atual quando há leads visíveis.
+  useEffect(() => {
+    if (isMobile) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+        if (pageIds.length === 0) return;
+        e.preventDefault();
+        setSelectedIds(new Set(pageIds));
+      } else if (e.key === 'Escape' && selectedIds.size > 0) {
+        clearSelection();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [clearSelection, isMobile, pageIds, selectedIds.size]);
+
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
 
-  const leads = data?.leads ?? [];
-  const total = data?.total ?? 0;
+  const leads = orderedLeads;
+
+  const today = statsData?.today;
+  const last14d = statsData?.last_14d;
+  const period: LeadsPeriod = filters.period ?? 'custom';
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 3 }}>
-        <CampaignIcon color="primary" />
-        <Typography variant="h5" fontWeight={600}>
-          Leads UTM
-        </Typography>
-        <Chip label={`${total} cliques`} size="small" />
+    <Box sx={{ p: { xs: 2, md: 3 }, pb: selectedIds.size > 0 ? 12 : { xs: 2, md: 3 } }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        spacing={{ xs: 1, sm: 2 }}
+        sx={{ mb: 3 }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <CampaignIcon color="primary" />
+          <Typography variant="h5" fontWeight={600}>
+            Leads UTM
+          </Typography>
+        </Stack>
+        {statsData ? (
+          <Stack spacing={0.25} sx={{ ml: { sm: 2 } }}>
+            <Typography variant="body2" color="text.secondary">
+              <strong>Hoje:</strong> {today?.pendentes ?? 0} pendentes · {today?.com_telefone ?? 0}{' '}
+              com telefone · {today?.compras ?? 0} compras
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              <strong>14 dias:</strong> {last14d?.pendentes ?? 0} pendentes ·{' '}
+              {last14d?.com_telefone ?? 0} com telefone · {last14d?.compras ?? 0} compras
+            </Typography>
+          </Stack>
+        ) : (
+          <Chip label={`${total} cliques`} size="small" />
+        )}
       </Stack>
 
       {/* Filtros */}
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Evento</InputLabel>
-            <Select
-              value={filters.event ?? 'whatsapp_click'}
-              label="Evento"
-              onChange={(e) => {
-                const v = e.target.value;
-                setFilters((prev) => {
-                  const next: LeadsFilters = { ...prev, page: 1 };
-                  delete next.events;
-                  next.event = v;
-                  return next;
-                });
-              }}
-            >
-              <MenuItem value="whatsapp_click">{EVENT_LABELS.whatsapp_click}</MenuItem>
-              <MenuItem value="site_click">{EVENT_LABELS.site_click}</MenuItem>
-              <MenuItem value="all">Todos</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl size="small" sx={{ minWidth: 190 }}>
-            <InputLabel>Status</InputLabel>
-            <Select
-              value={filters.status ?? ''}
-              label="Status"
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, status: e.target.value || undefined, page: 1 }))
-              }
-            >
-              <MenuItem value="">Todos</MenuItem>
-              <MenuItem value="pendente_whatsapp">Pendente WhatsApp</MenuItem>
-              <MenuItem value="whatsapp_iniciado">WhatsApp iniciado</MenuItem>
-              <MenuItem value="compra_realizada">Compra realizada</MenuItem>
-              <MenuItem value="nao_entrou_em_contato">Não entrou em contato</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Origem</InputLabel>
-            <Select
-              value={filters.utm_source ?? ''}
-              label="Origem"
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, utm_source: e.target.value || undefined, page: 1 }))
-              }
-            >
-              <MenuItem value="">Todas</MenuItem>
-              {SOURCE_OPTIONS.filter(Boolean).map((s) => (
-                <MenuItem key={s} value={s}>{s}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <TextField
+        <Stack spacing={1.5}>
+          <ToggleButtonGroup
+            value={period}
+            exclusive
             size="small"
-            label="Campanha"
-            value={filters.utm_campaign ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, utm_campaign: e.target.value || undefined, page: 1 }))
-            }
-          />
+            onChange={(_e, v: LeadsPeriod | null) => {
+              if (v) setPeriod(v);
+            }}
+          >
+            <ToggleButton value="today">Hoje</ToggleButton>
+            <ToggleButton value="14d">14 dias</ToggleButton>
+            <ToggleButton value="all">Tudo</ToggleButton>
+            <ToggleButton value="custom">Personalizado</ToggleButton>
+          </ToggleButtonGroup>
 
-          <TextField
-            size="small"
-            label="Código (token)"
-            placeholder="ex.: A3F9B7K20K"
-            value={filters.token_rastreio ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                token_rastreio: e.target.value.trim() || undefined,
-                page: 1,
-              }))
-            }
-            sx={{ minWidth: 160 }}
-          />
+          {period === 'custom' ? (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                size="small"
+                label="De"
+                type="date"
+                slotProps={{ inputLabel: { shrink: true } }}
+                value={filters.date_from ?? ''}
+                onChange={(e) =>
+                  setFilters((f) => ({ ...f, date_from: e.target.value || undefined, page: 1 }))
+                }
+              />
+              <TextField
+                size="small"
+                label="Até"
+                type="date"
+                slotProps={{ inputLabel: { shrink: true } }}
+                value={filters.date_to ?? ''}
+                onChange={(e) =>
+                  setFilters((f) => ({ ...f, date_to: e.target.value || undefined, page: 1 }))
+                }
+              />
+            </Stack>
+          ) : null}
 
-          <TextField
-            size="small"
-            label="De"
-            type="date"
-            slotProps={{ inputLabel: { shrink: true } }}
-            value={filters.date_from ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, date_from: e.target.value || undefined, page: 1 }))
-            }
-          />
+          <Accordion disableGutters elevation={0} sx={{ '&:before': { display: 'none' } }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0 }}>
+              <Typography variant="body2" color="text.secondary">
+                Filtros +
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ px: 0 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Evento</InputLabel>
+                  <Select
+                    value={filters.event ?? 'whatsapp_click'}
+                    label="Evento"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFilters((prev) => {
+                        const next: LeadsFilters = { ...prev, page: 1 };
+                        delete next.events;
+                        next.event = v;
+                        return next;
+                      });
+                    }}
+                  >
+                    <MenuItem value="whatsapp_click">{EVENT_LABELS.whatsapp_click}</MenuItem>
+                    <MenuItem value="site_click">{EVENT_LABELS.site_click}</MenuItem>
+                    <MenuItem value="all">Todos</MenuItem>
+                  </Select>
+                </FormControl>
 
-          <TextField
-            size="small"
-            label="Até"
-            type="date"
-            slotProps={{ inputLabel: { shrink: true } }}
-            value={filters.date_to ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, date_to: e.target.value || undefined, page: 1 }))
-            }
-          />
+                <FormControl size="small" sx={{ minWidth: 190 }}>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={filters.status ?? ''}
+                    label="Status"
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, status: e.target.value || undefined, page: 1 }))
+                    }
+                  >
+                    <MenuItem value="">Todos</MenuItem>
+                    <MenuItem value="pendente_whatsapp">Pendente WhatsApp</MenuItem>
+                    <MenuItem value="whatsapp_iniciado">WhatsApp iniciado</MenuItem>
+                    <MenuItem value="compra_realizada">Compra realizada</MenuItem>
+                    <MenuItem value="nao_entrou_em_contato">Não entrou em contato</MenuItem>
+                    <MenuItem value="descarte">Descarte</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Origem</InputLabel>
+                  <Select
+                    value={filters.utm_source ?? ''}
+                    label="Origem"
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, utm_source: e.target.value || undefined, page: 1 }))
+                    }
+                  >
+                    <MenuItem value="">Todas</MenuItem>
+                    {SOURCE_OPTIONS.filter(Boolean).map((s) => (
+                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  size="small"
+                  label="Campanha"
+                  value={filters.utm_campaign ?? ''}
+                  onChange={(e) =>
+                    setFilters((f) => ({ ...f, utm_campaign: e.target.value || undefined, page: 1 }))
+                  }
+                />
+
+                <TextField
+                  size="small"
+                  label="Código (token)"
+                  placeholder="ex.: A3F9B7K20K"
+                  value={filters.token_rastreio ?? ''}
+                  onChange={(e) =>
+                    setFilters((f) => ({
+                      ...f,
+                      token_rastreio: e.target.value.trim() || undefined,
+                      page: 1,
+                    }))
+                  }
+                  sx={{ minWidth: 160 }}
+                />
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
         </Stack>
       </Paper>
 
@@ -396,8 +677,48 @@ export default function LeadsPage() {
             </Paper>
           ) : (
             <Stack spacing={1.5}>
-              {leads.map((lead) => (
-                <Card key={lead.id} variant="outlined">
+              {leads.map((lead, index) => {
+                const ageBucket = getLeadAgeBucket(lead.created_at);
+                const borderColor =
+                  ageBucket === 'fresh'
+                    ? theme.palette.success.main
+                    : ageBucket === 'warm'
+                      ? theme.palette.warning.main
+                      : theme.palette.error.main;
+                const opacity = ageBucket === 'cold' ? 0.55 : ageBucket === 'warm' ? 0.75 : 1;
+                const isSelected = selectedIds.has(lead.id);
+                const noPhonePending =
+                  !lead.phone && lead.status === 'pendente_whatsapp';
+                const longPressTimer = { current: null as null | number };
+                const beginLongPress = () => {
+                  longPressTimer.current = window.setTimeout(() => {
+                    toggleLeadSelection(lead.id, index, false);
+                  }, 450);
+                };
+                const cancelLongPress = () => {
+                  if (longPressTimer.current !== null) {
+                    window.clearTimeout(longPressTimer.current);
+                    longPressTimer.current = null;
+                  }
+                };
+                return (
+                <Card
+                  key={lead.id}
+                  variant="outlined"
+                  onTouchStart={beginLongPress}
+                  onTouchEnd={cancelLongPress}
+                  onTouchMove={cancelLongPress}
+                  onTouchCancel={cancelLongPress}
+                  sx={{
+                    opacity,
+                    borderLeft: `3px solid ${borderColor}`,
+                    backgroundColor: isSelected
+                      ? theme.palette.action.selected
+                      : noPhonePending
+                        ? theme.palette.action.hover
+                        : undefined,
+                  }}
+                >
                   <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                     {/* Linha 1: Status (ação principal) + ações */}
                     <Stack
@@ -532,7 +853,8 @@ export default function LeadsPage() {
                     </Stack>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </Stack>
           )}
 
@@ -557,8 +879,18 @@ export default function LeadsPage() {
         <Table size="small">
           <TableHead>
             <TableRow>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  size="small"
+                  indeterminate={someSelectedOnPage && !allSelectedOnPage}
+                  checked={allSelectedOnPage}
+                  onChange={togglePageSelection}
+                  inputProps={{ 'aria-label': 'Selecionar todos da página' }}
+                />
+              </TableCell>
               <TableCell align="center">Ação</TableCell>
               <TableCell>Data (BRT)</TableCell>
+              <TableCell>Idade</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Telefone</TableCell>
               <TableCell>Valor Pedido</TableCell>
@@ -575,15 +907,52 @@ export default function LeadsPage() {
           <TableBody>
             {leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={13} align="center">
+                <TableCell colSpan={15} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
                     Nenhum lead encontrado
                   </Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              leads.map((lead) => (
-                <TableRow key={lead.id} hover>
+              leads.map((lead, index) => {
+                const ageBucket = getLeadAgeBucket(lead.created_at);
+                const borderColor =
+                  ageBucket === 'fresh'
+                    ? theme.palette.success.main
+                    : ageBucket === 'warm'
+                      ? theme.palette.warning.main
+                      : theme.palette.error.main;
+                const opacity = ageBucket === 'cold' ? 0.55 : ageBucket === 'warm' ? 0.75 : 1;
+                const isSelected = selectedIds.has(lead.id);
+                const noPhonePending = !lead.phone && lead.status === 'pendente_whatsapp';
+                const ageTextColor =
+                  ageBucket === 'fresh'
+                    ? theme.palette.success.dark
+                    : ageBucket === 'warm'
+                      ? theme.palette.warning.dark
+                      : theme.palette.error.dark;
+                return (
+                <TableRow
+                  key={lead.id}
+                  hover
+                  selected={isSelected}
+                  sx={{
+                    opacity,
+                    borderLeft: `3px solid ${borderColor}`,
+                    backgroundColor: noPhonePending && !isSelected ? theme.palette.action.hover : undefined,
+                  }}
+                >
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={isSelected}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLeadSelection(lead.id, index, (e as unknown as MouseEvent).shiftKey);
+                      }}
+                      inputProps={{ 'aria-label': `Selecionar lead ${lead.id}` }}
+                    />
+                  </TableCell>
                   <TableCell align="center">
                     <Stack direction="row" spacing={0.5} justifyContent="center">
                       {lead.phone ? (
@@ -633,9 +1002,35 @@ export default function LeadsPage() {
                           </IconButton>
                         </Tooltip>
                       )}
+                      {lead.status === 'pendente_whatsapp' ? (
+                        <>
+                          <Tooltip title="Marcar como não contatou">
+                            <IconButton
+                              size="small"
+                              color="default"
+                              onClick={() => handleQuickMarkNoContact(lead)}
+                              disabled={updateLeadStatus.isPending}
+                            >
+                              <CheckIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Descartar">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => setConfirmDiscardLead(lead)}
+                            >
+                              <CloseIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      ) : null}
                     </Stack>
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap', color: ageTextColor, fontWeight: 500 }}>
+                    {formatLeadAge(lead.created_at)}
+                  </TableCell>
                   <TableCell>
                     {canEditLeadPhone(lead) ? (
                       <Stack direction="row" spacing={0.5} alignItems="center">
@@ -707,7 +1102,8 @@ export default function LeadsPage() {
                   <TableCell>{lead.utm_content ?? '—'}</TableCell>
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -784,6 +1180,113 @@ export default function LeadsPage() {
           Não entrou em contato
         </MenuItem>
       </Menu>
+
+      <Dialog
+        open={!!confirmDiscardLead}
+        onClose={() => setConfirmDiscardLead(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Descartar lead?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            O lead será marcado como Descarte. Você pode reverter manualmente depois.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDiscardLead(null)} disabled={updateLeadStatus.isPending}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => void handleConfirmDiscard()}
+            color="error"
+            variant="contained"
+            disabled={updateLeadStatus.isPending}
+          >
+            Descartar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={!!confirmBulkAction}
+        onClose={() => setConfirmBulkAction(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>
+          {confirmBulkAction === 'descarte' ? 'Descartar leads selecionados?' : 'Marcar como não contatou?'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {selectedIds.size} lead{selectedIds.size === 1 ? '' : 's'} serão atualizados. Leads sem transição válida serão ignorados.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmBulkAction(null)} disabled={bulkUpdateStatus.isPending}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => void handleConfirmBulkAction()}
+            color={confirmBulkAction === 'descarte' ? 'error' : 'primary'}
+            variant="contained"
+            disabled={bulkUpdateStatus.isPending}
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {selectedIds.size > 0 ? (
+        <Paper
+          elevation={6}
+          sx={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: (t) => t.zIndex.appBar + 1,
+            p: 1.5,
+            borderRadius: 0,
+            borderTop: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            justifyContent="space-between"
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {selectedIds.size} lead{selectedIds.size === 1 ? '' : 's'} selecionado
+              {selectedIds.size === 1 ? '' : 's'}
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setConfirmBulkAction('nao_entrou_em_contato')}
+                disabled={bulkUpdateStatus.isPending}
+              >
+                Marcar como Não contatou
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                color="error"
+                onClick={() => setConfirmBulkAction('descarte')}
+                disabled={bulkUpdateStatus.isPending}
+              >
+                Marcar como Descarte
+              </Button>
+              <Button size="small" onClick={clearSelection} disabled={bulkUpdateStatus.isPending}>
+                Limpar
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+      ) : null}
     </Box>
   );
 }

@@ -624,3 +624,293 @@ def test_patch_status_rejeita_evento_nao_whatsapp(client, session):
         headers=_ADMIN_AUTH,
     )
     assert r.status_code == 400
+
+
+def test_patch_status_descarte_a_partir_de_pendente(client, session):
+    lead = Lead(
+        dedup_key="lead-descarte-pend",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.status == "descarte"
+
+
+def test_patch_status_descarte_a_partir_de_whatsapp_iniciado(client, session):
+    lead = Lead(
+        dedup_key="lead-descarte-wpp",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.status == "descarte"
+
+
+def test_patch_status_undo_descarte_para_pendente(client, session):
+    lead = Lead(
+        dedup_key="lead-undo-descarte",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="descarte",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "pendente_whatsapp"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_patch_status_rejeita_transicao_invalida(client, session):
+    lead = Lead(
+        dedup_key="lead-trans-inv",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="compra_realizada",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 400
+    session.refresh(lead)
+    assert lead.status == "compra_realizada"
+
+
+def test_bulk_status_atualiza_e_pula_invalidos(client, session):
+    pendente = Lead(
+        dedup_key="bulk-pend",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    compra = Lead(
+        dedup_key="bulk-compra",
+        event="whatsapp_click",
+        token_rastreio=_SECOND_VALID_TOKEN,
+        token_valido=True,
+        status="compra_realizada",
+    )
+    site = Lead(
+        dedup_key="bulk-site",
+        event="site_click",
+        status="",
+    )
+    session.add_all([pendente, compra, site])
+    session.commit()
+
+    inexistente = max(pendente.id, compra.id, site.id) + 999
+
+    r = client.patch(
+        "/api/leads/bulk/status",
+        json={"ids": [pendente.id, compra.id, site.id, inexistente], "status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    assert data["updated"] == 1
+    assert data["skipped"] == 3
+    assert set(data["skipped_ids"]) == {compra.id, site.id, inexistente}
+
+    session.refresh(pendente)
+    session.refresh(compra)
+    assert pendente.status == "descarte"
+    assert compra.status == "compra_realizada"
+
+
+def test_bulk_status_valida_payload(client, session):
+    r1 = client.patch(
+        "/api/leads/bulk/status",
+        json={"ids": [], "status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r1.status_code == 400
+
+    r2 = client.patch(
+        "/api/leads/bulk/status",
+        json={"ids": [1], "status": "compra_realizada"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r2.status_code == 400
+
+    r3 = client.patch(
+        "/api/leads/bulk/status",
+        json={"ids": ["abc"], "status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r3.status_code == 400
+
+
+def test_leads_stats_conta_pendentes_e_compras(client, session):
+    from datetime import timedelta
+
+    from app.models.pedido import datetime_now_brazil
+
+    now = datetime_now_brazil()
+
+    leads = [
+        Lead(
+            dedup_key="stat-pend-phone",
+            event="whatsapp_click",
+            status="pendente_whatsapp",
+            phone="11999990001",
+            created_at=now,
+        ),
+        Lead(
+            dedup_key="stat-pend-nophone",
+            event="whatsapp_click",
+            status="pendente_whatsapp",
+            phone=None,
+            created_at=now,
+        ),
+        Lead(
+            dedup_key="stat-compra",
+            event="whatsapp_click",
+            status="compra_realizada",
+            phone="11999990002",
+            created_at=now,
+        ),
+        Lead(
+            dedup_key="stat-velho",
+            event="whatsapp_click",
+            status="pendente_whatsapp",
+            phone="11999990003",
+            created_at=now - timedelta(days=20),
+        ),
+        Lead(
+            dedup_key="stat-site",
+            event="site_click",
+            status="",
+            created_at=now,
+        ),
+    ]
+    session.add_all(leads)
+    session.commit()
+
+    r = client.get("/api/leads/stats", headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    # Hoje: 2 pendentes (1 com phone), 1 compra; site_click é excluído
+    assert data["today"]["pendentes"] == 2
+    assert data["today"]["com_telefone"] == 1
+    assert data["today"]["compras"] == 1
+    assert data["today"]["total"] == 3
+    # 14d: hoje + nada anterior (20d está fora)
+    assert data["last_14d"]["pendentes"] == 2
+    assert data["last_14d"]["compras"] == 1
+
+
+def test_listar_leads_period_today(client, session):
+    from datetime import timedelta
+
+    from app.models.pedido import datetime_now_brazil
+
+    now = datetime_now_brazil()
+    today_lead = Lead(
+        dedup_key="period-today",
+        event="whatsapp_click",
+        status="pendente_whatsapp",
+        created_at=now,
+    )
+    old_lead = Lead(
+        dedup_key="period-old",
+        event="whatsapp_click",
+        status="pendente_whatsapp",
+        created_at=now - timedelta(days=5),
+    )
+    session.add_all([today_lead, old_lead])
+    session.commit()
+
+    r = client.get("/api/leads?period=today", headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    data = r.get_json()
+    ids = [lead["id"] for lead in data["leads"]]
+    assert today_lead.id in ids
+    assert old_lead.id not in ids
+
+
+def test_listar_leads_period_14d(client, session):
+    from datetime import timedelta
+
+    from app.models.pedido import datetime_now_brazil
+
+    now = datetime_now_brazil()
+    recent = Lead(
+        dedup_key="period-14d-recent",
+        event="whatsapp_click",
+        status="pendente_whatsapp",
+        created_at=now - timedelta(days=5),
+    )
+    old = Lead(
+        dedup_key="period-14d-old",
+        event="whatsapp_click",
+        status="pendente_whatsapp",
+        created_at=now - timedelta(days=20),
+    )
+    session.add_all([recent, old])
+    session.commit()
+
+    r = client.get("/api/leads?period=14d", headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    data = r.get_json()
+    ids = [lead["id"] for lead in data["leads"]]
+    assert recent.id in ids
+    assert old.id not in ids
+
+
+def test_listar_leads_period_all_ignora_janela(client, session):
+    from datetime import timedelta
+
+    from app.models.pedido import datetime_now_brazil
+
+    now = datetime_now_brazil()
+    old = Lead(
+        dedup_key="period-all-old",
+        event="whatsapp_click",
+        status="pendente_whatsapp",
+        created_at=now - timedelta(days=60),
+    )
+    session.add(old)
+    session.commit()
+
+    r = client.get("/api/leads?period=all", headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    data = r.get_json()
+    ids = [lead["id"] for lead in data["leads"]]
+    assert old.id in ids

@@ -8,6 +8,9 @@ _ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').dec
 _VALID_TOKEN = "A3F9B7K20K"
 _SECOND_VALID_TOKEN = "B7K2L9M1S0"
 _INVALID_TOKEN = "A3F9B7K2ZZ"
+# Quando META_CAPI_LEAD_FUNNEL_ENABLED está ligado em prod, todo POST whatsapp_click
+# precisa de meta_event_id_contact. Os testes refletem isso enviando o campo abaixo.
+_META_EVT_CONTACT = "evt_test_contact"
 
 
 def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
@@ -23,6 +26,7 @@ def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
         "phone": "(31) 98888-7777",
         "fbclid": "fbclid-from-url",
         "fbp": "fb.1.1700000000.abc123xyz987",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
 
     r1 = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
@@ -46,7 +50,11 @@ def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
 
 
 def test_cria_lead_text_plain_sendbeacon(client, session):
-    payload = {"event": "whatsapp_click", "utm_source": "facebook"}
+    payload = {
+        "event": "whatsapp_click",
+        "utm_source": "facebook",
+        "meta_event_id_contact": _META_EVT_CONTACT,
+    }
     body = json.dumps(payload)
 
     r = client.post(
@@ -65,12 +73,14 @@ def test_dedup_por_sck_prioriza_mesmo_com_payload_diferente(client, session):
         "utm_source": "facebook",
         "utm_campaign": "c1",
         "sck": "hash-interno-utmify",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
     p2 = {
         "event": "whatsapp_click",
         "utm_source": "google",
         "utm_campaign": "c2",
         "sck": "hash-interno-utmify",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
 
     r1 = client.post("/api/leads", json=p1, headers={"User-Agent": "pytest"})
@@ -84,14 +94,22 @@ def test_dedup_por_sck_prioriza_mesmo_com_payload_diferente(client, session):
 
 
 def test_cria_lead_trailing_slash(client, session):
-    payload = {"event": "whatsapp_click", "utm_source": "facebook"}
+    payload = {
+        "event": "whatsapp_click",
+        "utm_source": "facebook",
+        "meta_event_id_contact": _META_EVT_CONTACT,
+    }
     r = client.post("/api/leads/", json=payload, headers={"User-Agent": "pytest"})
     assert r.status_code == 201
     assert session.query(Lead).count() == 1
 
 
 def test_cria_lead_lendo_fbclid_de_fbc(client, session):
-    payload = {"event": "whatsapp_click", "fbc": "fb.1.1700000000.fbclid-extraido"}
+    payload = {
+        "event": "whatsapp_click",
+        "fbc": "fb.1.1700000000.fbclid-extraido",
+        "meta_event_id_contact": _META_EVT_CONTACT,
+    }
     r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
     assert r.status_code == 201
     lead = session.query(Lead).first()
@@ -109,6 +127,7 @@ def test_realcase_landing_fbclid_fbp_preserva_campos(client, session):
         "phone": "+55 (62) 99999-0000",
         "fbclid": "IwARreal123",
         "fbp": "fb.1.1711111111111.555666777888",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
     r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
     assert r.status_code == 201
@@ -124,7 +143,11 @@ def test_listar_leads_default_filtra_eventos_principais(client, session):
     """GET /api/leads sem params retorna só eventos principais (exclui page_view, scroll)."""
     client.post(
         "/api/leads",
-        json={"event": "whatsapp_click", "utm_source": "fb"},
+        json={
+            "event": "whatsapp_click",
+            "utm_source": "fb",
+            "meta_event_id_contact": _META_EVT_CONTACT,
+        },
         headers={"User-Agent": "pytest"},
     )
     client.post(
@@ -145,7 +168,11 @@ def test_listar_leads_default_filtra_eventos_principais(client, session):
 
 def test_listar_leads_event_all_retorna_tudo(client, session):
     """GET /api/leads?event=all retorna todos os eventos."""
-    client.post("/api/leads", json={"event": "whatsapp_click"}, headers={"User-Agent": "pytest"})
+    client.post(
+        "/api/leads",
+        json={"event": "whatsapp_click", "meta_event_id_contact": _META_EVT_CONTACT},
+        headers={"User-Agent": "pytest"},
+    )
     client.post("/api/leads", json={"event": "page_view"}, headers={"User-Agent": "pytest"})
 
     r = client.get("/api/leads?event=all", headers=_ADMIN_AUTH)
@@ -156,7 +183,11 @@ def test_listar_leads_event_all_retorna_tudo(client, session):
 
 def test_listar_leads_event_especifico(client, session):
     """GET /api/leads?event=page_view filtra somente page_view."""
-    client.post("/api/leads", json={"event": "whatsapp_click"}, headers={"User-Agent": "pytest"})
+    client.post(
+        "/api/leads",
+        json={"event": "whatsapp_click", "meta_event_id_contact": _META_EVT_CONTACT},
+        headers={"User-Agent": "pytest"},
+    )
     client.post("/api/leads", json={"event": "page_view"}, headers={"User-Agent": "pytest"})
 
     r = client.get("/api/leads?event=page_view", headers=_ADMIN_AUTH)
@@ -169,7 +200,11 @@ def test_listar_leads_event_especifico(client, session):
 def test_listar_leads_events_param_lista(client, session):
     """GET /api/leads?events=a,b filtra por vários eventos."""
     client.post("/api/leads", json={"event": "modal_open"}, headers={"User-Agent": "pytest"})
-    client.post("/api/leads", json={"event": "whatsapp_click"}, headers={"User-Agent": "pytest"})
+    client.post(
+        "/api/leads",
+        json={"event": "whatsapp_click", "meta_event_id_contact": _META_EVT_CONTACT},
+        headers={"User-Agent": "pytest"},
+    )
     client.post("/api/leads", json={"event": "page_view"}, headers={"User-Agent": "pytest"})
 
     r = client.get("/api/leads?events=modal_open,whatsapp_click", headers=_ADMIN_AUTH)
@@ -184,6 +219,7 @@ def test_realcase_fbc_sem_fbclid_extrai_clickid(client, session):
         "url": "https://lpb.planteumaflor.com/",
         "fbc": "fb.1.1711111111111.IwARfbcOnly987",
         "fbp": "fb.1.1711111111111.999000111222",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
     r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
     assert r.status_code == 201
@@ -201,6 +237,7 @@ def test_cria_lead_anonimo_com_token_rastreio(client, session):
         "phone": "+55 (62) 99999-0000",
         "fbclid": "IwARtoken123",
         "fbp": "fb.1.1711111111111.555666777888",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
 
     r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
@@ -220,6 +257,7 @@ def test_token_rastreio_repetido_retorna_duplicado(client, session):
         "token_rastreio": _VALID_TOKEN,
         "fbclid": "IwARtoken123",
         "fbp": "fb.1.1711111111111.555666777888",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
 
     r1 = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
@@ -239,6 +277,7 @@ def test_token_invalido_persiste_token_valido_false(client, session):
         "event": "whatsapp_click",
         "token_rastreio": _INVALID_TOKEN,
         "status": "pendente_whatsapp",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
 
     r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})
@@ -278,6 +317,7 @@ def test_extrai_token_de_destination_url(client, session):
         "event": "whatsapp_click",
         "destination_url": f"https://wa.me/5562999990000?text=Ol%C3%A1%20[Cod:%20{_VALID_TOKEN}]",
         "status": "pendente_whatsapp",
+        "meta_event_id_contact": _META_EVT_CONTACT,
     }
 
     r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest"})

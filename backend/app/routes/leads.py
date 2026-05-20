@@ -455,8 +455,20 @@ def _apply_lead_status_update(lead: Lead, data: dict):
             400,
         )
 
+    fire_disqualified = (
+        new_status == "descarte"
+        and is_lead_funnel_enabled()
+        and lead.status != "descarte"
+    )
     lead.status = new_status
     db.session.commit()
+
+    if fire_disqualified:
+        repo = MetaCapiLeadOutboxRepository()
+        row = repo.create_disqualified_from_lead(lead, event_time=datetime_now_brazil())
+        if row:
+            try_flush_pending_meta_capi_lead_entries([row.id])
+
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
 
@@ -797,6 +809,7 @@ def atualizar_status_leads_em_lote():
 
     updated = 0
     skipped_ids: list[int] = [i for i in ids if i not in found_ids]
+    transitioned_to_descarte: list[Lead] = []
 
     for lead in leads:
         if not _is_whatsapp_event(lead.event):
@@ -806,10 +819,24 @@ def atualizar_status_leads_em_lote():
         if new_status not in allowed:
             skipped_ids.append(lead.id)
             continue
+        if new_status == "descarte" and lead.status != "descarte":
+            transitioned_to_descarte.append(lead)
         lead.status = new_status
         updated += 1
 
     db.session.commit()
+
+    if transitioned_to_descarte and is_lead_funnel_enabled():
+        repo = MetaCapiLeadOutboxRepository()
+        flush_ids: list[int] = []
+        now_brt = datetime_now_brazil()
+        for lead in transitioned_to_descarte:
+            row = repo.create_disqualified_from_lead(lead, event_time=now_brt)
+            if row:
+                flush_ids.append(row.id)
+        if flush_ids:
+            try_flush_pending_meta_capi_lead_entries(flush_ids)
+
     return jsonify(
         {
             "ok": True,

@@ -721,6 +721,58 @@ class MetaConversionsApiService:
         }
         return event
 
+    def build_disqualified_event_from_lead(
+        self,
+        lead,
+        *,
+        event_time_override: Optional[int] = None,
+        event_id: Optional[str] = None,
+    ) -> Dict:
+        """
+        Evento custom `LeadDisqualified` (lead marcado como descarte).
+        Sinal qualitativo para construir Custom Audience de exclusão no Ads Manager.
+        value=0, currency BRL — Meta não trabalha com `value` negativo, então o
+        sinal é a presença do evento, não a magnitude.
+        """
+        from app.models.lead import Lead
+
+        if not isinstance(lead, Lead):
+            raise TypeError("lead deve ser instância de Lead")
+        eid = (event_id or "").strip() or str(__import__("uuid").uuid4())
+
+        if event_time_override is not None:
+            event_time = int(event_time_override)
+        else:
+            event_time = int(time.time())
+        now_timestamp = int(time.time())
+        max_past = now_timestamp - (7 * 24 * 60 * 60)
+        if event_time > now_timestamp or event_time < max_past:
+            event_time = now_timestamp
+
+        user_data = self._lead_user_data_base(lead, event_type="LeadDisqualified")
+        phone_raw = getattr(lead, "phone", None) or ""
+        if phone_raw:
+            try:
+                phone_norm = self.normalize_phone_br_e164(phone_raw)
+                user_data["ph"] = [self.hash_sha256(phone_norm)]
+            except ValueError:
+                pass
+
+        event = {
+            "event_name": "LeadDisqualified",
+            "event_time": event_time,
+            "event_id": eid,
+            "action_source": "website",
+            "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
+            "user_data": user_data,
+            "custom_data": {
+                "value": 0,
+                "currency": "BRL",
+                "lead_id": str(lead.id),
+            },
+        }
+        return event
+
     def sanitize_event_payload(self, event: Dict) -> Dict:
         """
         Normaliza payload vindo da outbox para evitar parâmetros inválidos.

@@ -21,6 +21,7 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
 
     STAGE_CONTACT = "contact"
     STAGE_LEAD = "lead"
+    STAGE_DISQUALIFIED = "disqualified"
 
     def __init__(self):
         super().__init__(MetaCapiLeadOutbox)
@@ -82,6 +83,46 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
         row = MetaCapiLeadOutbox(
             lead_id=lead.id,
             funnel_stage=self.STAGE_LEAD,
+            event_id=event["event_id"],
+            event_time=ts,
+            payload_json=json.dumps(payload_safe),
+            status="pending",
+            attempts=0,
+        )
+        try:
+            db.session.add(row)
+            db.session.commit()
+            return row
+        except IntegrityError:
+            db.session.rollback()
+            return None
+
+    def create_disqualified_from_lead(
+        self, lead: Lead, *, event_time: Optional[datetime] = None
+    ) -> Optional[MetaCapiLeadOutbox]:
+        """
+        Cria outbox para evento custom LeadDisqualified (status -> descarte).
+        Idempotente: se já existe row disqualified para o lead, retorna None.
+        """
+        if self.get_by_lead_and_stage(lead.id, self.STAGE_DISQUALIFIED):
+            return None
+        ts = event_time or datetime_now_brazil()
+        event_time_int = int(ts.timestamp())
+        event = self.service.build_disqualified_event_from_lead(
+            lead, event_time_override=event_time_int
+        )
+        payload_safe = {
+            "event_name": event["event_name"],
+            "event_time": event["event_time"],
+            "event_id": event["event_id"],
+            "action_source": event["action_source"],
+            "event_source_url": event.get("event_source_url"),
+            "custom_data": event["custom_data"],
+            "user_data": event.get("user_data", {}),
+        }
+        row = MetaCapiLeadOutbox(
+            lead_id=lead.id,
+            funnel_stage=self.STAGE_DISQUALIFIED,
             event_id=event["event_id"],
             event_time=ts,
             payload_json=json.dumps(payload_safe),

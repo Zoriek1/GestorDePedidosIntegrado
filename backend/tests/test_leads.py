@@ -977,6 +977,161 @@ def test_listar_leads_period_14d(client, session):
     assert old.id not in ids
 
 
+def test_descarte_dispara_outbox_lead_disqualified(client, session, monkeypatch):
+    """Quando lead vira descarte com META funnel ligado, cria outbox LeadDisqualified."""
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    monkeypatch.setenv("META_PIXEL_ID", "1")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    lead = Lead(
+        dedup_key="descarte-outbox",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        meta_event_id_contact="c_x",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+
+    rows = (
+        session.query(MetaCapiLeadOutbox)
+        .filter_by(lead_id=lead.id, funnel_stage="disqualified")
+        .all()
+    )
+    assert len(rows) == 1
+    payload = json.loads(rows[0].payload_json)
+    assert payload["event_name"] == "LeadDisqualified"
+    assert payload["custom_data"]["value"] == 0
+    assert payload["custom_data"]["currency"] == "BRL"
+    assert payload["custom_data"]["lead_id"] == str(lead.id)
+
+
+def test_descarte_idempotente_nao_duplica_outbox(client, session, monkeypatch):
+    """Reverter descarte e re-descartar não cria segundo outbox row disqualified."""
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    monkeypatch.setenv("META_PIXEL_ID", "1")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    lead = Lead(
+        dedup_key="descarte-idemp",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        meta_event_id_contact="c_y",
+    )
+    session.add(lead)
+    session.commit()
+
+    # 1ª vez → cria outbox
+    r1 = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r1.status_code == 200
+
+    # Undo → volta pra pendente
+    r2 = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "pendente_whatsapp"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r2.status_code == 200
+
+    # 2ª vez descartando → NÃO cria outbox novo (já existe row)
+    r3 = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r3.status_code == 200
+
+    rows = (
+        session.query(MetaCapiLeadOutbox)
+        .filter_by(lead_id=lead.id, funnel_stage="disqualified")
+        .all()
+    )
+    assert len(rows) == 1
+
+
+def test_descarte_nao_dispara_outbox_com_funnel_desativado(client, session):
+    """Sem META_CAPI_LEAD_FUNNEL_ENABLED, transição para descarte não cria outbox."""
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    lead = Lead(
+        dedup_key="descarte-funnel-off",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+
+    rows = (
+        session.query(MetaCapiLeadOutbox)
+        .filter_by(lead_id=lead.id, funnel_stage="disqualified")
+        .all()
+    )
+    assert rows == []
+
+
+def test_bulk_descarte_dispara_outbox_para_cada_lead(client, session, monkeypatch):
+    """Bulk update para descarte cria 1 outbox row por lead que efetivamente mudou."""
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    monkeypatch.setenv("META_PIXEL_ID", "1")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    leads = [
+        Lead(
+            dedup_key=f"bulk-descarte-{i}",
+            event="whatsapp_click",
+            token_rastreio=_VALID_TOKEN if i == 0 else _SECOND_VALID_TOKEN if i == 1 else None,
+            status="pendente_whatsapp",
+            meta_event_id_contact=f"c_b{i}",
+        )
+        for i in range(3)
+    ]
+    session.add_all(leads)
+    session.commit()
+    ids = [lead.id for lead in leads]
+
+    r = client.patch(
+        "/api/leads/bulk/status",
+        json={"ids": ids, "status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    assert r.get_json()["updated"] == 3
+
+    rows = (
+        session.query(MetaCapiLeadOutbox)
+        .filter_by(funnel_stage="disqualified")
+        .all()
+    )
+    assert len(rows) == 3
+    assert {row.lead_id for row in rows} == set(ids)
+
+
 def test_listar_leads_period_all_ignora_janela(client, session):
     from datetime import timedelta
 

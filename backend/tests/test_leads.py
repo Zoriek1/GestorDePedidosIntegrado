@@ -708,6 +708,49 @@ def test_patch_status_descarte_a_partir_de_whatsapp_iniciado(client, session):
     assert lead.status == "descarte"
 
 
+def test_patch_status_nao_entrou_em_contato_para_descarte(client, session):
+    """Lead já marcado como 'não contatou' deve poder virar descarte (caso reclassificação)."""
+    lead = Lead(
+        dedup_key="lead-noctc-to-descarte",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="nao_entrou_em_contato",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.status == "descarte"
+
+
+def test_patch_status_undo_nao_entrou_em_contato_para_pendente(client, session):
+    lead = Lead(
+        dedup_key="lead-undo-noctc",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="nao_entrou_em_contato",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "pendente_whatsapp"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.status == "pendente_whatsapp"
+
+
 def test_patch_status_undo_descarte_para_pendente(client, session):
     lead = Lead(
         dedup_key="lead-undo-descarte",

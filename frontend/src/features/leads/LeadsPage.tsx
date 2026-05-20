@@ -2,7 +2,7 @@
  * Leads UTM - Listagem de cliques da landing page
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react';
+import { Fragment, useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
@@ -388,21 +388,42 @@ export default function LeadsPage() {
 
   const total = data?.total ?? 0;
 
-  // Ordenação secundária client-side: dentro do dia, com telefone primeiro.
+  // Ordenação: grupo "mandaram mensagem" (whatsapp_iniciado + compra_realizada) primeiro,
+  // depois o resto (pendente_whatsapp, nao_entrou_em_contato, descarte). Dentro de cada
+  // grupo: com telefone primeiro, depois created_at desc.
   const orderedLeads = useMemo(() => {
     const src = data?.leads ?? [];
     if (!src.length) return src;
+    const messagedGroup = (s: string | null) =>
+      s === 'whatsapp_iniciado' || s === 'compra_realizada' ? 0 : 1;
     return [...src].sort((a, b) => {
-      const dayA = (a.created_at ?? '').slice(0, 10);
-      const dayB = (b.created_at ?? '').slice(0, 10);
-      if (dayA === dayB) {
-        const hasA = a.phone ? 1 : 0;
-        const hasB = b.phone ? 1 : 0;
-        return hasB - hasA;
-      }
-      return 0;
+      const ga = messagedGroup(a.status);
+      const gb = messagedGroup(b.status);
+      if (ga !== gb) return ga - gb;
+      const hasA = a.phone ? 0 : 1;
+      const hasB = b.phone ? 0 : 1;
+      if (hasA !== hasB) return hasA - hasB;
+      const ta = a.created_at ?? '';
+      const tb = b.created_at ?? '';
+      if (ta === tb) return 0;
+      return ta < tb ? 1 : -1;
     });
   }, [data?.leads]);
+
+  // Índice onde o grupo "mandaram mensagem" termina e o "outros" começa.
+  // -1 quando todos estão num único grupo (não renderiza divisória).
+  const dividerIndex = useMemo(() => {
+    let firstOther = -1;
+    for (let i = 0; i < orderedLeads.length; i++) {
+      const s = orderedLeads[i].status;
+      if (s !== 'whatsapp_iniciado' && s !== 'compra_realizada') {
+        firstOther = i;
+        break;
+      }
+    }
+    if (firstOther <= 0 || firstOther >= orderedLeads.length) return -1;
+    return firstOther;
+  }, [orderedLeads]);
 
   const pageIds = useMemo(() => orderedLeads.map((l) => l.id), [orderedLeads]);
   const allSelectedOnPage = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
@@ -460,12 +481,19 @@ export default function LeadsPage() {
     const ids = Array.from(selectedIds);
     try {
       const res = await bulkUpdateStatus.mutateAsync({ ids, status: confirmBulkAction });
+      const updated = res?.updated ?? 0;
       const skipped = res?.skipped ?? 0;
-      success(
-        `${res?.updated ?? 0} lead${(res?.updated ?? 0) === 1 ? '' : 's'} atualizado${
-          (res?.updated ?? 0) === 1 ? '' : 's'
-        }` + (skipped ? ` (${skipped} ignorado${skipped === 1 ? '' : 's'})` : ''),
-      );
+      if (updated === 0 && skipped > 0) {
+        showError(
+          `Nenhum lead atualizado: ${skipped} ignorado${skipped === 1 ? '' : 's'} ` +
+            'por transição não permitida (ex.: compra_realizada não pode virar descarte).',
+        );
+      } else {
+        success(
+          `${updated} lead${updated === 1 ? '' : 's'} atualizado${updated === 1 ? '' : 's'}` +
+            (skipped ? ` (${skipped} ignorado${skipped === 1 ? '' : 's'})` : ''),
+        );
+      }
       clearSelection();
       setConfirmBulkAction(null);
     } catch (err) {
@@ -701,9 +729,24 @@ export default function LeadsPage() {
                     longPressTimer.current = null;
                   }
                 };
+                const showDivider = index === dividerIndex;
                 return (
+                <Fragment key={lead.id}>
+                {showDivider ? (
+                  <Box
+                    sx={{
+                      px: 1,
+                      py: 0.5,
+                      borderTop: `2px solid ${theme.palette.divider}`,
+                      backgroundColor: theme.palette.grey[100],
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                      SEM RESPOSTA / DESCARTE
+                    </Typography>
+                  </Box>
+                ) : null}
                 <Card
-                  key={lead.id}
                   variant="outlined"
                   onTouchStart={beginLongPress}
                   onTouchEnd={cancelLongPress}
@@ -853,6 +896,7 @@ export default function LeadsPage() {
                     </Stack>
                   </CardContent>
                 </Card>
+                </Fragment>
                 );
               })}
             </Stack>
@@ -931,9 +975,26 @@ export default function LeadsPage() {
                     : ageBucket === 'warm'
                       ? theme.palette.warning.dark
                       : theme.palette.error.dark;
+                const showDivider = index === dividerIndex;
                 return (
+                <Fragment key={lead.id}>
+                {showDivider ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={15}
+                      sx={{
+                        backgroundColor: theme.palette.grey[100],
+                        borderTop: `2px solid ${theme.palette.divider}`,
+                        py: 0.75,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                        SEM RESPOSTA / DESCARTE
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : null}
                 <TableRow
-                  key={lead.id}
                   hover
                   selected={isSelected}
                   sx={{
@@ -1102,6 +1163,7 @@ export default function LeadsPage() {
                   <TableCell>{lead.utm_content ?? '—'}</TableCell>
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                 </TableRow>
+                </Fragment>
                 );
               })
             )}

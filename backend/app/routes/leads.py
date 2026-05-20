@@ -41,6 +41,7 @@ WHATSAPP_EVENT = "whatsapp_click"
 ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "pendente_whatsapp": {"nao_entrou_em_contato", "descarte"},
     "whatsapp_iniciado": {"descarte"},
+    "nao_entrou_em_contato": {"descarte", "pendente_whatsapp"},
     "descarte": {"pendente_whatsapp"},
 }
 BULK_TARGET_STATUSES = {"descarte", "nao_entrou_em_contato", "pendente_whatsapp"}

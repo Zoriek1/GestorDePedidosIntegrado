@@ -1,0 +1,12 @@
+{
+  "default": { "contact": 10.0, "lead": 50.0 },
+  "by_utm_content": {
+    "CARRO|HIGH-TCK":    { "contact": 25.0, "lead": 125.0 },
+    "CARRO|LOW-TCK":     { "contact":  8.0, "lead":  40.0 },
+    "ROSAS|APT":         { "contact": 10.0, "lead":  50.0 },
+    "LIRIOS|APT":        { "contact": 10.0, "lead":  50.0 },
+    "ANIVERSARIO|DATAS": { "contact": 12.0, "lead":  60.0 },
+    "URGENCIA|DATAS":    { "contact": 15.0, "lead":  75.0 },
+    "QUAL|B|LOW-TCK":    { "contact":  8.0, "lead":  40.0 }
+  }
+}

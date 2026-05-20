@@ -58,6 +58,10 @@ class MetaCapiOutboxRepository(BaseRepository):
 
         # Montar evento
         event = self.service.build_purchase_event(pedido)
+        if event is None:
+            # Builder retornou None (ex: META_CAPI_SKIP_INVALID_PURCHASE ligado
+            # e valor inválido). Skip silencioso — não enfileira.
+            return None
 
         # Criar payload JSON (sem PII em claro)
         # O payload já contém apenas hashes, mas vamos garantir

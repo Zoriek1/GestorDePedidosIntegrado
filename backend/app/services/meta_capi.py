@@ -4,6 +4,7 @@ Serviço para integração com Meta Conversions API (CAPI)
 Envia eventos Purchase para Meta com normalização, hashing e retry
 """
 import hashlib
+import logging
 import os
 import re
 import time
@@ -13,6 +14,13 @@ from typing import Dict, List, Optional, Tuple
 import requests
 
 from app.models.pedido import Pedido
+
+logger = logging.getLogger(__name__)
+
+
+def _flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "true" if default else "false")
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
 class MetaConversionsApiService:
@@ -139,6 +147,25 @@ class MetaConversionsApiService:
 
         return primeiro
 
+    def normalize_ln(self, nome: str) -> str:
+        """Sobrenome completo (tudo após o primeiro espaço) normalizado para hash.
+
+        Meta usa `ln` como matching signal forte. Para `pedido.cliente="Maria
+        da Silva"`, devolve "da silva". Sem espaço no nome, devolve "".
+        """
+        if not nome:
+            return ""
+
+        nome = nome.strip().lower()
+        nome = unicodedata.normalize("NFKD", nome)
+        nome = "".join(c for c in nome if not unicodedata.combining(c))
+        nome = re.sub(r"[^\w\s]", "", nome)
+
+        tokens = nome.split()
+        if len(tokens) < 2:
+            return ""
+        return " ".join(tokens[1:])
+
     def hash_sha256(self, value: str) -> str:
         """
         Aplica hash SHA-256 em uma string
@@ -187,7 +214,14 @@ class MetaConversionsApiService:
     def is_valid_fbc(self, value: str) -> bool:
         if not value:
             return False
-        return bool(re.fullmatch(r"fb\.1\.\d+\.[A-Za-z0-9_-]+", value.strip()))
+        m = re.fullmatch(r"fb\.1\.(\d+)\.([A-Za-z0-9_-]+)", value.strip())
+        if not m:
+            return False
+        if _flag("META_CAPI_FBC_MS_ENABLED", default=False):
+            # Meta exige timestamp em milissegundos (>= ~10^12 a partir de 2001).
+            # Rejeita valores em segundos (legado bug) para forçar fallback reconstruído.
+            return int(m.group(1)) >= 10**12
+        return True
 
     def is_valid_fbp(self, value: str) -> bool:
         if not value:
@@ -197,7 +231,12 @@ class MetaConversionsApiService:
     def build_fbc_from_fbclid(
         self, fbclid: str, timestamp_source: Optional[object] = None
     ) -> Optional[str]:
-        """ConstrÃ³i um valor fbc a partir do fbclid quando necessÃ¡rio."""
+        """Constrói um valor fbc a partir do fbclid quando necessário.
+
+        Formato Meta: fb.1.{timestamp_ms}.{fbclid}. Timestamp em milissegundos
+        é obrigatório — segundos faz a Meta rejeitar o evento com
+        "creationTime inválido".
+        """
         if not fbclid:
             return None
 
@@ -205,15 +244,19 @@ class MetaConversionsApiService:
         if not fbclid_clean:
             return None
 
-        ts = int(time.time())
+        use_ms = _flag("META_CAPI_FBC_MS_ENABLED", default=False)
+        scale = 1000 if use_ms else 1
+
+        ts = int(time.time() * scale)
         if timestamp_source is not None:
             try:
                 if hasattr(timestamp_source, "timestamp"):
-                    ts = int(timestamp_source.timestamp())
+                    ts = int(timestamp_source.timestamp() * scale)
                 else:
-                    ts = int(timestamp_source)
+                    # Inteiro recebido — assumir segundos epoch; converter se em ms.
+                    ts = int(timestamp_source) * (scale if use_ms else 1)
             except Exception:
-                ts = int(time.time())
+                ts = int(time.time() * scale)
 
         return f"fb.1.{ts}.{fbclid_clean}"
 
@@ -273,7 +316,11 @@ class MetaConversionsApiService:
             return None
 
     def build_external_id(self, pedido: Pedido, lead=None) -> str:
-        """Gera external_id estável com o melhor identificador disponível."""
+        """Gera external_id estável com o melhor identificador disponível.
+
+        Mantido para compatibilidade quando `META_CAPI_EXTERNAL_ID_V2_ENABLED`
+        está desligado. A nova lógica vive em `build_external_ids_for_event`.
+        """
         if getattr(pedido, "cliente_id", None):
             return f"cliente:{pedido.cliente_id}"
 
@@ -291,7 +338,76 @@ class MetaConversionsApiService:
 
         return f"order:{pedido.id}"
 
-    def build_purchase_event(self, pedido: Pedido) -> Dict:
+    def _phone_e164_or_none(self, telefone: Optional[str]) -> Optional[str]:
+        if not telefone:
+            return None
+        try:
+            return self.normalize_phone_br_e164(telefone)
+        except ValueError:
+            return None
+
+    def build_external_ids_for_event(
+        self,
+        event_type: str,
+        lead=None,
+        pedido: Optional[Pedido] = None,
+    ) -> List[str]:
+        """Lista de external_ids hasheados para o evento.
+
+        Inclui todos os identificadores disponíveis no momento — Meta usa
+        interseção para amarrar a jornada Contact → Lead → Purchase.
+        """
+        ids: List[str] = []
+        seen = set()
+
+        def add(raw: Optional[str]) -> None:
+            if not raw:
+                return
+            h = self.hash_sha256(raw)
+            if h not in seen:
+                seen.add(h)
+                ids.append(h)
+
+        lead_id = getattr(lead, "id", None) if lead is not None else None
+
+        if event_type == "Contact":
+            # Sem telefone garantido neste estágio — usa lead.id + fbp/fbclid.
+            if lead_id:
+                add(f"lead:{lead_id}")
+            fbp = getattr(lead, "fbp", None) if lead is not None else None
+            if fbp:
+                add(f"fbp:{str(fbp).strip()}")
+            fbclid = getattr(lead, "fbclid", None) if lead is not None else None
+            if fbclid:
+                add(f"fbclid:{str(fbclid).strip()}")
+        elif event_type == "Lead":
+            # Lead já tem telefone — amarra Contact via lead:{id} e amarra
+            # Purchase via phone.
+            if lead_id:
+                add(f"lead:{lead_id}")
+            phone_e164 = self._phone_e164_or_none(getattr(lead, "phone", None))
+            if phone_e164:
+                add(f"phone:{phone_e164}")
+            fbp = getattr(lead, "fbp", None) if lead is not None else None
+            if fbp:
+                add(f"fbp:{str(fbp).strip()}")
+        elif event_type == "Purchase":
+            phone_e164 = self._phone_e164_or_none(
+                getattr(pedido, "telefone_cliente", None) if pedido else None
+            )
+            if phone_e164:
+                add(f"phone:{phone_e164}")
+            cliente_id = getattr(pedido, "cliente_id", None) if pedido else None
+            if cliente_id:
+                add(f"cliente:{cliente_id}")
+            if lead_id:
+                add(f"lead:{lead_id}")
+            if not ids and pedido is not None:
+                # Garante pelo menos um identificador.
+                add(f"order:{pedido.id}")
+        return ids
+
+    def build_purchase_event(self, pedido: Pedido) -> Optional[Dict]:
         """
         Monta payload do evento Purchase para Meta
 
@@ -299,8 +415,24 @@ class MetaConversionsApiService:
             pedido: Objeto Pedido
 
         Returns:
-            dict: Payload do evento conforme especificação Meta
+            dict: Payload do evento conforme especificação Meta.
+            None se `META_CAPI_SKIP_INVALID_PURCHASE` está ligado e
+            `pedido.total_pago()` é inválido — caller deve tratar como skip
+            silencioso (não enfileira evento).
         """
+        # Obter valor total ANTES de montar payload — permite skip cedo.
+        valor_total = pedido.total_pago()
+        if _flag("META_CAPI_SKIP_INVALID_PURCHASE", default=False):
+            if not valor_total or valor_total <= 0.01:
+                logger.warning(
+                    "skip_purchase_invalid_value pedido_id=%s fonte=%s valor_raw=%r total_pago=%r",
+                    pedido.id,
+                    getattr(pedido, "fonte_pedido", None),
+                    getattr(pedido, "valor", None),
+                    valor_total,
+                )
+                return None
+
         # Normalizar e hashear telefone
         try:
             phone_normalized = self.normalize_phone_br_e164(pedido.telefone_cliente)
@@ -309,17 +441,16 @@ class MetaConversionsApiService:
             # Se telefone inválido, usar string vazia (não enviar)
             phone_hash = ""
 
-        # Normalizar e hashear primeiro nome
+        # Normalizar e hashear primeiro nome / sobrenome
         primeiro_nome_normalized = self.normalize_fn(pedido.cliente or "")
         fn_hash = self.hash_sha256(primeiro_nome_normalized) if primeiro_nome_normalized else ""
+        sobrenome_normalized = self.normalize_ln(pedido.cliente or "")
+        ln_hash = self.hash_sha256(sobrenome_normalized) if sobrenome_normalized else ""
 
         # Determinar action_source
         action_source = self.determine_action_source(pedido)
         lead = self.resolve_lead_for_purchase(pedido)
         cliente_rel = getattr(pedido, "cliente_rel", None)
-
-        # Obter valor total
-        valor_total = pedido.total_pago()
 
         # Timestamp do evento (usar updated_at quando status mudou, ou created_at)
         event_time = int(
@@ -395,6 +526,8 @@ class MetaConversionsApiService:
             event["user_data"]["ph"] = [phone_hash]
         if fn_hash:
             event["user_data"]["fn"] = [fn_hash]
+        if ln_hash:
+            event["user_data"]["ln"] = [ln_hash]
 
         email_normalized = self.normalize_email(getattr(cliente_rel, "email", "") or "")
         if email_normalized:
@@ -422,13 +555,22 @@ class MetaConversionsApiService:
                 break
         if lead and getattr(lead, "ip_address", None):
             event["user_data"]["client_ip_address"] = lead.ip_address
+        if lead and getattr(lead, "client_user_agent", None):
+            ua = str(lead.client_user_agent).strip()
+            if ua:
+                event["user_data"]["client_user_agent"] = ua[:512]
         if lead and getattr(lead, "url", None):
             event["event_source_url"] = lead.url
 
         # Se user_data estiver vazio (sem ph e fn), usar hash do order_id como fallback
         # Isso garante que sempre teremos pelo menos um campo além de country
-        external_id_hash = self.hash_sha256(self.build_external_id(pedido, lead))
-        event["user_data"]["external_id"] = [external_id_hash]
+        if _flag("META_CAPI_EXTERNAL_ID_V2_ENABLED", default=False):
+            event["user_data"]["external_id"] = self.build_external_ids_for_event(
+                "Purchase", lead=lead, pedido=pedido
+            ) or [self.hash_sha256(self.build_external_id(pedido, lead))]
+        else:
+            external_id_hash = self.hash_sha256(self.build_external_id(pedido, lead))
+            event["user_data"]["external_id"] = [external_id_hash]
 
         # Adicionar dados de localização (se disponíveis) após garantir user_data
         if user_location:
@@ -439,8 +581,8 @@ class MetaConversionsApiService:
     def _lead_external_id_hash(self, lead) -> str:
         return self.hash_sha256(f"lead:{lead.id}")
 
-    def _lead_user_data_base(self, lead) -> Dict:
-        """fbc/fbp, IP, UA, país, external_id estável (sem PII em claro)."""
+    def _lead_user_data_base(self, lead, event_type: str = "Contact") -> Dict:
+        """fbc/fbp, IP, UA, país, ct/st default, external_id (sem PII em claro)."""
         ud: Dict = {}
         lead_fbc = self.build_fbc_from_fbclid(
             getattr(lead, "fbclid", None), getattr(lead, "created_at", None)
@@ -458,7 +600,20 @@ class MetaConversionsApiService:
         country_hash = self.maybe_hash("br", normalize_fn=self.normalize_generic)
         if country_hash:
             ud["country"] = country_hash
-        ud["external_id"] = [self._lead_external_id_hash(lead)]
+        # Defaults estáticos de localização (loja em Goiânia/GO) somam EMQ.
+        default_city = os.environ.get("META_CAPI_DEFAULT_CITY", "goiania")
+        default_state = os.environ.get("META_CAPI_DEFAULT_STATE", "go")
+        city_hash = self.maybe_hash(default_city, normalize_fn=self.normalize_generic)
+        if city_hash:
+            ud["ct"] = city_hash
+        state_hash = self.maybe_hash(default_state, normalize_fn=self.normalize_generic)
+        if state_hash:
+            ud["st"] = state_hash
+        if _flag("META_CAPI_EXTERNAL_ID_V2_ENABLED", default=False):
+            ids = self.build_external_ids_for_event(event_type, lead=lead)
+            ud["external_id"] = ids or [self._lead_external_id_hash(lead)]
+        else:
+            ud["external_id"] = [self._lead_external_id_hash(lead)]
         return ud
 
     def build_contact_event_from_lead(self, lead) -> Dict:
@@ -480,7 +635,7 @@ class MetaConversionsApiService:
         if event_time > now_timestamp or event_time < max_past:
             event_time = now_timestamp
 
-        user_data = self._lead_user_data_base(lead)
+        user_data = self._lead_user_data_base(lead, event_type="Contact")
         phone_raw = getattr(lead, "phone", None) or ""
         if phone_raw:
             try:
@@ -488,6 +643,12 @@ class MetaConversionsApiService:
                 user_data["ph"] = [self.hash_sha256(phone_norm)]
             except ValueError:
                 pass
+
+        if _flag("META_CAPI_VALUE_MAP_ENABLED", default=False):
+            from app.utils.meta_capi_value_resolver import resolve_value
+            contact_value = resolve_value(lead, "contact")
+        else:
+            contact_value = 1.0
 
         event = {
             "event_name": "Contact",
@@ -497,7 +658,7 @@ class MetaConversionsApiService:
             "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
             "user_data": user_data,
             "custom_data": {
-                "value": 1.0,
+                "value": contact_value,
                 "currency": "BRL",
                 "lead_id": str(lead.id),
             },
@@ -536,8 +697,14 @@ class MetaConversionsApiService:
         phone_norm = self.normalize_phone_br_e164(phone_raw)
         phone_hash = self.hash_sha256(phone_norm)
 
-        user_data = self._lead_user_data_base(lead)
+        user_data = self._lead_user_data_base(lead, event_type="Lead")
         user_data["ph"] = [phone_hash]
+
+        if _flag("META_CAPI_VALUE_MAP_ENABLED", default=False):
+            from app.utils.meta_capi_value_resolver import resolve_value
+            lead_value = resolve_value(lead, "lead")
+        else:
+            lead_value = 15.0
 
         event = {
             "event_name": "Lead",
@@ -547,7 +714,7 @@ class MetaConversionsApiService:
             "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
             "user_data": user_data,
             "custom_data": {
-                "value": 15.0,
+                "value": lead_value,
                 "currency": "BRL",
                 "lead_id": str(lead.id),
             },

@@ -989,3 +989,334 @@ def test_meta_capi_verbose_summary():
         assert "ct" in sanitized["user_data"]
         assert retryable == ("retryable", True)
         assert permanent == ("permanent", False)
+
+
+class TestFbcMilliseconds:
+    """Garante que o fbc sai em milissegundos quando a flag está ligada."""
+
+    @pytest.fixture
+    def service(self):
+        with patch.dict(
+            os.environ,
+            {
+                "META_PIXEL_ID": "test",
+                "META_CAPI_ACCESS_TOKEN": "t",
+                "META_CAPI_USE_GATEWAY": "false",
+                "META_CAPI_FBC_MS_ENABLED": "true",
+            },
+        ):
+            from app.services.meta_capi import MetaConversionsApiService
+
+            return MetaConversionsApiService()
+
+    def test_build_fbc_uses_milliseconds(self, service):
+        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "true"}):
+            fbc = service.build_fbc_from_fbclid("abc123")
+            assert fbc is not None
+            ts = int(fbc.split(".")[2])
+            assert ts >= 10**12, f"timestamp deve ser ms, veio {ts}"
+
+    def test_build_fbc_from_datetime_source_uses_ms(self, service):
+        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "true"}):
+            dt = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+            fbc = service.build_fbc_from_fbclid("abc", timestamp_source=dt)
+            ts = int(fbc.split(".")[2])
+            assert ts == int(dt.timestamp() * 1000)
+
+    def test_is_valid_fbc_rejects_seconds_when_flag_on(self, service):
+        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "true"}):
+            assert service.is_valid_fbc("fb.1.1700000000.abc") is False
+            assert service.is_valid_fbc("fb.1.1700000000000.abc") is True
+
+    def test_is_valid_fbc_accepts_seconds_when_flag_off(self, service):
+        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "false"}):
+            assert service.is_valid_fbc("fb.1.1700000000.abc") is True
+
+
+class TestPurchaseSkipInvalidValue:
+    """Skip silencioso de Purchase quando `total_pago` é inválido."""
+
+    @pytest.fixture
+    def service(self):
+        with patch.dict(
+            os.environ,
+            {
+                "META_PIXEL_ID": "test",
+                "META_CAPI_ACCESS_TOKEN": "t",
+                "META_CAPI_USE_GATEWAY": "false",
+                "META_CAPI_SKIP_INVALID_PURCHASE": "true",
+            },
+        ):
+            from app.services.meta_capi import MetaConversionsApiService
+
+            return MetaConversionsApiService()
+
+    def _make_pedido(self, total_pago_value):
+        pedido = MagicMock()
+        pedido.id = 42
+        pedido.telefone_cliente = "62999887766"
+        pedido.cliente = "Joao"
+        pedido.fonte_pedido = "WhatsApp"
+        pedido.fonte_pedido_rel = None
+        pedido.valor = ""
+        pedido.cidade = "Goiania"
+        pedido.cep = "74000000"
+        pedido.tipo_pedido = "Entrega"
+        pedido.cliente_id = None
+        pedido.cliente_rel = None
+        pedido.fbc = None
+        pedido.fbp = None
+        pedido.updated_at = datetime.now()
+        pedido.created_at = datetime.now()
+        pedido.total_pago = MagicMock(return_value=total_pago_value)
+        return pedido
+
+    def test_returns_none_when_value_zero(self, service):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
+            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            pedido = self._make_pedido(0.0)
+            assert service.build_purchase_event(pedido) is None
+
+    def test_returns_none_when_value_below_min(self, service):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
+            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            pedido = self._make_pedido(0.01)
+            assert service.build_purchase_event(pedido) is None
+
+    def test_returns_event_when_value_valid(self, service):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
+            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            pedido = self._make_pedido(150.0)
+            event = service.build_purchase_event(pedido)
+            assert event is not None
+            assert event["custom_data"]["value"] == 150.0
+
+    def test_flag_off_does_not_skip(self, service):
+        """Sem a flag, builder devolve evento (mesmo com value=0).
+
+        Regressão: o código legado tinha um fallback `valor_total = 0.01`
+        que nunca chegava ao payload (custom_data era montado antes). Não
+        replicamos esse bug — apenas garantimos que a flag-off não introduz
+        skip, mantendo o comportamento histórico.
+        """
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "false"}), \
+            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            pedido = self._make_pedido(0.0)
+            event = service.build_purchase_event(pedido)
+            assert event is not None
+            # value sai como veio (0.0) — flag-off não corrige nada
+            assert event["custom_data"]["value"] == 0.0
+
+
+class TestValueResolver:
+    """resolve_value busca por utm_content, com fallback para default."""
+
+    def setup_method(self, _method):
+        from app.utils.meta_capi_value_resolver import reset_cache_for_tests
+
+        reset_cache_for_tests()
+
+    def teardown_method(self, _method):
+        from app.utils.meta_capi_value_resolver import reset_cache_for_tests
+
+        reset_cache_for_tests()
+
+    def test_known_utm_returns_mapped_value(self):
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content="CARRO|HIGH-TCK", utm_campaign=None)
+        assert resolve_value(lead, "contact") == 25.0
+        assert resolve_value(lead, "lead") == 125.0
+
+    def test_utm_content_is_case_insensitive(self):
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content="carro|low-tck", utm_campaign=None)
+        assert resolve_value(lead, "contact") == 8.0
+
+    def test_unknown_utm_uses_default(self):
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content="UNKNOWN|UTM", utm_campaign=None)
+        assert resolve_value(lead, "contact") == 10.0
+        assert resolve_value(lead, "lead") == 50.0
+
+    def test_missing_utm_uses_default(self):
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content=None, utm_campaign=None)
+        assert resolve_value(lead, "contact") == 10.0
+
+    def test_falls_back_to_utm_campaign(self):
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content=None, utm_campaign="URGENCIA|DATAS")
+        assert resolve_value(lead, "lead") == 75.0
+
+
+class TestExternalIdsArray:
+    """external_id como array por evento, com identificadores múltiplos."""
+
+    @pytest.fixture
+    def service(self):
+        with patch.dict(
+            os.environ,
+            {
+                "META_PIXEL_ID": "test",
+                "META_CAPI_ACCESS_TOKEN": "t",
+                "META_CAPI_USE_GATEWAY": "false",
+            },
+        ):
+            from app.services.meta_capi import MetaConversionsApiService
+
+            return MetaConversionsApiService()
+
+    def test_contact_uses_lead_id_and_fbp(self, service):
+        lead = MagicMock(id=7, fbp="fb.1.123.456", fbclid="abc", phone=None)
+        ids = service.build_external_ids_for_event("Contact", lead=lead)
+        assert len(ids) == 3
+        assert all(len(h) == 64 for h in ids)
+        # Determinístico: hash de "lead:7" estável
+        assert service.hash_sha256("lead:7") in ids
+        assert service.hash_sha256("fbp:fb.1.123.456") in ids
+
+    def test_lead_includes_phone_hash(self, service):
+        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766")
+        ids = service.build_external_ids_for_event("Lead", lead=lead)
+        assert service.hash_sha256("lead:7") in ids
+        assert service.hash_sha256("phone:+5562999887766") in ids
+
+    def test_purchase_uses_phone_and_cliente(self, service):
+        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766")
+        pedido = MagicMock(
+            id=99, telefone_cliente="62999887766", cliente_id=42
+        )
+        ids = service.build_external_ids_for_event("Purchase", lead=lead, pedido=pedido)
+        assert service.hash_sha256("phone:+5562999887766") in ids
+        assert service.hash_sha256("cliente:42") in ids
+        assert service.hash_sha256("lead:7") in ids
+
+    def test_purchase_falls_back_to_order_id(self, service):
+        pedido = MagicMock(
+            id=99, telefone_cliente="invalid", cliente_id=None
+        )
+        ids = service.build_external_ids_for_event("Purchase", lead=None, pedido=pedido)
+        assert service.hash_sha256("order:99") in ids
+
+    def test_contact_shares_lead_hash_with_lead_event(self, service):
+        """Cross-event matching: Contact e Lead do mesmo lead compartilham lead:{id}."""
+        lead = MagicMock(id=7, fbp="fb.1.1.2", fbclid=None, phone="62999887766")
+        contact_ids = set(service.build_external_ids_for_event("Contact", lead=lead))
+        lead_ids = set(service.build_external_ids_for_event("Lead", lead=lead))
+        intersection = contact_ids & lead_ids
+        assert service.hash_sha256("lead:7") in intersection
+
+
+class TestNormalizeLastName:
+    """Split de nome completo para `ln` (Meta usa como matching signal forte)."""
+
+    @pytest.fixture
+    def service(self):
+        with patch.dict(
+            os.environ,
+            {"META_PIXEL_ID": "t", "META_CAPI_ACCESS_TOKEN": "t", "META_CAPI_USE_GATEWAY": "false"},
+        ):
+            from app.services.meta_capi import MetaConversionsApiService
+
+            return MetaConversionsApiService()
+
+    def test_single_token_returns_empty(self, service):
+        assert service.normalize_ln("Maria") == ""
+
+    def test_two_tokens_returns_last(self, service):
+        assert service.normalize_ln("Maria Silva") == "silva"
+
+    def test_multi_tokens_returns_all_after_first(self, service):
+        assert service.normalize_ln("Maria da Silva") == "da silva"
+
+    def test_accents_stripped(self, service):
+        assert service.normalize_ln("João Conceição") == "conceicao"
+
+    def test_empty_input(self, service):
+        assert service.normalize_ln("") == ""
+        assert service.normalize_ln(None) == ""
+
+
+class TestPurchaseEnrichmentLnAndUa:
+    """Purchase event inclui ln (split de cliente) e client_user_agent (do lead)."""
+
+    @pytest.fixture
+    def service(self):
+        with patch.dict(
+            os.environ,
+            {"META_PIXEL_ID": "t", "META_CAPI_ACCESS_TOKEN": "t", "META_CAPI_USE_GATEWAY": "false"},
+        ):
+            from app.services.meta_capi import MetaConversionsApiService
+
+            return MetaConversionsApiService()
+
+    def _make_pedido(self, cliente_name="Maria da Silva"):
+        pedido = MagicMock()
+        pedido.id = 99
+        pedido.telefone_cliente = "62999887766"
+        pedido.cliente = cliente_name
+        pedido.fonte_pedido = "WhatsApp"
+        pedido.fonte_pedido_rel = None
+        pedido.valor = "150,00"
+        pedido.cidade = "Goiania"
+        pedido.cep = "74000000"
+        pedido.tipo_pedido = "Entrega"
+        pedido.cliente_id = None
+        pedido.cliente_rel = None
+        pedido.fbc = None
+        pedido.fbp = None
+        pedido.updated_at = datetime.now()
+        pedido.created_at = datetime.now()
+        pedido.total_pago = MagicMock(return_value=150.0)
+        return pedido
+
+    def _make_lead(self, ua="Mozilla/5.0 (Linux; Android 13) Chrome/120"):
+        lead = MagicMock()
+        lead.id = 7
+        lead.fbclid = None
+        lead.fbp = None
+        lead.created_at = datetime.now()
+        lead.ip_address = "1.2.3.4"
+        lead.client_user_agent = ua
+        lead.url = None
+        return lead
+
+    def test_purchase_includes_ln_when_compound_name(self, service):
+        with patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            pedido = self._make_pedido("Maria da Silva")
+            event = service.build_purchase_event(pedido)
+            assert "ln" in event["user_data"]
+            assert event["user_data"]["ln"] == [service.hash_sha256("da silva")]
+            assert event["user_data"]["fn"] == [service.hash_sha256("maria")]
+
+    def test_purchase_omits_ln_when_single_name(self, service):
+        with patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            pedido = self._make_pedido("Maria")
+            event = service.build_purchase_event(pedido)
+            assert "ln" not in event["user_data"]
+            assert "fn" in event["user_data"]
+
+    def test_purchase_copies_ua_from_lead(self, service):
+        lead = self._make_lead("CustomUA/1.0")
+        with patch.object(service, "resolve_lead_for_purchase", return_value=lead):
+            pedido = self._make_pedido()
+            event = service.build_purchase_event(pedido)
+            assert event["user_data"]["client_user_agent"] == "CustomUA/1.0"
+
+    def test_purchase_truncates_ua_at_512(self, service):
+        lead = self._make_lead("x" * 1000)
+        with patch.object(service, "resolve_lead_for_purchase", return_value=lead):
+            pedido = self._make_pedido()
+            event = service.build_purchase_event(pedido)
+            assert len(event["user_data"]["client_user_agent"]) == 512
+
+    def test_purchase_omits_ua_when_no_lead(self, service):
+        with patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            pedido = self._make_pedido()
+            event = service.build_purchase_event(pedido)
+            assert "client_user_agent" not in event["user_data"]

@@ -813,7 +813,7 @@ export default function LeadsPage() {
                   }}
                 >
                   <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                    {/* Linha 1: Status (ação principal) + ações */}
+                    {/* Linha 1: Checkbox + Status (ação principal) + ações */}
                     <Stack
                       direction="row"
                       spacing={1}
@@ -821,6 +821,13 @@ export default function LeadsPage() {
                       justifyContent="space-between"
                       sx={{ mb: 1 }}
                     >
+                      <Checkbox
+                        size="medium"
+                        checked={isSelected}
+                        onChange={() => toggleLeadSelection(lead.id, index, false)}
+                        sx={{ p: 0.5, mr: -0.5 }}
+                        inputProps={{ 'aria-label': `Selecionar lead ${lead.id}` }}
+                      />
                       {canEditLeadPhone(lead) ? (
                         <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexGrow: 1, minWidth: 0 }}>
                           <Chip
@@ -851,7 +858,7 @@ export default function LeadsPage() {
                           sx={{ fontWeight: 600 }}
                         />
                       )}
-                      <Stack direction="row" spacing={0.5}>
+                      <Stack direction="row" spacing={0.5} sx={{ ml: 'auto' }}>
                         {lead.phone ? (
                           <IconButton
                             size="small"

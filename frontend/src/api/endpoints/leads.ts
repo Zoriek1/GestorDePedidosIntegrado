@@ -112,6 +112,18 @@ export interface BulkStatusResponse {
   skipped_ids: number[];
 }
 
+export interface BulkDisqualifyUpdate {
+  id: number;
+  phone?: string;
+}
+
+export interface BulkDisqualifyResponse {
+  ok: boolean;
+  updated: number;
+  skipped: number;
+  skipped_ids: number[];
+}
+
 export function useLeads(filters: LeadsFilters = {}) {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
@@ -231,6 +243,32 @@ export function useBulkUpdateLeadStatus() {
         throw new Error(response.message ?? 'Erro ao atualizar leads em lote');
       }
       return response.data as BulkStatusResponse;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+export function useBulkDisqualifyLeads() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { updates: BulkDisqualifyUpdate[] }) => {
+      if (!input.updates.length) {
+        throw new Error('Selecione ao menos um lead');
+      }
+      const response = await apiRequest<BulkDisqualifyResponse>('/leads/bulk/disqualify', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: input.updates }),
+      });
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao desqualificar leads');
+      }
+      return response.data as BulkDisqualifyResponse;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });

@@ -50,12 +50,12 @@ import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CheckIcon from '@mui/icons-material/Check';
-import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   useLeads,
   useLeadsStats,
   useBulkUpdateLeadStatus,
+  useBulkDisqualifyLeads,
   useUpdateLeadPhone,
   useUpdateLeadStatus,
   type LeadsFilters,
@@ -81,12 +81,15 @@ const EVENT_LABELS: Record<string, string> = {
   site_click: 'Site Click',
 };
 
+// Labels visíveis na UI. As chaves internas no DB continuam as mesmas
+// (`pendente_whatsapp`, `whatsapp_iniciado`, `descarte`). Ver docs/integrations.md
+// "Funil de leads Meta CAPI" para o mapeamento label ↔ chave ↔ evento Meta.
 const LEAD_STATUS_LABELS: Record<string, string> = {
-  pendente_whatsapp: 'Pendente WhatsApp',
-  whatsapp_iniciado: 'WhatsApp iniciado',
+  pendente_whatsapp: 'P. Whatsapp (Contact)',
+  whatsapp_iniciado: 'Lead Confirmado',
   compra_realizada: 'Compra realizada',
   nao_entrou_em_contato: 'Não entrou em contato',
-  descarte: 'Descarte',
+  descarte: 'Lead Desqualificado',
 };
 
 const FILTERS_STORAGE_KEY = 'leads:filters:v1';
@@ -250,16 +253,16 @@ export default function LeadsPage() {
   const [statusMenuAnchor, setStatusMenuAnchor] = useState<null | HTMLElement>(null);
   const [statusMenuLead, setStatusMenuLead] = useState<Lead | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const [confirmDiscardLead, setConfirmDiscardLead] = useState<Lead | null>(null);
-  const [confirmBulkAction, setConfirmBulkAction] = useState<null | 'descarte' | 'nao_entrou_em_contato'>(
-    null,
-  );
+  const [confirmBulkNoContact, setConfirmBulkNoContact] = useState(false);
+  const [bulkDisqualifyOpen, setBulkDisqualifyOpen] = useState(false);
+  const [phoneEdits, setPhoneEdits] = useState<Record<number, string>>({});
   const lastSelectedIndexRef = useRef<number | null>(null);
   const { data, isLoading, error, refetch } = useLeads(filters);
   const { data: statsData } = useLeadsStats();
   const updateLeadPhone = useUpdateLeadPhone();
   const updateLeadStatus = useUpdateLeadStatus();
   const bulkUpdateStatus = useBulkUpdateLeadStatus();
+  const bulkDisqualifyLeads = useBulkDisqualifyLeads();
 
   useEffect(() => {
     persistFilters(filters);
@@ -374,18 +377,6 @@ export default function LeadsPage() {
     [showError, success, updateLeadStatus],
   );
 
-  const handleConfirmDiscard = useCallback(async () => {
-    if (!confirmDiscardLead) return;
-    try {
-      await updateLeadStatus.mutateAsync({ id: confirmDiscardLead.id, status: 'descarte' });
-      success('Lead descartado');
-      setConfirmDiscardLead(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao descartar lead';
-      showError(message);
-    }
-  }, [confirmDiscardLead, showError, success, updateLeadStatus]);
-
   const total = data?.total ?? 0;
 
   // Ordenação: grupo "mandaram mensagem" (whatsapp_iniciado + compra_realizada) primeiro,
@@ -473,34 +464,93 @@ export default function LeadsPage() {
     lastSelectedIndexRef.current = null;
   }, []);
 
-  const handleConfirmBulkAction = useCallback(async () => {
-    if (!confirmBulkAction || selectedIds.size === 0) {
-      setConfirmBulkAction(null);
+  const handleConfirmBulkNoContact = useCallback(async () => {
+    if (selectedIds.size === 0) {
+      setConfirmBulkNoContact(false);
       return;
     }
     const ids = Array.from(selectedIds);
     try {
-      const res = await bulkUpdateStatus.mutateAsync({ ids, status: confirmBulkAction });
+      const res = await bulkUpdateStatus.mutateAsync({ ids, status: 'nao_entrou_em_contato' });
       const updated = res?.updated ?? 0;
       const skipped = res?.skipped ?? 0;
       if (updated === 0 && skipped > 0) {
         showError(
           `Nenhum lead atualizado: ${skipped} ignorado${skipped === 1 ? '' : 's'} ` +
-            'por transição não permitida (ex.: compra_realizada não pode virar descarte).',
+            'por transição não permitida.',
         );
       } else {
         success(
-          `${updated} lead${updated === 1 ? '' : 's'} atualizado${updated === 1 ? '' : 's'}` +
+          `${updated} lead${updated === 1 ? '' : 's'} marcado${updated === 1 ? '' : 's'} como não contatou` +
             (skipped ? ` (${skipped} ignorado${skipped === 1 ? '' : 's'})` : ''),
         );
       }
       clearSelection();
-      setConfirmBulkAction(null);
+      setConfirmBulkNoContact(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro na ação em lote';
       showError(message);
     }
-  }, [bulkUpdateStatus, clearSelection, confirmBulkAction, selectedIds, showError, success]);
+  }, [bulkUpdateStatus, clearSelection, selectedIds, showError, success]);
+
+  const openBulkDisqualify = useCallback(() => {
+    // Prefill phoneEdits com phones atuais dos selecionados.
+    const edits: Record<number, string> = {};
+    for (const lead of orderedLeads) {
+      if (selectedIds.has(lead.id)) {
+        edits[lead.id] = lead.phone ?? '';
+      }
+    }
+    setPhoneEdits(edits);
+    setBulkDisqualifyOpen(true);
+  }, [orderedLeads, selectedIds]);
+
+  const handleConfirmBulkDisqualify = useCallback(async () => {
+    const eligibleLeads = orderedLeads.filter(
+      (l) => selectedIds.has(l.id) && l.status !== 'whatsapp_iniciado' && l.status !== 'compra_realizada',
+    );
+    if (eligibleLeads.length === 0) {
+      setBulkDisqualifyOpen(false);
+      return;
+    }
+    const updates = eligibleLeads.map((lead) => {
+      const phone = (phoneEdits[lead.id] ?? '').trim();
+      return phone ? { id: lead.id, phone } : { id: lead.id };
+    });
+    try {
+      const res = await bulkDisqualifyLeads.mutateAsync({ updates });
+      const updated = res?.updated ?? 0;
+      const skipped = res?.skipped ?? 0;
+      // Conta também os leads que filtramos antes (whatsapp_iniciado / compra_realizada)
+      // — eles "foram pulados" do ponto de vista do operador.
+      const skippedClient = selectedIds.size - eligibleLeads.length;
+      const totalSkipped = skipped + skippedClient;
+      if (updated === 0) {
+        showError(
+          `Nenhum lead desqualificado${totalSkipped ? ` (${totalSkipped} ignorado${totalSkipped === 1 ? '' : 's'})` : ''}.`,
+        );
+      } else {
+        success(
+          `${updated} lead${updated === 1 ? '' : 's'} desqualificado${updated === 1 ? '' : 's'}` +
+            (totalSkipped ? ` (${totalSkipped} ignorado${totalSkipped === 1 ? '' : 's'})` : ''),
+        );
+      }
+      clearSelection();
+      setPhoneEdits({});
+      setBulkDisqualifyOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao desqualificar leads';
+      showError(message);
+    }
+  }, [
+    bulkDisqualifyLeads,
+    clearSelection,
+    orderedLeads,
+    phoneEdits,
+    selectedIds,
+    showError,
+    success,
+  ]);
 
   // Atalho Ctrl+A para selecionar página atual quando há leads visíveis.
   useEffect(() => {
@@ -641,11 +691,11 @@ export default function LeadsPage() {
                     }
                   >
                     <MenuItem value="">Todos</MenuItem>
-                    <MenuItem value="pendente_whatsapp">Pendente WhatsApp</MenuItem>
-                    <MenuItem value="whatsapp_iniciado">WhatsApp iniciado</MenuItem>
+                    <MenuItem value="pendente_whatsapp">P. Whatsapp (Contact)</MenuItem>
+                    <MenuItem value="whatsapp_iniciado">Lead Confirmado</MenuItem>
                     <MenuItem value="compra_realizada">Compra realizada</MenuItem>
                     <MenuItem value="nao_entrou_em_contato">Não entrou em contato</MenuItem>
-                    <MenuItem value="descarte">Descarte</MenuItem>
+                    <MenuItem value="descarte">Lead Desqualificado</MenuItem>
                   </Select>
                 </FormControl>
 
@@ -1064,27 +1114,16 @@ export default function LeadsPage() {
                         </Tooltip>
                       )}
                       {lead.status === 'pendente_whatsapp' ? (
-                        <>
-                          <Tooltip title="Marcar como não contatou">
-                            <IconButton
-                              size="small"
-                              color="default"
-                              onClick={() => handleQuickMarkNoContact(lead)}
-                              disabled={updateLeadStatus.isPending}
-                            >
-                              <CheckIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Descartar">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => setConfirmDiscardLead(lead)}
-                            >
-                              <CloseIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </>
+                        <Tooltip title="Marcar como não contatou">
+                          <IconButton
+                            size="small"
+                            color="default"
+                            onClick={() => handleQuickMarkNoContact(lead)}
+                            disabled={updateLeadStatus.isPending}
+                          >
+                            <CheckIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       ) : null}
                     </Stack>
                   </TableCell>
@@ -1244,53 +1283,28 @@ export default function LeadsPage() {
       </Menu>
 
       <Dialog
-        open={!!confirmDiscardLead}
-        onClose={() => setConfirmDiscardLead(null)}
+        open={confirmBulkNoContact}
+        onClose={() => setConfirmBulkNoContact(false)}
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Descartar lead?</DialogTitle>
+        <DialogTitle>Marcar como não contatou?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            O lead será marcado como Descarte. Você pode reverter manualmente depois.
+            {selectedIds.size} lead{selectedIds.size === 1 ? '' : 's'} serão atualizados. Leads sem
+            transição válida serão ignorados.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDiscardLead(null)} disabled={updateLeadStatus.isPending}>
-            Cancelar
-          </Button>
           <Button
-            onClick={() => void handleConfirmDiscard()}
-            color="error"
-            variant="contained"
-            disabled={updateLeadStatus.isPending}
+            onClick={() => setConfirmBulkNoContact(false)}
+            disabled={bulkUpdateStatus.isPending}
           >
-            Descartar
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={!!confirmBulkAction}
-        onClose={() => setConfirmBulkAction(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>
-          {confirmBulkAction === 'descarte' ? 'Descartar leads selecionados?' : 'Marcar como não contatou?'}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {selectedIds.size} lead{selectedIds.size === 1 ? '' : 's'} serão atualizados. Leads sem transição válida serão ignorados.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmBulkAction(null)} disabled={bulkUpdateStatus.isPending}>
             Cancelar
           </Button>
           <Button
-            onClick={() => void handleConfirmBulkAction()}
-            color={confirmBulkAction === 'descarte' ? 'error' : 'primary'}
+            onClick={() => void handleConfirmBulkNoContact()}
+            color="primary"
             variant="contained"
             disabled={bulkUpdateStatus.isPending}
           >
@@ -1298,6 +1312,16 @@ export default function LeadsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <BulkDisqualifyDialog
+        open={bulkDisqualifyOpen}
+        onClose={() => setBulkDisqualifyOpen(false)}
+        selectedLeads={orderedLeads.filter((l) => selectedIds.has(l.id))}
+        phoneEdits={phoneEdits}
+        onPhoneChange={(id, phone) => setPhoneEdits((prev) => ({ ...prev, [id]: phone }))}
+        onConfirm={() => void handleConfirmBulkDisqualify()}
+        pending={bulkDisqualifyLeads.isPending}
+      />
 
       {selectedIds.size > 0 ? (
         <Paper
@@ -1328,8 +1352,8 @@ export default function LeadsPage() {
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => setConfirmBulkAction('nao_entrou_em_contato')}
-                disabled={bulkUpdateStatus.isPending}
+                onClick={() => setConfirmBulkNoContact(true)}
+                disabled={bulkUpdateStatus.isPending || bulkDisqualifyLeads.isPending}
               >
                 Marcar como Não contatou
               </Button>
@@ -1337,12 +1361,16 @@ export default function LeadsPage() {
                 size="small"
                 variant="contained"
                 color="error"
-                onClick={() => setConfirmBulkAction('descarte')}
-                disabled={bulkUpdateStatus.isPending}
+                onClick={openBulkDisqualify}
+                disabled={bulkUpdateStatus.isPending || bulkDisqualifyLeads.isPending}
               >
-                Marcar como Descarte
+                Marcar como Lead Desqualificado
               </Button>
-              <Button size="small" onClick={clearSelection} disabled={bulkUpdateStatus.isPending}>
+              <Button
+                size="small"
+                onClick={clearSelection}
+                disabled={bulkUpdateStatus.isPending || bulkDisqualifyLeads.isPending}
+              >
                 Limpar
               </Button>
             </Stack>
@@ -1350,5 +1378,130 @@ export default function LeadsPage() {
         </Paper>
       ) : null}
     </Box>
+  );
+}
+
+interface BulkDisqualifyDialogProps {
+  open: boolean;
+  onClose: () => void;
+  selectedLeads: Lead[];
+  phoneEdits: Record<number, string>;
+  onPhoneChange: (id: number, phone: string) => void;
+  onConfirm: () => void;
+  pending: boolean;
+}
+
+function isLeadConfirmedTerminal(status: string | null): boolean {
+  return status === 'whatsapp_iniciado' || status === 'compra_realizada';
+}
+
+function isPhoneValidOrEmpty(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  const digits = trimmed.replace(/\D/g, '');
+  return digits.length >= 10;
+}
+
+function BulkDisqualifyDialog({
+  open,
+  onClose,
+  selectedLeads,
+  phoneEdits,
+  onPhoneChange,
+  onConfirm,
+  pending,
+}: BulkDisqualifyDialogProps) {
+  const eligible = selectedLeads.filter((l) => !isLeadConfirmedTerminal(l.status));
+  const skippedCount = selectedLeads.length - eligible.length;
+  const hasInvalidPhone = eligible.some(
+    (l) => !isPhoneValidOrEmpty(phoneEdits[l.id] ?? ''),
+  );
+  const canConfirm = !pending && eligible.length > 0 && !hasInvalidPhone;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Desqualificar leads selecionados ({selectedLeads.length})</DialogTitle>
+      <DialogContent>
+        <DialogContentText sx={{ mb: 2 }}>
+          Esta ação dispara o evento <strong>LeadDisqualified</strong> para a Meta. Para melhorar o
+          match, preencha o telefone se conhecer.
+        </DialogContentText>
+        {skippedCount > 0 ? (
+          <DialogContentText sx={{ mb: 2, color: 'warning.main' }}>
+            ⚠ {skippedCount} lead{skippedCount === 1 ? '' : 's'} em &quot;Lead Confirmado&quot; ser
+            {skippedCount === 1 ? 'á' : 'ão'} ignorado{skippedCount === 1 ? '' : 's'} (terminal).
+          </DialogContentText>
+        ) : null}
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Status</TableCell>
+                <TableCell>Token</TableCell>
+                <TableCell sx={{ minWidth: 180 }}>Número</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {selectedLeads.map((lead) => {
+                const isSkipped = isLeadConfirmedTerminal(lead.status);
+                const phoneValue = phoneEdits[lead.id] ?? '';
+                const phoneError = !isPhoneValidOrEmpty(phoneValue);
+                return (
+                  <TableRow key={lead.id} sx={{ opacity: isSkipped ? 0.5 : 1 }}>
+                    <TableCell>
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Chip
+                          size="small"
+                          color={leadStatusColor(lead.status)}
+                          label={leadStatusLabel(lead.status)}
+                          variant={lead.status ? 'filled' : 'outlined'}
+                        />
+                        {isSkipped ? (
+                          <Tooltip title="Ignorado: já está em Lead Confirmado (terminal)">
+                            <Typography variant="caption" sx={{ ml: 0.5 }}>⊘</Typography>
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
+                    </TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                      {lead.token_rastreio ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      {isSkipped ? (
+                        <Typography variant="body2" color="text.secondary">—</Typography>
+                      ) : (
+                        <TextField
+                          size="small"
+                          fullWidth
+                          placeholder="(62) 99999-0000"
+                          value={phoneValue}
+                          onChange={(e) => onPhoneChange(lead.id, e.target.value)}
+                          error={phoneError}
+                          helperText={phoneError ? 'Telefone inválido' : undefined}
+                          disabled={pending}
+                        />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={pending}>
+          Cancelar
+        </Button>
+        <Button
+          onClick={onConfirm}
+          color="error"
+          variant="contained"
+          disabled={!canConfirm}
+        >
+          Alterar
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

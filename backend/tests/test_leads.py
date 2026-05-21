@@ -687,7 +687,8 @@ def test_patch_status_descarte_a_partir_de_pendente(client, session):
     assert lead.status == "descarte"
 
 
-def test_patch_status_descarte_a_partir_de_whatsapp_iniciado(client, session):
+def test_patch_status_descarte_a_partir_de_whatsapp_iniciado_eh_proibido(client, session):
+    """Lead Confirmado (whatsapp_iniciado) é terminal — não pode virar descarte."""
     lead = Lead(
         dedup_key="lead-descarte-wpp",
         event="whatsapp_click",
@@ -703,9 +704,9 @@ def test_patch_status_descarte_a_partir_de_whatsapp_iniciado(client, session):
         json={"status": "descarte"},
         headers=_ADMIN_AUTH,
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     session.refresh(lead)
-    assert lead.status == "descarte"
+    assert lead.status == "whatsapp_iniciado"
 
 
 def test_patch_status_nao_entrou_em_contato_para_descarte(client, session):
@@ -1130,6 +1131,172 @@ def test_bulk_descarte_dispara_outbox_para_cada_lead(client, session, monkeypatc
     )
     assert len(rows) == 3
     assert {row.lead_id for row in rows} == set(ids)
+
+
+def test_bulk_disqualify_atualiza_phone_e_dispara_outbox(client, session, monkeypatch):
+    """Endpoint /bulk/disqualify: phone fornecido vai pro user_data do LeadDisqualified."""
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    monkeypatch.setenv("META_PIXEL_ID", "1")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    lead = Lead(
+        dedup_key="disq-with-phone",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/bulk/disqualify",
+        json={"updates": [{"id": lead.id, "phone": "(62) 99999-0000"}]},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["updated"] == 1
+    assert data["skipped"] == 0
+
+    session.refresh(lead)
+    assert lead.status == "descarte"
+    assert lead.phone == "62999990000"
+
+    rows = (
+        session.query(MetaCapiLeadOutbox)
+        .filter_by(lead_id=lead.id, funnel_stage="disqualified")
+        .all()
+    )
+    assert len(rows) == 1
+    payload = json.loads(rows[0].payload_json)
+    assert payload["event_name"] == "LeadDisqualified"
+    assert "ph" in payload["user_data"]
+    assert isinstance(payload["user_data"]["ph"], list)
+    assert len(payload["user_data"]["ph"][0]) == 64  # sha256 hex
+
+
+def test_bulk_disqualify_sem_phone_dispara_outbox_sem_ph(client, session, monkeypatch):
+    """Sem phone fornecido e lead sem phone prévio: outbox sem user_data.ph."""
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    monkeypatch.setenv("META_PIXEL_ID", "1")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    lead = Lead(
+        dedup_key="disq-no-phone",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/bulk/disqualify",
+        json={"updates": [{"id": lead.id}]},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    assert r.get_json()["updated"] == 1
+
+    session.refresh(lead)
+    assert lead.status == "descarte"
+    assert lead.phone is None
+
+    rows = (
+        session.query(MetaCapiLeadOutbox)
+        .filter_by(lead_id=lead.id, funnel_stage="disqualified")
+        .all()
+    )
+    assert len(rows) == 1
+    payload = json.loads(rows[0].payload_json)
+    assert "ph" not in payload["user_data"]
+
+
+def test_bulk_disqualify_phone_invalido_pula_lead(client, session):
+    """Phone fornecido mas inválido: lead inteiro é pulado (não desqualifica sem o dado pedido)."""
+    lead = Lead(
+        dedup_key="disq-bad-phone",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/bulk/disqualify",
+        json={"updates": [{"id": lead.id, "phone": "abc"}]},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["updated"] == 0
+    assert data["skipped"] == 1
+    assert data["skipped_ids"] == [lead.id]
+
+    session.refresh(lead)
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_bulk_disqualify_pula_whatsapp_iniciado(client, session):
+    """Leads em whatsapp_iniciado (Lead Confirmado) são pulados — transição não permitida."""
+    confirmado = Lead(
+        dedup_key="disq-skip-confirmado",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+        phone="62988887777",
+    )
+    pendente = Lead(
+        dedup_key="disq-skip-pend",
+        event="whatsapp_click",
+        token_rastreio=_SECOND_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add_all([confirmado, pendente])
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/bulk/disqualify",
+        json={"updates": [{"id": confirmado.id}, {"id": pendente.id}]},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["updated"] == 1
+    assert data["skipped"] == 1
+    assert data["skipped_ids"] == [confirmado.id]
+
+    session.refresh(confirmado)
+    session.refresh(pendente)
+    assert confirmado.status == "whatsapp_iniciado"  # intocado
+    assert pendente.status == "descarte"
+
+
+def test_bulk_disqualify_valida_payload(client, session):
+    r1 = client.patch(
+        "/api/leads/bulk/disqualify",
+        json={"updates": []},
+        headers=_ADMIN_AUTH,
+    )
+    assert r1.status_code == 400
+
+    r2 = client.patch(
+        "/api/leads/bulk/disqualify",
+        json={"updates": [{"id": "abc"}]},
+        headers=_ADMIN_AUTH,
+    )
+    assert r2.status_code == 400
 
 
 def test_listar_leads_period_all_ignora_janela(client, session):

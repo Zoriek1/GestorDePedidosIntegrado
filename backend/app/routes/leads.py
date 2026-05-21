@@ -40,9 +40,12 @@ WHATSAPP_EVENT = "whatsapp_click"
 # Chave = status atual; valor = conjunto de status finais permitidos.
 ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "pendente_whatsapp": {"nao_entrou_em_contato", "descarte"},
-    "whatsapp_iniciado": {"descarte"},
     "nao_entrou_em_contato": {"descarte", "pendente_whatsapp"},
     "descarte": {"pendente_whatsapp"},
+    # whatsapp_iniciado é terminal para mutações manuais — uma vez que o evento Meta
+    # `Lead` foi disparado, não permitimos voltar pra descarte/nao_entrou. Único caminho
+    # adiante é `compra_realizada` (via fluxo automático de pedido). Isso evita o ciclo
+    # "Meta otimiza pra perfil ruim → LeadDisqualified corrige tarde".
 }
 BULK_TARGET_STATUSES = {"descarte", "nao_entrou_em_contato", "pendente_whatsapp"}
 BULK_MAX_IDS = 500
@@ -831,6 +834,97 @@ def atualizar_status_leads_em_lote():
         flush_ids: list[int] = []
         now_brt = datetime_now_brazil()
         for lead in transitioned_to_descarte:
+            row = repo.create_disqualified_from_lead(lead, event_time=now_brt)
+            if row:
+                flush_ids.append(row.id)
+        if flush_ids:
+            try_flush_pending_meta_capi_lead_entries(flush_ids)
+
+    return jsonify(
+        {
+            "ok": True,
+            "updated": updated,
+            "skipped": len(skipped_ids),
+            "skipped_ids": skipped_ids,
+        }
+    )
+
+
+@leads_bp.route("/bulk/disqualify", methods=["PATCH"])
+@requires_any_role("admin", "atendente", "vendedor")
+def desqualificar_leads_em_lote():
+    """
+    Marca leads como `descarte` em lote, opcionalmente atualizando o telefone
+    antes para enriquecer o `user_data.ph` do evento Meta `LeadDisqualified`.
+
+    Body:
+      {
+        "updates": [
+          {"id": 1, "phone": "62999990000"},  # phone opcional
+          {"id": 2},
+          {"id": 3, "phone": ""}               # vazio = não atualiza
+        ]
+      }
+
+    Diferente de PATCH /<id>/phone: aqui o telefone é setado de forma silenciosa
+    (não dispara evento `Lead` e não muda status para `whatsapp_iniciado`). O lead
+    vai direto para `descarte` e o `LeadDisqualified` carrega o phone hash novo.
+    """
+    data = _parse_request_payload()
+    updates_raw = data.get("updates")
+    if not isinstance(updates_raw, list) or not updates_raw:
+        return jsonify({"ok": False, "error": "updates é obrigatório (lista não vazia)"}), 400
+    if len(updates_raw) > BULK_MAX_IDS:
+        return jsonify({"ok": False, "error": f"Máximo de {BULK_MAX_IDS} updates por chamada"}), 400
+
+    updates_by_id: dict[int, dict] = {}
+    for u in updates_raw:
+        if not isinstance(u, dict):
+            return jsonify({"ok": False, "error": "updates deve conter objetos"}), 400
+        try:
+            uid = int(u.get("id"))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "cada update precisa de id inteiro"}), 400
+        updates_by_id[uid] = u
+
+    ids = list(updates_by_id.keys())
+    leads = Lead.query.filter(Lead.id.in_(ids)).all()
+    found_ids = {lead.id for lead in leads}
+
+    updated = 0
+    skipped_ids: list[int] = [i for i in ids if i not in found_ids]
+    transitioned: list[Lead] = []
+
+    for lead in leads:
+        if not _is_whatsapp_event(lead.event):
+            skipped_ids.append(lead.id)
+            continue
+        allowed = ALLOWED_STATUS_TRANSITIONS.get(lead.status or "", set())
+        if "descarte" not in allowed:
+            skipped_ids.append(lead.id)
+            continue
+
+        phone_raw = updates_by_id[lead.id].get("phone")
+        if phone_raw is not None and str(phone_raw).strip():
+            phone_norm = _normalize_phone(phone_raw)
+            if not phone_norm:
+                # phone fornecido mas inválido: pula o lead inteiro pra não desqualificar
+                # com phone errado e nem desqualificar sem o dado que o operador quis dar
+                skipped_ids.append(lead.id)
+                continue
+            lead.phone = phone_norm
+
+        lead.status = "descarte"
+        transitioned.append(lead)
+        updated += 1
+
+    db.session.commit()
+
+    if transitioned and is_lead_funnel_enabled():
+        repo = MetaCapiLeadOutboxRepository()
+        flush_ids: list[int] = []
+        now_brt = datetime_now_brazil()
+        for lead in transitioned:
             row = repo.create_disqualified_from_lead(lead, event_time=now_brt)
             if row:
                 flush_ids.append(row.id)

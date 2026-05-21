@@ -92,3 +92,79 @@ VAPID_CLAIMS_EMAIL=mailto:contato@planteumaflor.com.br
 ```
 
 Gerar par de chaves: `pywebpush` → `vapid --gen`.
+
+## Funil de leads Meta CAPI (Contact → Lead → LeadDisqualified)
+
+Funil de 3 eventos enviados pra Meta Conversions API conforme o lead evolui de clique no botão WhatsApp até desfecho (compra, sem resposta ou desqualificação). Toda essa lógica vive em [routes/leads.py](../backend/app/routes/leads.py), [services/meta_capi.py](../backend/app/services/meta_capi.py), [repositories/meta_capi_lead_outbox_repository.py](../backend/app/repositories/meta_capi_lead_outbox_repository.py). Toggle global: `META_CAPI_LEAD_FUNNEL_ENABLED=true`.
+
+### Timeline
+
+```
+T0  POST /api/leads (event=whatsapp_click)
+    │  Lead criado, status="pendente_whatsapp"
+    │  meta_event_id_contact obrigatório no payload (vem do Pixel)
+    └→ [META] Contact event — value=1, user_data sem phone (lead ainda não mandou msg)
+
+T1  POST /api/leads/whatsapp-start (bot detecta "[Cod: XXX]" na mensagem)
+    │  status muda para "whatsapp_iniciado"
+    └→ [META] nada (Lead requer phone, ainda não temos)
+
+T1.5 PATCH /api/leads/<id>/phone (operador registra telefone)
+    │  status confirmado em "whatsapp_iniciado"
+    │  meta_event_id_lead gerado
+    └→ [META] Lead event — value=15, user_data.ph com hash do telefone
+
+T2  PATCH /api/leads/bulk/disqualify (operador marca via modal em lote)
+    │  Transição válida: pendente_whatsapp ou nao_entrou_em_contato → descarte
+    │  whatsapp_iniciado NÃO é elegível (terminal)
+    │  Operador pode preencher phone no modal — gravado silencioso (sem disparar Lead)
+    └→ [META] LeadDisqualified event — value=0, user_data.ph se houver phone
+
+T3 (alt) Compra realizada (via fluxo de pedido — order_commission_lifecycle)
+    └→ [META] Purchase event (outbox separado: MetaCapiOutbox)
+```
+
+Disparos em T0/T1.5/T2 são **síncronos** via `try_flush_pending_meta_capi_lead_entries`. Em caso de falha (retryable), o `scheduler` retenta via `SendDailyPurchasesToMetaCommand`.
+
+### Mapeamento chave ↔ label ↔ evento
+
+| Chave no DB (`leads.status`) | Label na UI | Evento Meta disparado |
+|---|---|---|
+| `pendente_whatsapp` | P. Whatsapp (Contact) | `Contact` (em T0) |
+| `whatsapp_iniciado` | Lead Confirmado | `Lead` (em T1.5, ao adicionar phone) |
+| `nao_entrou_em_contato` | Não entrou em contato | — (nenhum) |
+| `descarte` | **Lead Desqualificado** | `LeadDisqualified` (em T2) |
+| `compra_realizada` | Compra realizada | `Purchase` (outbox separado) |
+
+### ⚠️ Chave interna no DB vs. label na UI
+
+A chave salva em `leads.status` continua sendo `descarte`. A label "Lead Desqualificado" é puramente visual — exibida pelo map `LEAD_STATUS_LABELS` em [frontend/src/features/leads/LeadsPage.tsx](../frontend/src/features/leads/LeadsPage.tsx). Consultas SQL diretas retornam `descarte`:
+
+```sql
+SELECT id, status FROM leads WHERE status = 'descarte';
+```
+
+Mesma coisa para `whatsapp_iniciado` ↔ "Lead Confirmado" e `pendente_whatsapp` ↔ "P. Whatsapp (Contact)". Toda mutação de status via API (`PATCH /api/leads/.../status`, `PATCH /api/leads/bulk/disqualify`) usa as chaves internas no body, nunca os labels.
+
+### Por que Lead Confirmado é terminal
+
+Uma vez que o evento `Lead` foi enviado pra Meta (em T1.5), a campanha começa a otimizar para perfis parecidos com aquele lead. Se 24h depois operador percebe que o lead era spam e quer desqualificar, o `LeadDisqualified` é uma correção, mas não desfaz horas de otimização.
+
+Por isso `whatsapp_iniciado` (Lead Confirmado) é **terminal para mutações manuais** — só `compra_realizada` pode acontecer depois, via fluxo automático de pedido. O backend bloqueia: `ALLOWED_STATUS_TRANSITIONS` em [routes/leads.py:41](../backend/app/routes/leads.py#L41) não tem chave `whatsapp_iniciado`, e os endpoints `/bulk/status` + `/bulk/disqualify` pulam silenciosamente leads nesse status. A UI do modal de desqualificação sinaliza visualmente (`⊘`) que esses leads serão ignorados.
+
+### Por que o modal de desqualificação pede telefone
+
+`LeadDisqualified` na Meta usa `user_data.ph` (hash SHA-256 do telefone E.164) para construir uma Custom Audience confiável de exclusão. Sem telefone, o sinal cai pra `fbp` + `fbclid` + `ip_address` + `client_user_agent` — Match Quality (EMQ) menor, audiência menos precisa.
+
+O modal `PATCH /api/leads/bulk/disqualify` é a chance do operador (que conhece o cliente por outro canal — Instagram DM, recomendação, CRM externo) enriquecer o sinal. O endpoint atualiza `lead.phone` **silenciosamente** (sem disparar evento `Lead`!) e em seguida cria o outbox row para `LeadDisqualified`, que lê `lead.phone` fresco do DB e inclui o hash em `user_data.ph`.
+
+### Por que `value=0` no LeadDisqualified
+
+A Meta Conversions API oficialmente exige `value >= 0` em `custom_data`. Valores negativos são silenciosamente coagidos a 0 ou rejeitados. Por isso o `LeadDisqualified` carrega `value=0` — o sinal é qualitativo (presença do evento), não quantitativo.
+
+Como usar no Ads Manager:
+1. Events Manager → Custom Audiences → criar audiência "Pessoas que dispararam LeadDisqualified nos últimos 90 dias"
+2. Em cada conjunto de anúncios ativo → seção Audience → **Exclude** essa audiência
+3. Meta passa a evitar mostrar anúncio para lookalikes dos desqualificados
+
+Em 2-3 semanas, a métrica "% de leads desqualificados" deve cair se a exclusão estiver pegando.

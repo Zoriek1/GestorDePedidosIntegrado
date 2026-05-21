@@ -571,6 +571,42 @@ def atualizar_telefone_lead(lead_id: int):
     return _apply_lead_phone_update(lead, data)
 
 
+@leads_bp.route("/<int:lead_id>/followup", methods=["PATCH"])
+@requires_any_role("admin", "atendente", "vendedor")
+def marcar_followup_lead(lead_id: int):
+    """
+    Marca/desmarca followup feito em um lead.
+
+    Body: {"action": "mark" | "undo"}  (default: "mark")
+
+    - mark: registra followup_feito_em=now, followup_por=current_user.id
+    - undo: limpa ambos os campos (NULL)
+
+    Sem validação de status: o operador é livre pra rastrear followup em
+    qualquer lead — o filtro de "pending followup" é quem decide quais
+    contar como atrasados.
+    """
+    data = _parse_request_payload()
+    action = _clip(data.get("action"), 10) or "mark"
+    if action not in {"mark", "undo"}:
+        return jsonify({"ok": False, "error": "action deve ser 'mark' ou 'undo'"}), 400
+
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
+
+    if action == "mark":
+        lead.followup_feito_em = datetime_now_brazil()
+        current_user = getattr(request, "current_user", None) or {}
+        lead.followup_por = current_user.get("user_id")
+    else:
+        lead.followup_feito_em = None
+        lead.followup_por = None
+
+    db.session.commit()
+    return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
+
+
 @leads_bp.route("/<int:lead_id>/touchpoints", methods=["GET"])
 @requires_any_role("admin", "vendedor")
 def listar_touchpoints(lead_id: int):
@@ -637,6 +673,24 @@ def listar_leads():
         token_norm = normalize_tracking_token(token_q)
         if token_norm:
             query = query.filter(Lead.token_rastreio == token_norm)
+
+    # Filtro: confirmados sem followup há X dias.
+    # status=whatsapp_iniciado AND (followup_feito_em IS NULL OR < now - X dias)
+    pending_followup_days_raw = request.args.get("pending_followup_days")
+    if pending_followup_days_raw:
+        try:
+            days = int(pending_followup_days_raw)
+        except (TypeError, ValueError):
+            days = 0
+        if days > 0:
+            cutoff = datetime_now_brazil() - timedelta(days=days)
+            query = query.filter(
+                Lead.status == "whatsapp_iniciado",
+                db.or_(
+                    Lead.followup_feito_em.is_(None),
+                    Lead.followup_feito_em < cutoff,
+                ),
+            )
 
     period = (request.args.get("period") or "").strip().lower()
     if period in {"today", "14d"}:
@@ -731,11 +785,16 @@ def listar_leads():
 
 
 def _aggregate_lead_stats(start_dt: datetime) -> dict:
-    """Conta pendentes/com_telefone/compras/total a partir de `start_dt`."""
+    """Conta pendentes/confirmados/compras/total a partir de `start_dt`.
+
+    `confirmados` = leads `whatsapp_iniciado` com telefone preenchido (Lead Confirmado
+    qualificado). É o número que o operador olha pra saber quantos leads válidos
+    a operação gerou na janela.
+    """
     is_pendente = case((Lead.status == "pendente_whatsapp", 1), else_=0)
-    is_pendente_com_phone = case(
+    is_confirmado = case(
         (
-            (Lead.status == "pendente_whatsapp") & Lead.phone.isnot(None) & (Lead.phone != ""),
+            (Lead.status == "whatsapp_iniciado") & Lead.phone.isnot(None) & (Lead.phone != ""),
             1,
         ),
         else_=0,
@@ -745,17 +804,17 @@ def _aggregate_lead_stats(start_dt: datetime) -> dict:
     row = (
         db.session.query(
             func.coalesce(func.sum(is_pendente), 0),
-            func.coalesce(func.sum(is_pendente_com_phone), 0),
+            func.coalesce(func.sum(is_confirmado), 0),
             func.coalesce(func.sum(is_compra), 0),
             func.count(Lead.id),
         )
         .filter(Lead.event.in_(DEFAULT_KEY_EVENTS), Lead.created_at >= start_dt)
         .one()
     )
-    pendentes, com_telefone, compras, total = row
+    pendentes, confirmados, compras, total = row
     return {
         "pendentes": int(pendentes or 0),
-        "com_telefone": int(com_telefone or 0),
+        "confirmados": int(confirmados or 0),
         "compras": int(compras or 0),
         "total": int(total or 0),
     }

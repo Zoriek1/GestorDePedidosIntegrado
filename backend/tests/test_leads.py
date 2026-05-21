@@ -860,7 +860,7 @@ def test_bulk_status_valida_payload(client, session):
     assert r3.status_code == 400
 
 
-def test_leads_stats_conta_pendentes_e_compras(client, session):
+def test_leads_stats_conta_pendentes_confirmados_e_compras(client, session):
     from datetime import timedelta
 
     from app.models.pedido import datetime_now_brazil
@@ -879,6 +879,22 @@ def test_leads_stats_conta_pendentes_e_compras(client, session):
             dedup_key="stat-pend-nophone",
             event="whatsapp_click",
             status="pendente_whatsapp",
+            phone=None,
+            created_at=now,
+        ),
+        # Confirmado com telefone — deve entrar em `confirmados`
+        Lead(
+            dedup_key="stat-confirmado",
+            event="whatsapp_click",
+            status="whatsapp_iniciado",
+            phone="11999990004",
+            created_at=now,
+        ),
+        # Confirmado sem telefone — não deve entrar em `confirmados` (defensivo)
+        Lead(
+            dedup_key="stat-confirmado-sem-phone",
+            event="whatsapp_click",
+            status="whatsapp_iniciado",
             phone=None,
             created_at=now,
         ),
@@ -910,13 +926,14 @@ def test_leads_stats_conta_pendentes_e_compras(client, session):
     assert r.status_code == 200
     data = r.get_json()
     assert data["ok"] is True
-    # Hoje: 2 pendentes (1 com phone), 1 compra; site_click é excluído
+    # Hoje: 2 pendentes, 1 confirmado (whatsapp_iniciado + phone), 1 compra
     assert data["today"]["pendentes"] == 2
-    assert data["today"]["com_telefone"] == 1
+    assert data["today"]["confirmados"] == 1
     assert data["today"]["compras"] == 1
-    assert data["today"]["total"] == 3
+    assert data["today"]["total"] == 5
     # 14d: hoje + nada anterior (20d está fora)
     assert data["last_14d"]["pendentes"] == 2
+    assert data["last_14d"]["confirmados"] == 1
     assert data["last_14d"]["compras"] == 1
 
 
@@ -1319,3 +1336,127 @@ def test_listar_leads_period_all_ignora_janela(client, session):
     data = r.get_json()
     ids = [lead["id"] for lead in data["leads"]]
     assert old.id in ids
+
+
+def test_marcar_followup_seta_timestamp(client, session):
+    lead = Lead(
+        dedup_key="followup-mark",
+        event="whatsapp_click",
+        status="whatsapp_iniciado",
+        phone="11999990050",
+    )
+    session.add(lead)
+    session.commit()
+    assert lead.followup_feito_em is None
+
+    r = client.patch(f"/api/leads/{lead.id}/followup", json={}, headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    assert data["lead"]["followup_feito_em"] is not None
+
+    session.refresh(lead)
+    assert lead.followup_feito_em is not None
+
+
+def test_marcar_followup_undo_limpa_campos(client, session):
+    from app.models.pedido import datetime_now_brazil
+
+    lead = Lead(
+        dedup_key="followup-undo",
+        event="whatsapp_click",
+        status="whatsapp_iniciado",
+        phone="11999990051",
+        followup_feito_em=datetime_now_brazil(),
+        followup_por=1,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/followup",
+        json={"action": "undo"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["lead"]["followup_feito_em"] is None
+    assert data["lead"]["followup_por"] is None
+
+    session.refresh(lead)
+    assert lead.followup_feito_em is None
+    assert lead.followup_por is None
+
+
+def test_marcar_followup_action_invalida(client, session):
+    lead = Lead(
+        dedup_key="followup-bad-action",
+        event="whatsapp_click",
+        status="whatsapp_iniciado",
+        phone="11999990052",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/followup",
+        json={"action": "destruir"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 400
+
+
+def test_marcar_followup_lead_inexistente(client):
+    r = client.patch("/api/leads/999999/followup", json={}, headers=_ADMIN_AUTH)
+    assert r.status_code == 404
+
+
+def test_filtro_pending_followup_days_lista_apenas_atrasados(client, session):
+    from datetime import timedelta
+
+    from app.models.pedido import datetime_now_brazil
+
+    now = datetime_now_brazil()
+
+    # Lead confirmado sem followup nenhum (NULL) — deve aparecer.
+    lead_nunca = Lead(
+        dedup_key="pending-null",
+        event="whatsapp_click",
+        status="whatsapp_iniciado",
+        phone="11999990060",
+        followup_feito_em=None,
+    )
+    # Lead confirmado com followup há 10 dias — deve aparecer no filtro de 7d.
+    lead_atrasado = Lead(
+        dedup_key="pending-atrasado",
+        event="whatsapp_click",
+        status="whatsapp_iniciado",
+        phone="11999990061",
+        followup_feito_em=now - timedelta(days=10),
+    )
+    # Lead confirmado com followup recente (2 dias) — NÃO deve aparecer no filtro 7d.
+    lead_recente = Lead(
+        dedup_key="pending-recente",
+        event="whatsapp_click",
+        status="whatsapp_iniciado",
+        phone="11999990062",
+        followup_feito_em=now - timedelta(days=2),
+    )
+    # Lead pendente_whatsapp sem followup — NÃO deve aparecer (só confirmados entram).
+    lead_pendente = Lead(
+        dedup_key="pending-status-pendente",
+        event="whatsapp_click",
+        status="pendente_whatsapp",
+        phone="11999990063",
+        followup_feito_em=None,
+    )
+    session.add_all([lead_nunca, lead_atrasado, lead_recente, lead_pendente])
+    session.commit()
+
+    r = client.get("/api/leads?pending_followup_days=7&period=all", headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    ids = {lead["id"] for lead in r.get_json()["leads"]}
+    assert lead_nunca.id in ids
+    assert lead_atrasado.id in ids
+    assert lead_recente.id not in ids
+    assert lead_pendente.id not in ids

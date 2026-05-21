@@ -9,5 +9,6 @@ fi
 # Migrations customizadas idempotentes
 python scripts/migrations/add_pedido_id_to_leads.py
 python scripts/migrations/add_default_vendor_to_nuvemshop_store.py
+python scripts/migrations/add_followup_to_leads.py
 
 exec python wsgi.py

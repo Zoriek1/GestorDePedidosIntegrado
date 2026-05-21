@@ -39,10 +39,13 @@ import {
   Card,
   CardContent,
   Divider,
+  Snackbar,
+  Fade,
   ToggleButton,
   ToggleButtonGroup,
   useMediaQuery,
   useTheme,
+  type Theme,
 } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
@@ -51,6 +54,14 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CheckIcon from '@mui/icons-material/Check';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import PhoneDisabledIcon from '@mui/icons-material/PhoneDisabled';
+import PersonOffIcon from '@mui/icons-material/PersonOff';
+import KeyboardIcon from '@mui/icons-material/Keyboard';
 import {
   useLeads,
   useLeadsStats,
@@ -58,10 +69,12 @@ import {
   useBulkDisqualifyLeads,
   useUpdateLeadPhone,
   useUpdateLeadStatus,
+  useMarkFollowup,
   type LeadsFilters,
   type LeadsPeriod,
   type Lead,
 } from '../../api/endpoints/leads';
+import { KeyboardCheatsheet } from './KeyboardCheatsheet';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -103,6 +116,11 @@ const DEFAULT_FILTERS: LeadsFilters = {
 
 type AgeBucket = 'fresh' | 'warm' | 'cold';
 
+/**
+ * SLA visual: ≤15min verde, ≤30min âmbar, >30min vermelho.
+ * Aplica a leads de qualquer status — operação usa o badge pra conferir
+ * janela de atendimento mesmo em leads já confirmados.
+ */
 function getLeadAgeBucket(createdAt: string | null): AgeBucket {
   if (!createdAt) return 'fresh';
   const normalized = createdAt.trim().replace(' ', 'T');
@@ -110,9 +128,9 @@ function getLeadAgeBucket(createdAt: string | null): AgeBucket {
     ? dayjs(normalized)
     : dayjs.utc(normalized);
   if (!d.isValid()) return 'fresh';
-  const hours = dayjs().diff(d, 'hour');
-  if (hours < 24) return 'fresh';
-  if (hours < 24 * 7) return 'warm';
+  const minutes = dayjs().diff(d, 'minute');
+  if (minutes <= 15) return 'fresh';
+  if (minutes <= 30) return 'warm';
   return 'cold';
 }
 
@@ -131,6 +149,22 @@ function formatLeadAge(createdAt: string | null): string {
   const days = now.diff(d, 'day');
   return `${days}d`;
 }
+
+type LeadGroup = 'confirmados' | 'pendentes' | 'descartados';
+
+function getLeadGroup(status: string | null): LeadGroup {
+  if (status === 'whatsapp_iniciado' || status === 'compra_realizada') return 'confirmados';
+  if (status === 'nao_entrou_em_contato' || status === 'descarte') return 'descartados';
+  return 'pendentes';
+}
+
+const GROUP_ORDER: readonly LeadGroup[] = ['confirmados', 'pendentes', 'descartados'] as const;
+
+const GROUP_LABELS: Record<LeadGroup, string> = {
+  confirmados: 'Confirmados',
+  pendentes: 'Pendentes / Sem resposta',
+  descartados: 'Descartados',
+};
 
 function loadPersistedFilters(): LeadsFilters {
   if (typeof window === 'undefined') return DEFAULT_FILTERS;
@@ -241,6 +275,51 @@ function canEditLeadPhone(lead: Lead): boolean {
   return lead.status === 'pendente_whatsapp' || lead.status === 'nao_entrou_em_contato';
 }
 
+/** Aparece quando o filtro "Sem followup" está ativo e o lead é confirmado sem followup feito. */
+function canMarkFollowup(lead: Lead, filters: LeadsFilters): boolean {
+  if (!filters.pending_followup_days) return false;
+  if (lead.status !== 'whatsapp_iniciado') return false;
+  return !lead.followup_feito_em;
+}
+
+function ageBorderColor(createdAt: string | null, theme: Theme): string {
+  const bucket = getLeadAgeBucket(createdAt);
+  if (bucket === 'fresh') return theme.palette.success.light;
+  if (bucket === 'warm') return theme.palette.warning.light;
+  return theme.palette.error.main;
+}
+
+const AGE_BUCKET_META: Record<AgeBucket, { Icon: typeof CheckCircleIcon; color: 'success' | 'warning' | 'error' }> = {
+  fresh: { Icon: CheckCircleIcon, color: 'success' },
+  warm: { Icon: ScheduleIcon, color: 'warning' },
+  cold: { Icon: ReportProblemIcon, color: 'error' },
+};
+
+function AgeChip({ createdAt }: { createdAt: string | null }) {
+  const bucket = getLeadAgeBucket(createdAt);
+  const { Icon, color } = AGE_BUCKET_META[bucket];
+  const theme = useTheme();
+  // Saturação reduzida: usa `light` exceto no caso crítico (>30min)
+  const bg = bucket === 'cold' ? theme.palette.error.main : theme.palette[color].light;
+  const fg = bucket === 'cold' ? theme.palette.error.contrastText : theme.palette[color].contrastText;
+  return (
+    <Chip
+      size="small"
+      icon={<Icon sx={{ color: `${fg} !important`, fontSize: '0.95rem' }} />}
+      label={formatLeadAge(createdAt)}
+      sx={{
+        height: 22,
+        borderRadius: '4px',
+        backgroundColor: bg,
+        color: fg,
+        fontWeight: 600,
+        fontVariantNumeric: 'tabular-nums',
+        '& .MuiChip-label': { px: 0.75 },
+      }}
+    />
+  );
+}
+
 export default function LeadsPage() {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -256,13 +335,21 @@ export default function LeadsPage() {
   const [confirmBulkNoContact, setConfirmBulkNoContact] = useState(false);
   const [bulkDisqualifyOpen, setBulkDisqualifyOpen] = useState(false);
   const [phoneEdits, setPhoneEdits] = useState<Record<number, string>>({});
+  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const [cheatsheetOpen, setCheatsheetOpen] = useState(false);
+  const [loadingWhatsAppId, setLoadingWhatsAppId] = useState<number | null>(null);
+  const [descartadosOpen, setDescartadosOpen] = useState(false);
+  const [undoSnack, setUndoSnack] = useState<{ leadId: number; phone: string | null } | null>(null);
+  const [, forceTick] = useState(0);
   const lastSelectedIndexRef = useRef<number | null>(null);
+  const rowRefs = useRef<Map<number, HTMLElement>>(new Map());
   const { data, isLoading, error, refetch } = useLeads(filters);
   const { data: statsData } = useLeadsStats();
   const updateLeadPhone = useUpdateLeadPhone();
   const updateLeadStatus = useUpdateLeadStatus();
   const bulkUpdateStatus = useBulkUpdateLeadStatus();
   const bulkDisqualifyLeads = useBulkDisqualifyLeads();
+  const markFollowup = useMarkFollowup();
 
   useEffect(() => {
     persistFilters(filters);
@@ -379,42 +466,50 @@ export default function LeadsPage() {
 
   const total = data?.total ?? 0;
 
-  // Ordenação: grupo "mandaram mensagem" (whatsapp_iniciado + compra_realizada) primeiro,
-  // depois o resto (pendente_whatsapp, nao_entrou_em_contato, descarte). Dentro de cada
-  // grupo: com telefone primeiro, depois created_at desc.
-  const orderedLeads = useMemo(() => {
+  // Agrupamento: 3 buckets visuais (Confirmados, Pendentes/Sem resposta, Descartados).
+  // Dentro de cada bucket: com telefone primeiro, depois created_at desc.
+  const groupedLeads = useMemo(() => {
     const src = data?.leads ?? [];
-    if (!src.length) return src;
-    const messagedGroup = (s: string | null) =>
-      s === 'whatsapp_iniciado' || s === 'compra_realizada' ? 0 : 1;
-    return [...src].sort((a, b) => {
-      const ga = messagedGroup(a.status);
-      const gb = messagedGroup(b.status);
-      if (ga !== gb) return ga - gb;
-      const hasA = a.phone ? 0 : 1;
-      const hasB = b.phone ? 0 : 1;
-      if (hasA !== hasB) return hasA - hasB;
-      const ta = a.created_at ?? '';
-      const tb = b.created_at ?? '';
-      if (ta === tb) return 0;
-      return ta < tb ? 1 : -1;
-    });
+    const groups: Record<LeadGroup, Lead[]> = {
+      confirmados: [],
+      pendentes: [],
+      descartados: [],
+    };
+    for (const lead of src) {
+      groups[getLeadGroup(lead.status)].push(lead);
+    }
+    const sortInGroup = (arr: Lead[]) =>
+      arr.sort((a, b) => {
+        const hasA = a.phone ? 0 : 1;
+        const hasB = b.phone ? 0 : 1;
+        if (hasA !== hasB) return hasA - hasB;
+        const ta = a.created_at ?? '';
+        const tb = b.created_at ?? '';
+        if (ta === tb) return 0;
+        return ta < tb ? 1 : -1;
+      });
+    sortInGroup(groups.confirmados);
+    sortInGroup(groups.pendentes);
+    sortInGroup(groups.descartados);
+    return groups;
   }, [data?.leads]);
 
-  // Índice onde o grupo "mandaram mensagem" termina e o "outros" começa.
-  // -1 quando todos estão num único grupo (não renderiza divisória).
-  const dividerIndex = useMemo(() => {
-    let firstOther = -1;
-    for (let i = 0; i < orderedLeads.length; i++) {
-      const s = orderedLeads[i].status;
-      if (s !== 'whatsapp_iniciado' && s !== 'compra_realizada') {
-        firstOther = i;
-        break;
-      }
-    }
-    if (firstOther <= 0 || firstOther >= orderedLeads.length) return -1;
-    return firstOther;
-  }, [orderedLeads]);
+  // Achata os 3 buckets na ordem de exibição. Usado para navegação por teclado
+  // (J/K) e para seleção em lote (shift+click). Não inclui descartados quando
+  // o accordion está fechado — assim J/K não pula pra dentro de algo invisível.
+  const orderedLeads = useMemo(() => {
+    return [
+      ...groupedLeads.confirmados,
+      ...groupedLeads.pendentes,
+      ...(descartadosOpen ? groupedLeads.descartados : []),
+    ];
+  }, [groupedLeads, descartadosOpen]);
+
+  // Todos os leads (incluindo descartados invisíveis) para ações em lote e cache.
+  const allLeads = useMemo(
+    () => [...groupedLeads.confirmados, ...groupedLeads.pendentes, ...groupedLeads.descartados],
+    [groupedLeads],
+  );
 
   const pageIds = useMemo(() => orderedLeads.map((l) => l.id), [orderedLeads]);
   const allSelectedOnPage = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
@@ -552,29 +647,121 @@ export default function LeadsPage() {
     success,
   ]);
 
-  // Atalho Ctrl+A para selecionar página atual quando há leads visíveis.
+  // Recalc da idade SLA a cada 30s sem reload — força re-render para chip de cor mudar.
+  useEffect(() => {
+    const t = window.setInterval(() => forceTick((n) => (n + 1) % 1_000_000), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // Atalhos de teclado (desktop apenas):
+  //   Ctrl+A: selecionar página · Esc: limpar foco/seleção
+  //   J/K: navegar · Enter: abrir WhatsApp do focado · ?: cheatsheet
   useEffect(() => {
     if (isMobile) return;
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTypingInField =
+        tag === 'input' || tag === 'textarea' || target?.isContentEditable;
+
       if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
-        const target = e.target as HTMLElement | null;
-        const tag = target?.tagName?.toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+        if (isTypingInField) return;
         if (pageIds.length === 0) return;
         e.preventDefault();
         setSelectedIds(new Set(pageIds));
-      } else if (e.key === 'Escape' && selectedIds.size > 0) {
-        clearSelection();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        if (selectedIds.size > 0) clearSelection();
+        if (focusedId !== null) setFocusedId(null);
+        return;
+      }
+
+      if (isTypingInField) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        e.preventDefault();
+        setCheatsheetOpen((open) => !open);
+        return;
+      }
+
+      if (orderedLeads.length === 0) return;
+
+      if (e.key === 'j' || e.key === 'J') {
+        e.preventDefault();
+        const currentIdx = focusedId !== null
+          ? orderedLeads.findIndex((l) => l.id === focusedId)
+          : -1;
+        const nextIdx = Math.min(currentIdx + 1, orderedLeads.length - 1);
+        const next = orderedLeads[nextIdx];
+        if (next) {
+          setFocusedId(next.id);
+          rowRefs.current.get(next.id)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        return;
+      }
+
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        const currentIdx = focusedId !== null
+          ? orderedLeads.findIndex((l) => l.id === focusedId)
+          : orderedLeads.length;
+        const prevIdx = Math.max(currentIdx - 1, 0);
+        const prev = orderedLeads[prevIdx];
+        if (prev) {
+          setFocusedId(prev.id);
+          rowRefs.current.get(prev.id)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        return;
+      }
+
+      if (e.key === 'Enter' && focusedId !== null) {
+        const lead = orderedLeads.find((l) => l.id === focusedId);
+        if (!lead?.phone) return;
+        const url = buildWhatsAppUrl(lead.phone);
+        if (!url) return;
+        e.preventDefault();
+        setLoadingWhatsAppId(lead.id);
+        window.setTimeout(() => {
+          setLoadingWhatsAppId(null);
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }, 200);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [clearSelection, isMobile, pageIds, selectedIds.size]);
+  }, [clearSelection, isMobile, pageIds, selectedIds.size, orderedLeads, focusedId]);
+
+  const handleMarkFollowup = useCallback(
+    async (lead: Lead) => {
+      try {
+        await markFollowup.mutateAsync({ id: lead.id, action: 'mark' });
+        setUndoSnack({ leadId: lead.id, phone: lead.phone });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao marcar followup';
+        showError(message);
+      }
+    },
+    [markFollowup, showError],
+  );
+
+  const handleUndoFollowup = useCallback(async () => {
+    if (!undoSnack) return;
+    const { leadId } = undoSnack;
+    setUndoSnack(null);
+    try {
+      await markFollowup.mutateAsync({ id: leadId, action: 'undo' });
+      success('Followup desfeito');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao desfazer followup';
+      showError(message);
+    }
+  }, [markFollowup, showError, success, undoSnack]);
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
-
-  const leads = orderedLeads;
 
   const today = statsData?.today;
   const last14d = statsData?.last_14d;
@@ -597,12 +784,12 @@ export default function LeadsPage() {
         {statsData ? (
           <Stack spacing={0.25} sx={{ ml: { sm: 2 } }}>
             <Typography variant="body2" color="text.secondary">
-              <strong>Hoje:</strong> {today?.pendentes ?? 0} pendentes · {today?.com_telefone ?? 0}{' '}
-              com telefone · {today?.compras ?? 0} compras
+              <strong>Hoje:</strong> {today?.pendentes ?? 0} pendentes · {today?.confirmados ?? 0}{' '}
+              confirmados · {today?.compras ?? 0} compras
             </Typography>
             <Typography variant="body2" color="text.secondary">
               <strong>14 dias:</strong> {last14d?.pendentes ?? 0} pendentes ·{' '}
-              {last14d?.com_telefone ?? 0} com telefone · {last14d?.compras ?? 0} compras
+              {last14d?.confirmados ?? 0} confirmados · {last14d?.compras ?? 0} compras
             </Typography>
           </Stack>
         ) : (
@@ -613,19 +800,72 @@ export default function LeadsPage() {
       {/* Filtros */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack spacing={1.5}>
-          <ToggleButtonGroup
-            value={period}
-            exclusive
-            size="small"
-            onChange={(_e, v: LeadsPeriod | null) => {
-              if (v) setPeriod(v);
-            }}
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            flexWrap="wrap"
           >
-            <ToggleButton value="today">Hoje</ToggleButton>
-            <ToggleButton value="14d">14 dias</ToggleButton>
-            <ToggleButton value="all">Tudo</ToggleButton>
-            <ToggleButton value="custom">Personalizado</ToggleButton>
-          </ToggleButtonGroup>
+            <ToggleButtonGroup
+              value={period}
+              exclusive
+              size="small"
+              onChange={(_e, v: LeadsPeriod | null) => {
+                if (v) setPeriod(v);
+              }}
+            >
+              <ToggleButton value="today">Hoje</ToggleButton>
+              <ToggleButton value="14d">14 dias</ToggleButton>
+              <ToggleButton value="all">Tudo</ToggleButton>
+              <ToggleButton value="custom">Personalizado</ToggleButton>
+            </ToggleButtonGroup>
+
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Chip
+                label={`Sem followup ${filters.pending_followup_days ?? 7}d+`}
+                size="small"
+                color={filters.pending_followup_days ? 'primary' : 'default'}
+                variant={filters.pending_followup_days ? 'filled' : 'outlined'}
+                onClick={() =>
+                  setFilters((f) => ({
+                    ...f,
+                    pending_followup_days: f.pending_followup_days ? undefined : 7,
+                    page: 1,
+                  }))
+                }
+                sx={{ borderRadius: '4px', cursor: 'pointer' }}
+              />
+              {filters.pending_followup_days ? (
+                <FormControl size="small" sx={{ minWidth: 72 }}>
+                  <Select
+                    value={String(filters.pending_followup_days)}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        pending_followup_days: Number(e.target.value),
+                        page: 1,
+                      }))
+                    }
+                    sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: '4px' } }}
+                  >
+                    <MenuItem value="7">7d</MenuItem>
+                    <MenuItem value="15">15d</MenuItem>
+                    <MenuItem value="30">30d</MenuItem>
+                  </Select>
+                </FormControl>
+              ) : null}
+            </Stack>
+
+            <Box sx={{ flexGrow: 1 }} />
+
+            {!isMobile ? (
+              <Tooltip title="Atalhos de teclado (?)">
+                <IconButton size="small" onClick={() => setCheatsheetOpen(true)}>
+                  <KeyboardIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
 
           {period === 'custom' ? (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -747,71 +987,56 @@ export default function LeadsPage() {
       {/* Cards (mobile) */}
       {isMobile ? (
         <Box>
-          {leads.length === 0 ? (
+          {allLeads.length === 0 ? (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
-                Nenhum lead encontrado
+                {filters.pending_followup_days
+                  ? 'Nenhum lead pendente de followup'
+                  : 'Nenhum lead encontrado'}
               </Typography>
             </Paper>
           ) : (
             <Stack spacing={1.5}>
-              {leads.map((lead, index) => {
-                const ageBucket = getLeadAgeBucket(lead.created_at);
-                const borderColor =
-                  ageBucket === 'fresh'
-                    ? theme.palette.success.main
-                    : ageBucket === 'warm'
-                      ? theme.palette.warning.main
-                      : theme.palette.error.main;
-                const opacity = ageBucket === 'cold' ? 0.55 : ageBucket === 'warm' ? 0.75 : 1;
-                const isSelected = selectedIds.has(lead.id);
-                const noPhonePending =
-                  !lead.phone && lead.status === 'pendente_whatsapp';
-                const longPressTimer = { current: null as null | number };
-                const beginLongPress = () => {
-                  longPressTimer.current = window.setTimeout(() => {
-                    toggleLeadSelection(lead.id, index, false);
-                  }, 450);
-                };
-                const cancelLongPress = () => {
-                  if (longPressTimer.current !== null) {
-                    window.clearTimeout(longPressTimer.current);
-                    longPressTimer.current = null;
-                  }
-                };
-                const showDivider = index === dividerIndex;
-                return (
-                <Fragment key={lead.id}>
-                {showDivider ? (
-                  <Box
-                    sx={{
-                      px: 1,
-                      py: 0.5,
-                      borderTop: `2px solid ${theme.palette.divider}`,
-                      backgroundColor: theme.palette.grey[100],
-                    }}
-                  >
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
-                      SEM RESPOSTA / DESCARTE
-                    </Typography>
-                  </Box>
-                ) : null}
-                <Card
-                  variant="outlined"
-                  onTouchStart={beginLongPress}
-                  onTouchEnd={cancelLongPress}
-                  onTouchMove={cancelLongPress}
-                  onTouchCancel={cancelLongPress}
-                  sx={{
-                    opacity,
-                    borderLeft: `3px solid ${borderColor}`,
-                    backgroundColor: isSelected
-                      ? theme.palette.action.selected
-                      : noPhonePending
-                        ? theme.palette.action.hover
-                        : undefined,
-                  }}
-                >
+              {GROUP_ORDER.map((groupName) => {
+                const list = groupedLeads[groupName];
+                if (list.length === 0) return null;
+                const isDescartados = groupName === 'descartados';
+                const renderCard = (lead: Lead) => {
+                  const index = orderedLeads.findIndex((l) => l.id === lead.id);
+                  const isSelected = selectedIds.has(lead.id);
+                  const noPhonePending = !lead.phone && lead.status === 'pendente_whatsapp';
+                  const showFollowupAction = canMarkFollowup(lead, filters);
+                  const longPressTimer = { current: null as null | number };
+                  const beginLongPress = () => {
+                    longPressTimer.current = window.setTimeout(() => {
+                      toggleLeadSelection(lead.id, index, false);
+                    }, 450);
+                  };
+                  const cancelLongPress = () => {
+                    if (longPressTimer.current !== null) {
+                      window.clearTimeout(longPressTimer.current);
+                      longPressTimer.current = null;
+                    }
+                  };
+                  return (
+                    <Card
+                      key={lead.id}
+                      variant="outlined"
+                      onTouchStart={beginLongPress}
+                      onTouchEnd={cancelLongPress}
+                      onTouchMove={cancelLongPress}
+                      onTouchCancel={cancelLongPress}
+                      sx={{
+                        borderRadius: '4px',
+                        borderLeftWidth: '3px',
+                        borderLeftColor: ageBorderColor(lead.created_at, theme),
+                        backgroundColor: isSelected
+                          ? theme.palette.action.selected
+                          : noPhonePending
+                            ? theme.palette.action.hover
+                            : undefined,
+                      }}
+                    >
                   <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                     {/* Linha 1: Checkbox + Status (ação principal) + ações */}
                     <Stack
@@ -837,7 +1062,7 @@ export default function LeadsPage() {
                             variant="filled"
                             clickable
                             onClick={() => handleOpenPhoneDialog(lead)}
-                            sx={{ fontWeight: 600 }}
+                            sx={{ fontWeight: 600, borderRadius: '4px' }}
                           />
                           {lead.status === 'pendente_whatsapp' ? (
                             <IconButton
@@ -855,10 +1080,11 @@ export default function LeadsPage() {
                           color={leadStatusColor(lead.status)}
                           label={leadStatusLabel(lead.status)}
                           variant={lead.status ? 'filled' : 'outlined'}
-                          sx={{ fontWeight: 600 }}
+                          sx={{ fontWeight: 600, borderRadius: '4px' }}
                         />
                       )}
-                      <Stack direction="row" spacing={0.5} sx={{ ml: 'auto' }}>
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}>
+                        <AgeChip createdAt={lead.created_at} />
                         {lead.phone ? (
                           <IconButton
                             size="small"
@@ -875,6 +1101,20 @@ export default function LeadsPage() {
                             <WhatsAppIcon fontSize="small" />
                           </IconButton>
                         )}
+                        {showFollowupAction ? (
+                          <Tooltip title="Marcar followup feito">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => void handleMarkFollowup(lead)}
+                                disabled={markFollowup.isPending}
+                              >
+                                <TaskAltIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        ) : null}
                         {lead.pedido_id ? (
                           <IconButton
                             size="small"
@@ -906,7 +1146,13 @@ export default function LeadsPage() {
                           label={lead.valor_pedido}
                           color="success"
                           variant="outlined"
+                          sx={{ borderRadius: '4px' }}
                         />
+                      ) : null}
+                      {showFollowupAction ? (
+                        <Tooltip title="Followup pendente">
+                          <AccessTimeIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                        </Tooltip>
                       ) : null}
                     </Stack>
 
@@ -937,7 +1183,7 @@ export default function LeadsPage() {
                       </Stack>
                       <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
                         {lead.utm_source ? (
-                          <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} />
+                          <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} sx={{ borderRadius: '4px' }} />
                         ) : null}
                         {lead.utm_campaign ? (
                           <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
@@ -951,9 +1197,61 @@ export default function LeadsPage() {
                         ) : null}
                       </Stack>
                     </Stack>
-                  </CardContent>
-                </Card>
-                </Fragment>
+                      </CardContent>
+                    </Card>
+                  );
+                };
+
+                const header = (
+                  <Box
+                    sx={{
+                      px: 0.5,
+                      pt: 1,
+                      pb: 0.5,
+                      borderTop: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontWeight: 500 }}
+                    >
+                      {GROUP_LABELS[groupName]} ({list.length})
+                    </Typography>
+                  </Box>
+                );
+
+                if (isDescartados) {
+                  return (
+                    <Accordion
+                      key={groupName}
+                      expanded={descartadosOpen}
+                      onChange={(_e, exp) => setDescartadosOpen(exp)}
+                      disableGutters
+                      elevation={0}
+                      sx={{
+                        '&:before': { display: 'none' },
+                        borderTop: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                          {GROUP_LABELS[groupName]} ({list.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails sx={{ px: 0 }}>
+                        <Stack spacing={1.5}>{list.map(renderCard)}</Stack>
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                }
+                return (
+                  <Fragment key={groupName}>
+                    {header}
+                    {list.map(renderCard)}
+                  </Fragment>
                 );
               })}
             </Stack>
@@ -1005,59 +1303,84 @@ export default function LeadsPage() {
               <TableCell>Meio</TableCell>
             </TableRow>
           </TableHead>
-          <TableBody>
-            {leads.length === 0 ? (
+          {allLeads.length === 0 ? (
+            <TableBody>
               <TableRow>
                 <TableCell colSpan={15} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
-                    Nenhum lead encontrado
+                    {filters.pending_followup_days
+                      ? 'Nenhum lead pendente de followup'
+                      : 'Nenhum lead encontrado'}
                   </Typography>
                 </TableCell>
               </TableRow>
-            ) : (
-              leads.map((lead, index) => {
-                const ageBucket = getLeadAgeBucket(lead.created_at);
-                const borderColor =
-                  ageBucket === 'fresh'
-                    ? theme.palette.success.main
-                    : ageBucket === 'warm'
-                      ? theme.palette.warning.main
-                      : theme.palette.error.main;
-                const opacity = ageBucket === 'cold' ? 0.55 : ageBucket === 'warm' ? 0.75 : 1;
-                const isSelected = selectedIds.has(lead.id);
-                const noPhonePending = !lead.phone && lead.status === 'pendente_whatsapp';
-                const ageTextColor =
-                  ageBucket === 'fresh'
-                    ? theme.palette.success.dark
-                    : ageBucket === 'warm'
-                      ? theme.palette.warning.dark
-                      : theme.palette.error.dark;
-                const showDivider = index === dividerIndex;
-                return (
-                <Fragment key={lead.id}>
-                {showDivider ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={15}
-                      sx={{
-                        backgroundColor: theme.palette.grey[100],
-                        borderTop: `2px solid ${theme.palette.divider}`,
-                        py: 0.75,
-                      }}
-                    >
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
-                        SEM RESPOSTA / DESCARTE
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : null}
+            </TableBody>
+          ) : null}
+          {GROUP_ORDER.map((groupName) => {
+            const list = groupedLeads[groupName];
+            if (list.length === 0) return null;
+            const isDescartados = groupName === 'descartados';
+            const collapsed = isDescartados && !descartadosOpen;
+            return (
+              <TableBody key={groupName}>
                 <TableRow
+                  sx={{
+                    backgroundColor: isDescartados ? 'transparent' : theme.palette.background.default,
+                  }}
+                >
+                  <TableCell
+                    colSpan={15}
+                    sx={{
+                      borderTop: `1px solid ${theme.palette.divider}`,
+                      borderBottom: 0,
+                      py: 0.5,
+                      cursor: isDescartados ? 'pointer' : 'default',
+                    }}
+                    onClick={() => {
+                      if (isDescartados) setDescartadosOpen((v) => !v);
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                      {isDescartados ? (
+                        <ExpandMoreIcon
+                          fontSize="small"
+                          sx={{
+                            color: 'text.secondary',
+                            transform: descartadosOpen ? 'rotate(180deg)' : 'rotate(0)',
+                            transition: 'transform 150ms',
+                          }}
+                        />
+                      ) : null}
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                        {GROUP_LABELS[groupName]} ({list.length})
+                      </Typography>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+                {collapsed
+                  ? null
+                  : list.map((lead) => {
+                      const index = orderedLeads.findIndex((l) => l.id === lead.id);
+                      const isSelected = selectedIds.has(lead.id);
+                      const noPhonePending = !lead.phone && lead.status === 'pendente_whatsapp';
+                      const isFocused = focusedId === lead.id;
+                      const showFollowupAction = canMarkFollowup(lead, filters);
+                      return (
+                <TableRow
+                  key={lead.id}
+                  ref={(el: HTMLTableRowElement | null) => {
+                    if (el) rowRefs.current.set(lead.id, el);
+                    else rowRefs.current.delete(lead.id);
+                  }}
                   hover
                   selected={isSelected}
+                  onClick={() => setFocusedId(lead.id)}
                   sx={{
-                    opacity,
-                    borderLeft: `3px solid ${borderColor}`,
+                    borderLeft: isFocused
+                      ? `3px solid ${theme.palette.primary.main}`
+                      : `3px solid ${ageBorderColor(lead.created_at, theme)}`,
                     backgroundColor: noPhonePending && !isSelected ? theme.palette.action.hover : undefined,
+                    '& > td': { borderRadius: 0 },
                   }}
                 >
                   <TableCell padding="checkbox">
@@ -1082,6 +1405,7 @@ export default function LeadsPage() {
                             href={buildWhatsAppUrl(lead.phone) ?? '#'}
                             target="_blank"
                             rel="noopener noreferrer"
+                            disabled={loadingWhatsAppId === lead.id}
                           >
                             <WhatsAppIcon fontSize="small" />
                           </IconButton>
@@ -1095,6 +1419,20 @@ export default function LeadsPage() {
                           </span>
                         </Tooltip>
                       )}
+                      {showFollowupAction ? (
+                        <Tooltip title="Marcar followup feito">
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => void handleMarkFollowup(lead)}
+                              disabled={markFollowup.isPending}
+                            >
+                              <TaskAltIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      ) : null}
                       {lead.pedido_id ? (
                         <Tooltip title="Visualizar pedido vinculado">
                           <IconButton
@@ -1135,8 +1473,8 @@ export default function LeadsPage() {
                     </Stack>
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap', color: ageTextColor, fontWeight: 500 }}>
-                    {formatLeadAge(lead.created_at)}
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <AgeChip createdAt={lead.created_at} />
                   </TableCell>
                   <TableCell>
                     {canEditLeadPhone(lead) ? (
@@ -1149,6 +1487,7 @@ export default function LeadsPage() {
                             variant="filled"
                             clickable
                             onClick={() => handleOpenPhoneDialog(lead)}
+                            sx={{ borderRadius: '4px' }}
                           />
                         </Tooltip>
                         {lead.status === 'pendente_whatsapp' ? (
@@ -1164,12 +1503,20 @@ export default function LeadsPage() {
                         ) : null}
                       </Stack>
                     ) : (
-                      <Chip
-                        size="small"
-                        color={leadStatusColor(lead.status)}
-                        label={leadStatusLabel(lead.status)}
-                        variant={lead.status ? 'filled' : 'outlined'}
-                      />
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Chip
+                          size="small"
+                          color={leadStatusColor(lead.status)}
+                          label={leadStatusLabel(lead.status)}
+                          variant={lead.status ? 'filled' : 'outlined'}
+                          sx={{ borderRadius: '4px' }}
+                        />
+                        {showFollowupAction ? (
+                          <Tooltip title="Followup pendente">
+                            <AccessTimeIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
                     )}
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
@@ -1180,6 +1527,7 @@ export default function LeadsPage() {
                         label={lead.valor_pedido}
                         color="success"
                         variant="outlined"
+                        sx={{ borderRadius: '4px' }}
                       />
                     ) : '—'}
                   </TableCell>
@@ -1193,6 +1541,7 @@ export default function LeadsPage() {
                         color={tokenValidColor(lead.token_valido)}
                         label={tokenValidLabel(lead.token_valido)}
                         variant={lead.token_valido === null ? 'outlined' : 'filled'}
+                        sx={{ borderRadius: '4px' }}
                       />
                     ) : (
                       '—'
@@ -1201,7 +1550,12 @@ export default function LeadsPage() {
                   <TableCell>{formatEventLabel(lead.event)}</TableCell>
                   <TableCell>
                     {lead.utm_source ? (
-                      <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} />
+                      <Chip
+                        label={lead.utm_source}
+                        size="small"
+                        color={sourceColor(lead.utm_source)}
+                        sx={{ borderRadius: '4px' }}
+                      />
                     ) : '—'}
                   </TableCell>
                   <TableCell>{lead.utm_campaign ?? '—'}</TableCell>
@@ -1209,11 +1563,11 @@ export default function LeadsPage() {
                   <TableCell>{lead.utm_content ?? '—'}</TableCell>
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                 </TableRow>
-                </Fragment>
-                );
-              })
-            )}
-          </TableBody>
+                      );
+                    })}
+              </TableBody>
+            );
+          })}
         </Table>
 
         <TablePagination
@@ -1339,7 +1693,9 @@ export default function LeadsPage() {
             right: 0,
             bottom: 0,
             zIndex: (t) => t.zIndex.appBar + 1,
-            p: 1.5,
+            px: { xs: 1.5, sm: 2 },
+            py: 1.25,
+            paddingBottom: 'calc(10px + env(safe-area-inset-bottom))',
             borderRadius: 0,
             borderTop: 1,
             borderColor: 'divider',
@@ -1347,36 +1703,60 @@ export default function LeadsPage() {
         >
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
+            spacing={1.25}
             alignItems={{ xs: 'stretch', sm: 'center' }}
             justifyContent="space-between"
           >
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            <Typography
+              variant="body2"
+              sx={{ fontWeight: 600, textAlign: { xs: 'center', sm: 'left' } }}
+            >
               {selectedIds.size} lead{selectedIds.size === 1 ? '' : 's'} selecionado
               {selectedIds.size === 1 ? '' : 's'}
             </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
+            >
               <Button
-                size="small"
-                variant="outlined"
-                onClick={() => setConfirmBulkNoContact(true)}
-                disabled={bulkUpdateStatus.isPending || bulkDisqualifyLeads.isPending}
-              >
-                Marcar como Não contatou
-              </Button>
-              <Button
-                size="small"
+                size="medium"
                 variant="contained"
                 color="error"
+                startIcon={<PersonOffIcon />}
                 onClick={openBulkDisqualify}
                 disabled={bulkUpdateStatus.isPending || bulkDisqualifyLeads.isPending}
+                fullWidth={isMobile}
+                sx={{
+                  borderRadius: '4px',
+                  minHeight: 44,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                }}
               >
-                Marcar como Lead Desqualificado
+                Desqualificar
               </Button>
               <Button
-                size="small"
+                size="medium"
+                variant="outlined"
+                startIcon={<PhoneDisabledIcon />}
+                onClick={() => setConfirmBulkNoContact(true)}
+                disabled={bulkUpdateStatus.isPending || bulkDisqualifyLeads.isPending}
+                fullWidth={isMobile}
+                sx={{
+                  borderRadius: '4px',
+                  minHeight: 44,
+                  textTransform: 'none',
+                }}
+              >
+                Não contatou
+              </Button>
+              <Button
+                size="medium"
                 onClick={clearSelection}
                 disabled={bulkUpdateStatus.isPending || bulkDisqualifyLeads.isPending}
+                fullWidth={isMobile}
+                sx={{ borderRadius: '4px', minHeight: 44, textTransform: 'none' }}
               >
                 Limpar
               </Button>
@@ -1384,6 +1764,31 @@ export default function LeadsPage() {
           </Stack>
         </Paper>
       ) : null}
+
+      <KeyboardCheatsheet
+        open={cheatsheetOpen}
+        onClose={() => setCheatsheetOpen(false)}
+      />
+
+      <Snackbar
+        open={undoSnack !== null}
+        autoHideDuration={5000}
+        onClose={() => setUndoSnack(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        TransitionComponent={Fade}
+        message="Followup marcado"
+        action={
+          <Button
+            color="primary"
+            size="small"
+            onClick={() => void handleUndoFollowup()}
+            disabled={markFollowup.isPending}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Desfazer
+          </Button>
+        }
+      />
     </Box>
   );
 }

@@ -731,8 +731,9 @@ class MetaConversionsApiService:
         """
         Evento custom `LeadDisqualified` (lead marcado como descarte).
         Sinal qualitativo para construir Custom Audience de exclusão no Ads Manager.
-        value=0, currency BRL — Meta não trabalha com `value` negativo, então o
-        sinal é a presença do evento, não a magnitude.
+        value/currency omitidos: evento custom não tem pricing aplicável; sinal
+        é a presença do evento + `ph` no user_data. Meta antes recebia value=0
+        e marcava como "preço inválido" na qualidade.
         """
         from app.models.lead import Lead
 
@@ -766,8 +767,6 @@ class MetaConversionsApiService:
             "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
             "user_data": user_data,
             "custom_data": {
-                "value": 0,
-                "currency": "BRL",
                 "lead_id": str(lead.id),
             },
         }

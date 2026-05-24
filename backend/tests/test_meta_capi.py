@@ -1153,6 +1153,49 @@ class TestValueResolver:
         lead = MagicMock(utm_content=None, utm_campaign="URGENCIA|DATAS")
         assert resolve_value(lead, "lead") == 75.0
 
+    def test_strips_spaces_around_pipe(self):
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content="CARRO | LOW-TCK", utm_campaign=None)
+        assert resolve_value(lead, "contact") == 8.0
+        assert resolve_value(lead, "lead") == 40.0
+
+    def test_strips_trailing_numeric_adgroup_id(self):
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content="CARRO|LOW-TCK|120247480286290017", utm_campaign=None)
+        assert resolve_value(lead, "contact") == 8.0
+
+    def test_strips_spaces_and_adgroup_id_combined(self):
+        # Formato real vindo do Meta Ads (URL-decoded de utm_content)
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(
+            utm_content="CARRO | LOW-TCK|120247480286290017", utm_campaign=None
+        )
+        assert resolve_value(lead, "contact") == 8.0
+        assert resolve_value(lead, "lead") == 40.0
+
+    def test_strips_spaces_and_adgroup_id_aniversario(self):
+        # ANIVERSARIO|DATAS tem valores distintos do default (12/60 vs 10/50),
+        # então o teste de fato valida a normalização (não passa por coincidência).
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(
+            utm_content="ANIVERSARIO | DATAS|987654321", utm_campaign=None
+        )
+        assert resolve_value(lead, "contact") == 12.0
+        assert resolve_value(lead, "lead") == 60.0
+
+    def test_preserves_legit_multi_segment_key(self):
+        # QUAL|B|LOW-TCK tem 3 segmentos legítimos (sem ID numérico) — não deve
+        # ser truncado pra "QUAL|B".
+        from app.utils.meta_capi_value_resolver import resolve_value
+
+        lead = MagicMock(utm_content="QUAL|B|LOW-TCK", utm_campaign=None)
+        assert resolve_value(lead, "contact") == 8.0
+        assert resolve_value(lead, "lead") == 40.0
+
 
 class TestExternalIdsArray:
     """external_id como array por evento, com identificadores múltiplos."""

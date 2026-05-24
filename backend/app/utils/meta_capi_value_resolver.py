@@ -60,7 +60,16 @@ def _utm_key(lead) -> Optional[str]:
     utm = getattr(lead, "utm_content", None) or getattr(lead, "utm_campaign", None)
     if not utm:
         return None
-    return str(utm).strip().upper()
+    raw = str(utm).strip().upper()
+    # Meta Ads entrega utm_content como "CARRO | LOW-TCK|120247480286290017":
+    # espaços ao redor do pipe + ID numérico do adgroup colado no fim.
+    # Normalizar pra bater com as chaves do map (ex: "CARRO|LOW-TCK").
+    parts = [p.strip() for p in raw.split("|") if p.strip()]
+    while parts and parts[-1].isdigit():
+        parts.pop()
+    if not parts:
+        return None
+    return "|".join(parts)
 
 
 def resolve_value(lead, event_type: str) -> float:

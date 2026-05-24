@@ -1028,9 +1028,11 @@ def test_descarte_dispara_outbox_lead_disqualified(client, session, monkeypatch)
     assert len(rows) == 1
     payload = json.loads(rows[0].payload_json)
     assert payload["event_name"] == "LeadDisqualified"
-    assert payload["custom_data"]["value"] == 0
-    assert payload["custom_data"]["currency"] == "BRL"
     assert payload["custom_data"]["lead_id"] == str(lead.id)
+    # value/currency omitidos: evento custom não tem pricing aplicável e
+    # value=0 era flagado como "preço inválido" pela Meta.
+    assert "value" not in payload["custom_data"]
+    assert "currency" not in payload["custom_data"]
 
 
 def test_descarte_idempotente_nao_duplica_outbox(client, session, monkeypatch):

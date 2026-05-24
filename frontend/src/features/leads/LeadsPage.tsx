@@ -117,9 +117,25 @@ const DEFAULT_FILTERS: LeadsFilters = {
 type AgeBucket = 'fresh' | 'warm' | 'cold';
 
 /**
+ * Decide se o badge de idade deve aparecer pra este lead.
+ *
+ * Casos de uso:
+ *  - `pendente_whatsapp`: saber há quanto tempo o lead aguarda primeira resposta.
+ *  - `whatsapp_iniciado` SEM followup: saber quando dar followup.
+ *
+ * Demais status (compra_realizada, nao_entrou_em_contato, descarte, ou
+ * whatsapp_iniciado já com followup) não precisam — o tempo decorrido vira
+ * ruído visual (vermelho permanente que não muda nada).
+ */
+function shouldShowAge(lead: Pick<Lead, 'status' | 'followup_feito_em'>): boolean {
+  if (lead.status === 'pendente_whatsapp') return true;
+  if (lead.status === 'whatsapp_iniciado' && !lead.followup_feito_em) return true;
+  return false;
+}
+
+/**
  * SLA visual: ≤15min verde, ≤30min âmbar, >30min vermelho.
- * Aplica a leads de qualquer status — operação usa o badge pra conferir
- * janela de atendimento mesmo em leads já confirmados.
+ * Só aplica quando shouldShowAge(lead) é true.
  */
 function getLeadAgeBucket(createdAt: string | null): AgeBucket {
   if (!createdAt) return 'fresh';
@@ -282,8 +298,9 @@ function canMarkFollowup(lead: Lead, filters: LeadsFilters): boolean {
   return !lead.followup_feito_em;
 }
 
-function ageBorderColor(createdAt: string | null, theme: Theme): string {
-  const bucket = getLeadAgeBucket(createdAt);
+function ageBorderColor(lead: Pick<Lead, 'created_at' | 'status' | 'followup_feito_em'>, theme: Theme): string {
+  if (!shouldShowAge(lead)) return theme.palette.divider;
+  const bucket = getLeadAgeBucket(lead.created_at);
   if (bucket === 'fresh') return theme.palette.success.light;
   if (bucket === 'warm') return theme.palette.warning.light;
   return theme.palette.error.main;
@@ -295,10 +312,11 @@ const AGE_BUCKET_META: Record<AgeBucket, { Icon: typeof CheckCircleIcon; color: 
   cold: { Icon: ReportProblemIcon, color: 'error' },
 };
 
-function AgeChip({ createdAt }: { createdAt: string | null }) {
-  const bucket = getLeadAgeBucket(createdAt);
-  const { Icon, color } = AGE_BUCKET_META[bucket];
+function AgeChip({ lead }: { lead: Pick<Lead, 'created_at' | 'status' | 'followup_feito_em'> }) {
   const theme = useTheme();
+  if (!shouldShowAge(lead)) return null;
+  const bucket = getLeadAgeBucket(lead.created_at);
+  const { Icon, color } = AGE_BUCKET_META[bucket];
   // Saturação reduzida: usa `light` exceto no caso crítico (>30min)
   const bg = bucket === 'cold' ? theme.palette.error.main : theme.palette[color].light;
   const fg = bucket === 'cold' ? theme.palette.error.contrastText : theme.palette[color].contrastText;
@@ -306,7 +324,7 @@ function AgeChip({ createdAt }: { createdAt: string | null }) {
     <Chip
       size="small"
       icon={<Icon sx={{ color: `${fg} !important`, fontSize: '0.95rem' }} />}
-      label={formatLeadAge(createdAt)}
+      label={formatLeadAge(lead.created_at)}
       sx={{
         height: 22,
         borderRadius: '4px',
@@ -1029,7 +1047,7 @@ export default function LeadsPage() {
                       sx={{
                         borderRadius: '4px',
                         borderLeftWidth: '3px',
-                        borderLeftColor: ageBorderColor(lead.created_at, theme),
+                        borderLeftColor: ageBorderColor(lead, theme),
                         backgroundColor: isSelected
                           ? theme.palette.action.selected
                           : noPhonePending
@@ -1084,7 +1102,7 @@ export default function LeadsPage() {
                         />
                       )}
                       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}>
-                        <AgeChip createdAt={lead.created_at} />
+                        <AgeChip lead={lead} />
                         {lead.phone ? (
                           <IconButton
                             size="small"
@@ -1378,7 +1396,7 @@ export default function LeadsPage() {
                   sx={{
                     borderLeft: isFocused
                       ? `3px solid ${theme.palette.primary.main}`
-                      : `3px solid ${ageBorderColor(lead.created_at, theme)}`,
+                      : `3px solid ${ageBorderColor(lead, theme)}`,
                     backgroundColor: noPhonePending && !isSelected ? theme.palette.action.hover : undefined,
                     '& > td': { borderRadius: 0 },
                   }}
@@ -1474,7 +1492,7 @@ export default function LeadsPage() {
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    <AgeChip createdAt={lead.created_at} />
+                    <AgeChip lead={lead} />
                   </TableCell>
                   <TableCell>
                     {canEditLeadPhone(lead) ? (

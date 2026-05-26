@@ -135,6 +135,10 @@ class TestMetaCapiLeadFunnelPayload:
                 "META_PIXEL_ID": "test_pixel_123",
                 "META_CAPI_ACCESS_TOKEN": "test_token_abc",
                 "META_CAPI_USE_GATEWAY": "false",
+                # Flags de feature OFF para o teste assumir valores estáticos
+                # (em prod o .env liga essas flags, mas o teste cobre o caminho default).
+                "META_CAPI_VALUE_MAP_ENABLED": "false",
+                "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
             },
         ):
             from app.services.meta_capi import MetaConversionsApiService
@@ -383,6 +387,10 @@ class TestMetaCapiPurchaseEnrichment:
                 "META_PIXEL_ID": "test_pixel_123",
                 "META_CAPI_ACCESS_TOKEN": "test_token_abc",
                 "META_CAPI_USE_GATEWAY": "false",
+                # Flags OFF: teste cobre o caminho v1 do external_id e value estático.
+                "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
+                "META_CAPI_VALUE_MAP_ENABLED": "false",
+                "META_CAPI_SKIP_INVALID_PURCHASE": "false",
             },
         ):
             from app import db
@@ -690,6 +698,11 @@ class TestMetaCapiOutboxRepository:
                 "META_PIXEL_ID": "test_pixel_123",
                 "META_CAPI_ACCESS_TOKEN": "test_token_abc",
                 "META_CAPI_USE_GATEWAY": "false",
+                # Em produção essas flags ficam ligadas; nos testes preferimos o
+                # comportamento default para asserts determinísticos.
+                "META_CAPI_SKIP_INVALID_PURCHASE": "false",
+                "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
+                "META_CAPI_VALUE_MAP_ENABLED": "false",
             },
         ):
             from app import create_app, db

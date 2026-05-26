@@ -62,6 +62,8 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PhoneDisabledIcon from '@mui/icons-material/PhoneDisabled';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
+import BoltIcon from '@mui/icons-material/Bolt';
+import EditCalendarIcon from '@mui/icons-material/EditCalendar';
 import {
   useLeads,
   useLeadsStats,
@@ -75,7 +77,9 @@ import {
   type Lead,
 } from '../../api/endpoints/leads';
 import { KeyboardCheatsheet } from './KeyboardCheatsheet';
-import dayjs from 'dayjs';
+import { QuickEntryModal } from '../pedidos/components/QuickEntryModal';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import dayjs, { type Dayjs } from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { Loading } from '../../components/common/Loading';
@@ -112,7 +116,11 @@ const DEFAULT_FILTERS: LeadsFilters = {
   per_page: 25,
   event: 'whatsapp_click',
   period: 'today',
+  hidden: 'exclude',
 };
+
+/** Valor do ToggleButtonGroup de período (inclui o modo UI-only "day"). */
+type PeriodUiValue = LeadsPeriod | 'day';
 
 type AgeBucket = 'fresh' | 'warm' | 'cold';
 
@@ -357,11 +365,25 @@ export default function LeadsPage() {
   const [cheatsheetOpen, setCheatsheetOpen] = useState(false);
   const [loadingWhatsAppId, setLoadingWhatsAppId] = useState<number | null>(null);
   const [descartadosOpen, setDescartadosOpen] = useState(false);
+  const [dayPickerOpen, setDayPickerOpen] = useState(false);
+  const [createModeAnchor, setCreateModeAnchor] = useState<HTMLElement | null>(null);
+  const [createModeLead, setCreateModeLead] = useState<Lead | null>(null);
+  const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [undoSnack, setUndoSnack] = useState<{ leadId: number; phone: string | null } | null>(null);
   const [, forceTick] = useState(0);
   const lastSelectedIndexRef = useRef<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLElement>>(new Map());
   const { data, isLoading, error, refetch } = useLeads(filters);
+  // 2ª query lazy: só busca leads ocultos (descarte + nao_entrou_em_contato)
+  // quando o accordion está aberto. Per_page alto para evitar paginação separada.
+  const hiddenFilters = useMemo<LeadsFilters>(
+    () => ({ ...filters, hidden: 'only', page: 1, per_page: 200 }),
+    [filters],
+  );
+  const { data: hiddenData, isLoading: hiddenLoading } = useLeads(
+    hiddenFilters,
+    { enabled: descartadosOpen },
+  );
   const { data: statsData } = useLeadsStats();
   const updateLeadPhone = useUpdateLeadPhone();
   const updateLeadStatus = useUpdateLeadStatus();
@@ -401,6 +423,15 @@ export default function LeadsPage() {
       },
     });
   }, [navigate]);
+
+  const openCreateModeMenu = useCallback(
+    (event: MouseEvent<HTMLElement>, lead: Lead) => {
+      event.stopPropagation();
+      setCreateModeAnchor(event.currentTarget);
+      setCreateModeLead(lead);
+    },
+    [],
+  );
 
   const handleOpenPhoneDialog = useCallback((lead: Lead) => {
     setEditingLead(lead);
@@ -483,38 +514,51 @@ export default function LeadsPage() {
   );
 
   const total = data?.total ?? 0;
+  // Quantos leads ocultos existem na janela atual — usado no header do accordion
+  // sem precisar do fetch da 2ª query.
+  const hiddenCount = data?.hidden_count ?? 0;
 
-  // Agrupamento: 3 buckets visuais (Confirmados, Pendentes/Sem resposta, Descartados).
-  // Dentro de cada bucket: com telefone primeiro, depois created_at desc.
+  const sortLeadsByPhoneThenRecent = useCallback((arr: Lead[]) => {
+    arr.sort((a, b) => {
+      const hasA = a.phone ? 0 : 1;
+      const hasB = b.phone ? 0 : 1;
+      if (hasA !== hasB) return hasA - hasB;
+      const ta = a.created_at ?? '';
+      const tb = b.created_at ?? '';
+      if (ta === tb) return 0;
+      return ta < tb ? 1 : -1;
+    });
+  }, []);
+
+  const hiddenLeads = useMemo(() => {
+    const src = [...(hiddenData?.leads ?? [])];
+    sortLeadsByPhoneThenRecent(src);
+    return src;
+  }, [hiddenData?.leads, sortLeadsByPhoneThenRecent]);
+
+  // Agrupamento: Confirmados + Pendentes vêm da query principal (hidden=exclude).
+  // Descartados vêm da 2ª query (hidden=only) e são populados aqui só quando
+  // o accordion já está aberto / dados carregados — mas a key existe sempre
+  // para manter a API do GROUP_ORDER consistente.
   const groupedLeads = useMemo(() => {
     const src = data?.leads ?? [];
     const groups: Record<LeadGroup, Lead[]> = {
       confirmados: [],
       pendentes: [],
-      descartados: [],
+      descartados: hiddenLeads,
     };
     for (const lead of src) {
-      groups[getLeadGroup(lead.status)].push(lead);
+      const g = getLeadGroup(lead.status);
+      if (g === 'descartados') continue; // defensivo: backend já filtra
+      groups[g].push(lead);
     }
-    const sortInGroup = (arr: Lead[]) =>
-      arr.sort((a, b) => {
-        const hasA = a.phone ? 0 : 1;
-        const hasB = b.phone ? 0 : 1;
-        if (hasA !== hasB) return hasA - hasB;
-        const ta = a.created_at ?? '';
-        const tb = b.created_at ?? '';
-        if (ta === tb) return 0;
-        return ta < tb ? 1 : -1;
-      });
-    sortInGroup(groups.confirmados);
-    sortInGroup(groups.pendentes);
-    sortInGroup(groups.descartados);
+    sortLeadsByPhoneThenRecent(groups.confirmados);
+    sortLeadsByPhoneThenRecent(groups.pendentes);
     return groups;
-  }, [data?.leads]);
+  }, [data?.leads, hiddenLeads, sortLeadsByPhoneThenRecent]);
 
-  // Achata os 3 buckets na ordem de exibição. Usado para navegação por teclado
-  // (J/K) e para seleção em lote (shift+click). Não inclui descartados quando
-  // o accordion está fechado — assim J/K não pula pra dentro de algo invisível.
+  // Achata para navegação por teclado (J/K) e shift+click. Inclui descartados
+  // apenas quando o accordion está aberto (e a 2ª query carregou).
   const orderedLeads = useMemo(() => {
     return [
       ...groupedLeads.confirmados,
@@ -523,7 +567,7 @@ export default function LeadsPage() {
     ];
   }, [groupedLeads, descartadosOpen]);
 
-  // Todos os leads (incluindo descartados invisíveis) para ações em lote e cache.
+  // Todos os leads conhecidos (úteis + ocultos já carregados) para ações em lote.
   const allLeads = useMemo(
     () => [...groupedLeads.confirmados, ...groupedLeads.pendentes, ...groupedLeads.descartados],
     [groupedLeads],
@@ -608,18 +652,20 @@ export default function LeadsPage() {
 
   const openBulkDisqualify = useCallback(() => {
     // Prefill phoneEdits com phones atuais dos selecionados.
+    // Usa allLeads (não orderedLeads) para incluir descartados/ocultos que
+    // possam ter sido selecionados antes do accordion ser fechado.
     const edits: Record<number, string> = {};
-    for (const lead of orderedLeads) {
+    for (const lead of allLeads) {
       if (selectedIds.has(lead.id)) {
         edits[lead.id] = lead.phone ?? '';
       }
     }
     setPhoneEdits(edits);
     setBulkDisqualifyOpen(true);
-  }, [orderedLeads, selectedIds]);
+  }, [allLeads, selectedIds]);
 
   const handleConfirmBulkDisqualify = useCallback(async () => {
-    const eligibleLeads = orderedLeads.filter(
+    const eligibleLeads = allLeads.filter(
       (l) => selectedIds.has(l.id) && l.status !== 'whatsapp_iniciado' && l.status !== 'compra_realizada',
     );
     if (eligibleLeads.length === 0) {
@@ -658,7 +704,7 @@ export default function LeadsPage() {
   }, [
     bulkDisqualifyLeads,
     clearSelection,
-    orderedLeads,
+    allLeads,
     phoneEdits,
     selectedIds,
     showError,
@@ -784,6 +830,14 @@ export default function LeadsPage() {
   const today = statsData?.today;
   const last14d = statsData?.last_14d;
   const period: LeadsPeriod = filters.period ?? 'custom';
+  // Modo "Dia" é UI-only: mapeia para period=custom com date_from === date_to.
+  const isDayMode =
+    period === 'custom' &&
+    !!filters.date_from &&
+    filters.date_from === filters.date_to;
+  const periodUiValue: PeriodUiValue = isDayMode ? 'day' : period;
+  const selectedDayLabel =
+    isDayMode && filters.date_from ? dayjs(filters.date_from).format('DD/MM') : null;
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, pb: selectedIds.size > 0 ? 12 : { xs: 2, md: 3 } }}>
@@ -825,18 +879,33 @@ export default function LeadsPage() {
             flexWrap="wrap"
           >
             <ToggleButtonGroup
-              value={period}
+              value={periodUiValue}
               exclusive
               size="small"
-              onChange={(_e, v: LeadsPeriod | null) => {
-                if (v) setPeriod(v);
+              onChange={(_e, v: PeriodUiValue | null) => {
+                if (!v) return;
+                if (v === 'day') {
+                  setDayPickerOpen(true);
+                  return;
+                }
+                setPeriod(v);
               }}
             >
               <ToggleButton value="today">Hoje</ToggleButton>
               <ToggleButton value="14d">14 dias</ToggleButton>
               <ToggleButton value="all">Tudo</ToggleButton>
+              <ToggleButton value="day">
+                {selectedDayLabel ? `Dia (${selectedDayLabel})` : 'Dia'}
+              </ToggleButton>
               <ToggleButton value="custom">Personalizado</ToggleButton>
             </ToggleButtonGroup>
+            {isDayMode ? (
+              <Tooltip title="Trocar dia">
+                <IconButton size="small" onClick={() => setDayPickerOpen(true)}>
+                  <EditCalendarIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
 
             <Stack direction="row" spacing={0.5} alignItems="center">
               <Chip
@@ -885,7 +954,7 @@ export default function LeadsPage() {
             ) : null}
           </Stack>
 
-          {period === 'custom' ? (
+          {period === 'custom' && !isDayMode ? (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
                 size="small"
@@ -1005,7 +1074,7 @@ export default function LeadsPage() {
       {/* Cards (mobile) */}
       {isMobile ? (
         <Box>
-          {allLeads.length === 0 ? (
+          {allLeads.length === 0 && hiddenCount === 0 ? (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
                 {filters.pending_followup_days
@@ -1017,8 +1086,9 @@ export default function LeadsPage() {
             <Stack spacing={1.5}>
               {GROUP_ORDER.map((groupName) => {
                 const list = groupedLeads[groupName];
-                if (list.length === 0) return null;
                 const isDescartados = groupName === 'descartados';
+                // Descartados aparecem se há ocultos na janela (mesmo sem fetch ainda).
+                if (isDescartados ? hiddenCount === 0 : list.length === 0) return null;
                 const renderCard = (lead: Lead) => {
                   const index = orderedLeads.findIndex((l) => l.id === lead.id);
                   const isSelected = selectedIds.has(lead.id);
@@ -1146,7 +1216,7 @@ export default function LeadsPage() {
                             <VisibilityIcon fontSize="small" />
                           </IconButton>
                         ) : (
-                          <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
+                          <IconButton size="small" color="primary" onClick={(e) => openCreateModeMenu(e, lead)}>
                             <AddShoppingCartIcon fontSize="small" />
                           </IconButton>
                         )}
@@ -1256,11 +1326,15 @@ export default function LeadsPage() {
                     >
                       <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0.5 }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                          {GROUP_LABELS[groupName]} ({list.length})
+                          {GROUP_LABELS[groupName]} ({hiddenCount})
                         </Typography>
                       </AccordionSummary>
                       <AccordionDetails sx={{ px: 0 }}>
-                        <Stack spacing={1.5}>{list.map(renderCard)}</Stack>
+                        {hiddenLoading && list.length === 0 ? (
+                          <Box sx={{ py: 2 }}><Loading /></Box>
+                        ) : (
+                          <Stack spacing={1.5}>{list.map(renderCard)}</Stack>
+                        )}
                       </AccordionDetails>
                     </Accordion>
                   );
@@ -1321,7 +1395,7 @@ export default function LeadsPage() {
               <TableCell>Meio</TableCell>
             </TableRow>
           </TableHead>
-          {allLeads.length === 0 ? (
+          {allLeads.length === 0 && hiddenCount === 0 ? (
             <TableBody>
               <TableRow>
                 <TableCell colSpan={15} align="center">
@@ -1336,9 +1410,10 @@ export default function LeadsPage() {
           ) : null}
           {GROUP_ORDER.map((groupName) => {
             const list = groupedLeads[groupName];
-            if (list.length === 0) return null;
             const isDescartados = groupName === 'descartados';
+            if (isDescartados ? hiddenCount === 0 : list.length === 0) return null;
             const collapsed = isDescartados && !descartadosOpen;
+            const headerCount = isDescartados ? hiddenCount : list.length;
             return (
               <TableBody key={groupName}>
                 <TableRow
@@ -1370,14 +1445,19 @@ export default function LeadsPage() {
                         />
                       ) : null}
                       <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                        {GROUP_LABELS[groupName]} ({list.length})
+                        {GROUP_LABELS[groupName]} ({headerCount})
                       </Typography>
                     </Stack>
                   </TableCell>
                 </TableRow>
-                {collapsed
-                  ? null
-                  : list.map((lead) => {
+                {collapsed ? null : isDescartados && hiddenLoading && list.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={15} align="center">
+                      <Box sx={{ py: 2 }}><Loading /></Box>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  list.map((lead) => {
                       const index = orderedLeads.findIndex((l) => l.id === lead.id);
                       const isSelected = selectedIds.has(lead.id);
                       const noPhonePending = !lead.phone && lead.status === 'pendente_whatsapp';
@@ -1471,7 +1551,7 @@ export default function LeadsPage() {
                         </Tooltip>
                       ) : (
                         <Tooltip title="Criar pedido a partir deste lead">
-                          <IconButton size="small" color="primary" onClick={() => handleCreateOrder(lead)}>
+                          <IconButton size="small" color="primary" onClick={(e) => openCreateModeMenu(e, lead)}>
                             <AddShoppingCartIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -1582,7 +1662,8 @@ export default function LeadsPage() {
                   <TableCell>{lead.utm_medium ?? '—'}</TableCell>
                 </TableRow>
                       );
-                    })}
+                    })
+                )}
               </TableBody>
             );
           })}
@@ -1695,7 +1776,7 @@ export default function LeadsPage() {
       <BulkDisqualifyDialog
         open={bulkDisqualifyOpen}
         onClose={() => setBulkDisqualifyOpen(false)}
-        selectedLeads={orderedLeads.filter((l) => selectedIds.has(l.id))}
+        selectedLeads={allLeads.filter((l) => selectedIds.has(l.id))}
         phoneEdits={phoneEdits}
         onPhoneChange={(id, phone) => setPhoneEdits((prev) => ({ ...prev, [id]: phone }))}
         onConfirm={() => void handleConfirmBulkDisqualify()}
@@ -1787,6 +1868,64 @@ export default function LeadsPage() {
         open={cheatsheetOpen}
         onClose={() => setCheatsheetOpen(false)}
       />
+
+      {dayPickerOpen ? (
+        <DayPickerDialog
+          initialDate={filters.date_from ? dayjs(filters.date_from) : dayjs()}
+          onClose={() => setDayPickerOpen(false)}
+          onConfirm={(d) => {
+            const iso = d.format('YYYY-MM-DD');
+            setFilters((f) => ({
+              ...f,
+              period: 'custom',
+              date_from: iso,
+              date_to: iso,
+              page: 1,
+            }));
+            setDayPickerOpen(false);
+          }}
+        />
+      ) : null}
+
+      <QuickEntryModal
+        open={quickEntryOpen}
+        onClose={() => {
+          setQuickEntryOpen(false);
+          setCreateModeLead(null);
+        }}
+      />
+
+      <Menu
+        anchorEl={createModeAnchor}
+        open={Boolean(createModeAnchor)}
+        onClose={() => {
+          setCreateModeAnchor(null);
+          setCreateModeLead(null);
+        }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => {
+            setCreateModeAnchor(null);
+            setQuickEntryOpen(true);
+          }}
+        >
+          <BoltIcon fontSize="small" sx={{ mr: 1, color: 'warning.main' }} />
+          Preenchimento rápido
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            const lead = createModeLead;
+            setCreateModeAnchor(null);
+            setCreateModeLead(null);
+            if (lead) handleCreateOrder(lead);
+          }}
+        >
+          <AddShoppingCartIcon fontSize="small" sx={{ mr: 1 }} />
+          Preenchimento normal
+        </MenuItem>
+      </Menu>
 
       <Snackbar
         open={undoSnack !== null}
@@ -1930,6 +2069,46 @@ function BulkDisqualifyDialog({
           disabled={!canConfirm}
         >
           Alterar
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+interface DayPickerDialogProps {
+  initialDate: Dayjs;
+  onClose: () => void;
+  onConfirm: (date: Dayjs) => void;
+}
+
+/**
+ * Renderizar apenas quando aberto (`{open ? <DayPickerDialog/> : null}`).
+ * Sem `open` prop interno — o estado `value` é inicializado uma única vez,
+ * no mount, a partir de `initialDate`.
+ */
+function DayPickerDialog({ initialDate, onClose, onConfirm }: DayPickerDialogProps) {
+  const [value, setValue] = useState<Dayjs | null>(initialDate);
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Escolha o dia</DialogTitle>
+      <DialogContent>
+        <Box sx={{ mt: 1 }}>
+          <DatePicker
+            value={value}
+            onChange={(d) => setValue(d)}
+            slotProps={{ textField: { fullWidth: true } }}
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancelar</Button>
+        <Button
+          variant="contained"
+          disabled={!value || !value.isValid()}
+          onClick={() => value && onConfirm(value)}
+        >
+          Aplicar
         </Button>
       </DialogActions>
     </Dialog>

@@ -71,9 +71,14 @@ export interface LeadsResponse {
   total: number;
   page: number;
   pages: number;
+  /** Quantos leads ocultos (descarte + nao_entrou_em_contato) existem na janela atual. */
+  hidden_count: number;
 }
 
 export type LeadsPeriod = 'today' | '14d' | 'all' | 'custom';
+
+/** Controla como os status "ocultos" (descarte, nao_entrou_em_contato) entram na listagem. */
+export type LeadsHiddenMode = 'exclude' | 'only' | 'include';
 
 export interface LeadsFilters {
   page?: number;
@@ -94,6 +99,8 @@ export interface LeadsFilters {
   date_to?: string;
   /** Confirmados sem followup há X dias (NULL ou < now - X). 7/15/30. */
   pending_followup_days?: number;
+  /** Default `exclude` no backend — esconde descarte/nao_entrou_em_contato. */
+  hidden?: LeadsHiddenMode;
 }
 
 export interface LeadsStatsBucket {
@@ -129,12 +136,18 @@ export interface BulkDisqualifyResponse {
   skipped_ids: number[];
 }
 
-export function useLeads(filters: LeadsFilters = {}) {
+export interface UseLeadsOptions {
+  /** Quando `false`, a query não dispara. Útil para fetches lazy (ex.: descartados). */
+  enabled?: boolean;
+}
+
+export function useLeads(filters: LeadsFilters = {}, options: UseLeadsOptions = {}) {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<LeadsResponse>({
     queryKey: ['leads', filters],
+    enabled: options.enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.page) params.set('page', String(filters.page));
@@ -156,6 +169,7 @@ export function useLeads(filters: LeadsFilters = {}) {
       if (filters.pending_followup_days) {
         params.set('pending_followup_days', String(filters.pending_followup_days));
       }
+      if (filters.hidden) params.set('hidden', filters.hidden);
 
       const qs = params.toString();
       const endpoint = `/leads${qs ? `?${qs}` : ''}`;

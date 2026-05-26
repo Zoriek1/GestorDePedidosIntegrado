@@ -50,6 +50,11 @@ ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
 BULK_TARGET_STATUSES = {"descarte", "nao_entrou_em_contato", "pendente_whatsapp"}
 BULK_MAX_IDS = 500
 
+# Status considerados "ocultos" para o operador: leads que pararam de gerar valor
+# (descarte explícito ou ausência de retorno do cliente). Filtrados por padrão na
+# listagem (`hidden=exclude`) para não inflar a paginação. Ver Change 1 do plano.
+HIDDEN_STATUSES = ("descarte", "nao_entrou_em_contato")
+
 ALLOWED_FIELDS = (
     "event",
     "url",
@@ -664,10 +669,6 @@ def listar_leads():
     if utm_campaign:
         query = query.filter(Lead.utm_campaign == utm_campaign)
 
-    status_q = request.args.get("status")
-    if status_q:
-        query = query.filter(Lead.status == status_q)
-
     token_q = request.args.get("token_rastreio")
     if token_q:
         token_norm = normalize_tracking_token(token_q)
@@ -721,9 +722,28 @@ def listar_leads():
             except ValueError:
                 pass
 
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    # Filtros de status: `status` (exato) e `hidden` (categorias agrupadas).
+    # Aplicados POR ÚLTIMO para que `hidden_count` reflita os demais filtros
+    # (período, evento, utm, followup) na janela atual.
+    status_q = request.args.get("status")
+    hidden_mode = (request.args.get("hidden") or "exclude").strip().lower()
+    if hidden_mode not in {"exclude", "only", "include"}:
+        hidden_mode = "exclude"
 
-    from sqlalchemy import func
+    # `hidden_count` = quantos leads ocultos existem na janela atual (independente
+    # do que será paginado). Snapshot ANTES de aplicar status/hidden no `query`.
+    hidden_count = query.filter(Lead.status.in_(HIDDEN_STATUSES)).count()
+
+    if status_q:
+        query = query.filter(Lead.status == status_q)
+    elif hidden_mode == "exclude":
+        query = query.filter(
+            db.or_(Lead.status.is_(None), ~Lead.status.in_(HIDDEN_STATUSES))
+        )
+    elif hidden_mode == "only":
+        query = query.filter(Lead.status.in_(HIDDEN_STATUSES))
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
     from app.models.pedido import Pedido
 
@@ -780,6 +800,7 @@ def listar_leads():
             "total": pagination.total,
             "page": pagination.page,
             "pages": pagination.pages,
+            "hidden_count": int(hidden_count or 0),
         }
     )
 

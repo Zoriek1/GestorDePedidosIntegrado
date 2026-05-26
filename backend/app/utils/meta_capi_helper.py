@@ -123,7 +123,20 @@ def create_outbox_for_new_order(pedido: Pedido) -> bool:
             )
             return False
 
-        repo.create_from_pedido(pedido)
+        outbox_entry = repo.create_from_pedido(pedido)
+        if outbox_entry is None:
+            # Builder pulou (ex.: META_CAPI_SKIP_INVALID_PURCHASE com valor inválido).
+            # Skip silencioso já loggado pelo builder; aqui apenas registramos o motivo.
+            logger.info(
+                "meta_capi.skip",
+                extra={
+                    "pedido_id": pedido.id,
+                    "reason": "builder_returned_none",
+                    "fonte": fonte,
+                },
+            )
+            return False
+
         logger.info(
             "meta_capi.enqueued",
             extra={

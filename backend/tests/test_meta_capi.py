@@ -715,8 +715,12 @@ class TestMetaCapiOutboxRepository:
         except (PermissionError, FileNotFoundError):
             pass
 
-    def _create_test_pedido(self, cliente="João Silva", telefone="62999887766"):
-        """Helper para criar pedido de teste com todos os campos obrigatórios"""
+    def _create_test_pedido(self, cliente="João Silva", telefone="62999887766", valor="100,00"):
+        """Helper para criar pedido de teste com todos os campos obrigatórios.
+
+        valor != 0 é necessário porque META_CAPI_SKIP_INVALID_PURCHASE (ligado em
+        produção) faz build_purchase_event retornar None quando total_pago <= 0,01.
+        """
         from datetime import date
 
         from app.models.pedido import Pedido
@@ -727,6 +731,7 @@ class TestMetaCapiOutboxRepository:
             destinatario="Destinatário Teste",
             tipo_pedido="Entrega",
             produto="Buquê de Rosas",
+            valor=valor,
             dia_entrega=date.today(),
             horario="10:00",
             cidade="Goiania",

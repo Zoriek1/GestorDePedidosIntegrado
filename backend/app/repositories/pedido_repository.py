@@ -272,12 +272,7 @@ class PedidoRepository(BaseRepository):
 
         pedido_atualizado = self.update(pedido, **update_fields)
 
-        try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-            create_outbox_if_purchase(pedido_atualizado, status_anterior, status_pagamento_anterior)
-        except Exception as e:
-            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+        # Meta CAPI: Purchase é disparado na criação do pedido, não em update.
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase

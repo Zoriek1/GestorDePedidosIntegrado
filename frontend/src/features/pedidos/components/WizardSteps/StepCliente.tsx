@@ -47,6 +47,7 @@ import { MinimalCheckbox } from '../../../../components/uiverse/MinimalCheckbox/
 export function StepCliente() {
   const {
     control,
+    register,
     setValue,
     watch,
     formState: { errors },
@@ -448,10 +449,7 @@ export function StepCliente() {
               control={
                 <Checkbox
                   checked={field.value ?? false}
-                  onChange={(e) => {
-                    field.onChange(e.target.checked);
-                    if (!e.target.checked) setValue('fbclid', '');
-                  }}
+                  onChange={(e) => field.onChange(e.target.checked)}
                 />
               }
               label="Pedido vindo de anúncio?"
@@ -466,6 +464,7 @@ export function StepCliente() {
             render={({ field }) => (
               <TextField
                 {...field}
+                value={field.value ?? ''}
                 label="Facebook Click ID (fbclid)"
                 placeholder="Ex: AbCdEfGhIjKlMnOpQrStUvWxYz"
                 fullWidth
@@ -476,6 +475,9 @@ export function StepCliente() {
             )}
           />
         </Collapse>
+
+        {/* fbp: identificador do cookie _fbp do Meta Pixel (sempre registrado, invisível) */}
+        <input type="hidden" {...register('fbp')} />
       </Stack>
     </Box>
   );

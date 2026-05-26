@@ -268,12 +268,7 @@ def atualizar_status(pedido_id):
         pedido.updated_at = datetime_now_brazil()
         db.session.commit()
 
-        try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
-        except Exception as e:
-            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+        # Meta CAPI: Purchase é disparado na criação do pedido, não em mudança de status.
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase
@@ -566,12 +561,7 @@ def finalizar_entrega(pedido_id):
         pedido.updated_at = datetime_now_brazil()
         db.session.commit()
 
-        try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
-        except Exception as e:
-            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+        # Meta CAPI: Purchase é disparado na criação do pedido, não na finalização da entrega.
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase
@@ -734,17 +724,6 @@ def batch_mark_paid():
     try:
         from app import db
         from app.models import Pedido
-        from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-        # Buscar pedidos afetados ANTES do update para notificar Meta depois
-        pedidos_a_marcar = (
-            Pedido.query.filter(
-                (Pedido.status_pagamento.is_(None)) | (Pedido.status_pagamento == "Pendente")
-            )
-            .filter(Pedido.deleted_at.is_(None))
-            .all()
-        )
-        status_anteriores = {p.id: p.status_pagamento for p in pedidos_a_marcar}
 
         count = (
             Pedido.query.filter(
@@ -758,14 +737,7 @@ def batch_mark_paid():
         )
         db.session.commit()
 
-        # Notificar Meta para cada pedido afetado
-        for pedido in pedidos_a_marcar:
-            try:
-                create_outbox_if_purchase(
-                    pedido, status_pagamento_anterior=status_anteriores[pedido.id]
-                )
-            except Exception:
-                pass  # Não falhar a resposta por erro de Meta
+        # Meta CAPI: Purchase é disparado na criação do pedido; não há disparo em batch-mark-paid.
 
         return success_response(message=f"{count} pedidos marcados como Pago")
     except Exception as e:
@@ -1191,11 +1163,11 @@ def criar_pedido():
         apply_commission_lifecycle(pedido, previous=None, actor_id=vendedor_id_final)
         db.session.commit()
 
-        # Hook de Purchase (mantém regra atual: status_pagamento=Pago/Parcial)
+        # Hook de Purchase: dispara CAPI no ato da criação do pedido (exceto fonte site/Nuvemshop)
         try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
+            from app.utils.meta_capi_helper import create_outbox_for_new_order
 
-            create_outbox_if_purchase(pedido, status_anterior=None, status_pagamento_anterior=None)
+            create_outbox_for_new_order(pedido)
         except Exception as e:
             print(f"[AVISO] Erro ao criar outbox para pedido #{pedido.id}: {e}")
 
@@ -1447,15 +1419,7 @@ def atualizar_pedido(pedido_id):
         apply_commission_lifecycle(pedido, previous=previous_commission_snapshot, actor_id=actor_id)
         db.session.commit()
 
-        # Hook: Verificar se mudou para Purchase (status_pagamento = Pago ou Parcial)
-        # Não verificar status="concluido" porque pode agendar pedido para ano que vem
-        try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
-        except Exception as e:
-            # Não falhar a atualização se houver erro na outbox
-            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+        # Meta CAPI: Purchase é disparado na criação do pedido, não em update.
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase

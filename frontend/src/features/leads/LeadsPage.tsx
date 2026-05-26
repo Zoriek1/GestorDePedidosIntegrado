@@ -392,11 +392,11 @@ export default function LeadsPage() {
     navigate('/pedidos/novo', {
       state: {
         prefillData: {
-          telefone_cliente: lead.phone ?? '',
-          codigo_whatsapp: lead.token_rastreio ?? '',
+          telefone_cliente: lead.phone || undefined,
+          codigo_whatsapp: lead.token_rastreio || undefined,
           origem_anuncio: !!lead.fbclid,
-          fbclid: lead.fbclid ?? '',
-          fbp: lead.fbp ?? '',
+          fbclid: lead.fbclid || undefined,
+          fbp: lead.fbp || undefined,
         },
       },
     });

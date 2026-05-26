@@ -4,7 +4,7 @@
  * Integra todos os steps com validação incremental
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createLogger } from '../../lib/logger';
 
 const _log = createLogger('CreateOrderWizard');
@@ -121,6 +121,20 @@ export function CreateOrderWizard({
   });
 
   const { handleSubmit, watch, trigger, setError, getValues, formState } = methods;
+
+  // Aplica initialData via reset quando muda (ex: fonte escolhida após prefill de lead).
+  // RHF só lê defaultValues uma vez no mount; sem isso, prefill chega "tarde" e fica perdido.
+  const initialDataKey = useMemo(
+    () => JSON.stringify(initialData ?? {}),
+    [initialData]
+  );
+  const appliedInitialDataRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialData) return;
+    if (appliedInitialDataRef.current === initialDataKey) return;
+    appliedInitialDataRef.current = initialDataKey;
+    methods.reset({ ...methods.getValues(), ...initialData }, { keepDirty: true });
+  }, [initialData, initialDataKey, methods]);
 
   // Salva no localStorage com debounce
   useEffect(() => {

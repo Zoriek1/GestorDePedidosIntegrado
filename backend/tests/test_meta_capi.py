@@ -797,6 +797,73 @@ class TestMetaCapiOutboxRepository:
             assert ob is not None
             assert ob.status == "sent"
 
+    def test_create_outbox_for_new_order_enfileira_independente_do_pagamento(self, app):
+        """Novo trigger: enfileira Purchase no ato da criação, mesmo com status_pagamento=Pendente."""
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from app.utils.meta_capi_helper import create_outbox_for_new_order
+
+        with app.app_context():
+            pedido = self._create_test_pedido()
+            pedido.status_pagamento = "Pendente"
+            db.session.add(pedido)
+            db.session.commit()
+
+            success_response = {"_status_code": 200, "events_received": 1, "fbtrace_id": "t1"}
+            with patch(
+                "app.services.meta_capi.MetaConversionsApiService.send_events",
+                return_value=success_response,
+            ):
+                created = create_outbox_for_new_order(pedido)
+                assert created is True
+
+            ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
+            assert ob is not None
+            assert ob.event_id == f"order_{pedido.id}"
+            assert ob.status == "sent"
+
+    def test_create_outbox_for_new_order_skip_site(self, app):
+        """Pedidos de fonte Site/Nuvemshop não são enfileirados."""
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from app.utils.meta_capi_helper import create_outbox_for_new_order
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Cliente Site", telefone="62999887780")
+            pedido.fonte_pedido = "Site"
+            db.session.add(pedido)
+            db.session.commit()
+
+            created = create_outbox_for_new_order(pedido)
+            assert created is False
+
+            ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
+            assert ob is None
+
+    def test_create_outbox_for_new_order_idempotente(self, app):
+        """Chamadas repetidas para o mesmo pedido não duplicam a outbox."""
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from app.utils.meta_capi_helper import create_outbox_for_new_order
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Cliente Idem", telefone="62999887781")
+            db.session.add(pedido)
+            db.session.commit()
+
+            success_response = {"_status_code": 200, "events_received": 1, "fbtrace_id": "t1"}
+            with patch(
+                "app.services.meta_capi.MetaConversionsApiService.send_events",
+                return_value=success_response,
+            ):
+                assert create_outbox_for_new_order(pedido) is True
+                # Segunda chamada deve retornar False (já existe)
+                assert create_outbox_for_new_order(pedido) is False
+
+            ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
+            assert ob is not None
+            assert ob.event_id == f"order_{pedido.id}"
+
     def test_create_from_pedido_skips_site_and_nuvemshop(self, app):
         """Não cria outbox para pedidos que já têm tracking próprio."""
         from app import db

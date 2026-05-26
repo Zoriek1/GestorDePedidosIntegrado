@@ -3,6 +3,7 @@
 Helper para Meta Conversions API
 Função utilitária para criar outbox quando pedido é criado (Purchase imediato).
 """
+import json
 import logging
 
 from app.models.pedido import Pedido
@@ -35,19 +36,16 @@ def try_flush_pending_meta_capi_for_order(order_id: int) -> None:
         }
         cmd._send_batch([entry], stats)
         logger.info(
-            "meta_capi.flush_immediate",
-            extra={
-                "pedido_id": order_id,
-                "event_id": f"order_{order_id}",
-                "sent_success": stats["sent_success"],
-                "sent_failed": stats["sent_failed"],
-                "failed_permanent": stats["failed_permanent"],
-            },
+            "meta_capi.flush_immediate pedido_id=%s event_id=order_%s sent=%s failed=%s permanent=%s",
+            order_id,
+            order_id,
+            stats["sent_success"],
+            stats["sent_failed"],
+            stats["failed_permanent"],
         )
     except Exception as e:
         logger.exception(
-            "meta_capi.flush_immediate_failed",
-            extra={"pedido_id": order_id, "error": str(e)},
+            "meta_capi.flush_immediate_failed pedido_id=%s error=%s", order_id, e
         )
 
 
@@ -101,12 +99,9 @@ def create_outbox_for_new_order(pedido: Pedido) -> bool:
 
     if should_skip_purchase_for_meta_capi(pedido):
         logger.info(
-            "meta_capi.skip",
-            extra={
-                "pedido_id": pedido.id,
-                "reason": "fonte_site_or_nuvemshop",
-                "fonte": fonte,
-            },
+            "meta_capi.skip pedido_id=%s reason=fonte_site_or_nuvemshop fonte=%s",
+            pedido.id,
+            fonte,
         )
         return False
 
@@ -114,46 +109,53 @@ def create_outbox_for_new_order(pedido: Pedido) -> bool:
         repo = MetaCapiOutboxRepository()
         if repo.get_by_order_id(pedido.id):
             logger.info(
-                "meta_capi.skip",
-                extra={
-                    "pedido_id": pedido.id,
-                    "reason": "already_enqueued",
-                    "fonte": fonte,
-                },
+                "meta_capi.skip pedido_id=%s reason=already_enqueued fonte=%s",
+                pedido.id,
+                fonte,
             )
             return False
 
         outbox_entry = repo.create_from_pedido(pedido)
         if outbox_entry is None:
             # Builder pulou (ex.: META_CAPI_SKIP_INVALID_PURCHASE com valor inválido).
-            # Skip silencioso já loggado pelo builder; aqui apenas registramos o motivo.
             logger.info(
-                "meta_capi.skip",
-                extra={
-                    "pedido_id": pedido.id,
-                    "reason": "builder_returned_none",
-                    "fonte": fonte,
-                },
+                "meta_capi.skip pedido_id=%s reason=builder_returned_none fonte=%s",
+                pedido.id,
+                fonte,
             )
             return False
 
         logger.info(
-            "meta_capi.enqueued",
-            extra={
-                "pedido_id": pedido.id,
-                "event_id": f"order_{pedido.id}",
-                "fonte": fonte,
-                "fbp_present": bool(getattr(pedido, "fbp", None)),
-                "fbc_present": bool(getattr(pedido, "fbc", None)),
-                "phone_present": bool(getattr(pedido, "telefone_cliente", None)),
-            },
+            "meta_capi.enqueued pedido_id=%s event_id=order_%s fonte=%s "
+            "fbp_present=%s fbc_present=%s phone_present=%s",
+            pedido.id,
+            pedido.id,
+            fonte,
+            bool(getattr(pedido, "fbp", None)),
+            bool(getattr(pedido, "fbc", None)),
+            bool(getattr(pedido, "telefone_cliente", None)),
         )
+
+        # Dump do payload (hash-only, sem PII em claro) para conferir no Events
+        # Manager / Test Events sem precisar consultar o DB.
+        try:
+            payload = json.loads(outbox_entry.payload_json)
+            logger.info(
+                "meta_capi.event pedido_id=%s payload=%s",
+                pedido.id,
+                json.dumps(payload, ensure_ascii=False),
+            )
+        except Exception:
+            pass
+
         try_flush_pending_meta_capi_for_order(pedido.id)
         return True
     except Exception as e:
         logger.exception(
-            "meta_capi.enqueue_failed",
-            extra={"pedido_id": pedido.id, "fonte": fonte, "error": str(e)},
+            "meta_capi.enqueue_failed pedido_id=%s fonte=%s error=%s",
+            pedido.id,
+            fonte,
+            e,
         )
         return False
 
@@ -176,13 +178,9 @@ def create_outbox_if_purchase(
 
     if should_skip_purchase_for_meta_capi(pedido):
         logger.info(
-            "meta_capi.skip",
-            extra={
-                "pedido_id": pedido.id,
-                "reason": "fonte_site_or_nuvemshop",
-                "fonte": _resolve_fonte_label(pedido),
-                "via": "legacy_if_purchase",
-            },
+            "meta_capi.skip pedido_id=%s reason=fonte_site_or_nuvemshop fonte=%s via=legacy_if_purchase",
+            pedido.id,
+            _resolve_fonte_label(pedido),
         )
         return False
 
@@ -197,20 +195,18 @@ def create_outbox_if_purchase(
         if not existing:
             outbox_repo.create_from_pedido(pedido)
             logger.info(
-                "meta_capi.enqueued",
-                extra={
-                    "pedido_id": pedido.id,
-                    "event_id": f"order_{pedido.id}",
-                    "fonte": _resolve_fonte_label(pedido),
-                    "via": "legacy_if_purchase",
-                },
+                "meta_capi.enqueued pedido_id=%s event_id=order_%s fonte=%s via=legacy_if_purchase",
+                pedido.id,
+                pedido.id,
+                _resolve_fonte_label(pedido),
             )
             try_flush_pending_meta_capi_for_order(pedido.id)
             return True
         return False
     except Exception as e:
         logger.exception(
-            "meta_capi.enqueue_failed",
-            extra={"pedido_id": pedido.id, "error": str(e), "via": "legacy_if_purchase"},
+            "meta_capi.enqueue_failed pedido_id=%s error=%s via=legacy_if_purchase",
+            pedido.id,
+            e,
         )
         return False

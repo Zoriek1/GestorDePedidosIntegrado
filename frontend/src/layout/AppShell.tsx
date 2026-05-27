@@ -43,8 +43,8 @@ interface AppShellProps {
 }
 
 const BRAND = {
-  green: '#0a2818',
-  greenMuted: '#06180e',
+  green: '#143d28',
+  greenMuted: '#0a2818',
   gold: '#d4af7a',
   goldMuted: 'rgba(212, 175, 122, 0.5)',
   goldBorder: 'rgba(212, 175, 122, 0.18)',
@@ -256,7 +256,7 @@ export function AppShell({ children }: AppShellProps) {
             </Menu>
           </Box>
 
-          {/* Logo + Wordmark — esquerda no desktop, centralizado no mobile */}
+          {/* Logo + Wordmark — esquerda no desktop, wordmark serifa no mobile */}
           <Box
             onClick={() => navigate('/')}
             sx={{
@@ -264,16 +264,18 @@ export function AppShell({ children }: AppShellProps) {
               alignItems: 'center',
               gap: '12px',
               cursor: 'pointer',
-              position: { xs: 'absolute', md: 'static' },
-              left: { xs: '50%', md: 'auto' },
-              transform: { xs: 'translateX(-50%)', md: 'none' },
               minWidth: 0,
-              flexShrink: 0,
+              flexShrink: 1,
             }}
             role="button"
             aria-label="Ir para a página inicial"
           >
-            <BrandLogo size={34} color={BRAND.gold} />
+            <BrandLogo
+              size={34}
+              color={BRAND.gold}
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            />
+            {/* Desktop: wordmark CAPS em Jost */}
             <Typography
               component="span"
               sx={{
@@ -288,6 +290,22 @@ export function AppShell({ children }: AppShellProps) {
               }}
             >
               PLANTE UMA FLOR
+            </Typography>
+            {/* Mobile: wordmark em Fraunces serifa */}
+            <Typography
+              component="span"
+              sx={{
+                fontFamily: '"Fraunces", Georgia, serif',
+                fontWeight: 500,
+                fontSize: 18,
+                letterSpacing: 'normal',
+                textTransform: 'none',
+                color: BRAND.textBright,
+                whiteSpace: 'nowrap',
+                display: { xs: 'inline', sm: 'none' },
+              }}
+            >
+              Plante Uma Flor
             </Typography>
           </Box>
 

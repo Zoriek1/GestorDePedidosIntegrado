@@ -107,7 +107,7 @@ export class ChunkErrorBoundary extends Component<Props, State> {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: '#0a2818',
+            background: '#143d28',
             color: '#e8e8e8',
             fontFamily: '"Inter", "Roboto", sans-serif',
             padding: 24,

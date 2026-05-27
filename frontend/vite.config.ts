@@ -61,8 +61,8 @@ export default defineConfig(({ mode }) => {
           name: 'Plante Uma Flor - Gestão de Pedidos',
           short_name: 'Plante Uma Flor',
           description: 'Sistema de gestão de pedidos',
-          theme_color: '#0a2818',
-          background_color: '#0a2818',
+          theme_color: '#143d28',
+          background_color: '#143d28',
           display: 'standalone',
           start_url: '/',
           icons: [

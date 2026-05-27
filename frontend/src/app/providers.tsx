@@ -29,8 +29,8 @@ const queryClient = new QueryClient({
 // MUI Theme — identidade Plante Uma Flor
 const theme = createTheme({
   palette: {
-    primary: { main: '#0a2818', light: '#1a4830', dark: '#06180e', contrastText: '#f5f1e8' },
-    secondary: { main: '#d4af7a', light: '#e0c397', dark: '#b8945f', contrastText: '#0a2818' },
+    primary: { main: '#143d28', light: '#1f5234', dark: '#0a2818', contrastText: '#f5f1e8' },
+    secondary: { main: '#d4af7a', light: '#e0c397', dark: '#b8945f', contrastText: '#143d28' },
     background: {
       default: '#f7f5ef',
       paper: '#ffffff',

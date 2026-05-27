@@ -14,9 +14,12 @@ const gitSha = (() => {
 const buildDate = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 const buildVersion = `v${buildDate}-${gitSha}`;
 
+// .env central na raiz do repositório (um arquivo só para backend + frontend).
+const ENV_DIR = path.resolve(__dirname, '..');
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  const env = loadEnv(mode, ENV_DIR, '');
   const apiTarget = env.VITE_API_TARGET || 'http://localhost:5000';
 
   const apiProxy = {
@@ -179,6 +182,7 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
+    envDir: ENV_DIR,
     define: {
       __BUILD_VERSION__: JSON.stringify(buildVersion),
     },

@@ -14,18 +14,14 @@ import {
   Badge,
   Divider,
   Stack,
-  Chip,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
   Fab,
 } from '@mui/material';
 import {
-  LocalFlorist,
   Logout,
   Person,
-  CloudOff,
-  CloudDone,
   Menu as MenuIcon,
   NotificationsNone,
   Add as AddIcon,
@@ -40,11 +36,25 @@ import { NotificationManager } from '../features/notifications/NotificationManag
 import { useOffline } from '../lib/offline/useOffline';
 import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
 import { AssignDeliveryDialog } from '../features/entregas/AssignDeliveryDialog';
+import { BrandLogo } from './BrandLogo';
 
 interface AppShellProps {
   children: ReactNode;
 }
 
+const BRAND = {
+  green: '#0a2818',
+  greenMuted: '#06180e',
+  gold: '#d4af7a',
+  goldMuted: 'rgba(212, 175, 122, 0.5)',
+  goldBorder: 'rgba(212, 175, 122, 0.18)',
+  textNeutral: '#d4d4cc',
+  textBright: '#f5f1e8',
+  onlineBg: 'rgba(151, 196, 89, 0.12)',
+  onlineText: '#b3d77a',
+  onlineDot: '#97c459',
+  offlineBg: 'rgba(255, 255, 255, 0.08)',
+} as const;
 
 export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
@@ -56,11 +66,11 @@ export function AppShell({ children }: AppShellProps) {
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
   const [assignDeliveryOpen, setAssignDeliveryOpen] = useState(false);
-  
+
   // Full width para páginas de wizard de pedido
   const isOrderWizardPage =
     location.pathname === '/pedidos/novo' ||
-    location.pathname.startsWith('/pedidos/') && location.pathname.endsWith('/editar');
+    (location.pathname.startsWith('/pedidos/') && location.pathname.endsWith('/editar'));
 
   // Mostrar botão flutuante apenas na página de pedidos
   const isOrdersPage = location.pathname === '/';
@@ -73,7 +83,6 @@ export function AppShell({ children }: AppShellProps) {
   const isEntregador = userRole === 'entregador';
   const isAdmin = userRole === 'admin';
   const isVendedor = userRole === 'vendedor';
-  // Recebíveis e Usuários são rotas JWT-only — ocultar para usuários legados (Basic Auth)
   const jwtUser = isJwtUser();
   const canViewLedger = jwtUser && (isAdmin || isVendedor || isEntregador);
   const ledgerLabel = isAdmin
@@ -82,21 +91,22 @@ export function AppShell({ children }: AppShellProps) {
       ? 'Recebíveis Hoje'
       : 'Recebíveis';
 
+  const routePath = isEntregador ? '/entregador/mapa' : '/rota-entrega';
+  const routeLabel = isEntregador ? 'Minhas entregas' : 'Rota';
+
+  const isActive = (path: string) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
+
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
+  const handleMenuClose = () => setAnchorEl(null);
   const handleNavMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setNavMenuEl(event.currentTarget);
   };
-
-  const handleNavMenuClose = useCallback(() => {
-    setNavMenuEl(null);
-  }, []);
+  const handleNavMenuClose = useCallback(() => setNavMenuEl(null), []);
 
   const handleCreateOrder = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -104,7 +114,7 @@ export function AppShell({ children }: AppShellProps) {
         window.localStorage.removeItem('puf_pedido_draft_v2');
         window.localStorage.removeItem('puf_pedido_step_v2');
       } catch {
-        // ignorar falhas de limpeza
+        /* ignorar */
       }
     }
     handleNavMenuClose();
@@ -116,10 +126,7 @@ export function AppShell({ children }: AppShellProps) {
     setSpeedDialOpen(false);
     setQuickEntryOpen(true);
   }, []);
-
-  const handleQuickEntryClose = useCallback(() => {
-    setQuickEntryOpen(false);
-  }, []);
+  const handleQuickEntryClose = useCallback(() => setQuickEntryOpen(false), []);
 
   const handleNavigate = (path: string) => {
     navigate(path);
@@ -132,20 +139,55 @@ export function AppShell({ children }: AppShellProps) {
     navigate('/login', { replace: true });
   };
 
+  const handleSettingsClick = () => {
+    handleMenuClose();
+    navigate('/configuracoes');
+  };
+
+  // Estilo dos botões de navegação desktop (aba ativa em dourado com sublinhado)
+  const navButtonSx = (path: string) => ({
+    color: isActive(path) ? BRAND.gold : BRAND.textNeutral,
+    fontWeight: isActive(path) ? 500 : 400,
+    fontSize: 14,
+    fontFamily: '"Jost", "Inter", sans-serif',
+    textTransform: 'none' as const,
+    px: 1,
+    py: 0.5,
+    minWidth: 0,
+    minHeight: 32,
+    borderRadius: 0,
+    position: 'relative' as const,
+    '&::after': isActive(path)
+      ? {
+          content: '""',
+          position: 'absolute',
+          left: 8,
+          right: 8,
+          bottom: -2,
+          height: '1.5px',
+          backgroundColor: BRAND.gold,
+        }
+      : undefined,
+    '&:hover': {
+      backgroundColor: 'transparent',
+      color: BRAND.gold,
+    },
+  });
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar 
-        position="sticky" 
-        sx={{ 
-          bgcolor: 'rgba(15, 104, 70, 0.85)',
-          backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+      <AppBar
+        position="sticky"
+        sx={{
+          bgcolor: BRAND.green,
+          borderBottom: `0.5px solid ${BRAND.goldBorder}`,
           borderRadius: 0,
           boxShadow: 'none',
+          backgroundImage: 'none',
         }}
       >
-        <Toolbar 
-          sx={{ 
+        <Toolbar
+          sx={{
             position: 'relative',
             display: 'flex',
             justifyContent: { xs: 'space-between', md: 'flex-start' },
@@ -156,175 +198,270 @@ export function AppShell({ children }: AppShellProps) {
         >
           {/* Mobile: Menu hamburger (esquerda) */}
           <Box sx={{ display: { xs: 'flex', md: 'none' }, flexShrink: 0 }}>
-            <IconButton 
+            <IconButton
               edge="start"
-              color="inherit" 
+              aria-label="Abrir menu de navegação"
               onClick={handleNavMenuOpen}
               sx={{
+                color: BRAND.textNeutral,
                 minWidth: 44,
                 minHeight: 44,
               }}
             >
               <MenuIcon />
             </IconButton>
-            <Menu anchorEl={navMenuEl} open={Boolean(navMenuEl)} onClose={handleNavMenuClose}>
-              <MenuItem onClick={() => handleNavigate('/')}>Pedidos</MenuItem>
+            <Menu
+              anchorEl={navMenuEl}
+              open={Boolean(navMenuEl)}
+              onClose={handleNavMenuClose}
+              slotProps={{
+                paper: {
+                  sx: {
+                    bgcolor: BRAND.green,
+                    color: BRAND.textNeutral,
+                    border: `1px solid ${BRAND.goldBorder}`,
+                  },
+                },
+              }}
+            >
+              <MenuItem onClick={() => handleNavigate('/')} sx={{ color: isActive('/') ? BRAND.gold : 'inherit' }}>
+                Pedidos
+              </MenuItem>
               {!isEntregador && (
-                <>
-                  <MenuItem onClick={() => handleNavigate('/vendas')}>Vendas</MenuItem>
-                  <MenuItem onClick={() => handleNavigate('/leads')}>Leads UTM</MenuItem>
-                </>
+                <MenuItem onClick={() => handleNavigate('/vendas')} sx={{ color: isActive('/vendas') ? BRAND.gold : 'inherit' }}>
+                  Vendas
+                </MenuItem>
               )}
-              <MenuItem
-                onClick={() =>
-                  handleNavigate(isEntregador ? '/entregador/mapa' : '/rota-entrega')
-                }
-              >
-                {isEntregador ? 'Minhas entregas' : 'Rota'}
+              {!isEntregador && (
+                <MenuItem onClick={() => handleNavigate('/leads')} sx={{ color: isActive('/leads') ? BRAND.gold : 'inherit' }}>
+                  Leads UTM
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => handleNavigate(routePath)} sx={{ color: isActive(routePath) ? BRAND.gold : 'inherit' }}>
+                {routeLabel}
               </MenuItem>
               {canViewLedger && (
-                <MenuItem onClick={() => handleNavigate('/recebiveis')}>{ledgerLabel}</MenuItem>
+                <MenuItem onClick={() => handleNavigate('/recebiveis')} sx={{ color: isActive('/recebiveis') ? BRAND.gold : 'inherit' }}>
+                  {ledgerLabel}
+                </MenuItem>
               )}
-              <MenuItem onClick={() => handleNavigate('/configuracoes')}>
-                <Settings sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
+              <Divider sx={{ borderColor: BRAND.goldBorder, my: 0.5 }} />
+              <MenuItem
+                onClick={() => handleNavigate('/configuracoes')}
+                sx={{ color: isActive('/configuracoes') ? BRAND.gold : 'inherit' }}
+              >
+                <Settings sx={{ mr: 1, fontSize: 18 }} />
                 Configurações
               </MenuItem>
             </Menu>
           </Box>
 
-          {/* Logo: Centralizado no mobile, normal no desktop */}
-          <Box 
-            sx={{ 
-              display: { xs: 'flex', md: 'flex' },
+          {/* Logo + Wordmark — esquerda no desktop, centralizado no mobile */}
+          <Box
+            onClick={() => navigate('/')}
+            sx={{
+              display: 'flex',
               alignItems: 'center',
-              gap: { xs: 1, sm: 1.5 },
+              gap: '12px',
+              cursor: 'pointer',
               position: { xs: 'absolute', md: 'static' },
               left: { xs: '50%', md: 'auto' },
               transform: { xs: 'translateX(-50%)', md: 'none' },
               minWidth: 0,
               flexShrink: 0,
             }}
+            role="button"
+            aria-label="Ir para a página inicial"
           >
-            <LocalFlorist sx={{ fontSize: { xs: 20, sm: 24 } }} />
+            <BrandLogo size={34} color={BRAND.gold} />
             <Typography
-              variant="h6"
-              component="div"
+              component="span"
               sx={{
+                fontFamily: '"Jost", "Inter", sans-serif',
+                fontWeight: 500,
+                fontSize: 14,
+                letterSpacing: '2.2px',
+                textTransform: 'uppercase',
+                color: BRAND.textBright,
                 whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                fontWeight: 'bold',
-                fontSize: { xs: '1rem', sm: '1.25rem' },
+                display: { xs: 'none', sm: 'inline' },
               }}
             >
-              Plante Uma Flor
+              PLANTE UMA FLOR
             </Typography>
           </Box>
 
-          {/* Seção Centro: Navegação (desktop) */}
+          {/* Navegação central (desktop) */}
           <Box
             sx={{
               flex: 1,
               display: { xs: 'none', md: 'flex' },
               justifyContent: 'center',
-              gap: 1,
-              ml: 3,
+              alignItems: 'center',
+              gap: '22px',
+              ml: 4,
             }}
           >
-            <Button color="inherit" onClick={() => handleNavigate('/')} sx={{ textTransform: 'none' }}>
+            <Button disableRipple onClick={() => handleNavigate('/')} sx={navButtonSx('/')}>
               Pedidos
             </Button>
             {!isEntregador && (
               <>
-                <Button color="inherit" onClick={() => handleNavigate('/vendas')} sx={{ textTransform: 'none' }}>
+                <Button disableRipple onClick={() => handleNavigate('/vendas')} sx={navButtonSx('/vendas')}>
                   Vendas
                 </Button>
-                <Button color="inherit" onClick={() => handleNavigate('/leads')} sx={{ textTransform: 'none' }}>
+                <Button disableRipple onClick={() => handleNavigate('/leads')} sx={navButtonSx('/leads')}>
                   Leads
                 </Button>
               </>
             )}
-            <Button
-              color="inherit"
-              onClick={() =>
-                handleNavigate(isEntregador ? '/entregador/mapa' : '/rota-entrega')
-              }
-              sx={{ textTransform: 'none' }}
-            >
-              {isEntregador ? 'Minhas entregas' : 'Rota'}
+            <Button disableRipple onClick={() => handleNavigate(routePath)} sx={navButtonSx(routePath)}>
+              {routeLabel}
             </Button>
             {canViewLedger && (
-              <Button color="inherit" onClick={() => handleNavigate('/recebiveis')} sx={{ textTransform: 'none' }}>
+              <Button disableRipple onClick={() => handleNavigate('/recebiveis')} sx={navButtonSx('/recebiveis')}>
                 {ledgerLabel}
               </Button>
             )}
-            <Tooltip title="Configurações">
-              <IconButton color="inherit" onClick={() => handleNavigate('/configuracoes')}>
-                <Settings />
-              </IconButton>
-            </Tooltip>
           </Box>
 
-          {/* Seção Direita: Notificações + Avatar */}
+          {/* Seção Direita: Online/Offline + Notificações + Avatar */}
           {authenticated && (
-            <Stack 
-              direction="row" 
-              spacing={1} 
-              alignItems="center" 
-              sx={{ flexShrink: 0 }}
+            <Stack
+              direction="row"
+              spacing="14px"
+              alignItems="center"
+              sx={{ flexShrink: 0, ml: 'auto' }}
             >
-              {/* Status Online/Offline (apenas desktop) */}
-              <Chip
-                icon={isOnline ? <CloudDone /> : <CloudOff />}
-                label={isOnline ? 'Online' : 'Offline'}
-                color={isOnline ? 'success' : 'default'}
-                size="small"
-                sx={{ display: { xs: 'none', sm: 'flex' } }}
-              />
-              {/* Notificações */}
-              <Tooltip title={outboxCount > 0 ? `${outboxCount} item(ns) pendente(s) de sincronização` : 'Sem pendências'}>
-                <IconButton 
-                  color="inherit"
-                  sx={{ 
+              {/* Pílula Online/Offline */}
+              <Box
+                sx={{
+                  display: { xs: 'none', sm: 'inline-flex' },
+                  alignItems: 'center',
+                  gap: '6px',
+                  px: '10px',
+                  py: '4px',
+                  borderRadius: '99px',
+                  fontFamily: '"Jost", sans-serif',
+                  fontSize: 11,
+                  fontWeight: 500,
+                  bgcolor: isOnline ? BRAND.onlineBg : BRAND.offlineBg,
+                  color: isOnline ? BRAND.onlineText : BRAND.textNeutral,
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    bgcolor: isOnline ? BRAND.onlineDot : BRAND.textNeutral,
+                    opacity: isOnline ? 1 : 0.6,
+                  }}
+                />
+                {isOnline ? 'Online' : 'Offline'}
+              </Box>
+
+              {/* Notificações (sino + badge de outbox) */}
+              <Tooltip
+                title={
+                  outboxCount > 0
+                    ? `${outboxCount} item(ns) pendente(s) de sincronização`
+                    : 'Sem pendências'
+                }
+              >
+                <IconButton
+                  aria-label="Notificações"
+                  sx={{
+                    color: BRAND.textNeutral,
                     minWidth: 44,
                     minHeight: 44,
+                    '&:hover': { color: BRAND.gold },
                   }}
                 >
-                  <Badge badgeContent={outboxCount || 0} color={outboxCount > 0 ? 'warning' : 'default'}>
-                    <NotificationsNone />
+                  <Badge
+                    badgeContent={outboxCount || 0}
+                    color={outboxCount > 0 ? 'warning' : 'default'}
+                  >
+                    <NotificationsNone sx={{ fontSize: 20 }} />
                   </Badge>
                 </IconButton>
               </Tooltip>
-              
+
               {/* Divider (apenas desktop) */}
-              <Divider 
-                flexItem 
-                orientation="vertical" 
-                sx={{ 
-                  borderColor: 'rgba(255,255,255,0.2)',
+              <Divider
+                flexItem
+                orientation="vertical"
+                sx={{
+                  borderColor: BRAND.goldBorder,
                   display: { xs: 'none', sm: 'block' },
-                }} 
+                }}
               />
-              
+
               {/* Avatar do Usuário */}
-              <IconButton 
-                color="inherit" 
-                onClick={handleMenuOpen} 
-                sx={{ 
+              <IconButton
+                aria-label="Abrir menu do perfil"
+                onClick={handleMenuOpen}
+                sx={{
+                  color: BRAND.textNeutral,
                   minWidth: 44,
                   minHeight: 44,
+                  '&:hover': { color: BRAND.gold },
                 }}
               >
-                <Person />
+                <Person sx={{ fontSize: 22 }} />
               </IconButton>
-              <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={handleMenuClose}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      bgcolor: BRAND.green,
+                      color: BRAND.textNeutral,
+                      border: `1px solid ${BRAND.goldBorder}`,
+                      minWidth: 220,
+                    },
+                  },
+                }}
+              >
                 {username && (
-                  <MenuItem disabled>
-                    <Typography variant="body2">{username}</Typography>
+                  <MenuItem disabled sx={{ opacity: '1 !important' }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: BRAND.textBright, fontWeight: 500 }}
+                    >
+                      {username}
+                    </Typography>
                   </MenuItem>
                 )}
-                <MenuItem onClick={handleLogoutClick}>
-                  <Logout sx={{ mr: 1 }} fontSize="small" />
+                <Divider sx={{ borderColor: BRAND.goldBorder, my: 0.5 }} />
+                <MenuItem
+                  onClick={handleSettingsClick}
+                  sx={{ color: BRAND.textNeutral, '&:hover': { color: BRAND.gold, bgcolor: 'rgba(212, 175, 122, 0.06)' } }}
+                >
+                  <Settings sx={{ mr: 1, fontSize: 18 }} />
+                  Configurações
+                </MenuItem>
+                <MenuItem
+                  disabled
+                  sx={{
+                    opacity: '1 !important',
+                    cursor: 'default',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    fontSize: 11,
+                    color: BRAND.goldMuted,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  Versão: {__BUILD_VERSION__}
+                </MenuItem>
+                <Divider sx={{ borderColor: BRAND.goldBorder, my: 0.5 }} />
+                <MenuItem
+                  onClick={handleLogoutClick}
+                  sx={{ color: BRAND.textNeutral, '&:hover': { color: BRAND.gold, bgcolor: 'rgba(212, 175, 122, 0.06)' } }}
+                >
+                  <Logout sx={{ mr: 1, fontSize: 18 }} />
                   Sair
                 </MenuItem>
               </Menu>
@@ -332,6 +469,7 @@ export function AppShell({ children }: AppShellProps) {
           )}
         </Toolbar>
       </AppBar>
+
       {/* FAB principal — entregador vê "Entregar"; demais veem SpeedDial de criação */}
       {authenticated && isOrdersPage && isEntregador && (
         <Fab
@@ -407,6 +545,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Modal de Entrada Rápida */}
       <QuickEntryModal open={quickEntryOpen} onClose={handleQuickEntryClose} />
+
       <Container
         maxWidth={isOrderWizardPage ? false : 'xl'}
         sx={{
@@ -423,4 +562,3 @@ export function AppShell({ children }: AppShellProps) {
     </Box>
   );
 }
-

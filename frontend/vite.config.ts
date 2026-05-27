@@ -2,6 +2,17 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import { execSync } from 'node:child_process'
+
+const gitSha = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'dev';
+  }
+})();
+const buildDate = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+const buildVersion = `v${buildDate}-${gitSha}`;
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -50,8 +61,8 @@ export default defineConfig(({ mode }) => {
           name: 'Plante Uma Flor - Gestão de Pedidos',
           short_name: 'Plante Uma Flor',
           description: 'Sistema de gestão de pedidos',
-          theme_color: '#047857',
-          background_color: '#ffffff',
+          theme_color: '#0a2818',
+          background_color: '#0a2818',
           display: 'standalone',
           start_url: '/',
           icons: [
@@ -168,6 +179,9 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
+    define: {
+      __BUILD_VERSION__: JSON.stringify(buildVersion),
+    },
     server: {
       port: 5173,
       host: true,

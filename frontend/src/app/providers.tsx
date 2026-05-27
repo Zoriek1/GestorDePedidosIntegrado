@@ -26,13 +26,13 @@ const queryClient = new QueryClient({
   },
 });
 
-// MUI Theme com layout mais legível e sombras padrão
+// MUI Theme — identidade Plante Uma Flor
 const theme = createTheme({
   palette: {
-    primary: { main: '#047857' },
-    secondary: { main: '#059669' },
+    primary: { main: '#0a2818', light: '#1a4830', dark: '#06180e', contrastText: '#f5f1e8' },
+    secondary: { main: '#d4af7a', light: '#e0c397', dark: '#b8945f', contrastText: '#0a2818' },
     background: {
-      default: '#f7f9fb',
+      default: '#f7f5ef',
       paper: '#ffffff',
     },
   },
@@ -40,9 +40,9 @@ const theme = createTheme({
     borderRadius: 10,
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    h4: { fontWeight: 700 },
-    h5: { fontWeight: 700 },
+    fontFamily: '"Jost", "Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h4: { fontWeight: 700, fontFamily: '"Fraunces", Georgia, serif' },
+    h5: { fontWeight: 700, fontFamily: '"Fraunces", Georgia, serif' },
     body1: { color: '#1f2937' },
     body2: { color: '#4b5563' },
   },

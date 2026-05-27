@@ -56,14 +56,14 @@ const STATUS_COLORS: Record<string, string> = {
 function getMarkerIcon(status: string, selected: boolean) {
   const color = selected
     ? (STATUS_COLORS[status] || '#4285F4')
-    : '#BDBDBD';
+    : (STATUS_COLORS[status] || '#757575');
   return {
     path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
     fillColor: color,
-    fillOpacity: selected ? 1 : 0.5,
-    strokeColor: selected ? '#fff' : '#999',
-    strokeWeight: selected ? 1 : 0.5,
-    scale: selected ? 1.5 : 1.2,
+    fillOpacity: 1,
+    strokeColor: '#fff',
+    strokeWeight: selected ? 2 : 1.5,
+    scale: selected ? 2.2 : 1.8,
     anchor: { x: 12, y: 22 } as google.maps.Point,
   };
 }
@@ -74,7 +74,7 @@ const ORIGIN_ICON = {
   fillOpacity: 1,
   strokeColor: '#fff',
   strokeWeight: 2,
-  scale: 2,
+  scale: 2.6,
   anchor: { x: 12, y: 22 } as google.maps.Point,
 };
 

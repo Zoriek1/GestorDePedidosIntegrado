@@ -1889,6 +1889,7 @@ export default function LeadsPage() {
 
       <QuickEntryModal
         open={quickEntryOpen}
+        lead={createModeLead}
         onClose={() => {
           setQuickEntryOpen(false);
           setCreateModeLead(null);

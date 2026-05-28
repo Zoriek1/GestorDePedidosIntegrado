@@ -15,7 +15,7 @@ from app import db
 from app.middleware import requires_any_role
 from app.models.lead import Lead
 from app.models.lead_touchpoint import LeadTouchpoint, derive_is_paid
-from app.models.pedido import datetime_now_brazil
+from app.models.pedido import TIMEZONE_BRASIL, datetime_now_brazil
 from app.repositories.meta_capi_lead_outbox_repository import MetaCapiLeadOutboxRepository
 from app.utils.meta_capi_lead_helper import (
     extract_contact_event_id_from_payload,
@@ -72,6 +72,30 @@ ALLOWED_FIELDS = (
     "fbclid",
     "fbp",
 )
+
+
+def _parse_brt_day_start(value: str) -> datetime | None:
+    """Converte 'YYYY-MM-DD' (ou ISO completo) em datetime tz-aware no início do dia BRT."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        # Date-only ou ISO sem fuso: tratar como BRT na meia-noite.
+        parsed = parsed.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=TIMEZONE_BRASIL)
+    return parsed
+
+
+def _parse_brt_day_end(value: str) -> datetime | None:
+    """Converte 'YYYY-MM-DD' (ou ISO completo) em datetime tz-aware no fim do dia BRT."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        # Date-only: estender para 23:59:59.999999 BRT para incluir o dia inteiro.
+        parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=TIMEZONE_BRASIL)
+    return parsed
 
 
 def _clip(value: object, max_len: int) -> str | None:
@@ -708,19 +732,20 @@ def listar_leads():
         pass
     else:
         # period == "custom" (ou omitido): respeita date_from/date_to atuais.
+        # Datas no formato YYYY-MM-DD são interpretadas em BRT: date_from vira
+        # início do dia (00:00:00-03) e date_to vira fim do dia (23:59:59.999999-03).
+        # Sem isso, "20/05/2026" → "20/05/2026" matava o range (>= meia-noite AND <= meia-noite).
         date_from = request.args.get("date_from")
         if date_from:
-            try:
-                query = query.filter(Lead.created_at >= datetime.fromisoformat(date_from))
-            except ValueError:
-                pass
+            parsed_from = _parse_brt_day_start(date_from)
+            if parsed_from is not None:
+                query = query.filter(Lead.created_at >= parsed_from)
 
         date_to = request.args.get("date_to")
         if date_to:
-            try:
-                query = query.filter(Lead.created_at <= datetime.fromisoformat(date_to))
-            except ValueError:
-                pass
+            parsed_to = _parse_brt_day_end(date_to)
+            if parsed_to is not None:
+                query = query.filter(Lead.created_at <= parsed_to)
 
     # Filtros de status: `status` (exato) e `hidden` (categorias agrupadas).
     # Aplicados POR ÚLTIMO para que `hidden_count` reflita os demais filtros

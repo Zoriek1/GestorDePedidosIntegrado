@@ -39,8 +39,6 @@ import {
   Card,
   CardContent,
   Divider,
-  Snackbar,
-  Fade,
   ToggleButton,
   ToggleButtonGroup,
   useMediaQuery,
@@ -57,8 +55,6 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PhoneDisabledIcon from '@mui/icons-material/PhoneDisabled';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
@@ -71,7 +67,6 @@ import {
   useBulkDisqualifyLeads,
   useUpdateLeadPhone,
   useUpdateLeadStatus,
-  useMarkFollowup,
   type LeadsFilters,
   type LeadsPeriod,
   type Lead,
@@ -299,13 +294,6 @@ function canEditLeadPhone(lead: Lead): boolean {
   return lead.status === 'pendente_whatsapp' || lead.status === 'nao_entrou_em_contato';
 }
 
-/** Aparece quando o filtro "Sem followup" está ativo e o lead é confirmado sem followup feito. */
-function canMarkFollowup(lead: Lead, filters: LeadsFilters): boolean {
-  if (!filters.pending_followup_days) return false;
-  if (lead.status !== 'whatsapp_iniciado') return false;
-  return !lead.followup_feito_em;
-}
-
 function ageBorderColor(lead: Pick<Lead, 'created_at' | 'status' | 'followup_feito_em'>, theme: Theme): string {
   if (!shouldShowAge(lead)) return theme.palette.divider;
   const bucket = getLeadAgeBucket(lead.created_at);
@@ -369,7 +357,6 @@ export default function LeadsPage() {
   const [createModeAnchor, setCreateModeAnchor] = useState<HTMLElement | null>(null);
   const [createModeLead, setCreateModeLead] = useState<Lead | null>(null);
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
-  const [undoSnack, setUndoSnack] = useState<{ leadId: number; phone: string | null } | null>(null);
   const [, forceTick] = useState(0);
   const lastSelectedIndexRef = useRef<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLElement>>(new Map());
@@ -389,8 +376,6 @@ export default function LeadsPage() {
   const updateLeadStatus = useUpdateLeadStatus();
   const bulkUpdateStatus = useBulkUpdateLeadStatus();
   const bulkDisqualifyLeads = useBulkDisqualifyLeads();
-  const markFollowup = useMarkFollowup();
-
   useEffect(() => {
     persistFilters(filters);
   }, [filters]);
@@ -798,32 +783,6 @@ export default function LeadsPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [clearSelection, isMobile, pageIds, selectedIds.size, orderedLeads, focusedId]);
 
-  const handleMarkFollowup = useCallback(
-    async (lead: Lead) => {
-      try {
-        await markFollowup.mutateAsync({ id: lead.id, action: 'mark' });
-        setUndoSnack({ leadId: lead.id, phone: lead.phone });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao marcar followup';
-        showError(message);
-      }
-    },
-    [markFollowup, showError],
-  );
-
-  const handleUndoFollowup = useCallback(async () => {
-    if (!undoSnack) return;
-    const { leadId } = undoSnack;
-    setUndoSnack(null);
-    try {
-      await markFollowup.mutateAsync({ id: leadId, action: 'undo' });
-      success('Followup desfeito');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao desfazer followup';
-      showError(message);
-    }
-  }, [markFollowup, showError, success, undoSnack]);
-
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
 
@@ -906,42 +865,6 @@ export default function LeadsPage() {
                 </IconButton>
               </Tooltip>
             ) : null}
-
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Chip
-                label={`Sem followup ${filters.pending_followup_days ?? 7}d+`}
-                size="small"
-                color={filters.pending_followup_days ? 'primary' : 'default'}
-                variant={filters.pending_followup_days ? 'filled' : 'outlined'}
-                onClick={() =>
-                  setFilters((f) => ({
-                    ...f,
-                    pending_followup_days: f.pending_followup_days ? undefined : 7,
-                    page: 1,
-                  }))
-                }
-                sx={{ borderRadius: '4px', cursor: 'pointer' }}
-              />
-              {filters.pending_followup_days ? (
-                <FormControl size="small" sx={{ minWidth: 72 }}>
-                  <Select
-                    value={String(filters.pending_followup_days)}
-                    onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        pending_followup_days: Number(e.target.value),
-                        page: 1,
-                      }))
-                    }
-                    sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: '4px' } }}
-                  >
-                    <MenuItem value="7">7d</MenuItem>
-                    <MenuItem value="15">15d</MenuItem>
-                    <MenuItem value="30">30d</MenuItem>
-                  </Select>
-                </FormControl>
-              ) : null}
-            </Stack>
 
             <Box sx={{ flexGrow: 1 }} />
 
@@ -1077,9 +1000,7 @@ export default function LeadsPage() {
           {allLeads.length === 0 && hiddenCount === 0 ? (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
-                {filters.pending_followup_days
-                  ? 'Nenhum lead pendente de followup'
-                  : 'Nenhum lead encontrado'}
+                Nenhum lead encontrado
               </Typography>
             </Paper>
           ) : (
@@ -1093,7 +1014,6 @@ export default function LeadsPage() {
                   const index = orderedLeads.findIndex((l) => l.id === lead.id);
                   const isSelected = selectedIds.has(lead.id);
                   const noPhonePending = !lead.phone && lead.status === 'pendente_whatsapp';
-                  const showFollowupAction = canMarkFollowup(lead, filters);
                   const longPressTimer = { current: null as null | number };
                   const beginLongPress = () => {
                     longPressTimer.current = window.setTimeout(() => {
@@ -1189,20 +1109,6 @@ export default function LeadsPage() {
                             <WhatsAppIcon fontSize="small" />
                           </IconButton>
                         )}
-                        {showFollowupAction ? (
-                          <Tooltip title="Marcar followup feito">
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => void handleMarkFollowup(lead)}
-                                disabled={markFollowup.isPending}
-                              >
-                                <TaskAltIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        ) : null}
                         {lead.pedido_id ? (
                           <IconButton
                             size="small"
@@ -1236,11 +1142,6 @@ export default function LeadsPage() {
                           variant="outlined"
                           sx={{ borderRadius: '4px' }}
                         />
-                      ) : null}
-                      {showFollowupAction ? (
-                        <Tooltip title="Followup pendente">
-                          <AccessTimeIcon fontSize="small" sx={{ color: 'text.disabled' }} />
-                        </Tooltip>
                       ) : null}
                     </Stack>
 
@@ -1400,9 +1301,7 @@ export default function LeadsPage() {
               <TableRow>
                 <TableCell colSpan={15} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
-                    {filters.pending_followup_days
-                      ? 'Nenhum lead pendente de followup'
-                      : 'Nenhum lead encontrado'}
+                    Nenhum lead encontrado
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -1462,7 +1361,6 @@ export default function LeadsPage() {
                       const isSelected = selectedIds.has(lead.id);
                       const noPhonePending = !lead.phone && lead.status === 'pendente_whatsapp';
                       const isFocused = focusedId === lead.id;
-                      const showFollowupAction = canMarkFollowup(lead, filters);
                       return (
                 <TableRow
                   key={lead.id}
@@ -1517,20 +1415,6 @@ export default function LeadsPage() {
                           </span>
                         </Tooltip>
                       )}
-                      {showFollowupAction ? (
-                        <Tooltip title="Marcar followup feito">
-                          <span>
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => void handleMarkFollowup(lead)}
-                              disabled={markFollowup.isPending}
-                            >
-                              <TaskAltIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      ) : null}
                       {lead.pedido_id ? (
                         <Tooltip title="Visualizar pedido vinculado">
                           <IconButton
@@ -1609,11 +1493,6 @@ export default function LeadsPage() {
                           variant={lead.status ? 'filled' : 'outlined'}
                           sx={{ borderRadius: '4px' }}
                         />
-                        {showFollowupAction ? (
-                          <Tooltip title="Followup pendente">
-                            <AccessTimeIcon fontSize="small" sx={{ color: 'text.disabled' }} />
-                          </Tooltip>
-                        ) : null}
                       </Stack>
                     )}
                   </TableCell>
@@ -1928,25 +1807,6 @@ export default function LeadsPage() {
         </MenuItem>
       </Menu>
 
-      <Snackbar
-        open={undoSnack !== null}
-        autoHideDuration={5000}
-        onClose={() => setUndoSnack(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        TransitionComponent={Fade}
-        message="Followup marcado"
-        action={
-          <Button
-            color="primary"
-            size="small"
-            onClick={() => void handleUndoFollowup()}
-            disabled={markFollowup.isPending}
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-          >
-            Desfazer
-          </Button>
-        }
-      />
     </Box>
   );
 }

@@ -97,8 +97,6 @@ export interface LeadsFilters {
   period?: LeadsPeriod;
   date_from?: string;
   date_to?: string;
-  /** Confirmados sem followup há X dias (NULL ou < now - X). 7/15/30. */
-  pending_followup_days?: number;
   /** Default `exclude` no backend — esconde descarte/nao_entrou_em_contato. */
   hidden?: LeadsHiddenMode;
 }
@@ -166,9 +164,6 @@ export function useLeads(filters: LeadsFilters = {}, options: UseLeadsOptions = 
       if (filters.period) params.set('period', filters.period);
       if (filters.date_from) params.set('date_from', filters.date_from);
       if (filters.date_to) params.set('date_to', filters.date_to);
-      if (filters.pending_followup_days) {
-        params.set('pending_followup_days', String(filters.pending_followup_days));
-      }
       if (filters.hidden) params.set('hidden', filters.hidden);
 
       const qs = params.toString();
@@ -291,38 +286,6 @@ export function useBulkDisqualifyLeads() {
         throw new Error(response.message ?? 'Erro ao desqualificar leads');
       }
       return response.data as BulkDisqualifyResponse;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-    },
-  });
-}
-
-interface MarkFollowupResponse {
-  ok: boolean;
-  lead: Lead;
-}
-
-export function useMarkFollowup() {
-  const { getAuthHeader } = useAuth();
-  const apiRequest = createApiRequest(getAuthHeader);
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (input: { id: number; action?: 'mark' | 'undo' }) => {
-      const action = input.action ?? 'mark';
-      const response = await apiRequest<MarkFollowupResponse>(
-        `/leads/${input.id}/followup`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action }),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(response.message ?? 'Erro ao atualizar followup');
-      }
-      return response.data as MarkFollowupResponse;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });

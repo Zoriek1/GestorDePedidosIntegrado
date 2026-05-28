@@ -102,7 +102,10 @@ export interface LeadsFilters {
 }
 
 export interface LeadsStatsBucket {
+  /** Leads `pendente_whatsapp` — triagem, sem telefone (vieram do anúncio). */
   pendentes: number;
+  /** Leads `lead_pendente` — fila de decisão (têm telefone, aguardando triagem). */
+  lead_pendentes: number;
   /** Leads `whatsapp_iniciado` com telefone preenchido (Lead Confirmado qualificado). */
   confirmados: number;
   compras: number;

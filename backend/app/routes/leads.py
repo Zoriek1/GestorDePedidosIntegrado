@@ -38,16 +38,32 @@ WHATSAPP_EVENT = "whatsapp_click"
 
 # Transições de status permitidas para mutação operacional (PATCH individual e bulk).
 # Chave = status atual; valor = conjunto de status finais permitidos.
+#
+# Modelo: `pendente_whatsapp` (sem telefone, vem do anúncio) → captura do telefone
+# transiciona para `lead_pendente` (tem telefone, aguardando triagem) → confirma
+# (whatsapp_iniciado) ou descarta (descarte). Confirmar/desqualificar EXIGE telefone
+# — validado em `_apply_lead_status_update`.
+#
+# `pendente_whatsapp → descarte` continua permitido apenas pelo bulk dialog (que
+# enriquece telefone no mesmo request). Sem telefone na linha, o backend rejeita.
 ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
-    "pendente_whatsapp": {"nao_entrou_em_contato", "descarte"},
+    "pendente_whatsapp": {"nao_entrou_em_contato", "lead_pendente", "descarte"},
+    "lead_pendente": {"whatsapp_iniciado", "descarte", "pendente_whatsapp"},
     "nao_entrou_em_contato": {"descarte", "pendente_whatsapp"},
-    "descarte": {"pendente_whatsapp"},
+    "descarte": {"lead_pendente", "pendente_whatsapp"},
     # whatsapp_iniciado é terminal para mutações manuais — uma vez que o evento Meta
     # `Lead` foi disparado, não permitimos voltar pra descarte/nao_entrou. Único caminho
-    # adiante é `compra_realizada` (via fluxo automático de pedido). Isso evita o ciclo
-    # "Meta otimiza pra perfil ruim → LeadDisqualified corrige tarde".
+    # adiante é `compra_realizada` (via fluxo automático de pedido).
 }
-BULK_TARGET_STATUSES = {"descarte", "nao_entrou_em_contato", "pendente_whatsapp"}
+BULK_TARGET_STATUSES = {
+    "descarte",
+    "nao_entrou_em_contato",
+    "pendente_whatsapp",
+    "lead_pendente",
+    "whatsapp_iniciado",
+}
+# Targets que exigem telefone preenchido no lead (regra dura).
+STATUSES_REQUIRING_PHONE = {"whatsapp_iniciado", "descarte"}
 BULK_MAX_IDS = 500
 
 # Status considerados "ocultos" para o operador: leads que pararam de gerar valor
@@ -442,8 +458,15 @@ def marcar_whatsapp_iniciado():
     if not lead:
         return jsonify({"ok": True, "found": False, "token": token, "token_valido": True}), 200
 
+    # Invariante: whatsapp_iniciado exige telefone capturado. Se o webhook chega
+    # antes da captura do número, promove só pra `lead_pendente` — operador
+    # confirma quando tiver o telefone. Mantém o invariante mesmo nesta rota
+    # automática.
     if lead.status != "compra_realizada":
-        lead.status = "whatsapp_iniciado"
+        if (lead.phone or "").strip():
+            lead.status = "whatsapp_iniciado"
+        elif lead.status == "pendente_whatsapp":
+            lead.status = "lead_pendente"
         db.session.commit()
 
     return (
@@ -487,19 +510,42 @@ def _apply_lead_status_update(lead: Lead, data: dict):
             400,
         )
 
+    # Regra dura: confirmar/desqualificar exigem telefone capturado.
+    if new_status in STATUSES_REQUIRING_PHONE and not (lead.phone or "").strip():
+        return jsonify({"ok": False, "error": "telefone_obrigatorio"}), 422
+
+    old_status = lead.status
     fire_disqualified = (
         new_status == "descarte"
         and is_lead_funnel_enabled()
-        and lead.status != "descarte"
+        and old_status != "descarte"
     )
+    fire_lead_confirmed = (
+        new_status == "whatsapp_iniciado"
+        and is_lead_funnel_enabled()
+        and old_status != "whatsapp_iniciado"
+    )
+
+    if fire_lead_confirmed and not lead.meta_event_id_lead:
+        lead.meta_event_id_lead = str(uuid.uuid4())
+
     lead.status = new_status
     db.session.commit()
 
-    if fire_disqualified:
+    flush_ids: list[int] = []
+    if fire_disqualified or fire_lead_confirmed:
         repo = MetaCapiLeadOutboxRepository()
-        row = repo.create_disqualified_from_lead(lead, event_time=datetime_now_brazil())
-        if row:
-            try_flush_pending_meta_capi_lead_entries([row.id])
+        now_brt = datetime_now_brazil()
+        if fire_lead_confirmed:
+            row_l = repo.create_lead_stage_from_lead(lead, event_time=now_brt)
+            if row_l:
+                flush_ids.append(row_l.id)
+        if fire_disqualified:
+            row_d = repo.create_disqualified_from_lead(lead, event_time=now_brt)
+            if row_d:
+                flush_ids.append(row_d.id)
+        if flush_ids:
+            try_flush_pending_meta_capi_lead_entries(flush_ids)
 
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
@@ -530,15 +576,23 @@ def atualizar_status_lead(lead_id: int):
 
 
 def _apply_lead_phone_update(lead: Lead, data: dict):
-    """Atualiza telefone + CAPI Lead quando aplicável. Retorna (response, status_code)."""
+    """Captura/atualiza telefone do lead.
+
+    Captura no 1º contato: lead em `pendente_whatsapp` (vindo do anúncio sem
+    telefone) ganha o número e transiciona para `lead_pendente`. Nada de evento
+    Meta nesta rota — telefone é dado de match, não gatilho. O evento `Lead`
+    (positivo) só dispara quando o operador confirma (whatsapp_iniciado).
+    """
     phone = _normalize_phone(
         data.get("phone") or data.get("telefone") or data.get("telefone_cliente")
     )
     if not phone:
         return jsonify({"ok": False, "error": "Telefone é obrigatório"}), 400
 
-    phone_was_empty = not (lead.phone or "").strip()
-    if is_lead_funnel_enabled() and _is_whatsapp_event(lead.event) and phone_was_empty:
+    # Compat: payloads antigos com meta_pixel_lead truthy ainda precisam de
+    # event_id (garantia de dedup browser↔servidor caso o pixel tenha sido
+    # disparado no front pra este lead).
+    if is_lead_funnel_enabled() and _is_whatsapp_event(lead.event):
         if is_truthy_meta_pixel_lead(data):
             new_lead_eid = extract_lead_stage_event_id_from_payload(data)
             if not new_lead_eid:
@@ -554,27 +608,22 @@ def _apply_lead_phone_update(lead: Lead, data: dict):
                     ),
                     400,
                 )
-        else:
-            new_lead_eid = str(uuid.uuid4())
-        lead.meta_event_id_lead = new_lead_eid
+            lead.meta_event_id_lead = new_lead_eid
 
     lead.phone = phone
     if _is_whatsapp_event(lead.event):
-        if lead.status != "compra_realizada":
-            lead.status = "whatsapp_iniciado"
+        # Captura de telefone promove o lead pra fila de decisão (`lead_pendente`)
+        # a partir de qualquer estágio "sem decisão tomada":
+        #   - pendente_whatsapp (triagem)
+        #   - nao_entrou_em_contato (Trilha A reabriu — agora temos número)
+        #   - descarte (reabertura explícita; ver item 4 do checklist do owner)
+        # whatsapp_iniciado e compra_realizada mantêm status (telefone corrigido).
+        if lead.status in {"pendente_whatsapp", "nao_entrou_em_contato", "descarte"}:
+            lead.status = "lead_pendente"
     elif lead.status == "pendente_whatsapp":
         lead.status = None
 
     db.session.commit()
-
-    flush_ids: list[int] = []
-    if is_lead_funnel_enabled() and _is_whatsapp_event(lead.event) and phone_was_empty:
-        repo = MetaCapiLeadOutboxRepository()
-        row_l = repo.create_lead_stage_from_lead(lead, event_time=datetime_now_brazil())
-        if row_l:
-            flush_ids.append(row_l.id)
-        try_flush_pending_meta_capi_lead_entries(flush_ids)
-
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
 
@@ -831,13 +880,22 @@ def listar_leads():
 
 
 def _aggregate_lead_stats(start_dt: datetime) -> dict:
-    """Conta pendentes/confirmados/compras/total a partir de `start_dt`.
+    """Conta pendentes/lead_pendentes/confirmados/compras/total a partir de `start_dt`.
 
-    `confirmados` = leads `whatsapp_iniciado` com telefone preenchido (Lead Confirmado
-    qualificado). É o número que o operador olha pra saber quantos leads válidos
-    a operação gerou na janela.
+    Buckets:
+      - `pendentes`: leads em `pendente_whatsapp` — triagem (vieram do anúncio
+        sem telefone). Volume desta fila reflete falha de captura.
+      - `lead_pendentes`: leads em `lead_pendente` — fila de decisão (têm
+        telefone, aguardando confirmar ou desqualificar). Volume aqui reflete
+        backlog operacional do vendedor.
+      - `confirmados`: leads `whatsapp_iniciado` com telefone — Lead Confirmado.
+      - `compras`: leads `compra_realizada`.
+
+    Buckets `pendentes` e `lead_pendentes` ficam separados porque medem fenômenos
+    distintos — não juntar no header.
     """
     is_pendente = case((Lead.status == "pendente_whatsapp", 1), else_=0)
+    is_lead_pendente = case((Lead.status == "lead_pendente", 1), else_=0)
     is_confirmado = case(
         (
             (Lead.status == "whatsapp_iniciado") & Lead.phone.isnot(None) & (Lead.phone != ""),
@@ -850,6 +908,7 @@ def _aggregate_lead_stats(start_dt: datetime) -> dict:
     row = (
         db.session.query(
             func.coalesce(func.sum(is_pendente), 0),
+            func.coalesce(func.sum(is_lead_pendente), 0),
             func.coalesce(func.sum(is_confirmado), 0),
             func.coalesce(func.sum(is_compra), 0),
             func.count(Lead.id),
@@ -857,9 +916,10 @@ def _aggregate_lead_stats(start_dt: datetime) -> dict:
         .filter(Lead.event.in_(DEFAULT_KEY_EVENTS), Lead.created_at >= start_dt)
         .one()
     )
-    pendentes, confirmados, compras, total = row
+    pendentes, lead_pendentes, confirmados, compras, total = row
     return {
         "pendentes": int(pendentes or 0),
+        "lead_pendentes": int(lead_pendentes or 0),
         "confirmados": int(confirmados or 0),
         "compras": int(compras or 0),
         "total": int(total or 0),
@@ -918,6 +978,7 @@ def atualizar_status_leads_em_lote():
     updated = 0
     skipped_ids: list[int] = [i for i in ids if i not in found_ids]
     transitioned_to_descarte: list[Lead] = []
+    transitioned_to_confirmed: list[Lead] = []
 
     for lead in leads:
         if not _is_whatsapp_event(lead.event):
@@ -927,17 +988,29 @@ def atualizar_status_leads_em_lote():
         if new_status not in allowed:
             skipped_ids.append(lead.id)
             continue
+        # Regra dura: confirmar/desqualificar exigem telefone.
+        if new_status in STATUSES_REQUIRING_PHONE and not (lead.phone or "").strip():
+            skipped_ids.append(lead.id)
+            continue
         if new_status == "descarte" and lead.status != "descarte":
             transitioned_to_descarte.append(lead)
+        if new_status == "whatsapp_iniciado" and lead.status != "whatsapp_iniciado":
+            if not lead.meta_event_id_lead:
+                lead.meta_event_id_lead = str(uuid.uuid4())
+            transitioned_to_confirmed.append(lead)
         lead.status = new_status
         updated += 1
 
     db.session.commit()
 
-    if transitioned_to_descarte and is_lead_funnel_enabled():
+    if (transitioned_to_descarte or transitioned_to_confirmed) and is_lead_funnel_enabled():
         repo = MetaCapiLeadOutboxRepository()
         flush_ids: list[int] = []
         now_brt = datetime_now_brazil()
+        for lead in transitioned_to_confirmed:
+            row = repo.create_lead_stage_from_lead(lead, event_time=now_brt)
+            if row:
+                flush_ids.append(row.id)
         for lead in transitioned_to_descarte:
             row = repo.create_disqualified_from_lead(lead, event_time=now_brt)
             if row:
@@ -1018,6 +1091,11 @@ def desqualificar_leads_em_lote():
                 skipped_ids.append(lead.id)
                 continue
             lead.phone = phone_norm
+
+        # Regra dura: descarte exige telefone (do update OU pré-existente).
+        if not (lead.phone or "").strip():
+            skipped_ids.append(lead.id)
+            continue
 
         lead.status = "descarte"
         transitioned.append(lead)

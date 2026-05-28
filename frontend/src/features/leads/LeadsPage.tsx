@@ -98,6 +98,7 @@ const EVENT_LABELS: Record<string, string> = {
 // "Funil de leads Meta CAPI" para o mapeamento label ↔ chave ↔ evento Meta.
 const LEAD_STATUS_LABELS: Record<string, string> = {
   pendente_whatsapp: 'P. Whatsapp (Contact)',
+  lead_pendente: 'Lead (Pendente)',
   whatsapp_iniciado: 'Lead Confirmado',
   compra_realizada: 'Compra realizada',
   nao_entrou_em_contato: 'Não entrou em contato',
@@ -132,6 +133,7 @@ type AgeBucket = 'fresh' | 'warm' | 'cold';
  */
 function shouldShowAge(lead: Pick<Lead, 'status' | 'followup_feito_em'>): boolean {
   if (lead.status === 'pendente_whatsapp') return true;
+  if (lead.status === 'lead_pendente') return true;
   if (lead.status === 'whatsapp_iniciado' && !lead.followup_feito_em) return true;
   return false;
 }
@@ -174,6 +176,7 @@ type LeadGroup = 'confirmados' | 'pendentes' | 'descartados';
 function getLeadGroup(status: string | null): LeadGroup {
   if (status === 'whatsapp_iniciado' || status === 'compra_realizada') return 'confirmados';
   if (status === 'nao_entrou_em_contato' || status === 'descarte') return 'descartados';
+  // pendente_whatsapp (sem fone) e lead_pendente (com fone) ficam juntos na fila.
   return 'pendentes';
 }
 
@@ -269,8 +272,10 @@ function leadStatusColor(status: string | null): 'warning' | 'info' | 'success' 
   switch (status) {
     case 'pendente_whatsapp':
       return 'warning';
-    case 'whatsapp_iniciado':
+    case 'lead_pendente':
       return 'info';
+    case 'whatsapp_iniciado':
+      return 'success';
     case 'compra_realizada':
       return 'success';
     case 'descarte':
@@ -291,7 +296,11 @@ function displayAdSet(name: string | null | undefined): string {
 }
 
 function canEditLeadPhone(lead: Lead): boolean {
-  return lead.status === 'pendente_whatsapp' || lead.status === 'nao_entrou_em_contato';
+  return (
+    lead.status === 'pendente_whatsapp'
+    || lead.status === 'lead_pendente'
+    || lead.status === 'nao_entrou_em_contato'
+  );
 }
 
 function ageBorderColor(lead: Pick<Lead, 'created_at' | 'status' | 'followup_feito_em'>, theme: Theme): string {
@@ -352,6 +361,11 @@ export default function LeadsPage() {
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const [cheatsheetOpen, setCheatsheetOpen] = useState(false);
   const [loadingWhatsAppId, setLoadingWhatsAppId] = useState<number | null>(null);
+  // Captura inline de telefone: id do lead em modo captura + valor digitado.
+  // Triggered por click no botão WhatsApp quando o lead está em pendente_whatsapp
+  // (sem telefone). Salvar transiciona pra lead_pendente sem disparar evento.
+  const [phoneCaptureLeadId, setPhoneCaptureLeadId] = useState<number | null>(null);
+  const [phoneCaptureValue, setPhoneCaptureValue] = useState('');
   const [descartadosOpen, setDescartadosOpen] = useState(false);
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
   const [createModeAnchor, setCreateModeAnchor] = useState<HTMLElement | null>(null);
@@ -496,6 +510,65 @@ export default function LeadsPage() {
       }
     },
     [showError, success, updateLeadStatus],
+  );
+
+  const handleQuickConfirm = useCallback(
+    async (lead: Lead) => {
+      try {
+        await updateLeadStatus.mutateAsync({ id: lead.id, status: 'whatsapp_iniciado' });
+        success('Lead confirmado');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao confirmar lead';
+        showError(message);
+      }
+    },
+    [showError, success, updateLeadStatus],
+  );
+
+  const handleQuickDisqualify = useCallback(
+    async (lead: Lead) => {
+      try {
+        await updateLeadStatus.mutateAsync({ id: lead.id, status: 'descarte' });
+        success('Lead desqualificado');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao desqualificar lead';
+        showError(message);
+      }
+    },
+    [showError, success, updateLeadStatus],
+  );
+
+  const openPhoneCapture = useCallback((lead: Lead) => {
+    setPhoneCaptureLeadId(lead.id);
+    setPhoneCaptureValue('');
+  }, []);
+
+  const closePhoneCapture = useCallback(() => {
+    setPhoneCaptureLeadId(null);
+    setPhoneCaptureValue('');
+  }, []);
+
+  const handleSavePhoneInline = useCallback(
+    async (lead: Lead) => {
+      const digits = phoneCaptureValue.replace(/\D/g, '');
+      if (digits.length < 10) {
+        showError('Informe um telefone válido com DDD (mínimo 10 dígitos)');
+        return;
+      }
+      try {
+        await updateLeadPhone.mutateAsync(
+          lead.token_rastreio
+            ? { token_rastreio: lead.token_rastreio, phone: phoneCaptureValue }
+            : { id: lead.id, phone: phoneCaptureValue },
+        );
+        success('Telefone capturado');
+        closePhoneCapture();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao salvar telefone';
+        showError(message);
+      }
+    },
+    [phoneCaptureValue, updateLeadPhone, success, showError, closePhoneCapture],
   );
 
   const total = data?.total ?? 0;
@@ -815,12 +888,14 @@ export default function LeadsPage() {
         {statsData ? (
           <Stack spacing={0.25} sx={{ ml: { sm: 2 } }}>
             <Typography variant="body2" color="text.secondary">
-              <strong>Hoje:</strong> {today?.pendentes ?? 0} pendentes · {today?.confirmados ?? 0}{' '}
-              confirmados · {today?.compras ?? 0} compras
+              <strong>Hoje:</strong> {today?.pendentes ?? 0} pendentes ·{' '}
+              {today?.lead_pendentes ?? 0} em fila · {today?.confirmados ?? 0} confirmados ·{' '}
+              {today?.compras ?? 0} compras
             </Typography>
             <Typography variant="body2" color="text.secondary">
               <strong>14 dias:</strong> {last14d?.pendentes ?? 0} pendentes ·{' '}
-              {last14d?.confirmados ?? 0} confirmados · {last14d?.compras ?? 0} compras
+              {last14d?.lead_pendentes ?? 0} em fila · {last14d?.confirmados ?? 0} confirmados ·{' '}
+              {last14d?.compras ?? 0} compras
             </Typography>
           </Stack>
         ) : (
@@ -942,6 +1017,7 @@ export default function LeadsPage() {
                   >
                     <MenuItem value="">Todos</MenuItem>
                     <MenuItem value="pendente_whatsapp">P. Whatsapp (Contact)</MenuItem>
+                    <MenuItem value="lead_pendente">Lead (Pendente)</MenuItem>
                     <MenuItem value="whatsapp_iniciado">Lead Confirmado</MenuItem>
                     <MenuItem value="compra_realizada">Compra realizada</MenuItem>
                     <MenuItem value="nao_entrou_em_contato">Não entrou em contato</MenuItem>
@@ -1104,11 +1180,37 @@ export default function LeadsPage() {
                           >
                             <WhatsAppIcon fontSize="small" />
                           </IconButton>
+                        ) : lead.status === 'pendente_whatsapp' ? (
+                          <IconButton size="small" color="success" onClick={() => openPhoneCapture(lead)}>
+                            <WhatsAppIcon fontSize="small" />
+                          </IconButton>
                         ) : (
                           <IconButton size="small" disabled>
                             <WhatsAppIcon fontSize="small" />
                           </IconButton>
                         )}
+                        {lead.status === 'lead_pendente' ? (
+                          <>
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => handleQuickConfirm(lead)}
+                              disabled={updateLeadStatus.isPending}
+                              aria-label="Confirmar lead"
+                            >
+                              <CheckCircleIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="warning"
+                              onClick={() => handleQuickDisqualify(lead)}
+                              disabled={updateLeadStatus.isPending}
+                              aria-label="Desqualificar lead"
+                            >
+                              <PersonOffIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : null}
                         {lead.pedido_id ? (
                           <IconButton
                             size="small"
@@ -1131,9 +1233,33 @@ export default function LeadsPage() {
 
                     {/* Linha 2: telefone + valor */}
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {lead.phone ?? 'Sem telefone'}
-                      </Typography>
+                      {phoneCaptureLeadId === lead.id ? (
+                        <TextField
+                          size="small"
+                          autoFocus
+                          placeholder="(62) 99999-0000"
+                          value={phoneCaptureValue}
+                          onChange={(e) => setPhoneCaptureValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void handleSavePhoneInline(lead);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              closePhoneCapture();
+                            }
+                          }}
+                          onBlur={() => {
+                            if (!updateLeadPhone.isPending) closePhoneCapture();
+                          }}
+                          disabled={updateLeadPhone.isPending}
+                          sx={{ flex: 1, minWidth: 180 }}
+                        />
+                      ) : (
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {lead.phone ?? 'Sem telefone'}
+                        </Typography>
+                      )}
                       {lead.valor_pedido ? (
                         <Chip
                           size="small"
@@ -1406,6 +1532,16 @@ export default function LeadsPage() {
                             <WhatsAppIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
+                      ) : lead.status === 'pendente_whatsapp' ? (
+                        <Tooltip title="Capturar telefone do lead">
+                          <IconButton
+                            size="small"
+                            color="success"
+                            onClick={() => openPhoneCapture(lead)}
+                          >
+                            <WhatsAppIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       ) : (
                         <Tooltip title="Sem telefone">
                           <span>
@@ -1452,6 +1588,30 @@ export default function LeadsPage() {
                           </IconButton>
                         </Tooltip>
                       ) : null}
+                      {lead.status === 'lead_pendente' ? (
+                        <>
+                          <Tooltip title="Confirmar lead (positivo CAPI agora)">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => handleQuickConfirm(lead)}
+                              disabled={updateLeadStatus.isPending}
+                            >
+                              <CheckCircleIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Desqualificar lead">
+                            <IconButton
+                              size="small"
+                              color="warning"
+                              onClick={() => handleQuickDisqualify(lead)}
+                              disabled={updateLeadStatus.isPending}
+                            >
+                              <PersonOffIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      ) : null}
                     </Stack>
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
@@ -1496,7 +1656,33 @@ export default function LeadsPage() {
                       </Stack>
                     )}
                   </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{lead.phone ?? '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {phoneCaptureLeadId === lead.id ? (
+                      <TextField
+                        size="small"
+                        autoFocus
+                        placeholder="(62) 99999-0000"
+                        value={phoneCaptureValue}
+                        onChange={(e) => setPhoneCaptureValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void handleSavePhoneInline(lead);
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            closePhoneCapture();
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!updateLeadPhone.isPending) closePhoneCapture();
+                        }}
+                        disabled={updateLeadPhone.isPending}
+                        sx={{ width: 160 }}
+                      />
+                    ) : (
+                      lead.phone ?? '—'
+                    )}
+                  </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {lead.valor_pedido ? (
                       <Chip

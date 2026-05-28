@@ -458,15 +458,12 @@ def marcar_whatsapp_iniciado():
     if not lead:
         return jsonify({"ok": True, "found": False, "token": token, "token_valido": True}), 200
 
-    # Invariante: whatsapp_iniciado exige telefone capturado. Se o webhook chega
-    # antes da captura do número, promove só pra `lead_pendente` — operador
-    # confirma quando tiver o telefone. Mantém o invariante mesmo nesta rota
-    # automática.
-    if lead.status != "compra_realizada":
-        if (lead.phone or "").strip():
-            lead.status = "whatsapp_iniciado"
-        elif lead.status == "pendente_whatsapp":
-            lead.status = "lead_pendente"
+    # Tabela = lei: whatsapp_iniciado só é alcançável via 1-clique do operador
+    # (que dispara CAPI Lead on-event). O webhook nunca confirma sozinho —
+    # promove no máximo pra `lead_pendente` (a fila de decisão). Com ou sem
+    # telefone, o operador é o ponto único de disparo do positivo.
+    if lead.status not in {"compra_realizada", "whatsapp_iniciado", "descarte"}:
+        lead.status = "lead_pendente"
         db.session.commit()
 
     return (

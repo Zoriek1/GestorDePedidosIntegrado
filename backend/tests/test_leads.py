@@ -354,10 +354,12 @@ def test_whatsapp_start_atualiza_status_sem_sobrescrever_compra_realizada(client
     assert data1["ok"] is True
     assert data1["found"] is True
     assert data1["token_valido"] is True
-    assert data1["status"] == "whatsapp_iniciado"
+    # Webhook nunca confirma direto — sempre promove pra lead_pendente; operador
+    # confirma manualmente com 1-clique (que dispara CAPI Lead on-event).
+    assert data1["status"] == "lead_pendente"
 
     session.refresh(lead)
-    assert lead.status == "whatsapp_iniciado"
+    assert lead.status == "lead_pendente"
 
     r2 = client.post("/api/leads/whatsapp-start", json={"token_rastreio": _VALID_TOKEN})
     assert r2.status_code == 200
@@ -393,7 +395,8 @@ def test_patch_phone_atualiza_lead_pendente_whatsapp(client, session):
 
     session.refresh(lead)
     assert lead.phone == "62988887777"
-    assert lead.status == "whatsapp_iniciado"
+    # Captura de telefone promove pra lead_pendente; operador confirma depois.
+    assert lead.status == "lead_pendente"
 
 
 def test_patch_phone_atualiza_lead_nao_entrou_em_contato(client, session):
@@ -419,7 +422,8 @@ def test_patch_phone_atualiza_lead_nao_entrou_em_contato(client, session):
 
     session.refresh(lead)
     assert lead.phone == "62977776666"
-    assert lead.status == "whatsapp_iniciado"
+    # nao_entrou_em_contato + telefone → lead_pendente (Trilha B reaberta).
+    assert lead.status == "lead_pendente"
 
 
 def test_patch_status_nao_entrou_em_contato(client, session):
@@ -517,7 +521,7 @@ def test_patch_phone_por_token_rastreio(client, session):
     assert r.status_code == 200
     session.refresh(lead)
     assert lead.phone == "62988887777"
-    assert lead.status == "whatsapp_iniciado"
+    assert lead.status == "lead_pendente"
 
 
 def test_patch_status_por_token_rastreio(client, session):
@@ -667,12 +671,14 @@ def test_patch_status_rejeita_evento_nao_whatsapp(client, session):
 
 
 def test_patch_status_descarte_a_partir_de_pendente(client, session):
+    # Descarte exige telefone (regra dura). Lead inicia com phone capturado.
     lead = Lead(
         dedup_key="lead-descarte-pend",
         event="whatsapp_click",
         token_rastreio=_VALID_TOKEN,
         token_valido=True,
         status="pendente_whatsapp",
+        phone="62988887777",
     )
     session.add(lead)
     session.commit()
@@ -685,6 +691,52 @@ def test_patch_status_descarte_a_partir_de_pendente(client, session):
     assert r.status_code == 200
     session.refresh(lead)
     assert lead.status == "descarte"
+
+
+def test_patch_status_descarte_sem_phone_retorna_422(client, session):
+    """Invariante: whatsapp_iniciado e descarte exigem telefone (422 telefone_obrigatorio)."""
+    lead = Lead(
+        dedup_key="lead-descarte-sem-fone",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "descarte"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 422
+    assert r.get_json()["error"] == "telefone_obrigatorio"
+    session.refresh(lead)
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_patch_status_whatsapp_iniciado_sem_phone_retorna_422(client, session):
+    """Confirmação 1-clique sem telefone também retorna 422."""
+    lead = Lead(
+        dedup_key="lead-confirm-sem-fone",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="lead_pendente",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "whatsapp_iniciado"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 422
+    assert r.get_json()["error"] == "telefone_obrigatorio"
 
 
 def test_patch_status_descarte_a_partir_de_whatsapp_iniciado_eh_proibido(client, session):
@@ -710,13 +762,18 @@ def test_patch_status_descarte_a_partir_de_whatsapp_iniciado_eh_proibido(client,
 
 
 def test_patch_status_nao_entrou_em_contato_para_descarte(client, session):
-    """Lead já marcado como 'não contatou' deve poder virar descarte (caso reclassificação)."""
+    """Lead já marcado como 'não contatou' deve poder virar descarte (caso reclassificação).
+
+    Descarte exige telefone — adicionar phone garante que a regra dura é
+    satisfeita (cenário onde reclassificamos um descarte antigo já com fone).
+    """
     lead = Lead(
         dedup_key="lead-noctc-to-descarte",
         event="whatsapp_click",
         token_rastreio=_VALID_TOKEN,
         token_valido=True,
         status="nao_entrou_em_contato",
+        phone="62977776666",
     )
     session.add(lead)
     session.commit()
@@ -801,6 +858,8 @@ def test_bulk_status_atualiza_e_pula_invalidos(client, session):
         token_rastreio=_VALID_TOKEN,
         token_valido=True,
         status="pendente_whatsapp",
+        # Descarte exige fone; lead já tem captura prévia.
+        phone="62988887777",
     )
     compra = Lead(
         dedup_key="bulk-compra",
@@ -1008,6 +1067,7 @@ def test_descarte_dispara_outbox_lead_disqualified(client, session, monkeypatch)
         token_rastreio=_VALID_TOKEN,
         token_valido=True,
         status="pendente_whatsapp",
+        phone="62988887777",
         meta_event_id_contact="c_x",
     )
     session.add(lead)
@@ -1048,6 +1108,7 @@ def test_descarte_idempotente_nao_duplica_outbox(client, session, monkeypatch):
         token_rastreio=_VALID_TOKEN,
         token_valido=True,
         status="pendente_whatsapp",
+        phone="62977776666",
         meta_event_id_contact="c_y",
     )
     session.add(lead)
@@ -1095,6 +1156,7 @@ def test_descarte_nao_dispara_outbox_com_funnel_desativado(client, session):
         token_rastreio=_VALID_TOKEN,
         token_valido=True,
         status="pendente_whatsapp",
+        phone="62966665555",
     )
     session.add(lead)
     session.commit()
@@ -1127,6 +1189,7 @@ def test_bulk_descarte_dispara_outbox_para_cada_lead(client, session, monkeypatc
             event="whatsapp_click",
             token_rastreio=_VALID_TOKEN if i == 0 else _SECOND_VALID_TOKEN if i == 1 else None,
             status="pendente_whatsapp",
+            phone=f"6299988{i:04d}",
             meta_event_id_contact=f"c_b{i}",
         )
         for i in range(3)
@@ -1197,8 +1260,14 @@ def test_bulk_disqualify_atualiza_phone_e_dispara_outbox(client, session, monkey
     assert len(payload["user_data"]["ph"][0]) == 64  # sha256 hex
 
 
-def test_bulk_disqualify_sem_phone_dispara_outbox_sem_ph(client, session, monkeypatch):
-    """Sem phone fornecido e lead sem phone prévio: outbox sem user_data.ph."""
+def test_bulk_disqualify_sem_phone_eh_pulado(client, session, monkeypatch):
+    """Sem phone fornecido E sem phone prévio: lead é skipped (regra dura).
+
+    Substitui o teste antigo `test_bulk_disqualify_sem_phone_dispara_outbox_sem_ph`,
+    que era válido no modelo antigo (descarte sem fone era permitido). Agora a
+    invariante "descarte exige telefone" se aplica também ao bulk: sem nenhum
+    telefone (do update ou pré-existente), o lead é pulado e nenhum outbox sai.
+    """
     monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
     monkeypatch.setenv("META_PIXEL_ID", "1")
     monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
@@ -1221,10 +1290,13 @@ def test_bulk_disqualify_sem_phone_dispara_outbox_sem_ph(client, session, monkey
         headers=_ADMIN_AUTH,
     )
     assert r.status_code == 200
-    assert r.get_json()["updated"] == 1
+    data = r.get_json()
+    assert data["updated"] == 0
+    assert data["skipped"] == 1
+    assert data["skipped_ids"] == [lead.id]
 
     session.refresh(lead)
-    assert lead.status == "descarte"
+    assert lead.status == "pendente_whatsapp"
     assert lead.phone is None
 
     rows = (
@@ -1232,9 +1304,7 @@ def test_bulk_disqualify_sem_phone_dispara_outbox_sem_ph(client, session, monkey
         .filter_by(lead_id=lead.id, funnel_stage="disqualified")
         .all()
     )
-    assert len(rows) == 1
-    payload = json.loads(rows[0].payload_json)
-    assert "ph" not in payload["user_data"]
+    assert rows == []
 
 
 def test_bulk_disqualify_phone_invalido_pula_lead(client, session):
@@ -1281,6 +1351,8 @@ def test_bulk_disqualify_pula_whatsapp_iniciado(client, session):
         token_rastreio=_SECOND_VALID_TOKEN,
         token_valido=True,
         status="pendente_whatsapp",
+        # Descarte exige fone; lead já tem captura prévia.
+        phone="62977776666",
     )
     session.add_all([confirmado, pendente])
     session.commit()

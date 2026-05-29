@@ -103,7 +103,7 @@ Funil de 3 eventos enviados pra Meta Conversions API conforme o lead evolui de c
 T0  POST /api/leads (event=whatsapp_click)
     │  Lead criado, status="pendente_whatsapp"
     │  meta_event_id_contact obrigatório no payload (vem do Pixel)
-    └→ [META] Contact event — value=1, user_data sem phone (lead ainda não mandou msg)
+    └→ [META] Contact event — sem value/currency, user_data sem phone (lead ainda não mandou msg)
 
 T1  POST /api/leads/whatsapp-start (bot detecta "[Cod: XXX]" na mensagem)
     │  status muda para "whatsapp_iniciado"
@@ -112,13 +112,13 @@ T1  POST /api/leads/whatsapp-start (bot detecta "[Cod: XXX]" na mensagem)
 T1.5 PATCH /api/leads/<id>/phone (operador registra telefone)
     │  status confirmado em "whatsapp_iniciado"
     │  meta_event_id_lead gerado
-    └→ [META] Lead event — value=15, user_data.ph com hash do telefone
+    └→ [META] Lead event — sem value/currency, user_data.ph com hash do telefone
 
 T2  PATCH /api/leads/bulk/disqualify (operador marca via modal em lote)
     │  Transição válida: pendente_whatsapp ou nao_entrou_em_contato → descarte
     │  whatsapp_iniciado NÃO é elegível (terminal)
     │  Operador pode preencher phone no modal — gravado silencioso (sem disparar Lead)
-    └→ [META] LeadDisqualified event — value=0, user_data.ph se houver phone
+    └→ [META] LeadDisqualified event — sem value/currency, user_data.ph se houver phone
 
 T3 (alt) Compra realizada (via fluxo de pedido — order_commission_lifecycle)
     └→ [META] Purchase event (outbox separado: MetaCapiOutbox)
@@ -158,9 +158,11 @@ Por isso `whatsapp_iniciado` (Lead Confirmado) é **terminal para mutações man
 
 O modal `PATCH /api/leads/bulk/disqualify` é a chance do operador (que conhece o cliente por outro canal — Instagram DM, recomendação, CRM externo) enriquecer o sinal. O endpoint atualiza `lead.phone` **silenciosamente** (sem disparar evento `Lead`!) e em seguida cria o outbox row para `LeadDisqualified`, que lê `lead.phone` fresco do DB e inclui o hash em `user_data.ph`.
 
-### Por que `value=0` no LeadDisqualified
+### Por que Contact, Lead e LeadDisqualified não enviam `value`/`currency`
 
-A Meta Conversions API oficialmente exige `value >= 0` em `custom_data`. Valores negativos são silenciosamente coagidos a 0 ou rejeitados. Por isso o `LeadDisqualified` carrega `value=0` — o sinal é qualitativo (presença do evento), não quantitativo.
+Nenhum dos três eventos de funil envia `value`/`currency` em `custom_data` (só `lead_id`). São sinais **qualitativos** — o valor é a presença do evento + os dados de matching em `user_data` (`ph`/`fbc`/`fbp`), não um preço.
+
+A Meta sinalizava preço de baixa qualidade nesses eventos: o **Contact** divergia do Pixel da LP (que parou de enviar preço), e o **Lead** mandava preço **por ad set** (via `utm_content`) — flagado como "todos o mesmo preço". O antigo mapa de valor por ad set (`META_CAPI_VALUE_MAP_ENABLED` + `meta_capi_value_resolver` + `config/meta_capi_value_map.json`) foi **removido**. O único evento com preço real continua sendo o `Purchase` (compra de verdade no checkout).
 
 Como usar no Ads Manager:
 1. Events Manager → Custom Audiences → criar audiência "Pessoas que dispararam LeadDisqualified nos últimos 90 dias"

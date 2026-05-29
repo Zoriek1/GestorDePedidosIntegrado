@@ -137,7 +137,6 @@ class TestMetaCapiLeadFunnelPayload:
                 "META_CAPI_USE_GATEWAY": "false",
                 # Flags de feature OFF para o teste assumir valores estáticos
                 # (em prod o .env liga essas flags, mas o teste cobre o caminho default).
-                "META_CAPI_VALUE_MAP_ENABLED": "false",
                 "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
             },
         ):
@@ -167,8 +166,8 @@ class TestMetaCapiLeadFunnelPayload:
         assert ce["event_name"] == "Contact"
         assert ce["event_id"] == "contact_st_1"
         assert ce["action_source"] == "website"
-        assert ce["custom_data"]["value"] == 1.0
-        assert ce["custom_data"]["currency"] == "BRL"
+        assert "value" not in ce["custom_data"]
+        assert "currency" not in ce["custom_data"]
         assert ce["custom_data"]["lead_id"] == "7"
         assert "ph" in ce["user_data"]
 
@@ -177,8 +176,8 @@ class TestMetaCapiLeadFunnelPayload:
         le = service.build_lead_event_from_lead(lead)
         assert le["event_name"] == "Lead"
         assert le["event_id"] == "lead_st_2"
-        assert le["custom_data"]["value"] == 15.0
-        assert le["custom_data"]["currency"] == "BRL"
+        assert "value" not in le["custom_data"]
+        assert "currency" not in le["custom_data"]
         assert "ph" in le["user_data"]
 
 
@@ -389,7 +388,6 @@ class TestMetaCapiPurchaseEnrichment:
                 "META_CAPI_USE_GATEWAY": "false",
                 # Flags OFF: teste cobre o caminho v1 do external_id e value estático.
                 "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
-                "META_CAPI_VALUE_MAP_ENABLED": "false",
                 "META_CAPI_SKIP_INVALID_PURCHASE": "false",
             },
         ):
@@ -702,7 +700,6 @@ class TestMetaCapiOutboxRepository:
                 # comportamento default para asserts determinísticos.
                 "META_CAPI_SKIP_INVALID_PURCHASE": "false",
                 "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
-                "META_CAPI_VALUE_MAP_ENABLED": "false",
             },
         ):
             from app import create_app, db
@@ -1191,95 +1188,6 @@ class TestPurchaseSkipInvalidValue:
             assert event is not None
             # value sai como veio (0.0) — flag-off não corrige nada
             assert event["custom_data"]["value"] == 0.0
-
-
-class TestValueResolver:
-    """resolve_value busca por utm_content, com fallback para default."""
-
-    def setup_method(self, _method):
-        from app.utils.meta_capi_value_resolver import reset_cache_for_tests
-
-        reset_cache_for_tests()
-
-    def teardown_method(self, _method):
-        from app.utils.meta_capi_value_resolver import reset_cache_for_tests
-
-        reset_cache_for_tests()
-
-    def test_known_utm_returns_mapped_value(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="CARRO|HIGH-TCK", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 25.0
-        assert resolve_value(lead, "lead") == 125.0
-
-    def test_utm_content_is_case_insensitive(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="carro|low-tck", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 8.0
-
-    def test_unknown_utm_uses_default(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="UNKNOWN|UTM", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 10.0
-        assert resolve_value(lead, "lead") == 50.0
-
-    def test_missing_utm_uses_default(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content=None, utm_campaign=None)
-        assert resolve_value(lead, "contact") == 10.0
-
-    def test_falls_back_to_utm_campaign(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content=None, utm_campaign="URGENCIA|DATAS")
-        assert resolve_value(lead, "lead") == 75.0
-
-    def test_strips_spaces_around_pipe(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="CARRO | LOW-TCK", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 8.0
-        assert resolve_value(lead, "lead") == 40.0
-
-    def test_strips_trailing_numeric_adgroup_id(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="CARRO|LOW-TCK|120247480286290017", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 8.0
-
-    def test_strips_spaces_and_adgroup_id_combined(self):
-        # Formato real vindo do Meta Ads (URL-decoded de utm_content)
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(
-            utm_content="CARRO | LOW-TCK|120247480286290017", utm_campaign=None
-        )
-        assert resolve_value(lead, "contact") == 8.0
-        assert resolve_value(lead, "lead") == 40.0
-
-    def test_strips_spaces_and_adgroup_id_aniversario(self):
-        # ANIVERSARIO|DATAS tem valores distintos do default (12/60 vs 10/50),
-        # então o teste de fato valida a normalização (não passa por coincidência).
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(
-            utm_content="ANIVERSARIO | DATAS|987654321", utm_campaign=None
-        )
-        assert resolve_value(lead, "contact") == 12.0
-        assert resolve_value(lead, "lead") == 60.0
-
-    def test_preserves_legit_multi_segment_key(self):
-        # QUAL|B|LOW-TCK tem 3 segmentos legítimos (sem ID numérico) — não deve
-        # ser truncado pra "QUAL|B".
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="QUAL|B|LOW-TCK", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 8.0
-        assert resolve_value(lead, "lead") == 40.0
 
 
 class TestExternalIdsArray:

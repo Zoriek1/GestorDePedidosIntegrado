@@ -618,8 +618,13 @@ class MetaConversionsApiService:
 
     def build_contact_event_from_lead(self, lead) -> Dict:
         """
-        Evento Contact (clique WhatsApp na landing). value=1, currency BRL.
+        Evento Contact (clique WhatsApp na landing).
         event_id deve ser o mesmo enviado pelo Pixel (meta_event_id_contact).
+
+        value/currency omitidos: o Pixel da LP não envia preço no Contact, então
+        a CAPI também não envia — evita divergência de preço Pixel × CAPI que a
+        Meta sinalizava (~4% dos Contact). O sinal é a presença do evento + dados
+        de matching (ph/fbc/fbp) no user_data, não um valor monetário.
         """
         from app.models.lead import Lead
 
@@ -644,12 +649,6 @@ class MetaConversionsApiService:
             except ValueError:
                 pass
 
-        if _flag("META_CAPI_VALUE_MAP_ENABLED", default=False):
-            from app.utils.meta_capi_value_resolver import resolve_value
-            contact_value = resolve_value(lead, "contact")
-        else:
-            contact_value = 1.0
-
         event = {
             "event_name": "Contact",
             "event_time": event_time,
@@ -658,8 +657,6 @@ class MetaConversionsApiService:
             "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
             "user_data": user_data,
             "custom_data": {
-                "value": contact_value,
-                "currency": "BRL",
                 "lead_id": str(lead.id),
             },
         }
@@ -667,8 +664,12 @@ class MetaConversionsApiService:
 
     def build_lead_event_from_lead(self, lead, *, event_time_override: Optional[int] = None) -> Dict:
         """
-        Evento Lead (telefone salvo). value=15, currency BRL.
-        event_id em meta_event_id_lead (novo em relação ao Contact).
+        Evento Lead (telefone salvo). event_id em meta_event_id_lead.
+
+        value/currency omitidos: o Lead é CAPI-only (sem Pixel na LP) e o preço
+        antes vinha por ad set (utm_content) — a Meta sinalizava isso como
+        pricing de baixa qualidade ("todos o mesmo preço"). O sinal é a presença
+        do evento + ph (hash do telefone) no user_data, não um valor monetário.
         """
         from app.models.lead import Lead
 
@@ -700,12 +701,6 @@ class MetaConversionsApiService:
         user_data = self._lead_user_data_base(lead, event_type="Lead")
         user_data["ph"] = [phone_hash]
 
-        if _flag("META_CAPI_VALUE_MAP_ENABLED", default=False):
-            from app.utils.meta_capi_value_resolver import resolve_value
-            lead_value = resolve_value(lead, "lead")
-        else:
-            lead_value = 15.0
-
         event = {
             "event_name": "Lead",
             "event_time": event_time,
@@ -714,8 +709,6 @@ class MetaConversionsApiService:
             "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
             "user_data": user_data,
             "custom_data": {
-                "value": lead_value,
-                "currency": "BRL",
                 "lead_id": str(lead.id),
             },
         }

@@ -41,6 +41,21 @@ NUVEMSHOP_USER_AGENT=Gestor Pedidos (contato@seudominio.com)   # OBRIGATÓRIO pe
 NUVEMSHOP_PUBLIC_BASE_URL=https://gestaopedidos.planteumaflor.online
 ```
 
+## Acompanhamento público do pedido
+
+Página pública (sem login) onde o cliente acompanha o status do pedido: `/acompanhar/<token>`.
+
+- O `token` é assinado com HMAC + timestamp via `itsdangerous` ([services/track_token.py](../backend/app/services/track_token.py)) — derivado do `id`, **não** enumerável e **não** forjável sem a `SECRET_KEY`. Sem coluna/migration nova.
+- Endpoint read-only `GET /api/pedidos/track/<token>` ([routes/pedidos.py](../backend/app/routes/pedidos.py)) devolve só campos públicos via `Pedido.to_public_dict()` (whitelist: status amigável, 1º nome do destinatário, produto, data/janela). **Nunca** telefone, endereço, cartinha, valores ou `fbc`/`fbp`. 404 genérico para token inválido/expirado ou pedido oculto/deletado.
+- O link é gerado na criação do pedido (retornado em `track_url`) e oferecido para envio ao remetente via WhatsApp na tela de Novo Pedido.
+
+```env
+PUBLIC_BASE_URL=https://gestaopedidos.planteumaflor.online   # base do link; cai em NUVEMSHOP_PUBLIC_BASE_URL se vazio
+TRACK_TOKEN_MAX_AGE_DAYS=60                                   # validade do token (default 60); expirado → 404
+```
+
+> Revogar todos os links de uma vez: trocar o sufixo de `_SALT` (`pedido-track-v1` → `v2`) em [track_token.py](../backend/app/services/track_token.py).
+
 ## UTMify
 
 Atribuição de receita de vendas manuais/WhatsApp. Quando lead vira pedido pago, [services/utmify_api.py](../backend/app/services/utmify_api.py) chama o endpoint da UTMify com payload de order.

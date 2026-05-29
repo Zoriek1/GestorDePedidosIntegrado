@@ -205,7 +205,7 @@ export function useCreatePedido() {
   return useMutation({
     mutationFn: async (data: CreatePedidoPayload) => {
       if (isOnline) {
-        const response = await apiRequest<{ pedido_id: number; pedido: Pedido }>('/pedidos', {
+        const response = await apiRequest<{ pedido_id: number; pedido: Pedido; track_url?: string }>('/pedidos', {
           method: 'POST',
           body: JSON.stringify({ ...data, clientTimestamp: Date.now() }),
           headers: { 'Content-Type': 'application/json' }

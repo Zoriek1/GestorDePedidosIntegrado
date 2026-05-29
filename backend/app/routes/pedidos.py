@@ -31,6 +31,7 @@ from app.services.order_commission_lifecycle import (
     apply_commission_lifecycle,
     snapshot_commission_fields,
 )
+from app.services.track_token import make_track_token, parse_track_token
 from app.utils.destructive_action_guard import (
     ensure_backup_before_destructive_action,
 )
@@ -145,6 +146,7 @@ def _link_lead_by_whatsapp_code(
 
 
 @pedidos_bp.route("", methods=["GET"])
+@requires_edit_auth
 def listar_pedidos():
     """Lista pedidos com filtros opcionais"""
     try:
@@ -221,6 +223,7 @@ def listar_pedidos():
 
 
 @pedidos_bp.route("/<int:pedido_id>", methods=["GET"])
+@requires_edit_auth
 def obter_pedido(pedido_id):
     """Obtém pedido por ID"""
     try:
@@ -231,6 +234,22 @@ def obter_pedido(pedido_id):
         return success_response({"pedido": pedido.to_dict()})
     except Exception as e:
         return error_response(f"Erro ao obter pedido: {str(e)}", 500)
+
+
+@pedidos_bp.route("/track/<token>", methods=["GET"])
+def acompanhar_pedido(token):
+    """Status público do pedido via token assinado. SEM auth (rota pública por design).
+
+    O converter <int:pedido_id> não casa com "track/<token>", então não há conflito de
+    rotas. 404 sempre genérico para não revelar se o id existe.
+    """
+    pedido_id = parse_track_token(token)
+    if pedido_id is None:
+        return error_response("Pedido não encontrado", 404)
+    pedido = pedido_repo.get_by_id(pedido_id)
+    if not pedido or pedido.oculto or pedido.deleted_at:
+        return error_response("Pedido não encontrado", 404)
+    return success_response({"pedido": pedido.to_public_dict()})
 
 
 @pedidos_bp.route("/<int:pedido_id>/status", methods=["PUT", "POST"])
@@ -782,6 +801,7 @@ def batch_recalc_taxa():
 
 
 @pedidos_bp.route("/daily-freight", methods=["GET"])
+@requires_edit_auth
 def daily_freight():
     """Retorna lista de entregas e soma de taxa_entrega para uma data"""
     try:
@@ -819,6 +839,7 @@ def daily_freight():
 
 
 @pedidos_bp.route("/freight-by-source", methods=["GET"])
+@requires_edit_auth
 def freight_by_source():
     """Média/total de frete agrupada por fonte para um intervalo de datas.
 
@@ -907,9 +928,7 @@ def freight_by_source():
             }
         )
     except Exception as e:
-        return error_response(
-            "Erro ao calcular frete por fonte", 500, details={"error": str(e)}
-        )
+        return error_response("Erro ao calcular frete por fonte", 500, details={"error": str(e)})
 
 
 @pedidos_bp.route("", methods=["POST"])
@@ -1214,8 +1233,22 @@ def criar_pedido():
         except Exception:
             pass  # Best-effort: não falhar criação do pedido
 
+        # Link público de acompanhamento (token assinado). Base via env, sem hardcode.
+        import os as _os
+
+        _base = (
+            _os.environ.get("PUBLIC_BASE_URL")
+            or _os.environ.get("NUVEMSHOP_PUBLIC_BASE_URL")
+            or "https://gestaopedidos.planteumaflor.online"
+        )
+        track_url = f"{_base.rstrip('/')}/acompanhar/{make_track_token(pedido.id)}"
+
         return success_response(
-            {"pedido_id": pedido.id, "pedido": pedido.to_dict()},
+            {
+                "pedido_id": pedido.id,
+                "pedido": pedido.to_dict(),
+                "track_url": track_url,
+            },
             message="Pedido criado com sucesso",
             status_code=201,
         )
@@ -1443,6 +1476,7 @@ def atualizar_pedido(pedido_id):
 
 
 @pedidos_bp.route("/por-data", methods=["GET"])
+@requires_edit_auth
 def get_pedidos_por_data():
     """Retorna contagem de pedidos por horário para uma data específica"""
     try:

@@ -188,6 +188,7 @@ def listar_clientes():
 
 
 @clientes_bp.route("/search", methods=["GET"])
+@requires_any_role("admin", "atendente", "vendedor")
 def buscar_clientes_autocomplete():
     """
     Busca rápida para autocomplete
@@ -222,6 +223,7 @@ def buscar_clientes_autocomplete():
 
 
 @clientes_bp.route("/<int:cliente_id>", methods=["GET"])
+@requires_any_role("admin", "atendente", "vendedor")
 def obter_cliente(cliente_id):
     """
     Obtém cliente específico
@@ -385,6 +387,7 @@ def deletar_cliente(cliente_id):
 
 
 @clientes_bp.route("/stats", methods=["GET"])
+@requires_any_role("admin", "atendente", "vendedor")
 def obter_estatisticas():
     """
     Retorna estatísticas gerais dos clientes
@@ -401,6 +404,7 @@ def obter_estatisticas():
 
 
 @clientes_bp.route("/<int:cliente_id>/ltv", methods=["GET"])
+@requires_any_role("admin", "atendente", "vendedor")
 def obter_ltv_cliente(cliente_id):
     """
     Calcula e retorna LTV do cliente
@@ -435,6 +439,7 @@ def obter_ltv_cliente(cliente_id):
 
 
 @clientes_bp.route("/<int:cliente_id>/pedidos", methods=["GET"])
+@requires_any_role("admin", "atendente", "vendedor")
 def obter_pedidos_cliente(cliente_id):
     """
     Retorna histórico de pedidos do cliente
@@ -473,6 +478,7 @@ def obter_pedidos_cliente(cliente_id):
 
 
 @clientes_bp.route("/<int:cliente_id>/enderecos", methods=["GET"])
+@requires_any_role("admin", "atendente", "vendedor")
 def listar_enderecos_cliente(cliente_id):
     """
     Lista endereços do cliente

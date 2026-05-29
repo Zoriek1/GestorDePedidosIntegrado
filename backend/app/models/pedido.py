@@ -311,6 +311,35 @@ class Pedido(db.Model):
             ),
         }
 
+    # Mapa status interno -> rótulo amigável ao cliente final
+    _STATUS_PUBLICO = {
+        "agendado": "Pedido confirmado",
+        "em_producao": "Em preparação",
+        "pronto_entrega": "Pronto",
+        "em_rota": "Saiu para entrega",
+        "pronto_retirada": "Pronto para retirada",
+        "concluido": "Entregue",
+    }
+
+    def _primeiro_nome(self, nome):
+        return (nome or "").strip().split(" ")[0] if nome else ""
+
+    def to_public_dict(self) -> dict:
+        """Serializer SEGURO para o cliente final (página de acompanhamento).
+
+        Whitelist estrita: NUNCA incluir id, telefone, endereço, cartinha (mensagem),
+        valores, taxas, frete, ids de vendedor/entregador ou parâmetros Meta (fbc/fbp).
+        """
+        return {
+            "status": Pedido._STATUS_PUBLICO.get(self.status, "Em andamento"),
+            "status_key": self.status or "agendado",  # usado pelo stepper do front
+            "tipo_pedido": self.tipo_pedido or "Entrega",
+            "destinatario": self._primeiro_nome(self.destinatario),  # só 1º nome
+            "produto": self.produto or "",
+            "dia_entrega": self.dia_entrega.strftime("%d/%m/%Y") if self.dia_entrega else "",
+            "janela": self.horario or "",
+        }
+
     def total_pago(self) -> float:
         """
         Retorna valor final do pedido em float

@@ -612,30 +612,14 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
         # Registrar tempo de início para medir duração da requisição
         g.start_time = datetime.now()
 
-        # Lista de paths públicos (não precisam autenticação)
-        # Esses arquivos são necessários para o PWA funcionar corretamente
-        public_paths = [
-            "/api/health",
-            "/api/auth",  # Endpoints de autenticação são públicos
-            "/manifest.json",
-            "/sw.js",
-            "/favicon.ico",
-        ]
-
-        # Verificar se o path começa com algum path público
-        any(request.path == path or request.path.startswith(path + "/") for path in public_paths)
-
-        # Assets também são públicos (ícones, CSS, JS, imagens)
-        # Esses arquivos são necessários para o frontend funcionar
-        if request.path.startswith("/assets/"):
-            pass
-
-        # Rotas de API GET são públicas (visualização livre)
-        if request.path.startswith("/api/") and request.method == "GET":
-            pass
-
-        # NÃO aplicar autenticação global - apenas rotas específicas usarão @requires_edit_auth
-        # Isso permite visualização livre mas protege criação/deleção
+        # IMPORTANTE: NÃO há autenticação global aqui.
+        # A proteção é feita por decorator em cada rota (@requires_edit_auth,
+        # @requires_any_role, @require_auth). GETs que devolvem dados internos/PII
+        # são gateados individualmente nas blueprints (pedidos, clientes, fontes…).
+        # Rotas públicas por design (sem decorator): /api/health, /api/auth/*,
+        # /api/pedidos/track/<token> (acompanhamento do cliente via token assinado),
+        # além de assets estáticos e do shell do PWA.
+        # Este before_request só aplica rate limiting.
 
         # Rate limiting (aplicado a todas as rotas, exceto assets estáticos)
         if enable_rate_limit and not request.path.startswith("/assets/"):

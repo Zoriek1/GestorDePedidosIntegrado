@@ -433,13 +433,31 @@ export function OrderCard({
           </Stack>
           
           <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} flexWrap="wrap">
-            <Typography variant="body2" color="text.secondary">
-              {formatDateBR(pedido.dia_entrega)} às {pedido.horario}
-            </Typography>
+            {pedido.slot_inicio ? (
+              <Stack direction="row" alignItems="baseline" spacing={1}>
+                <Typography
+                  variant="body1"
+                  component="span"
+                  fontWeight="bold"
+                  color={pedido.is_expressa ? 'error.main' : 'text.primary'}
+                >
+                  {formatDateBR(pedido.dia_entrega)} às {pedido.slot_inicio}
+                </Typography>
+                {pedido.slot_deadline && (
+                  <Typography variant="caption" color="text.secondary">
+                    até {pedido.slot_deadline}
+                  </Typography>
+                )}
+              </Stack>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                {formatDateBR(pedido.dia_entrega)} às {pedido.horario}
+              </Typography>
+            )}
             {(pedido.fonte_pedido_nome || pedido.fonte_pedido) && (
-              <Chip 
+              <Chip
                 label={sourceLabel}
-                size="small" 
+                size="small"
                 variant="outlined"
               />
             )}

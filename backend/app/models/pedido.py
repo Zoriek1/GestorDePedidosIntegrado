@@ -46,6 +46,23 @@ class Pedido(db.Model):
         nullable=False,
         comment="Horário de entrega (HH:MM ou HH:MM - HH:MM)",
     )
+    slot_inicio = db.Column(
+        db.Time,
+        nullable=True,
+        comment="Slot de entrega alocado (HH:00). Janela de 1h. Pedidos do site.",
+    )
+    slot_deadline = db.Column(
+        db.Time,
+        nullable=True,
+        comment="Horário-limite que o cliente espera (Expressa: paid_at+1h; padrão: fim do horário).",
+    )
+    is_expressa = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.text("FALSE"),
+        comment="Frete expresso (~1h).",
+    )
 
     # Step 3 - Logística (campos separados de endereço)
     cep = db.Column(db.String(10), nullable=True, comment="CEP")
@@ -233,6 +250,9 @@ class Pedido(db.Model):
             "valor": self.valor or "",
             "dia_entrega": self.dia_entrega.strftime("%Y-%m-%d") if self.dia_entrega else "",
             "horario": self.horario or "",
+            "slot_inicio": self.slot_inicio.strftime("%H:%M") if self.slot_inicio else None,
+            "slot_deadline": self.slot_deadline.strftime("%H:%M") if self.slot_deadline else None,
+            "is_expressa": bool(self.is_expressa),
             # Step 3 - Endereço
             "cep": self.cep or "",
             "rua": self.rua or "",

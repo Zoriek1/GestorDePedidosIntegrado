@@ -23,6 +23,9 @@ export interface Pedido {
   valor?: string;
   dia_entrega: string; // YYYY-MM-DD
   horario: string;
+  slot_inicio?: string | null; // "HH:MM"
+  slot_deadline?: string | null; // "HH:MM"
+  is_expressa?: boolean;
   cep?: string;
   rua?: string;
   numero?: string;

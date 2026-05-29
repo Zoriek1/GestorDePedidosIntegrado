@@ -3,6 +3,7 @@
 Modelo de dados para Pedidos - PWA v3.0
 Model completo com todos os campos do formulário de 4 steps
 """
+
 from datetime import datetime, timedelta
 
 try:
@@ -283,12 +284,16 @@ class Pedido(db.Model):
             "cliente_id": self.cliente_id,
             "vendedor_id": self.vendedor_id,
             "entregador_id": self.entregador_id,
-            "delivery_assigned_at": self.delivery_assigned_at.strftime("%Y-%m-%d %H:%M:%S")
-            if self.delivery_assigned_at
-            else None,
-            "delivery_completed_at": self.delivery_completed_at.strftime("%Y-%m-%d %H:%M:%S")
-            if self.delivery_completed_at
-            else None,
+            "delivery_assigned_at": (
+                self.delivery_assigned_at.strftime("%Y-%m-%d %H:%M:%S")
+                if self.delivery_assigned_at
+                else None
+            ),
+            "delivery_completed_at": (
+                self.delivery_completed_at.strftime("%Y-%m-%d %H:%M:%S")
+                if self.delivery_completed_at
+                else None
+            ),
             "distancia_km": self.distancia_km,
             "taxa_entrega": self.taxa_entrega,
             # Frete (vindo da Order API)
@@ -301,9 +306,9 @@ class Pedido(db.Model):
             "fbp": self.fbp or "",
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else "",
-            "deleted_at": self.deleted_at.strftime("%Y-%m-%d %H:%M:%S")
-            if self.deleted_at
-            else None,
+            "deleted_at": (
+                self.deleted_at.strftime("%Y-%m-%d %H:%M:%S") if self.deleted_at else None
+            ),
         }
 
     def total_pago(self) -> float:

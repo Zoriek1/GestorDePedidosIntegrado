@@ -15,8 +15,9 @@ Deadline:
   - Expressa mesmo dia: paid_at + 1h truncado a minutos.
   - Caso contrário:    fim da janela do cliente (ex: 18:00 de "Tarde") ou DEFAULT_DAY_END.
 """
-from datetime import date, datetime, time, timedelta
+
 import re
+from datetime import date, datetime, time, timedelta
 from typing import Dict, Optional, Tuple
 
 from app import db
@@ -71,7 +72,7 @@ def build_occupancy(dia_entrega: date) -> Dict[time, int]:
         .group_by(Pedido.slot_inicio)
         .all()
     )
-    return {slot: count for slot, count in rows}
+    return dict(rows)
 
 
 def _compute_deadline(

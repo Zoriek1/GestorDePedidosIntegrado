@@ -228,9 +228,7 @@ class NuvemshopOrderImporter:
         clean = [p for p in parts if p]
         return " - ".join(clean) if clean else None
 
-    def _apply_delivery_slot(
-        self, pedido_data: Dict[str, Any], order: Dict[str, Any]
-    ) -> None:
+    def _apply_delivery_slot(self, pedido_data: Dict[str, Any], order: Dict[str, Any]) -> None:
         """
         Calcula slot_inicio e slot_deadline para pedidos importados do site.
         Idempotente: ignora silenciosamente se faltar dia_entrega.

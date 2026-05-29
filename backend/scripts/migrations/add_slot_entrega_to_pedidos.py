@@ -12,6 +12,7 @@ Idempotente — só adiciona o que ainda não existe. Detecta postgres/sqlite.
 Uso (VPS):
     docker compose exec backend python scripts/migrations/add_slot_entrega_to_pedidos.py
 """
+
 from app import create_app, db
 
 

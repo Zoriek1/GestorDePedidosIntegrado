@@ -10,6 +10,7 @@ Inclui testes para:
 - Extração de frete
 - Proteção de overrides manuais
 """
+
 import hashlib
 import hmac
 from datetime import date

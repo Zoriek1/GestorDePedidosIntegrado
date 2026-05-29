@@ -579,12 +579,24 @@ def _is_pickup_shipping_text(text: str) -> bool:
 
 
 _STREET_PREFIXES = (
-    "rua ", "r. ", "r ",
-    "avenida ", "av. ", "av ",
-    "alameda ", "al. ", "al ",
-    "travessa ", "tv. ", "tv ",
-    "praca ", "pca. ", "pca ",
-    "rodovia ", "rod. ", "rod ",
+    "rua ",
+    "r. ",
+    "r ",
+    "avenida ",
+    "av. ",
+    "av ",
+    "alameda ",
+    "al. ",
+    "al ",
+    "travessa ",
+    "tv. ",
+    "tv ",
+    "praca ",
+    "pca. ",
+    "pca ",
+    "rodovia ",
+    "rod. ",
+    "rod ",
 )
 
 
@@ -597,7 +609,7 @@ def _normalize_street(value: str) -> str:
     lowered = ascii_val.lower().strip()
     for prefix in _STREET_PREFIXES:
         if lowered.startswith(prefix):
-            lowered = lowered[len(prefix):]
+            lowered = lowered[len(prefix) :]
             break
     lowered = re.sub(r"[^\w\s]", " ", lowered)
     return re.sub(r"\s+", " ", lowered).strip()
@@ -699,8 +711,7 @@ def _is_pickup_order(order: Dict[str, Any], shipping_option_text: str) -> bool:
     # billing_address por estar cadastrado, mas o pedido em si não envia
     # nada.
     has_real_shipping_address = bool(
-        _safe_str(shipping_address.get("zipcode"))
-        or _safe_str(shipping_address.get("address"))
+        _safe_str(shipping_address.get("zipcode")) or _safe_str(shipping_address.get("address"))
     )
     shipping_lines = order.get("shipping_lines")
     has_shipping_lines = bool(shipping_lines) if isinstance(shipping_lines, list) else False

@@ -5,6 +5,7 @@ Testes do alocador de slots de entrega.
 Esses testes não tocam o banco — passam a `occupancy` direto pra `allocate_slot`,
 que aceita o parâmetro pra facilitar testes determinísticos.
 """
+
 from datetime import date, datetime, time
 
 from app.services.delivery_slot_allocator import (
@@ -13,7 +14,6 @@ from app.services.delivery_slot_allocator import (
     allocate_slot,
     parse_customer_window,
 )
-
 
 # ---------------------------------------------------------------------------
 # parse_customer_window

@@ -224,6 +224,20 @@ export function useCreatePedido() {
   });
 }
 
+/** Busca o link público de acompanhamento de um pedido já existente (token assinado server-side). */
+export function useTrackLink() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useMutation({
+    mutationFn: async (id: number): Promise<string> => {
+      const response = await apiRequest<{ track_url: string }>(`/pedidos/${id}/track-link`);
+      if (!response.ok) throw new Error(response.message);
+      return response.data.track_url;
+    }
+  });
+}
+
 export function useUpdatePedido() {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);

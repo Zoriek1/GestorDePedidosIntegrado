@@ -135,6 +135,27 @@ def test_track_endpoint_oculto_ou_deletado_404(client, session, app):
     assert client.get(f"/api/pedidos/track/{token_deletado}").status_code == 404
 
 
+def test_track_link_endpoint_exige_auth(client, session):
+    pedido = _novo_pedido(session)
+
+    assert client.get(f"/api/pedidos/{pedido.id}/track-link").status_code == 401
+
+    res = client.get(f"/api/pedidos/{pedido.id}/track-link", headers=_ADMIN_AUTH)
+    assert res.status_code == 200
+    track_url = res.get_json()["track_url"]
+    assert "/acompanhar/" in track_url
+
+    # O token gerado deve resolver de volta para o mesmo pedido no endpoint público.
+    token = track_url.rsplit("/acompanhar/", 1)[1]
+    pub = client.get(f"/api/pedidos/track/{token}")
+    assert pub.status_code == 200
+    assert pub.get_json()["pedido"]["produto"] == pedido.produto
+
+
+def test_track_link_endpoint_pedido_inexistente_404(client):
+    assert client.get("/api/pedidos/999999/track-link", headers=_ADMIN_AUTH).status_code == 404
+
+
 def test_criar_pedido_retorna_track_url(client):
     payload = {
         "cliente": "Cliente Teste",

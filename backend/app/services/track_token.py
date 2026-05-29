@@ -46,6 +46,16 @@ def make_track_token(pedido_id: int) -> str:
     return _serializer().dumps({"pid": int(pedido_id)})
 
 
+def build_track_url(pedido_id: int) -> str:
+    """Monta a URL pública de acompanhamento (base via env, sem hardcode)."""
+    base = (
+        os.environ.get("PUBLIC_BASE_URL")
+        or os.environ.get("NUVEMSHOP_PUBLIC_BASE_URL")
+        or "https://gestaopedidos.planteumaflor.online"
+    )
+    return f"{base.rstrip('/')}/acompanhar/{make_track_token(pedido_id)}"
+
+
 def parse_track_token(token: str) -> int | None:
     """Retorna o pedido_id, ou None se o token for inválido OU expirado (> max_age)."""
     try:

@@ -46,7 +46,7 @@ import {
   getEnderecoCompleto,
   buildEncaminharMensagem,
 } from './OrderCardHelpers';
-import { useCalcularDistanciaPedido, useCalcularTaxaEntrega, useUpdatePedido, useToggleCartaoImpresso } from '../../../api/endpoints/pedidos';
+import { useCalcularDistanciaPedido, useCalcularTaxaEntrega, useUpdatePedido, useToggleCartaoImpresso, useTrackLink } from '../../../api/endpoints/pedidos';
 import { useToast } from '../../../components/system/useToast';
 import { CopyOnClick } from '../../../components/common/CopyOnClick';
 import { copyToClipboard } from '../../../lib/utils/clipboard';
@@ -89,6 +89,7 @@ export function OrderCard({
   const updatePedido = useUpdatePedido();
   const deletePedido = useDeletePedido();
   const toggleCartaoImpresso = useToggleCartaoImpresso();
+  const trackLink = useTrackLink();
   const { success, error: showError } = useToast();
   const { getUserRole, getUser } = useAuth();
   const printService = usePedidoPrintService();
@@ -255,6 +256,29 @@ export function OrderCard({
     window.open(url, '_blank');
   };
 
+  const handleEnviarAcompanhamento = async () => {
+    handleMenuClose();
+    const telefone = (pedido.telefone_cliente || '').replace(/\D/g, '');
+    const telefoneFormatado =
+      telefone.length === 10 || telefone.length === 11 ? `55${telefone}` : telefone;
+    if (!telefoneFormatado) {
+      showError('Pedido sem telefone do cliente');
+      return;
+    }
+    try {
+      const trackUrl = await trackLink.mutateAsync(pedido.id);
+      const nome = pedido.destinatario || pedido.cliente || '';
+      const mensagem =
+        `Olá${nome ? `, ${nome}` : ''}! Acompanhe o status do seu pedido na Plante uma Flor 🌹: ${trackUrl}`;
+      window.open(
+        `https://wa.me/${telefoneFormatado}?text=${encodeURIComponent(mensagem)}`,
+        '_blank'
+      );
+    } catch (err) {
+      showError(err?.message || 'Erro ao gerar link de acompanhamento');
+    }
+  };
+
   const handleCalcularTaxaCTA = (e: React.MouseEvent) => {
     e.stopPropagation();
     handleCalcularTaxa(e);
@@ -414,6 +438,13 @@ export function OrderCard({
                 </MenuItem>
                 <MenuItem onClick={handleCopyEncaminhar}>
                   Encaminhar (copiar)
+                </MenuItem>
+                <MenuItem
+                  onClick={handleEnviarAcompanhamento}
+                  disabled={!pedido.telefone_cliente || trackLink.isPending}
+                >
+                  <WhatsApp fontSize="small" sx={{ mr: 1 }} />
+                  Enviar acompanhamento
                 </MenuItem>
                 <MenuItem onClick={handleView}>Ver</MenuItem>
                 {canEdit && <MenuItem onClick={handleEdit}>Editar</MenuItem>}

@@ -15,6 +15,8 @@ import hashlib
 import hmac
 from datetime import date
 
+import pytest
+
 from app.integrations.nuvemshop.mapper import map_nuvemshop_order_to_pedido_data
 from app.integrations.nuvemshop.service import NuvemshopOrderImporter
 from app.integrations.nuvemshop.verifier import verify_nuvemshop_hmac
@@ -27,6 +29,14 @@ from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
 from app.models.user import CommissionConfig, User
 from app.services.auth_service import generate_token, hash_password
+
+
+@pytest.fixture(autouse=True)
+def _no_nuvemshop_sleep(monkeypatch):
+    """O retry da cartinha dorme 5s entre tentativas (3x). Em teste o mock é fixo,
+    não há propagação a esperar — neutraliza o sleep p/ não desperdiçar ~10-20s por teste.
+    Produção segue inalterada (gap_seconds=5 continua valendo no runtime real)."""
+    monkeypatch.setattr("app.integrations.nuvemshop.service.time.sleep", lambda *a, **k: None)
 
 
 def _make_user(session, email: str, role: str = "vendedor", name: str = "Teste") -> User:

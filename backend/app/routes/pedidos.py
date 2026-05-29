@@ -31,7 +31,7 @@ from app.services.order_commission_lifecycle import (
     apply_commission_lifecycle,
     snapshot_commission_fields,
 )
-from app.services.track_token import make_track_token, parse_track_token
+from app.services.track_token import build_track_url, parse_track_token
 from app.utils.destructive_action_guard import (
     ensure_backup_before_destructive_action,
 )
@@ -250,6 +250,20 @@ def acompanhar_pedido(token):
     if not pedido or pedido.oculto or pedido.deleted_at:
         return error_response("Pedido não encontrado", 404)
     return success_response({"pedido": pedido.to_public_dict()})
+
+
+@pedidos_bp.route("/<int:pedido_id>/track-link", methods=["GET"])
+@requires_edit_auth
+def obter_track_link(pedido_id):
+    """Devolve a URL pública de acompanhamento de um pedido já existente.
+
+    Usado pelo painel para enviar o link por WhatsApp a qualquer momento. Exige auth
+    (o token só pode ser gerado server-side, com a SECRET_KEY).
+    """
+    pedido = pedido_repo.get_by_id(pedido_id)
+    if not pedido:
+        return error_response("Pedido não encontrado", 404)
+    return success_response({"track_url": build_track_url(pedido.id)})
 
 
 @pedidos_bp.route("/<int:pedido_id>/status", methods=["PUT", "POST"])
@@ -1234,14 +1248,7 @@ def criar_pedido():
             pass  # Best-effort: não falhar criação do pedido
 
         # Link público de acompanhamento (token assinado). Base via env, sem hardcode.
-        import os as _os
-
-        _base = (
-            _os.environ.get("PUBLIC_BASE_URL")
-            or _os.environ.get("NUVEMSHOP_PUBLIC_BASE_URL")
-            or "https://gestaopedidos.planteumaflor.online"
-        )
-        track_url = f"{_base.rstrip('/')}/acompanhar/{make_track_token(pedido.id)}"
+        track_url = build_track_url(pedido.id)
 
         return success_response(
             {

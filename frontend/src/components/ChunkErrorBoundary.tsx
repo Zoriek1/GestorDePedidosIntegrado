@@ -55,14 +55,27 @@ export class ChunkErrorBoundary extends Component<Props, State> {
 
   componentDidMount() {
     window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
+    // Vite dispara vite:preloadError quando um import dinâmico (rota lazy) falha.
+    // É o caminho que o React Router intercepta com a própria tela de erro antes
+    // de chegar nos hooks acima — então escutamos aqui pra recarregar sozinho.
+    window.addEventListener('vite:preloadError', this.handlePreloadError);
   }
 
   componentWillUnmount() {
     window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
+    window.removeEventListener('vite:preloadError', this.handlePreloadError);
   }
 
   handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     if (!isChunkError(event.reason)) return;
+    event.preventDefault();
+    this.setState({ status: attemptReload() ? 'reloading' : 'fallback' });
+  };
+
+  handlePreloadError = (event: Event) => {
+    // Deploy novo trocou os hashes e o app aberto pediu um chunk antigo. Recarrega
+    // (1x por janela) pra pegar o index.html novo — no mobile evita ter que fechar
+    // e reabrir o app. preventDefault impede o Vite de relançar o erro.
     event.preventDefault();
     this.setState({ status: attemptReload() ? 'reloading' : 'fallback' });
   };

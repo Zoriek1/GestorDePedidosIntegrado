@@ -54,6 +54,11 @@ class LeadTouchpoint(db.Model):
     fbp = db.Column(db.String(255))
     referrer = db.Column(db.Text)
     url = db.Column(db.Text)
+    # Camada de sessão da LP (sessionStorage): primeira URL e referrer DESTA sessão.
+    # Diagnóstico de perda de UTM — distingue "URL tinha utm mas campanha veio branca"
+    # (storage sandboxed em webview) de teoria Apple/iOS. Ver rota /api/leads.
+    first_landing_url = db.Column(db.Text)
+    session_referrer = db.Column(db.Text)
     ip_address = db.Column(db.String(45))
     client_user_agent = db.Column(db.String(512))
     is_paid = db.Column(db.Boolean, nullable=False, default=False)
@@ -78,6 +83,8 @@ class LeadTouchpoint(db.Model):
             "fbp": self.fbp,
             "referrer": self.referrer,
             "url": self.url,
+            "first_landing_url": self.first_landing_url,
+            "session_referrer": self.session_referrer,
             "ip_address": self.ip_address,
             "is_paid": bool(self.is_paid),
             "created_at": self.created_at.isoformat() if self.created_at else None,

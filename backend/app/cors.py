@@ -65,8 +65,10 @@ def get_allowed_origins():
         f"https://{local_ip}:3000",
         # Cloudflare Tunnel (produção)
         "https://gestaopedidos.planteumaflor.online",
-        # Landing page (leads UTM)
+        # Landing page (leads UTM) — apex e www. O POST de lead é "simple request"
+        # (passa sem CORS), mas leituras de resposta exigem o Origin na allowlist.
         "https://lpb.planteumaflor.com",
+        "https://www.lpb.planteumaflor.com",
     ]
 
     # Permitir HTTP apenas para localhost (desenvolvimento)

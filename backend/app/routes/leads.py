@@ -199,6 +199,11 @@ def _build_touchpoint_fields(data: dict, ip_address: str | None, user_agent: str
         "fbp": _normalize_fbp(data.get("fbp")),
         "referrer": _clip(data.get("referrer"), 10_000),
         "url": _clip(data.get("url") or data.get("destination_url"), 10_000),
+        # Camada de sessão da LP (diagnóstico de perda de UTM). NÃO entram em
+        # ALLOWED_FIELDS de propósito: aquilo alimenta o dedup_key e estes campos
+        # variam por sessão, fragmentariam a deduplicação.
+        "first_landing_url": _clip(data.get("first_landing_url"), 10_000),
+        "session_referrer": _clip(data.get("session_referrer"), 10_000),
         "ip_address": ip_address,
         "client_user_agent": user_agent,
         "is_paid": derive_is_paid(utm_medium=utm_medium, fbclid=fbclid, utm_id=utm_id),

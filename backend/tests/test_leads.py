@@ -49,6 +49,58 @@ def test_cria_lead_json_e_nao_duplica_por_hash(client, session):
     assert lead.fbp == "fb.1.1700000000.abc123xyz987"
 
 
+def test_persiste_campos_de_sessao_no_touchpoint(client, session):
+    """first_landing_url/session_referrer chegam no POST e devem ser persistidos
+    no touchpoint (antes eram descartados). Diagnóstico de perda de UTM."""
+    from app.models.lead_touchpoint import LeadTouchpoint
+
+    payload = {
+        "event": "PageView",
+        "url": "https://lpb.planteumaflor.com/?utm_campaign=buques",
+        "utm_campaign": "buques",
+        "first_landing_url": "https://lpb.planteumaflor.com/?utm_source=ig&utm_campaign=buques",
+        "session_referrer": "https://l.instagram.com/",
+    }
+    r = client.post("/api/leads", json=payload, headers={"User-Agent": "pytest (iPhone)"})
+    assert r.status_code == 201
+
+    tp = session.query(LeadTouchpoint).order_by(LeadTouchpoint.id.desc()).first()
+    assert tp is not None
+    assert tp.first_landing_url == "https://lpb.planteumaflor.com/?utm_source=ig&utm_campaign=buques"
+    assert tp.session_referrer == "https://l.instagram.com/"
+    # Capturado server-side a partir do header (a query de diagnóstico usa este campo).
+    assert "iPhone" in (tp.client_user_agent or "")
+    # E aparecem no serializer dos touchpoints.
+    d = tp.to_dict()
+    assert d["first_landing_url"] == payload["first_landing_url"]
+    assert d["session_referrer"] == payload["session_referrer"]
+
+
+def test_campos_de_sessao_nao_entram_no_dedup_key(client, session):
+    """Campos de sessão variam por sessão; não podem entrar no dedup_key (ALLOWED_FIELDS),
+    senão fragmentariam a deduplicação. Dois POSTs iguais a menos da sessão = 1 lead."""
+    base = {
+        "event": "whatsapp_click",
+        "utm_campaign": "buques",
+        "token_rastreio": _VALID_TOKEN,
+        "meta_event_id_contact": _META_EVT_CONTACT,
+    }
+    r1 = client.post(
+        "/api/leads",
+        json={**base, "first_landing_url": "https://lpb.planteumaflor.com/a", "session_referrer": "https://x/"},
+        headers={"User-Agent": "pytest"},
+    )
+    r2 = client.post(
+        "/api/leads",
+        json={**base, "first_landing_url": "https://lpb.planteumaflor.com/b", "session_referrer": "https://y/"},
+        headers={"User-Agent": "pytest"},
+    )
+    assert r1.status_code == 201
+    assert r2.status_code == 200
+    assert r2.get_json()["duplicated"] is True
+    assert session.query(Lead).count() == 1
+
+
 def test_cria_lead_text_plain_sendbeacon(client, session):
     payload = {
         "event": "whatsapp_click",

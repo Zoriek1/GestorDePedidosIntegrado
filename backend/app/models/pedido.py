@@ -315,7 +315,7 @@ class Pedido(db.Model):
     _STATUS_PUBLICO = {
         "agendado": "Pedido confirmado",
         "em_producao": "Em preparação",
-        "pronto_entrega": "Pronto",
+        "pronto_entrega": "Pronto para entrega",
         "em_rota": "Saiu para entrega",
         "pronto_retirada": "Pronto para retirada",
         "concluido": "Entregue",

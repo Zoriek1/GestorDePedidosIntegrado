@@ -18,10 +18,13 @@ import {
   StepLabel,
   CircularProgress,
   Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { LocalFlorist, CalendarMonth, Schedule } from '@mui/icons-material';
 import { getApiBaseUrl } from '../../api/http';
 import { BrandLogo } from '../../layout/BrandLogo';
+import { PushOptIn } from './PushOptIn';
 
 interface PublicPedido {
   status: string;
@@ -42,11 +45,18 @@ interface TrackResult {
 
 const POLL_MS = 60_000;
 
-// Passos do acompanhamento, por tipo de pedido.
-const STEPS_ENTREGA = ['Confirmado', 'Em preparação', 'Saiu para entrega', 'Entregue'];
+// Passos do acompanhamento, por tipo de pedido. A entrega tem 5 etapas (espelha o
+// fluxo interno: agendado → em_producao → pronto_entrega → em_rota → concluido).
+const STEPS_ENTREGA = [
+  'Confirmado',
+  'Em preparação',
+  'Pronto para entrega',
+  'Saiu para entrega',
+  'Entregue',
+];
 const STEPS_RETIRADA = ['Confirmado', 'Em preparação', 'Pronto para retirada', 'Retirado'];
 
-/** Mapeia o status interno para o índice do passo atual (0..3). */
+/** Mapeia o status interno para o índice do passo atual. */
 function activeStep(statusKey: string, isRetirada: boolean): number {
   if (isRetirada) {
     switch (statusKey) {
@@ -67,12 +77,13 @@ function activeStep(statusKey: string, isRetirada: boolean): number {
     case 'agendado':
       return 0;
     case 'em_producao':
-    case 'pronto_entrega':
       return 1;
-    case 'em_rota':
+    case 'pronto_entrega':
       return 2;
-    case 'concluido':
+    case 'em_rota':
       return 3;
+    case 'concluido':
+      return 4;
     default:
       return 0;
   }
@@ -80,6 +91,8 @@ function activeStep(statusKey: string, isRetirada: boolean): number {
 
 export default function TrackingPage() {
   const { token } = useParams<{ token: string }>();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const { data, isPending, isError } = useQuery<TrackResult>({
     queryKey: ['track', token],
@@ -127,20 +140,36 @@ export default function TrackingPage() {
         px: 2,
       }}
     >
-      {/* Cabeçalho de marca */}
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
-        <BrandLogo size={40} color="#143d28" />
-        <Box>
+      {/* Cabeçalho de marca — espelha o lockup do AppShell (logo dourada + wordmark serifa) */}
+      <Stack spacing={1} alignItems="center" sx={{ mb: { xs: 3.5, sm: 4.5 } }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <BrandLogo size={isMobile ? 44 : 52} color={theme.palette.secondary.main} />
           <Typography
-            variant="h5"
-            sx={{ color: 'primary.main', lineHeight: 1.1, fontWeight: 700 }}
+            variant="h4"
+            component="h1"
+            sx={{
+              color: 'primary.main',
+              fontFamily: '"Fraunces", Georgia, serif',
+              fontWeight: 700,
+              lineHeight: 1,
+              fontSize: { xs: '1.6rem', sm: '2.1rem' },
+            }}
           >
             Plante uma Flor
           </Typography>
-          <Typography variant="caption" sx={{ color: 'secondary.dark', letterSpacing: 1 }}>
-            ACOMPANHE SEU PEDIDO
-          </Typography>
-        </Box>
+        </Stack>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'secondary.dark',
+            letterSpacing: 2.2,
+            textTransform: 'uppercase',
+            fontWeight: 600,
+            fontSize: 12,
+          }}
+        >
+          Acompanhe seu pedido
+        </Typography>
       </Stack>
 
       <Container maxWidth="sm" disableGutters>
@@ -204,13 +233,25 @@ export default function TrackingPage() {
                 )}
               </Stack>
 
-              <Stepper activeStep={passo} alternativeLabel>
+              <Stepper
+                activeStep={passo}
+                alternativeLabel={!isMobile}
+                orientation={isMobile ? 'vertical' : 'horizontal'}
+                sx={{ mt: 1 }}
+              >
                 {steps.map((label) => (
                   <Step key={label}>
                     <StepLabel>{label}</StepLabel>
                   </Step>
                 ))}
               </Stepper>
+
+              {token && (
+                <>
+                  <Divider />
+                  <PushOptIn token={token} />
+                </>
+              )}
             </Stack>
           )}
         </Paper>

@@ -310,6 +310,38 @@ def atualizar_status(pedido_id):
         except Exception as e:
             print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
 
+        # Aviso ao cliente que optou por receber notificações (push vinculado ao pedido).
+        # Best-effort: só dispara em transições relevantes e nunca derruba a resposta.
+        try:
+            if novo_status != status_anterior:
+                if novo_status == "concluido":
+                    is_retirada = "retirada" in (pedido.tipo_pedido or "").lower()
+                    body = (
+                        "Seu pedido foi retirado. Obrigado! 💚"
+                        if is_retirada
+                        else "Seu pedido foi entregue. Obrigado! 💚"
+                    )
+                else:
+                    body = {
+                        "pronto_entrega": "Seu pedido está pronto e logo sai para entrega 🌷",
+                        "pronto_retirada": "Seu pedido está pronto para retirada 🌷",
+                        "em_rota": "Seu pedido saiu para entrega 🚚",
+                    }.get(novo_status)
+                if body:
+                    from flask import current_app
+
+                    from app.services.notification_service import send_push_to_pedido_async
+
+                    send_push_to_pedido_async(
+                        app=current_app._get_current_object(),
+                        pedido_id=pedido.id,
+                        title="Plante uma Flor",
+                        body=body,
+                        url=build_track_url(pedido.id),
+                    )
+        except Exception as e:
+            print(f"[AVISO] Erro ao notificar cliente do pedido #{pedido_id}: {e}")
+
         return success_response(
             {"pedido": pedido.to_dict()}, message="Status atualizado com sucesso"
         )

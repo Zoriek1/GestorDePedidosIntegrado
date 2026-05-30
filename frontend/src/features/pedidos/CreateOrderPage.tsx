@@ -123,7 +123,7 @@ export default function CreateOrderPage() {
         });
         if (enviar) {
           const mensagem =
-            `Olá! Seu pedido na Plante uma Flor foi confirmado. 🌹\n` +
+            `Olá! Seu pedido na Plante uma Flor foi confirmado.\n` +
             `Acompanhe o status da sua entrega por aqui: ${trackUrl}`;
           window.open(`https://wa.me/${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
         }

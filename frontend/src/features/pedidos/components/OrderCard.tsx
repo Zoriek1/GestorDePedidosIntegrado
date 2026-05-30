@@ -267,9 +267,11 @@ export function OrderCard({
     }
     try {
       const trackUrl = await trackLink.mutateAsync(pedido.id);
-      const nome = pedido.destinatario || pedido.cliente || '';
+      // A mensagem vai pro telefone do CLIENTE (quem comprou), então o nome é o
+      // do cliente — não o do destinatário da entrega.
+      const nome = pedido.cliente || '';
       const mensagem =
-        `Olá${nome ? `, ${nome}` : ''}! Acompanhe o status do seu pedido na Plante uma Flor 🌹: ${trackUrl}`;
+        `Olá${nome ? `, ${nome}` : ''}! Aqui está o link para acompanhar o seu pedido na Plante uma Flor: ${trackUrl}`;
       window.open(
         `https://wa.me/${telefoneFormatado}?text=${encodeURIComponent(mensagem)}`,
         '_blank'

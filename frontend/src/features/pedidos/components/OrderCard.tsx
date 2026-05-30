@@ -28,6 +28,7 @@ import {
   Calculate,
   MoreVert,
   WhatsApp,
+  ContentCopy,
   PlayArrow,
   LocalShipping as LocalShippingIcon,
   CheckCircle,
@@ -281,6 +282,26 @@ export function OrderCard({
     }
   };
 
+  // Copia a mensagem de acompanhamento (com o link) para a área de transferência,
+  // sem forçar a abertura do WhatsApp. Não exige telefone do cliente.
+  const handleCopiarAcompanhamento = async () => {
+    handleMenuClose();
+    try {
+      const trackUrl = await trackLink.mutateAsync(pedido.id);
+      const nome = pedido.cliente || '';
+      const mensagem =
+        `Olá${nome ? `, ${nome}` : ''}! Aqui está o link para acompanhar o seu pedido na Plante uma Flor: ${trackUrl}`;
+      const copied = await copyToClipboard(mensagem);
+      if (copied) {
+        success('Mensagem de acompanhamento copiada!');
+      } else {
+        showError('Erro ao copiar acompanhamento');
+      }
+    } catch (err) {
+      showError(err?.message || 'Erro ao gerar link de acompanhamento');
+    }
+  };
+
   const handleCalcularTaxaCTA = (e: React.MouseEvent) => {
     e.stopPropagation();
     handleCalcularTaxa(e);
@@ -447,6 +468,10 @@ export function OrderCard({
                 >
                   <WhatsApp fontSize="small" sx={{ mr: 1 }} />
                   Enviar acompanhamento
+                </MenuItem>
+                <MenuItem onClick={handleCopiarAcompanhamento} disabled={trackLink.isPending}>
+                  <ContentCopy fontSize="small" sx={{ mr: 1 }} />
+                  Copiar acompanhamento
                 </MenuItem>
                 <MenuItem onClick={handleView}>Ver</MenuItem>
                 {canEdit && <MenuItem onClick={handleEdit}>Editar</MenuItem>}

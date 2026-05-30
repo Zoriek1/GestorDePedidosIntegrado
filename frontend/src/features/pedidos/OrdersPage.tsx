@@ -17,10 +17,12 @@ import {
   Menu,
   MenuItem,
   Divider,
+  ToggleButton,
+  ToggleButtonGroup,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Refresh, DeleteSweep, FileDownload, FilterList, Route, Print } from '@mui/icons-material';
+import { Refresh, DeleteSweep, FileDownload, FilterList, Route, Print, ViewList, ViewKanban } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
@@ -36,7 +38,10 @@ import { useConfirm } from '../../components/system/useConfirm';
 import { OrdersKPIGrid } from './components/OrdersKPIGrid';
 import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
 import { OrdersPagination } from './components/OrdersPagination';
+import { KanbanBoard } from './components/KanbanBoard';
 import { usePedidoPrintService } from './services/PedidoPrintService';
+
+type ViewMode = 'lista' | 'quadro';
 
 const MAX_BATCH_PRINT = 20;
 const PEDIDOS_POR_FOLHA = 4;
@@ -56,6 +61,7 @@ export default function OrdersPage() {
   const [selectionMode, setSelectionMode] = useState<null | 'route' | 'print'>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('lista');
 
   const queryClient = useQueryClient();
   const { getAuthHeader, getUserRole } = useAuth();
@@ -280,42 +286,69 @@ export default function OrdersPage() {
           alignItems="center" 
           flexWrap="wrap" 
           justifyContent="flex-end"
-          sx={{ 
+          sx={{
             gap: { xs: 0.5, sm: 1 },
           }}
         >
-          {/* Botão Roteirizar */}
-          <Tooltip title={selectionMode === 'route' ? 'Sair do modo de roteirização' : 'Selecionar entregas para criar rota'}>
-            <Button
-              variant={selectionMode === 'route' ? 'contained' : 'outlined'}
-              size="small"
-              color="primary"
-              startIcon={<Route />}
-              onClick={handleToggleRouteMode}
-              sx={{ fontWeight: selectionMode === 'route' ? 600 : 400 }}
-            >
-              {isMobile
-                ? (selectionMode === 'route' ? 'Sair' : 'Rota')
-                : (selectionMode === 'route' ? 'Sair do modo de rota' : 'Roteirizar')}
-            </Button>
-          </Tooltip>
+          {/* Alternar Lista / Quadro (Kanban) */}
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            size="small"
+            onChange={(_e, v: ViewMode | null) => {
+              if (v) {
+                setViewMode(v);
+                setMode(null); // sai de seleção de rota/impressão ao trocar de visão
+              }
+            }}
+          >
+            <ToggleButton value="lista" aria-label="Visão em lista">
+              <ViewList fontSize="small" sx={{ mr: { xs: 0, sm: 0.5 } }} />
+              {!isMobile && 'Lista'}
+            </ToggleButton>
+            <ToggleButton value="quadro" aria-label="Visão em quadro">
+              <ViewKanban fontSize="small" sx={{ mr: { xs: 0, sm: 0.5 } }} />
+              {!isMobile && 'Quadro'}
+            </ToggleButton>
+          </ToggleButtonGroup>
 
-          {/* Botão Imprimir lote */}
-          <Tooltip title={selectionMode === 'print' ? 'Sair do modo de impressão em lote' : `Selecionar até ${MAX_BATCH_PRINT} pedidos (4 por folha A4)`}>
-            <Button
-              variant={selectionMode === 'print' ? 'contained' : 'outlined'}
-              size="small"
-              color="primary"
-              startIcon={<Print />}
-              onClick={handleTogglePrintMode}
-              sx={{ fontWeight: selectionMode === 'print' ? 600 : 400 }}
-            >
-              {isMobile
-                ? (selectionMode === 'print' ? 'Sair' : 'Lote')
-                : (selectionMode === 'print' ? 'Sair do modo de impressão' : 'Imprimir lote')}
-            </Button>
-          </Tooltip>
-          
+          {/* Roteirizar e Imprimir lote só fazem sentido na visão em lista */}
+          {viewMode === 'lista' && (
+            <>
+              {/* Botão Roteirizar */}
+              <Tooltip title={selectionMode === 'route' ? 'Sair do modo de roteirização' : 'Selecionar entregas para criar rota'}>
+                <Button
+                  variant={selectionMode === 'route' ? 'contained' : 'outlined'}
+                  size="small"
+                  color="primary"
+                  startIcon={<Route />}
+                  onClick={handleToggleRouteMode}
+                  sx={{ fontWeight: selectionMode === 'route' ? 600 : 400 }}
+                >
+                  {isMobile
+                    ? (selectionMode === 'route' ? 'Sair' : 'Rota')
+                    : (selectionMode === 'route' ? 'Sair do modo de rota' : 'Roteirizar')}
+                </Button>
+              </Tooltip>
+
+              {/* Botão Imprimir lote */}
+              <Tooltip title={selectionMode === 'print' ? 'Sair do modo de impressão em lote' : `Selecionar até ${MAX_BATCH_PRINT} pedidos (4 por folha A4)`}>
+                <Button
+                  variant={selectionMode === 'print' ? 'contained' : 'outlined'}
+                  size="small"
+                  color="primary"
+                  startIcon={<Print />}
+                  onClick={handleTogglePrintMode}
+                  sx={{ fontWeight: selectionMode === 'print' ? 600 : 400 }}
+                >
+                  {isMobile
+                    ? (selectionMode === 'print' ? 'Sair' : 'Lote')
+                    : (selectionMode === 'print' ? 'Sair do modo de impressão' : 'Imprimir lote')}
+                </Button>
+              </Tooltip>
+            </>
+          )}
+
           {/* Mobile: Menu de filtros */}
           {isMobile ? (
             <>
@@ -540,8 +573,16 @@ export default function OrdersPage() {
         />
       </Paper>
 
-      {/* Orders List */}
-      {isLoadingPedidos ? (
+      {/* Conteúdo: Quadro (Kanban) ou Lista */}
+      {viewMode === 'quadro' ? (
+        <KanbanBoard
+          filters={{
+            search: filters.search,
+            data_inicio: filters.data_inicio,
+            data_fim: filters.data_fim,
+          }}
+        />
+      ) : isLoadingPedidos ? (
         <Loading variant="skeleton" count={6} />
       ) : pedidosError ? (
         <ErrorState

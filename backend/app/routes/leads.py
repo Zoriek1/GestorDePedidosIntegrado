@@ -22,7 +22,6 @@ from app.utils.meta_capi_lead_helper import (
     extract_lead_stage_event_id_from_payload,
     is_lead_funnel_enabled,
     is_truthy_meta_pixel_lead,
-    try_flush_pending_meta_capi_lead_entries,
 )
 from app.utils.tracking_token import (
     extract_tracking_token_from_text,
@@ -385,20 +384,15 @@ def criar_lead():
         lead.first_touch_id = tp.id
         lead.last_touch_id = tp.id
         db.session.commit()
-        flush_ids: list[int] = []
+        # Enfileira no outbox; o capi-worker envia de forma assíncrona.
         if is_lead_funnel_enabled() and is_whatsapp and meta_event_id_contact:
             repo = MetaCapiLeadOutboxRepository()
-            row_c = repo.create_contact_from_lead(lead)
-            if row_c:
-                flush_ids.append(row_c.id)
+            repo.create_contact_from_lead(lead)
             if lead.phone:
                 if not lead.meta_event_id_lead:
                     lead.meta_event_id_lead = str(uuid.uuid4())
                     db.session.commit()
-                row_l = repo.create_lead_stage_from_lead(lead, event_time=datetime_now_brazil())
-                if row_l:
-                    flush_ids.append(row_l.id)
-        try_flush_pending_meta_capi_lead_entries(flush_ids)
+                repo.create_lead_stage_from_lead(lead, event_time=datetime_now_brazil())
         return (
             jsonify(
                 {
@@ -529,20 +523,14 @@ def _apply_lead_status_update(lead: Lead, data: dict):
     lead.status = new_status
     db.session.commit()
 
-    flush_ids: list[int] = []
+    # Enfileira no outbox; o capi-worker envia de forma assíncrona.
     if fire_disqualified or fire_lead_confirmed:
         repo = MetaCapiLeadOutboxRepository()
         now_brt = datetime_now_brazil()
         if fire_lead_confirmed:
-            row_l = repo.create_lead_stage_from_lead(lead, event_time=now_brt)
-            if row_l:
-                flush_ids.append(row_l.id)
+            repo.create_lead_stage_from_lead(lead, event_time=now_brt)
         if fire_disqualified:
-            row_d = repo.create_disqualified_from_lead(lead, event_time=now_brt)
-            if row_d:
-                flush_ids.append(row_d.id)
-        if flush_ids:
-            try_flush_pending_meta_capi_lead_entries(flush_ids)
+            repo.create_disqualified_from_lead(lead, event_time=now_brt)
 
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
@@ -1000,20 +988,14 @@ def atualizar_status_leads_em_lote():
 
     db.session.commit()
 
+    # Enfileira no outbox; o capi-worker envia de forma assíncrona.
     if (transitioned_to_descarte or transitioned_to_confirmed) and is_lead_funnel_enabled():
         repo = MetaCapiLeadOutboxRepository()
-        flush_ids: list[int] = []
         now_brt = datetime_now_brazil()
         for lead in transitioned_to_confirmed:
-            row = repo.create_lead_stage_from_lead(lead, event_time=now_brt)
-            if row:
-                flush_ids.append(row.id)
+            repo.create_lead_stage_from_lead(lead, event_time=now_brt)
         for lead in transitioned_to_descarte:
-            row = repo.create_disqualified_from_lead(lead, event_time=now_brt)
-            if row:
-                flush_ids.append(row.id)
-        if flush_ids:
-            try_flush_pending_meta_capi_lead_entries(flush_ids)
+            repo.create_disqualified_from_lead(lead, event_time=now_brt)
 
     return jsonify(
         {
@@ -1100,16 +1082,12 @@ def desqualificar_leads_em_lote():
 
     db.session.commit()
 
+    # Enfileira no outbox; o capi-worker envia de forma assíncrona.
     if transitioned and is_lead_funnel_enabled():
         repo = MetaCapiLeadOutboxRepository()
-        flush_ids: list[int] = []
         now_brt = datetime_now_brazil()
         for lead in transitioned:
-            row = repo.create_disqualified_from_lead(lead, event_time=now_brt)
-            if row:
-                flush_ids.append(row.id)
-        if flush_ids:
-            try_flush_pending_meta_capi_lead_entries(flush_ids)
+            repo.create_disqualified_from_lead(lead, event_time=now_brt)
 
     return jsonify(
         {

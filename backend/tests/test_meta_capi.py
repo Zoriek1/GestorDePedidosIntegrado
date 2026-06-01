@@ -813,7 +813,11 @@ class TestMetaCapiOutboxRepository:
             assert ob.status == "sent"
 
     def test_create_outbox_for_new_order_enfileira_independente_do_pagamento(self, app):
-        """Novo trigger: enfileira Purchase no ato da criação, mesmo com status_pagamento=Pendente."""
+        """Novo trigger: enfileira Purchase no ato da criação, mesmo com status_pagamento=Pendente.
+
+        Envio é assíncrono (capi-worker): a criação apenas enfileira, a linha fica
+        'pending' e o worker faz o flush depois. Nada é enviado no caminho do request.
+        """
         from app import db
         from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
         from app.utils.meta_capi_helper import create_outbox_for_new_order
@@ -824,18 +828,13 @@ class TestMetaCapiOutboxRepository:
             db.session.add(pedido)
             db.session.commit()
 
-            success_response = {"_status_code": 200, "events_received": 1, "fbtrace_id": "t1"}
-            with patch(
-                "app.services.meta_capi.MetaConversionsApiService.send_events",
-                return_value=success_response,
-            ):
-                created = create_outbox_for_new_order(pedido)
-                assert created is True
+            created = create_outbox_for_new_order(pedido)
+            assert created is True
 
             ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
             assert ob is not None
             assert ob.event_id == f"order_{pedido.id}"
-            assert ob.status == "sent"
+            assert ob.status == "pending"
 
     def test_create_outbox_for_new_order_skip_site(self, app):
         """Pedidos de fonte Site/Nuvemshop não são enfileirados."""
@@ -1013,6 +1012,79 @@ class TestMetaCapiOutboxRepository:
             assert len(failed_retryable) == 1
             assert failed_retryable[0].id == outboxes[0].id
             assert failed_retryable[0].error_type == "retryable"
+
+    def test_get_failed_retryable_respeita_backoff(self, app):
+        """Backoff: failed-retryable recém-atualizado só reaparece após a janela."""
+        from datetime import timedelta
+
+        from app import db
+        from app.models.meta_capi_outbox import MetaCapiOutbox
+        from app.models.pedido import datetime_now_brazil
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Backoff", telefone="62999000111")
+            db.session.add(pedido)
+            db.session.commit()
+
+            repo = MetaCapiOutboxRepository()
+            outbox = repo.create_from_pedido(pedido)
+            repo.mark_failed(outbox.id, "Rate limit", 429, "retryable", 1)
+
+            # Recém-falhado: com backoff de 5min ainda não aparece.
+            assert repo.get_failed_retryable(limit=10, min_updated_age_seconds=300) == []
+            # Sem backoff: aparece.
+            assert len(repo.get_failed_retryable(limit=10)) == 1
+
+            # Envelhecer updated_at além da janela (UPDATE direto evita o onupdate).
+            MetaCapiOutbox.query.filter_by(id=outbox.id).update(
+                {"updated_at": datetime_now_brazil() - timedelta(seconds=600)}
+            )
+            db.session.commit()
+            aged = repo.get_failed_retryable(limit=10, min_updated_age_seconds=300)
+            assert len(aged) == 1
+            assert aged[0].id == outbox.id
+
+    def test_process_outbox_cycle_envia_purchase_e_lead(self, app):
+        """Ciclo do worker async envia pendentes de Purchase e de Lead (Contact)."""
+        from app import db
+        from app.commands.send_daily_purchases_to_meta_command import (
+            SendDailyPurchasesToMetaCommand,
+        )
+        from app.models.lead import Lead
+        from app.repositories.meta_capi_lead_outbox_repository import (
+            MetaCapiLeadOutboxRepository,
+        )
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Ciclo", telefone="62999222333")
+            db.session.add(pedido)
+            db.session.commit()
+            purchase_ob = MetaCapiOutboxRepository().create_from_pedido(pedido)
+
+            lead = Lead(
+                dedup_key="cycle-lead",
+                event="whatsapp_click",
+                meta_event_id_contact="cycle_evt_1",
+            )
+            db.session.add(lead)
+            db.session.commit()
+            lead_ob = MetaCapiLeadOutboxRepository().create_contact_from_lead(lead)
+
+            success = {"_status_code": 200, "events_received": 1, "fbtrace_id": "t1"}
+            with patch(
+                "app.services.meta_capi.MetaConversionsApiService.send_events",
+                return_value=success,
+            ):
+                stats = SendDailyPurchasesToMetaCommand().process_outbox_cycle()
+
+            assert stats["sent_success"] == 1
+            assert stats["lead_sent_success"] == 1
+            db.session.refresh(purchase_ob)
+            db.session.refresh(lead_ob)
+            assert purchase_ob.status == "sent"
+            assert lead_ob.status == "sent"
 
 
 def test_meta_capi_verbose_summary():

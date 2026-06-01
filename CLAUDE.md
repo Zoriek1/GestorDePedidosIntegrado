@@ -95,7 +95,7 @@ Ver detalhes em [docs/recebiveis.md](docs/recebiveis.md). Pontos chave:
 
 ## Integrações (resumo)
 
-Ver [docs/integrations.md](docs/integrations.md). Padrão **outbox** para Meta CAPI: `MetaCapiOutbox` / `MetaCapiLeadOutbox` flushed pelo serviço `scheduler` ([backend/meta_scheduler_entrypoint.py](backend/meta_scheduler_entrypoint.py)).
+Ver [docs/integrations.md](docs/integrations.md). Padrão **outbox assíncrono** para Meta CAPI: o request enfileira em `MetaCapiOutbox` / `MetaCapiLeadOutbox` e retorna; o serviço `capi-worker` ([backend/meta_capi_worker_entrypoint.py](backend/meta_capi_worker_entrypoint.py)) faz polling e envia em segundo plano (também roda safety-net diário + payroll).
 
 Nuvemshop: webhook ACK-first; processamento em background; pedido importado fica pendente de agendamento manual.
 

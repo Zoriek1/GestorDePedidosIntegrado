@@ -105,7 +105,7 @@ def auto_generate_for_today(created_by: int | None = None) -> dict:
     coincide com o dia da semana de hoje (BRT), gera os créditos da SEMANA ATUAL.
     Idempotente — chamar mais de uma vez no mesmo dia não duplica.
 
-    Pensado para rodar 1x/dia via meta_scheduler_entrypoint.
+    Pensado para rodar 1x/dia via meta_capi_worker_entrypoint.
     """
     from flask import current_app
 

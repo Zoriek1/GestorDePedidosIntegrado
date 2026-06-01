@@ -118,7 +118,9 @@ class SendDailyPurchasesToMetaCommand:
             traceback.print_exc()
             return stats
 
-    def process_outbox_cycle(self, limit: int = 50, retry_backoff_seconds: int = 0) -> dict:
+    def process_outbox_cycle(
+        self, limit: int = 50, retry_backoff_seconds: int = 0, quiet: bool = False
+    ) -> dict:
         """
         Ciclo leve do worker async: processa apenas pendentes + failed-retryable
         (Purchase e Lead), SEM o safety-net diário de "buscar novos purchases".
@@ -132,6 +134,8 @@ class SendDailyPurchasesToMetaCommand:
             limit: Limite de registros por lote.
             retry_backoff_seconds: Idade mínima (s) de `updated_at` para reprocessar
                 um failed-retryable. 0 = sem backoff (retenta na hora).
+            quiet: Quando True, não imprime nada nos ciclos ociosos (sem pendências).
+                Usado pelo polling do capi-worker para não poluir o log a cada 5s.
 
         Returns:
             dict: Estatísticas do ciclo (mesmas chaves de execute()).
@@ -151,9 +155,11 @@ class SendDailyPurchasesToMetaCommand:
             "lead_failed_permanent": 0,
             "lead_failed_retryable": 0,
         }
-        self._process_pending_batch(stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds)
+        self._process_pending_batch(
+            stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds, quiet=quiet
+        )
         self._process_lead_outbox_batch(
-            stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds
+            stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds, quiet=quiet
         )
         return stats
 
@@ -198,7 +204,9 @@ class SendDailyPurchasesToMetaCommand:
 
         return [pedido for pedido in pedidos if not should_skip_purchase_for_meta_capi(pedido)]
 
-    def _process_pending_batch(self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0):
+    def _process_pending_batch(
+        self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0, quiet: bool = False
+    ):
         """
         Processa lote interno de pendentes e failed retryáveis
 
@@ -210,6 +218,7 @@ class SendDailyPurchasesToMetaCommand:
             limit: Limite de registros por lote (padrão: 50)
             retry_backoff_seconds: Idade mínima de `updated_at` para reprocessar um
                 failed-retryable (0 = sem backoff).
+            quiet: Suprime o log de "nenhum registro pendente" (polling do worker).
         """
         # Buscar pendentes
         pending = self.outbox_repo.get_pending(limit=limit)
@@ -225,7 +234,8 @@ class SendDailyPurchasesToMetaCommand:
         all_to_process = pending + failed_retryable
 
         if not all_to_process:
-            print("[META_CAPI] Nenhum registro pendente para processar")
+            if not quiet:
+                print("[META_CAPI] Nenhum registro pendente para processar")
             return
 
         print(f"[META_CAPI] Processando {len(all_to_process)} registros...")
@@ -426,7 +436,7 @@ class SendDailyPurchasesToMetaCommand:
             stats["errors"].append(f"Batch failed: {error_msg}")
 
     def _process_lead_outbox_batch(
-        self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0
+        self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0, quiet: bool = False
     ):
         pending = self.lead_outbox_repo.get_pending(limit=limit)
         stats["lead_pending_processed"] = len(pending)
@@ -436,7 +446,8 @@ class SendDailyPurchasesToMetaCommand:
         stats["lead_failed_retryable_processed"] = len(failed_retryable)
         all_to_process = pending + failed_retryable
         if not all_to_process:
-            print("[META_CAPI] Nenhum registro pendente na outbox de leads")
+            if not quiet:
+                print("[META_CAPI] Nenhum registro pendente na outbox de leads")
             return
         print(f"[META_CAPI] Processando {len(all_to_process)} registros (leads)...")
         batch_size = 50

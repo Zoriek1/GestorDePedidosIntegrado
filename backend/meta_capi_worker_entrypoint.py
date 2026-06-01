@@ -76,7 +76,7 @@ def run_outbox_cycle() -> None:
             )
 
             stats = SendDailyPurchasesToMetaCommand().process_outbox_cycle(
-                limit=50, retry_backoff_seconds=RETRY_BACKOFF
+                limit=50, retry_backoff_seconds=RETRY_BACKOFF, quiet=True
             )
 
             touched = (

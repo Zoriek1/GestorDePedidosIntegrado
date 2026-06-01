@@ -4,7 +4,7 @@ Repository para MetaCapiOutbox
 Gerencia operações de outbox para eventos Meta Conversions API
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from app import db
@@ -111,23 +111,29 @@ class MetaCapiOutboxRepository(BaseRepository):
             .all()
         )
 
-    def get_failed_retryable(self, limit: int = 50) -> List[MetaCapiOutbox]:
+    def get_failed_retryable(
+        self, limit: int = 50, min_updated_age_seconds: Optional[int] = None
+    ) -> List[MetaCapiOutbox]:
         """
         Busca registros failed com error_type='retryable' e attempts < 3
 
         Args:
             limit: Limite de registros (padrão: 50)
+            min_updated_age_seconds: Se informado, só retorna registros cujo
+                `updated_at` é mais antigo que esse intervalo (backoff de retry —
+                evita reprocessar o mesmo registro a cada poll do worker).
 
         Returns:
             Lista de MetaCapiOutbox com status='failed' e error_type='retryable'
         """
-        return (
+        query = (
             self.model.query.filter_by(status="failed", error_type="retryable")
             .filter(MetaCapiOutbox.attempts < 3)
-            .order_by(MetaCapiOutbox.updated_at.asc())
-            .limit(limit)
-            .all()
         )
+        if min_updated_age_seconds:
+            cutoff = datetime_now_brazil() - timedelta(seconds=min_updated_age_seconds)
+            query = query.filter(MetaCapiOutbox.updated_at <= cutoff)
+        return query.order_by(MetaCapiOutbox.updated_at.asc()).limit(limit).all()
 
     def mark_sent(
         self, id: int, sent_at: datetime, response: Optional[Dict] = None

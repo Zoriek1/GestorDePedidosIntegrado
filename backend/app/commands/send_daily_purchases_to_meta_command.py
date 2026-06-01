@@ -118,6 +118,45 @@ class SendDailyPurchasesToMetaCommand:
             traceback.print_exc()
             return stats
 
+    def process_outbox_cycle(self, limit: int = 50, retry_backoff_seconds: int = 0) -> dict:
+        """
+        Ciclo leve do worker async: processa apenas pendentes + failed-retryable
+        (Purchase e Lead), SEM o safety-net diário de "buscar novos purchases".
+
+        Pensado para rodar a cada poucos segundos no `capi-worker`. O envio em si
+        reusa `_process_pending_batch` (Purchase) e `_process_lead_outbox_batch`
+        (Contact/Lead). `retry_backoff_seconds` evita queimar as 3 tentativas de um
+        registro retryable em poucos segundos (só retenta após esse intervalo).
+
+        Args:
+            limit: Limite de registros por lote.
+            retry_backoff_seconds: Idade mínima (s) de `updated_at` para reprocessar
+                um failed-retryable. 0 = sem backoff (retenta na hora).
+
+        Returns:
+            dict: Estatísticas do ciclo (mesmas chaves de execute()).
+        """
+        stats = {
+            "pending_processed": 0,
+            "failed_retryable_processed": 0,
+            "sent_success": 0,
+            "sent_failed": 0,
+            "failed_permanent": 0,
+            "failed_retryable": 0,
+            "errors": [],
+            "lead_pending_processed": 0,
+            "lead_failed_retryable_processed": 0,
+            "lead_sent_success": 0,
+            "lead_sent_failed": 0,
+            "lead_failed_permanent": 0,
+            "lead_failed_retryable": 0,
+        }
+        self._process_pending_batch(stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds)
+        self._process_lead_outbox_batch(
+            stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds
+        )
+        return stats
+
     def _find_new_purchases(self, target_date: date) -> list:
         """
         Busca novos purchases do dia
@@ -159,7 +198,7 @@ class SendDailyPurchasesToMetaCommand:
 
         return [pedido for pedido in pedidos if not should_skip_purchase_for_meta_capi(pedido)]
 
-    def _process_pending_batch(self, stats: dict, limit: int = 50):
+    def _process_pending_batch(self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0):
         """
         Processa lote interno de pendentes e failed retryáveis
 
@@ -169,13 +208,17 @@ class SendDailyPurchasesToMetaCommand:
         Args:
             stats: Dicionário de estatísticas (atualizado in-place)
             limit: Limite de registros por lote (padrão: 50)
+            retry_backoff_seconds: Idade mínima de `updated_at` para reprocessar um
+                failed-retryable (0 = sem backoff).
         """
         # Buscar pendentes
         pending = self.outbox_repo.get_pending(limit=limit)
         stats["pending_processed"] = len(pending)
 
         # Buscar failed retryáveis
-        failed_retryable = self.outbox_repo.get_failed_retryable(limit=limit)
+        failed_retryable = self.outbox_repo.get_failed_retryable(
+            limit=limit, min_updated_age_seconds=retry_backoff_seconds or None
+        )
         stats["failed_retryable_processed"] = len(failed_retryable)
 
         # Combinar todos os registros para processar
@@ -382,10 +425,14 @@ class SendDailyPurchasesToMetaCommand:
 
             stats["errors"].append(f"Batch failed: {error_msg}")
 
-    def _process_lead_outbox_batch(self, stats: dict, limit: int = 50):
+    def _process_lead_outbox_batch(
+        self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0
+    ):
         pending = self.lead_outbox_repo.get_pending(limit=limit)
         stats["lead_pending_processed"] = len(pending)
-        failed_retryable = self.lead_outbox_repo.get_failed_retryable(limit=limit)
+        failed_retryable = self.lead_outbox_repo.get_failed_retryable(
+            limit=limit, min_updated_age_seconds=retry_backoff_seconds or None
+        )
         stats["lead_failed_retryable_processed"] = len(failed_retryable)
         all_to_process = pending + failed_retryable
         if not all_to_process:

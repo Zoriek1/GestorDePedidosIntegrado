@@ -731,7 +731,7 @@ def deletar_pedido(pedido_id):
 
 
 @pedidos_bp.route("/exportar-planilha", methods=["POST"])
-@requires_any_role("admin", "atendente")
+@requires_edit_auth  # qualquer cargo autenticado pode exportar (admin/vendedor/atendente/entregador/viewer)
 def exportar_planilha():
     """
     Exporta vendas para Google Sheets

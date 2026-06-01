@@ -93,7 +93,8 @@ def create_outbox_for_new_order(pedido: Pedido) -> bool:
     - Roda independente de `status_pagamento` (envio na criação, não no pagamento).
     - Exclui fontes com pixel próprio (site/Nuvemshop) via `should_skip_purchase_for_meta_capi`.
     - Idempotente: se já existir outbox para o `event_id` (`order_<id>`), não recria.
-    - Após enfileirar, tenta envio imediato via `try_flush_pending_meta_capi_for_order`.
+    - Envio é assíncrono: o `capi-worker` faz polling do outbox e envia em segundo
+      plano. O request apenas enfileira (não bloqueia esperando a Meta).
     """
     fonte = _resolve_fonte_label(pedido)
 
@@ -148,7 +149,7 @@ def create_outbox_for_new_order(pedido: Pedido) -> bool:
         except Exception:
             pass
 
-        try_flush_pending_meta_capi_for_order(pedido.id)
+        # Envio assíncrono: o capi-worker faz polling do outbox e envia.
         return True
     except Exception as e:
         logger.exception(

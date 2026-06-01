@@ -3,7 +3,7 @@
 Outbox Meta CAPI — funil de leads (Contact / Lead).
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy.exc import IntegrityError
@@ -145,14 +145,17 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
             .all()
         )
 
-    def get_failed_retryable(self, limit: int = 50) -> List[MetaCapiLeadOutbox]:
-        return (
+    def get_failed_retryable(
+        self, limit: int = 50, min_updated_age_seconds: Optional[int] = None
+    ) -> List[MetaCapiLeadOutbox]:
+        query = (
             self.model.query.filter_by(status="failed", error_type="retryable")
             .filter(MetaCapiLeadOutbox.attempts < 3)
-            .order_by(MetaCapiLeadOutbox.updated_at.asc())
-            .limit(limit)
-            .all()
         )
+        if min_updated_age_seconds:
+            cutoff = datetime_now_brazil() - timedelta(seconds=min_updated_age_seconds)
+            query = query.filter(MetaCapiLeadOutbox.updated_at <= cutoff)
+        return query.order_by(MetaCapiLeadOutbox.updated_at.asc()).limit(limit).all()
 
     def mark_sent(
         self, entry_id: int, sent_at: datetime, response: Optional[Dict] = None

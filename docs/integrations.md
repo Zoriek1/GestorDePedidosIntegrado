@@ -2,7 +2,7 @@
 
 ## Meta Conversions API (Purchase + Lead)
 
-Padrão **outbox**: quando um pedido vira `Pago` ou um lead é criado, uma entrada é inserida em `MetaCapiOutbox` / `MetaCapiLeadOutbox`. O serviço `scheduler` ([backend/meta_scheduler_entrypoint.py](../backend/meta_scheduler_entrypoint.py)) roda em loop e flusha pendentes via [services/meta_capi.py](../backend/app/services/meta_capi.py).
+Padrão **outbox assíncrono**: quando um pedido é criado ou um lead avança no funil, uma entrada é inserida em `MetaCapiOutbox` / `MetaCapiLeadOutbox` — o request **apenas enfileira e retorna** (não bloqueia esperando a Meta). O serviço `capi-worker` ([backend/meta_capi_worker_entrypoint.py](../backend/meta_capi_worker_entrypoint.py)) faz polling do outbox a cada `META_CAPI_WORKER_INTERVAL_SECONDS` (default 5s) e flusha pendentes + failed-retryable via [services/meta_capi.py](../backend/app/services/meta_capi.py). Falhas retryable respeitam um backoff (`META_CAPI_RETRY_BACKOFF_SECONDS`, default 300s) antes de retentar, com teto de 3 tentativas. O mesmo worker ainda roda o safety-net diário (23:00) e o payroll (06:00).
 
 **Gateway (opcional)**: `/capig/*` e `/meta-gateway/<pixel_id>/events` em [routes/meta_gateway.py](../backend/app/routes/meta_gateway.py). Quando `META_CAPI_USE_GATEWAY=true`, eventos do Pixel também vão para nosso endpoint, agregando server-side. Requer domínio público (Cloudflare Tunnel).
 
@@ -139,7 +139,7 @@ T3 (alt) Compra realizada (via fluxo de pedido — order_commission_lifecycle)
     └→ [META] Purchase event (outbox separado: MetaCapiOutbox)
 ```
 
-Disparos em T0/T1.5/T2 são **síncronos** via `try_flush_pending_meta_capi_lead_entries`. Em caso de falha (retryable), o `scheduler` retenta via `SendDailyPurchasesToMetaCommand`.
+Disparos em T0/T1.5/T2 **enfileiram** no outbox (`MetaCapiLeadOutbox`) e o request retorna na hora; o envio é **assíncrono** pelo `capi-worker` (polling), que também retenta failed-retryable respeitando o backoff. O `SendDailyPurchasesToMetaCommand` segue como safety-net diário.
 
 ### Mapeamento chave ↔ label ↔ evento
 

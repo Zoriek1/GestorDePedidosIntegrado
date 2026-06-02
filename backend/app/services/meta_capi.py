@@ -673,7 +673,9 @@ class MetaConversionsApiService:
         }
         return event
 
-    def build_lead_event_from_lead(self, lead, *, event_time_override: Optional[int] = None) -> Dict:
+    def build_lead_event_from_lead(
+        self, lead, *, event_time_override: Optional[int] = None
+    ) -> Dict:
         """
         Evento Lead (telefone salvo). event_id em meta_event_id_lead.
 

@@ -215,7 +215,9 @@ class Pedido(db.Model):
 
     # Token de rastreio do WhatsApp usado para costurar o pedido ao Lead (e ao CAPI).
     codigo_whatsapp = db.Column(
-        db.String(64), nullable=True, comment="Token de rastreio do WhatsApp (token_rastreio do Lead)"
+        db.String(64),
+        nullable=True,
+        comment="Token de rastreio do WhatsApp (token_rastreio do Lead)",
     )
 
     # Timestamps

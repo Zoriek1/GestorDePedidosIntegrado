@@ -152,6 +152,7 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
     Só age para pedidos de entrega com cliente vinculado e endereço minimamente preenchido.
     """
     try:
+        from app import db
         from app.models import EnderecoCliente
 
         if not getattr(pedido, "cliente_id", None):
@@ -184,7 +185,9 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
             candidate.principal = True
         db.session.add(candidate)
     except Exception as e:  # noqa: BLE001 - upsert é best-effort
-        print(f"[AVISO] Falha ao salvar endereço do cliente do pedido #{getattr(pedido, 'id', '?')}: {e}")
+        print(
+            f"[AVISO] Falha ao salvar endereço do cliente do pedido #{getattr(pedido, 'id', '?')}: {e}"
+        )
 
 
 @pedidos_bp.route("", methods=["GET"])

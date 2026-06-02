@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Grid, Box, Typography, Paper, Collapse, IconButton, useMediaQuery, useTheme } from '@mui/material';
+import { Grid, Box, Typography, Paper, Collapse, IconButton } from '@mui/material';
 import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import { OrderCard, type SelectionMode } from './OrderCard';
@@ -25,11 +25,6 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
   const userRole = getUserRole();
   const currentUser = getUser();
   const { data: users } = useUsers(userRole === 'admin');
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  // No mobile, fora do modo de seleção, usa o card compacto (menor altura — evita rolar 3x).
-  // No modo seleção mantém o card cheio para preservar o checkbox de seleção. #10
-  const useCompactCards = isMobile && !selectionMode;
 
   const sellerNameById = useMemo<Record<number, string>>(() => {
     const map: Record<number, string> = {};
@@ -173,9 +168,9 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
 
             {/* Grid de pedidos do grupo - colapsável */}
             <Collapse in={isExpanded} timeout="auto">
-              <Grid container spacing={useCompactCards ? 1 : 2}>
+              <Grid container spacing={2}>
                 {grupo.pedidos.map((pedido) => (
-                  <Grid size={{ xs: useCompactCards ? 6 : 12, sm: 6, md: 4 }} key={pedido.id}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={pedido.id}>
                     <OrderCard
                       pedido={pedido}
                       sellerNameById={sellerNameById}
@@ -184,7 +179,6 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
                       selectionMode={selectionKind}
                       selected={selectedIds ? selectedIds.has(pedido.id) : false}
                       onToggleSelect={onToggleSelect}
-                      compact={useCompactCards}
                     />
                   </Grid>
                 ))}

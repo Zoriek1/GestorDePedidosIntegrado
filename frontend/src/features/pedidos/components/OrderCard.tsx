@@ -18,6 +18,8 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Person,
@@ -83,6 +85,8 @@ export function OrderCard({
   compact = false,
 }: OrderCardProps) {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const statusColor = getStatusColor(pedido.status);
   const statusLabel = getStatusLabel(pedido.status);
@@ -485,12 +489,13 @@ export function OrderCard({
       }}
       onClick={onClick}
     >
-      <CardContent>
+      {/* No mobile, o card normal fica só um pouco menor (menos padding + título h6). */}
+      <CardContent sx={isMobile ? { p: 1.5, '&:last-child': { pb: 1.5 } } : undefined}>
         {/* 1. Cabeçalho (Identidade + Estados) */}
-        <Box mb={2}>
+        <Box mb={isMobile ? 1.5 : 2}>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} mb={1}>
             <Box flex={1}>
-              <Typography variant="h5" component="div" fontWeight="bold" gutterBottom>
+              <Typography variant={isMobile ? 'h6' : 'h5'} component="div" fontWeight="bold" gutterBottom>
                 Pedido #{pedido.id}
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">

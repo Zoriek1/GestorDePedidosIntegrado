@@ -380,48 +380,97 @@ export function OrderCard({
 
   const contextualCTA = getContextualCTA();
 
-  // Variante compacta (Kanban): só o essencial, sem menu/ações/CTA. #6
+  // Variante compacta (tile ~quadrado p/ grid 2-col no mobile + Kanban): denso, fonte
+  // pequena, mensagem truncada. Toca para abrir os detalhes (sem menu/ações). #6 #10
   if (compact) {
+    const mensagemPreview = (pedido.mensagem || '').trim();
     return (
       <Card
         variant="outlined"
+        onClick={() => navigate(`/pedidos/${pedido.id}`)}
         sx={{
-          cursor: onClick ? 'pointer' : 'default',
-          '&:hover': onClick ? { boxShadow: 3 } : {},
+          cursor: 'pointer',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          borderColor: isAtrasado ? 'error.light' : undefined,
+          '&:hover': { boxShadow: 3 },
         }}
-        onClick={onClick}
       >
-        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} mb={0.5}>
-            <Typography variant="subtitle2" fontWeight={700} noWrap>
-              #{pedido.id} · {pedido.destinatario || pedido.cliente || 'Sem nome'}
-            </Typography>
+        <CardContent
+          sx={{
+            p: 1,
+            '&:last-child': { pb: 1 },
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.4,
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={0.5}>
             <Chip
               label={statusLabel}
               color={statusColor}
               size="small"
-              sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
+              sx={{ height: 17, '& .MuiChip-label': { px: 0.5, fontSize: '0.58rem' } }}
             />
+            <Typography sx={{ fontSize: '0.58rem', color: 'text.secondary' }}>#{pedido.id}</Typography>
           </Stack>
-          {enderecoCompleto && (
-            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-              {enderecoCompleto}
+
+          <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.2 }} noWrap>
+            {pedido.destinatario || pedido.cliente || 'Sem nome'}
+          </Typography>
+
+          {pedido.produto && (
+            <Typography sx={{ fontSize: '0.64rem', color: 'text.secondary', lineHeight: 1.2 }} noWrap>
+              {pedido.produto}
             </Typography>
           )}
-          <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">
-            <Typography variant="caption" color="text.secondary">
-              {pedido.dia_entrega ? dayjs(pedido.dia_entrega).format('DD/MM') : '—'}
-              {pedido.horario ? ` · ${pedido.horario}` : ''}
+
+          {mensagemPreview && (
+            <Typography
+              sx={{
+                fontSize: '0.62rem',
+                fontStyle: 'italic',
+                color: 'text.secondary',
+                lineHeight: 1.25,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              “{mensagemPreview}”
             </Typography>
-            {isAtrasado && (
-              <Chip
-                label="Atrasado"
-                color="error"
-                size="small"
-                sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }}
-              />
+          )}
+
+          <Box sx={{ flex: 1 }} />
+
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={0.5}>
+            <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary' }} noWrap>
+              {pedido.dia_entrega ? dayjs(pedido.dia_entrega).format('DD/MM') : '—'}
+              {pedido.horario ? ` ${pedido.horario}` : ''}
+            </Typography>
+            {pedido.valor && (
+              <Typography sx={{ fontSize: '0.66rem', fontWeight: 700 }} noWrap>
+                R$ {pedido.valor}
+              </Typography>
             )}
           </Stack>
+
+          {isAtrasado && (
+            <Chip
+              label="Atrasado"
+              color="error"
+              size="small"
+              sx={{
+                height: 15,
+                alignSelf: 'flex-start',
+                '& .MuiChip-label': { px: 0.5, fontSize: '0.54rem' },
+              }}
+            />
+          )}
         </CardContent>
       </Card>
     );

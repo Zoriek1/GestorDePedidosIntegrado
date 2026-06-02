@@ -438,9 +438,7 @@ class TestMetaCapiPurchaseEnrichment:
 
                 service = MetaConversionsApiService()
                 event = service.build_purchase_event(pedido)
-                expected_fbc = service.build_fbc_from_fbclid(
-                    lead.fbclid, lead.created_at
-                )
+                expected_fbc = service.build_fbc_from_fbclid(lead.fbclid, lead.created_at)
 
                 assert event["event_name"] == "Purchase"
                 assert event["event_source_url"] == lead.url
@@ -1226,20 +1224,23 @@ class TestPurchaseSkipInvalidValue:
         return pedido
 
     def test_returns_none_when_value_zero(self, service):
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(0.0)
             assert service.build_purchase_event(pedido) is None
 
     def test_returns_none_when_value_below_min(self, service):
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(0.01)
             assert service.build_purchase_event(pedido) is None
 
     def test_returns_event_when_value_valid(self, service):
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(150.0)
             event = service.build_purchase_event(pedido)
             assert event is not None
@@ -1253,8 +1254,9 @@ class TestPurchaseSkipInvalidValue:
         replicamos esse bug — apenas garantimos que a flag-off não introduz
         skip, mantendo o comportamento histórico.
         """
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "false"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "false"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(0.0)
             event = service.build_purchase_event(pedido)
             assert event is not None
@@ -1280,7 +1282,7 @@ class TestExternalIdsArray:
             return MetaConversionsApiService()
 
     def test_contact_uses_lead_id_and_fbp(self, service):
-        lead = MagicMock(id=7, fbp="fb.1.123.456", fbclid="abc", phone=None)
+        lead = MagicMock(id=7, fbp="fb.1.123.456", fbclid="abc", phone=None, token_rastreio=None)
         ids = service.build_external_ids_for_event("Contact", lead=lead)
         assert len(ids) == 3
         assert all(len(h) == 64 for h in ids)
@@ -1289,15 +1291,15 @@ class TestExternalIdsArray:
         assert service.hash_sha256("fbp:fb.1.123.456") in ids
 
     def test_lead_includes_phone_hash(self, service):
-        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766")
+        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766", token_rastreio=None)
         ids = service.build_external_ids_for_event("Lead", lead=lead)
         assert service.hash_sha256("lead:7") in ids
         assert service.hash_sha256("phone:+5562999887766") in ids
 
     def test_purchase_uses_phone_and_cliente(self, service):
-        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766")
+        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766", token_rastreio=None)
         pedido = MagicMock(
-            id=99, telefone_cliente="62999887766", cliente_id=42
+            id=99, telefone_cliente="62999887766", cliente_id=42, codigo_whatsapp=None
         )
         ids = service.build_external_ids_for_event("Purchase", lead=lead, pedido=pedido)
         assert service.hash_sha256("phone:+5562999887766") in ids
@@ -1305,19 +1307,35 @@ class TestExternalIdsArray:
         assert service.hash_sha256("lead:7") in ids
 
     def test_purchase_falls_back_to_order_id(self, service):
-        pedido = MagicMock(
-            id=99, telefone_cliente="invalid", cliente_id=None
-        )
+        pedido = MagicMock(id=99, telefone_cliente="invalid", cliente_id=None, codigo_whatsapp=None)
         ids = service.build_external_ids_for_event("Purchase", lead=None, pedido=pedido)
         assert service.hash_sha256("order:99") in ids
 
     def test_contact_shares_lead_hash_with_lead_event(self, service):
         """Cross-event matching: Contact e Lead do mesmo lead compartilham lead:{id}."""
-        lead = MagicMock(id=7, fbp="fb.1.1.2", fbclid=None, phone="62999887766")
+        lead = MagicMock(
+            id=7, fbp="fb.1.1.2", fbclid=None, phone="62999887766", token_rastreio=None
+        )
         contact_ids = set(service.build_external_ids_for_event("Contact", lead=lead))
         lead_ids = set(service.build_external_ids_for_event("Lead", lead=lead))
         intersection = contact_ids & lead_ids
         assert service.hash_sha256("lead:7") in intersection
+
+    def test_token_included_across_events(self, service):
+        """O token (token_rastreio/codigo_whatsapp) entra no array nos 3 estágios (#5),
+        servindo de chave de interseção para costurar Contact → Lead → Purchase."""
+        lead = MagicMock(
+            id=7, fbp=None, fbclid=None, phone="62999887766", token_rastreio="ABCDEFGH12"
+        )
+        pedido = MagicMock(
+            id=99, telefone_cliente="62999887766", cliente_id=42, codigo_whatsapp="ABCDEFGH12"
+        )
+        token_hash = service.hash_sha256("token:ABCDEFGH12")
+        assert token_hash in service.build_external_ids_for_event("Contact", lead=lead)
+        assert token_hash in service.build_external_ids_for_event("Lead", lead=lead)
+        assert token_hash in service.build_external_ids_for_event(
+            "Purchase", lead=lead, pedido=pedido
+        )
 
 
 class TestNormalizeLastName:

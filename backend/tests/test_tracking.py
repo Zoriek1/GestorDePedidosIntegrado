@@ -79,12 +79,15 @@ def test_track_token_roundtrip_e_adulterado(app):
         assert tt.parse_track_token("nao-e-um-token") is None
 
 
-def test_track_token_expirado(app, monkeypatch):
+def test_track_token_e_curto(app):
+    """O token compacto (#14) é curto e ainda assim resolve de volta o pedido.
+
+    O formato compacto não embute timestamp — por design, não expira (links de
+    acompanhamento não precisam expirar)."""
     with app.app_context():
         token = tt.make_track_token(7)
-        # Força max_age negativo: qualquer token (mesmo recém-criado) é considerado expirado.
-        monkeypatch.setattr(tt, "_max_age_seconds", lambda: -1)
-        assert tt.parse_track_token(token) is None
+        assert len(token) <= 20
+        assert tt.parse_track_token(token) == 7
 
 
 # ---------------------------------------------------------------------------

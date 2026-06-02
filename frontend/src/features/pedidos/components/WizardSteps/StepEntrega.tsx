@@ -17,12 +17,14 @@ import {
   Tooltip,
   Alert,
   Button,
+  MenuItem,
 } from '@mui/material';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import EditIcon from '@mui/icons-material/Edit';
 import LockIcon from '@mui/icons-material/Lock';
 import { CepInput } from '../../../../components/form';
 import { useCepLookup } from '../../useCases/cepLookup';
+import { useClienteEnderecos } from '../../../../api/endpoints/customers';
 import type { PedidoFormData } from '../../schemas';
 
 // ============================================================================
@@ -43,6 +45,25 @@ export function StepEntrega() {
 
   // Estado para controlar edição de endereço
   const [isAddressLocked, setIsAddressLocked] = useState(true);
+
+  // Endereços salvos do cliente (#17): para clientes existentes, oferece um seletor que
+  // preenche os campos automaticamente, em vez de digitar tudo de novo.
+  const clienteId = useWatch({ control, name: 'cliente_id' });
+  const { data: enderecosData } = useClienteEnderecos(isEntrega ? clienteId : null);
+  const enderecosSalvos = enderecosData?.enderecos ?? [];
+  const [selectedEnderecoId, setSelectedEnderecoId] = useState<number | ''>('');
+
+  const handleSelectEndereco = (id: number) => {
+    const e = enderecosSalvos.find((x) => x.id === id);
+    if (!e) return;
+    setSelectedEnderecoId(id);
+    setValue('cep', e.cep, { shouldValidate: true });
+    setValue('rua', e.rua, { shouldValidate: true });
+    setValue('numero', e.numero, { shouldValidate: true });
+    setValue('complemento', e.complemento, { shouldValidate: true });
+    setValue('bairro', e.bairro, { shouldValidate: true });
+    setValue('cidade', e.cidade, { shouldValidate: true });
+  };
 
   // CEP Lookup
   const { lookupCep, isLoading: isCepLoading, error: cepError } = useCepLookup();
@@ -110,6 +131,26 @@ export function StepEntrega() {
                 </IconButton>
               </Tooltip>
             </Box>
+
+            {/* Endereços salvos do cliente (#17) */}
+            {enderecosSalvos.length > 0 && (
+              <TextField
+                select
+                size="small"
+                fullWidth
+                label="Endereços salvos do cliente"
+                value={selectedEnderecoId}
+                onChange={(e) => handleSelectEndereco(Number(e.target.value))}
+                helperText="Selecione um endereço salvo para preencher automaticamente"
+              >
+                {enderecosSalvos.map((e) => (
+                  <MenuItem key={e.id} value={e.id}>
+                    {e.apelido ? `${e.apelido} — ` : ''}
+                    {e.endereco_completo || `${e.rua}, ${e.numero} - ${e.bairro}`}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
 
             {/* CEP com busca automática */}
             <Grid container spacing={2}>

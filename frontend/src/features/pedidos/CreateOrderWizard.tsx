@@ -4,7 +4,7 @@
  * Integra todos os steps com validação incremental
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createLogger } from '../../lib/logger';
 
 const _log = createLogger('CreateOrderWizard');
@@ -45,6 +45,7 @@ import {
   StepPagamento,
 } from './components/WizardSteps';
 import { useOrderFormContext } from './contexts/OrderFormContext';
+import { useConfirm } from '../../components/system/useConfirm';
 
 // ============================================================================
 // Constantes
@@ -52,6 +53,31 @@ import { useOrderFormContext } from './contexts/OrderFormContext';
 
 const STORAGE_KEY = 'puf_pedido_draft_v2';
 const DEBOUNCE_DELAY = 500;
+
+/**
+ * Um rascunho só vale o pop-up de "Retomar?" se o usuário tiver digitado algo de fato —
+ * ignorando os campos que vieram de prefill (initialData), para não perguntar à toa.
+ */
+function isDraftMeaningful(
+  draft: Partial<PedidoFormData> | null,
+  initialData?: Partial<PedidoFormData>,
+): boolean {
+  if (!draft) return false;
+  const fields: (keyof PedidoFormData)[] = [
+    'cliente', 'telefone_cliente', 'destinatario', 'produto', 'valor', 'mensagem',
+    'rua', 'numero', 'endereco', 'flores_cor', 'obs_entrega', 'observacoes',
+    'cep', 'bairro', 'cidade',
+  ];
+  return fields.some((k) => {
+    const v = draft[k];
+    if (typeof v !== 'string') return false;
+    const trimmed = v.trim();
+    if (!trimmed) return false;
+    const initVal = initialData?.[k];
+    if (typeof initVal === 'string' && initVal.trim() === trimmed) return false;
+    return true;
+  });
+}
 
 const STEPS = [
   { label: 'Cliente', component: StepCliente, fields: ['cliente', 'telefone_cliente', 'destinatario', 'tipo_pedido'] as const },
@@ -97,26 +123,27 @@ export function CreateOrderWizard({
   const [stepErrors, setStepErrors] = useState<Record<number, boolean>>({});
   const [isReadyToSubmit, setIsReadyToSubmit] = useState(false);
 
-  // Carrega dados do localStorage
-  const loadDraft = useCallback((): PedidoFormData => {
+  // Lê o rascunho salvo uma única vez no mount, ANTES de o auto-save sobrescrevê-lo.
+  // Não injeta direto: a decisão de retomar é feita via diálogo (#1).
+  const [storedDraft] = useState<Partial<PedidoFormData> | null>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // Importante: `initialData` deve ganhar do rascunho (ex: fonte escolhida no modal)
-        return { ...pedidoFormDefaultValues, ...parsed, ...initialData };
-      }
+      return stored ? (JSON.parse(stored) as Partial<PedidoFormData>) : null;
     } catch {
-      // Erro ao carregar rascunho (silenciado em produção)
+      return null;
     }
-    return { ...pedidoFormDefaultValues, ...initialData };
-  }, [initialData]);
+  });
+  const confirm = useConfirm();
+  // Auto-save só liga depois que o usuário decide sobre o rascunho — assim o form vazio
+  // inicial não sobrescreve o rascunho antes da resposta.
+  const [draftResolved, setDraftResolved] = useState(false);
+  const draftDecidedRef = useRef(false);
 
-  // Hook Form com Zod
+  // Hook Form com Zod — inicia limpo (defaults + prefill), sem o rascunho.
   const methods = useForm<PedidoFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(pedidoFormSchema) as any,
-    defaultValues: loadDraft(),
+    defaultValues: { ...pedidoFormDefaultValues, ...initialData },
     mode: 'onBlur',
   });
 
@@ -136,10 +163,45 @@ export function CreateOrderWizard({
     methods.reset({ ...methods.getValues(), ...initialData }, { keepDirty: true });
   }, [initialData, initialDataKey, methods]);
 
-  // Salva no localStorage com debounce
+  // No mount, decide o que fazer com o rascunho salvo: pergunta antes de retomar (#1).
   useEffect(() => {
+    if (draftDecidedRef.current) return;
+    draftDecidedRef.current = true;
+
+    if (!isDraftMeaningful(storedDraft, initialData)) {
+      setDraftResolved(true);
+      return;
+    }
+
+    (async () => {
+      const resume = await confirm({
+        title: 'Retomar rascunho?',
+        description:
+          'Encontramos um pedido que você começou e não finalizou. Deseja continuar de onde parou?',
+        confirmText: 'Retomar',
+        cancelText: 'Começar novo',
+      });
+      if (resume && storedDraft) {
+        // initialData (prefill) continua tendo prioridade sobre o rascunho.
+        methods.reset({ ...pedidoFormDefaultValues, ...storedDraft, ...initialData });
+      } else {
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          // noop
+        }
+      }
+      setDraftResolved(true);
+    })();
+    // Executa só uma vez no mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Salva no localStorage com debounce (só após a decisão sobre o rascunho).
+  useEffect(() => {
+    if (!draftResolved) return;
     let timeoutId: ReturnType<typeof setTimeout>;
-    
+
     // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((data) => {
       clearTimeout(timeoutId);
@@ -156,7 +218,7 @@ export function CreateOrderWizard({
       clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [watch]);
+  }, [watch, draftResolved]);
 
   // Limpa erros ao mudar de step
   useEffect(() => {

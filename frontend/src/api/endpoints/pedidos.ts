@@ -58,6 +58,7 @@ export interface Pedido {
   coords_lon?: number;
   fbc?: string;
   fbp?: string;
+  codigo_whatsapp?: string;
   created_at?: string;
   updated_at?: string;
   deleted_at?: string | null;

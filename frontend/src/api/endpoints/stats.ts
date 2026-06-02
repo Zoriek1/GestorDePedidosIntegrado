@@ -12,7 +12,7 @@ export interface Stats {
   agendados: number;
   producao: number;
   prontos: number;
-  entregues: number;
+  emRota: number;
   cancelados: number;
   atrasados: number;
 }
@@ -53,7 +53,7 @@ export function useStats() {
         agendados: s.agendado,
         producao: s.em_producao,
         prontos: (s.pronto_entrega || 0) + (s.pronto_retirada || 0),
-        entregues: s.em_rota,
+        emRota: s.em_rota,
         cancelados: 0, // backend não expõe
         atrasados: 0, // opcional, preenchido via outro endpoint se necessário
       };

@@ -44,14 +44,28 @@ export default function SalesPage() {
     filtrar_por_criacao: true, // Filtrar por created_at
   });
 
+  // Período é o mês atual inteiro (parcial até hoje)? Reusado na projeção e no comparativo.
+  const isMesAtual = useMemo(() => {
+    const start = dayjs(startDate);
+    const end = dayjs(endDate);
+    return start.isSame(now.startOf('month'), 'day') && end.isSame(now.endOf('month'), 'day');
+  }, [startDate, endDate, now]);
+
   const prevStartDate = useMemo(
     () => dayjs(startDate).subtract(1, 'month').format('YYYY-MM-DD'),
     [startDate]
   );
-  const prevEndDate = useMemo(
-    () => dayjs(endDate).subtract(1, 'month').format('YYYY-MM-DD'),
-    [endDate]
-  );
+  // Quando o período é o mês atual (parcial), limita a janela anterior ao mesmo intervalo de
+  // dias (MTD): dia 1 do mês anterior até o mesmo dia-do-mês de hoje — evita comparar um mês
+  // parcial contra um mês cheio (#15).
+  const prevEndDate = useMemo(() => {
+    if (isMesAtual) {
+      const prevMonthStart = dayjs(startDate).subtract(1, 'month').startOf('month');
+      const dia = Math.min(now.date(), prevMonthStart.daysInMonth());
+      return prevMonthStart.date(dia).format('YYYY-MM-DD');
+    }
+    return dayjs(endDate).subtract(1, 'month').format('YYYY-MM-DD');
+  }, [startDate, endDate, isMesAtual, now]);
 
   const { data: previousData } = usePedidos(
     {
@@ -99,23 +113,24 @@ export default function SalesPage() {
   const baseTotals = useMemo(() => calcularTotais(vendas), [vendas]);
 
   const projecaoFaturamento = useMemo(() => {
-    const start = dayjs(startDate);
-    const end = dayjs(endDate);
-    const isMesAtual = start.isSame(now.startOf('month'), 'day') && end.isSame(now.endOf('month'), 'day');
     if (!isMesAtual) return undefined;
+    const start = dayjs(startDate);
     const diasNoMes = now.daysInMonth();
     const diasDecorridos = Math.min(now.diff(start, 'day') + 1, diasNoMes);
     if (diasDecorridos <= 0) return undefined;
     const mediaDiaria = baseTotals.totalVendasBruto / diasDecorridos;
     return mediaDiaria * diasNoMes;
-  }, [baseTotals.totalVendasBruto, startDate, endDate, now]);
+  }, [baseTotals.totalVendasBruto, startDate, isMesAtual, now]);
 
   const kpis = useMemo(() => ({
     ...baseTotals,
     projecaoFaturamento,
   }), [baseTotals, projecaoFaturamento]);
 
-  const comparativoLabel = useMemo(() => dayjs(prevStartDate).format('MMM'), [prevStartDate]);
+  const comparativoLabel = useMemo(
+    () => `${dayjs(prevStartDate).format('MMM')}${isMesAtual ? ' (parcial)' : ''}`,
+    [prevStartDate, isMesAtual]
+  );
   const comparativo = useMemo(() => {
     const prevTotals = calcularTotais(vendasAnterior);
     const calcPct = (atual: number, anterior: number) => {

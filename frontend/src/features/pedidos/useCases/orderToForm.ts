@@ -3,10 +3,6 @@ import type { PedidoFormData } from '../schemas';
 import { formatCurrency, STATUS_PAGAMENTO, TIPOS_PEDIDO } from '../schemas';
 
 export function orderToForm(pedido: Pedido): PedidoFormData {
-  // DEBUG: Log do pedido recebido para diagnóstico
-  console.log('=== DEBUG orderToForm ===');
-  console.log('Pedido recebido:', pedido);
-  
   // Converter valor de string para number se necessário
   let valorNum: number | undefined;
   if (pedido.valor !== undefined && pedido.valor !== null) {
@@ -91,10 +87,10 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     origem_anuncio: !!pedido.fbc,
     fbclid,
     fbp: pedido.fbp || '',
+    codigo_whatsapp: pedido.codigo_whatsapp || '',
     vendedor_id: pedido.vendedor_id ?? undefined,
   };
 
-  console.log('FormData gerado:', formData);
   return formData;
 }
 

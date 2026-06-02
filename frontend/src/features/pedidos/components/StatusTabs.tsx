@@ -1,4 +1,4 @@
-import { Tabs, Tab } from '@mui/material';
+import { Tabs, Tab, TextField, MenuItem, useMediaQuery, useTheme } from '@mui/material';
 
 export interface StatusTabsProps {
   value: string;
@@ -16,6 +16,30 @@ const STATUS_TABS = [
 ];
 
 export function StatusTabs({ value, onChange }: StatusTabsProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // No mobile, um dropdown substitui o carrossel de abas (que obrigava a passar por
+  // vários status sequencialmente para escolher um). #11
+  if (isMobile) {
+    return (
+      <TextField
+        select
+        size="small"
+        fullWidth
+        label="Status"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {STATUS_TABS.map((tab) => (
+          <MenuItem key={tab.value} value={tab.value}>
+            {tab.label}
+          </MenuItem>
+        ))}
+      </TextField>
+    );
+  }
+
   return (
     <Tabs
       value={value}

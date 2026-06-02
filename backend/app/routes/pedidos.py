@@ -145,6 +145,48 @@ def _link_lead_by_whatsapp_code(
     return None
 
 
+def _upsert_cliente_endereco_from_pedido(pedido) -> None:
+    """Salva o endereço de entrega do pedido na agenda de endereços do cliente (#17).
+
+    Idempotente: dedup por `address_hash`. Não lança erro para não bloquear o pedido.
+    Só age para pedidos de entrega com cliente vinculado e endereço minimamente preenchido.
+    """
+    try:
+        from app.models import EnderecoCliente
+
+        if not getattr(pedido, "cliente_id", None):
+            return
+        if (pedido.tipo_pedido or "").strip().lower() != "entrega":
+            return
+        if not (pedido.rua or pedido.cep):
+            return
+
+        candidate = EnderecoCliente(
+            cliente_id=pedido.cliente_id,
+            cep=pedido.cep,
+            rua=pedido.rua,
+            numero=pedido.numero,
+            bairro=pedido.bairro,
+            cidade=pedido.cidade,
+        )
+        address_hash = candidate.compute_address_hash()
+
+        existing = EnderecoCliente.query.filter_by(
+            cliente_id=pedido.cliente_id, address_hash=address_hash
+        ).first()
+        if existing:
+            return
+
+        candidate.address_canonical = candidate.build_address_canonical()
+        candidate.address_hash = address_hash
+        # Primeiro endereço do cliente vira o principal.
+        if EnderecoCliente.query.filter_by(cliente_id=pedido.cliente_id).count() == 0:
+            candidate.principal = True
+        db.session.add(candidate)
+    except Exception as e:  # noqa: BLE001 - upsert é best-effort
+        print(f"[AVISO] Falha ao salvar endereço do cliente do pedido #{getattr(pedido, 'id', '?')}: {e}")
+
+
 @pedidos_bp.route("", methods=["GET"])
 @requires_edit_auth
 def listar_pedidos():
@@ -1216,12 +1258,14 @@ def criar_pedido():
             cliente_id=cliente_id_int,
             fbc=fbc,
             fbp=fbp,
+            codigo_whatsapp=codigo_whatsapp,
             vendedor_id=vendedor_id_final,
         )
 
         db.session.add(pedido)
         db.session.flush()  # gera pedido.id antes de vincular o lead
         _link_lead_by_whatsapp_code(codigo_whatsapp, telefone_cliente, pedido_id=pedido.id)
+        _upsert_cliente_endereco_from_pedido(pedido)
         from app.services.taxa_cartao import aplicar_taxa_cartao_snapshot
 
         aplicar_taxa_cartao_snapshot(pedido)
@@ -1439,6 +1483,12 @@ def atualizar_pedido(pedido_id):
             new_fbp = _clean_str(data["fbp"]) or None
             track_change("fbp", pedido.fbp, new_fbp)
             pedido.fbp = new_fbp
+
+        # Persiste o token do WhatsApp quando vier um (não apaga o existente se o payload
+        # de edição não trouxer token). `codigo_whatsapp` já foi extraído acima.
+        if codigo_whatsapp and codigo_whatsapp != pedido.codigo_whatsapp:
+            track_change("codigo_whatsapp", pedido.codigo_whatsapp, codigo_whatsapp)
+            pedido.codigo_whatsapp = codigo_whatsapp
 
         # Vendedor: admin pode reatribuir; vendedor vincula a si mesmo se ainda sem vendedor
         # Resolve current_user: tenta request.current_user (JWT via decorator),

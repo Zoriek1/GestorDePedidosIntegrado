@@ -7,7 +7,8 @@
  */
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Box, Paper, Typography, Stack, Chip, CircularProgress } from '@mui/material';
+import { Box, Paper, Typography, Stack, Chip, CircularProgress, TextField, Button } from '@mui/material';
+import dayjs from 'dayjs';
 import {
   DndContext,
   DragOverlay,
@@ -92,7 +93,7 @@ function DraggableCard({
       }}
       sx={{ mb: 2 }}
     >
-      <OrderCard pedido={pedido} sellerNameById={sellerNameById} />
+      <OrderCard pedido={pedido} sellerNameById={sellerNameById} compact />
     </Box>
   );
 }
@@ -152,8 +153,16 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
   const updateStatus = useUpdatePedidoStatus();
   const queryClient = useQueryClient();
 
+  // Seletor de dia (default: hoje). O Kanban mostra um dia por vez para não misturar
+  // pedidos de datas diferentes na mesma board. #6
+  const [dayFilter, setDayFilter] = useState(() =>
+    filters?.data_inicio || dayjs().format('YYYY-MM-DD'),
+  );
+
   const { data, isLoading } = usePedidos({
-    ...filters,
+    search: filters?.search,
+    data_inicio: dayFilter,
+    data_fim: dayFilter,
     per_page: 200,
     sort_by: 'dia_entrega',
     sort_order: 'asc',
@@ -260,6 +269,28 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <Stack direction="row" alignItems="center" spacing={1} mb={2} flexWrap="wrap" useFlexGap>
+        <Button size="small" onClick={() => setDayFilter(dayjs(dayFilter).subtract(1, 'day').format('YYYY-MM-DD'))}>
+          ‹ Dia anterior
+        </Button>
+        <TextField
+          type="date"
+          size="small"
+          value={dayFilter}
+          onChange={(e) => setDayFilter(e.target.value || dayjs().format('YYYY-MM-DD'))}
+          sx={{ width: 170 }}
+        />
+        <Button size="small" onClick={() => setDayFilter(dayjs(dayFilter).add(1, 'day').format('YYYY-MM-DD'))}>
+          Próximo dia ›
+        </Button>
+        <Button
+          size="small"
+          variant={dayFilter === dayjs().format('YYYY-MM-DD') ? 'contained' : 'outlined'}
+          onClick={() => setDayFilter(dayjs().format('YYYY-MM-DD'))}
+        >
+          Hoje
+        </Button>
+      </Stack>
       <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 2 }}>
         {visibleColumns.map((col) => (
           <Column
@@ -273,7 +304,7 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
       <DragOverlay>
         {activePedido ? (
           <Box sx={{ width: 300 }}>
-            <OrderCard pedido={activePedido} sellerNameById={sellerNameById} />
+            <OrderCard pedido={activePedido} sellerNameById={sellerNameById} compact />
           </Box>
         ) : null}
       </DragOverlay>

@@ -39,6 +39,7 @@ import { OrdersKPIGrid } from './components/OrdersKPIGrid';
 import { OrdersFilterToolbar } from './components/OrdersFilterToolbar';
 import { OrdersPagination } from './components/OrdersPagination';
 import { KanbanBoard } from './components/KanbanBoard';
+import { EntregadorHome } from '../entregas/EntregadorHome';
 import { usePedidoPrintService } from './services/PedidoPrintService';
 
 type ViewMode = 'lista' | 'quadro';
@@ -236,6 +237,11 @@ export default function OrdersPage() {
   const handleFilterMenuClose = () => {
     setFilterMenuAnchor(null);
   };
+
+  // Entregador tem visão dedicada (#7): só as entregas dele, sem a lista geral "Todos".
+  if (isEntregador) {
+    return <EntregadorHome />;
+  }
 
   return (
     <Box>
@@ -460,7 +466,7 @@ export default function OrdersPage() {
             agendados: statsData.stats.agendados,
             producao: statsData.stats.producao,
             prontos: statsData.stats.prontos,
-            entregues: statsData.stats.entregues,
+            emRota: statsData.stats.emRota,
             atrasados: statsData.stats.atrasados,
           }}
         />
@@ -599,7 +605,7 @@ export default function OrdersPage() {
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelectPedido}
           />
-          {pedidosData.total_pages && pedidosData.total_pages > 1 && (
+          {pedidosData.total_pages > 1 && (
             <OrdersPagination
               page={filters.page || 1}
               perPage={filters.per_page || 20}

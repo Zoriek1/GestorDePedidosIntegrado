@@ -369,6 +369,8 @@ class MetaConversionsApiService:
                 ids.append(h)
 
         lead_id = getattr(lead, "id", None) if lead is not None else None
+        lead_token_raw = getattr(lead, "token_rastreio", None) if lead is not None else None
+        lead_token = str(lead_token_raw).strip().upper() if lead_token_raw else None
 
         if event_type == "Contact":
             # Sem telefone garantido neste estágio — usa lead.id + fbp/fbclid.
@@ -380,6 +382,8 @@ class MetaConversionsApiService:
             fbclid = getattr(lead, "fbclid", None) if lead is not None else None
             if fbclid:
                 add(f"fbclid:{str(fbclid).strip()}")
+            if lead_token:
+                add(f"token:{lead_token}")
         elif event_type == "Lead":
             # Lead já tem telefone — amarra Contact via lead:{id} e amarra
             # Purchase via phone.
@@ -391,6 +395,8 @@ class MetaConversionsApiService:
             fbp = getattr(lead, "fbp", None) if lead is not None else None
             if fbp:
                 add(f"fbp:{str(fbp).strip()}")
+            if lead_token:
+                add(f"token:{lead_token}")
         elif event_type == "Purchase":
             phone_e164 = self._phone_e164_or_none(
                 getattr(pedido, "telefone_cliente", None) if pedido else None
@@ -402,6 +408,11 @@ class MetaConversionsApiService:
                 add(f"cliente:{cliente_id}")
             if lead_id:
                 add(f"lead:{lead_id}")
+            purchase_token = (
+                getattr(pedido, "codigo_whatsapp", None) if pedido else None
+            ) or lead_token
+            if purchase_token:
+                add(f"token:{str(purchase_token).strip().upper()}")
             if not ids and pedido is not None:
                 # Garante pelo menos um identificador.
                 add(f"order:{pedido.id}")

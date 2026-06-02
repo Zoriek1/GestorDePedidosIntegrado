@@ -6,8 +6,9 @@
 import { useMemo } from 'react';
 import { Box, Paper, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import dayjs from 'dayjs';
 import type { Pedido } from '../../../api/endpoints/pedidos';
-import { agruparPorDia } from '../utils/salesAnalytics';
+import { agruparPorDia, agruparPorMes } from '../utils/salesAnalytics';
 
 export interface SalesChartProps {
   vendas: Pedido[];
@@ -33,27 +34,37 @@ export function SalesChart({
 
   const isCompareMode = Boolean(compareVendas && compareStartDate && compareEndDate);
 
+  // Quando o período abrange 3+ meses, agrupa por mês em vez de por dia, evitando o
+  // gráfico "fino" com dezenas de barras diárias soltas (#16).
+  const useMonthly = useMemo(() => {
+    const monthsSpan =
+      dayjs(endDate).startOf('month').diff(dayjs(startDate).startOf('month'), 'month') + 1;
+    return monthsSpan >= 3;
+  }, [startDate, endDate]);
+
+  const agrupar = useMonthly ? agruparPorMes : agruparPorDia;
+
   const chartData = useMemo(() => {
     if (!isCompareMode) {
-      return agruparPorDia(vendas, startDate, endDate).map((item) => ({
+      return agrupar(vendas, startDate, endDate).map((item) => ({
         label: item.label,
         valor: item.valor,
         quantidade: item.quantidade,
       }));
     }
 
-    const serieA = agruparPorDia(vendas, startDate, endDate);
-    const serieB = agruparPorDia(compareVendas || [], compareStartDate as string, compareEndDate as string);
+    const serieA = agrupar(vendas, startDate, endDate);
+    const serieB = agrupar(compareVendas || [], compareStartDate as string, compareEndDate as string);
     const maxLen = Math.max(serieA.length, serieB.length);
 
     return Array.from({ length: maxLen }).map((_, idx) => ({
-      label: `D${idx + 1}`,
+      label: `${useMonthly ? 'M' : 'D'}${idx + 1}`,
       valor: serieA[idx]?.valor || 0,
       quantidade: serieA[idx]?.quantidade || 0,
       valorComparado: serieB[idx]?.valor || 0,
       quantidadeComparado: serieB[idx]?.quantidade || 0,
     }));
-  }, [vendas, startDate, endDate, compareVendas, compareStartDate, compareEndDate, isCompareMode]);
+  }, [agrupar, useMonthly, vendas, startDate, endDate, compareVendas, compareStartDate, compareEndDate, isCompareMode]);
 
   if (chartData.length === 0) {
     return (
@@ -68,7 +79,7 @@ export function SalesChart({
   return (
     <Paper sx={{ p: 3, mt: 2 }}>
       <Typography variant="h6" gutterBottom>
-        Vendas por Dia
+        {useMonthly ? 'Vendas por Mês' : 'Vendas por Dia'}
       </Typography>
       <Box sx={{ width: '100%', height: 300, mt: 2, minWidth: 0, minHeight: 300 }}>
         <ResponsiveContainer width="100%" height="100%">

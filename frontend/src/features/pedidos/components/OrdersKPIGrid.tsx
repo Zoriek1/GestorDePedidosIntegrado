@@ -1,4 +1,4 @@
-import { Grid, Box, useMediaQuery, useTheme } from '@mui/material';
+import { Grid, useMediaQuery, useTheme } from '@mui/material';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import BuildIcon from '@mui/icons-material/Build';
@@ -13,7 +13,7 @@ interface OrdersKPIGridProps {
     agendados: number;
     producao: number;
     prontos: number;
-    entregues: number;
+    emRota: number;
     atrasados: number;
   };
 }
@@ -54,8 +54,8 @@ export function OrdersKPIGrid({ stats }: OrdersKPIGridProps) {
       iconColor: '#16a34a',
     },
     {
-      title: 'Entregues',
-      value: stats.entregues,
+      title: 'Em rota',
+      value: stats.emRota,
       icon: <LocalShippingIcon fontSize="inherit" />,
       iconBg: '#ede9fe',
       iconColor: '#7c3aed',
@@ -69,51 +69,22 @@ export function OrdersKPIGrid({ stats }: OrdersKPIGridProps) {
     },
   ];
 
-  // Mobile: Carrossel horizontal
+  // Mobile: grid de 2 colunas (substitui o carrossel horizontal, que exigia rolar pro
+  // lado e ocupava muito espaço). #2
   if (isMobile) {
     return (
-      <Box
-        sx={{
-          mb: 3,
-          overflowX: 'auto',
-          overflowY: 'hidden',
-          scrollSnapType: 'x mandatory',
-          scrollbarWidth: 'thin',
-          '&::-webkit-scrollbar': {
-            height: 8,
-          },
-          '&::-webkit-scrollbar-thumb': {
-            backgroundColor: 'rgba(0,0,0,0.2)',
-            borderRadius: 4,
-          },
-        }}
-      >
-        <Box
-          sx={{
-            display: 'flex',
-            gap: 2,
-            pb: 1,
-            minWidth: 'max-content',
-          }}
-        >
-          {cards.map((card, index) => (
-            <Box
-              key={card.title}
-              sx={{
-                minWidth: 140,
-                scrollSnapAlign: 'start',
-              }}
-            >
-              <StatsCard
-                title={card.title}
-                value={card.value}
-                icon={card.icon}
-                index={index}
-              />
-            </Box>
-          ))}
-        </Box>
-      </Box>
+      <Grid container spacing={1.5} sx={{ mb: 3 }}>
+        {cards.map((card, index) => (
+          <Grid size={6} key={card.title}>
+            <StatsCard
+              title={card.title}
+              value={card.value}
+              icon={card.icon}
+              index={index}
+            />
+          </Grid>
+        ))}
+      </Grid>
     );
   }
 

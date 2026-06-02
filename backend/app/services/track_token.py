@@ -1,26 +1,30 @@
 # -*- coding: utf-8 -*-
-"""Token público assinado e com expiração para acompanhamento de pedido (itsdangerous).
+"""Token público curto e assinado para acompanhamento de pedido.
 
-Deriva o token do id do pedido + assinatura HMAC com timestamp embutido. Sem coluna
-nova nem migration: funciona em todos os pedidos (inclusive antigos). Enumeração é
-inviável sem a SECRET_KEY. Revogação em massa = trocar o sufixo de ``_SALT`` (v2…).
-Links expiram após ``TRACK_TOKEN_MAX_AGE_DAYS`` (default 60 dias).
+Formato compacto (#14): ``base62(pedido_id)`` + assinatura HMAC-SHA256 truncada
+(``_SIG_LEN`` chars). Ex.: ``1fAb3kZ9Qw`` (~12-14 chars, vs dezenas do formato antigo
+baseado em itsdangerous). Sem coluna nova nem migration — funciona em qualquer pedido.
+
+Enumeração/forja é inviável sem a SECRET_KEY (a assinatura depende dela); a rota responde
+404 genérico para não revelar ids. Revogação em massa = trocar o sufixo de ``_SALT`` (v2…).
+
+Diferença vs versão anterior: o token **não expira mais** (o formato compacto não embute
+timestamp). Links antigos (formato itsdangerous) deixam de validar — reenvie o link.
 """
+import base64
+import hashlib
+import hmac
 import os
 
 from flask import current_app
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 # Trocar o sufixo (v2…) invalida todos os links antigos.
 _SALT = "pedido-track-v1"
+# Tamanho da assinatura truncada (chars base64url). 10 chars ~= 60 bits — suficiente para
+# um link público sem dados sensíveis, combinado com 404 genérico.
+_SIG_LEN = 10
 
-
-def _max_age_seconds() -> int:
-    try:
-        days = int(os.environ.get("TRACK_TOKEN_MAX_AGE_DAYS") or 60)
-    except (ValueError, TypeError):
-        days = 60
-    return days * 86400
+_B62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def _secret_key() -> str:
@@ -37,13 +41,35 @@ def _secret_key() -> str:
     return key
 
 
-def _serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(_secret_key(), salt=_SALT)
+def _b62_encode(n: int) -> str:
+    if n <= 0:
+        return "0"
+    out = []
+    while n > 0:
+        n, r = divmod(n, 62)
+        out.append(_B62[r])
+    return "".join(reversed(out))
+
+
+def _b62_decode(s: str) -> int:
+    n = 0
+    for ch in s:
+        n = n * 62 + _B62.index(ch)  # ValueError se char inválido — tratado pelo caller
+    return n
+
+
+def _sign(pid_b62: str) -> str:
+    key = _secret_key().encode("utf-8")
+    msg = f"{_SALT}:{pid_b62}".encode("utf-8")
+    digest = hmac.new(key, msg, hashlib.sha256).digest()
+    b64 = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return b64[:_SIG_LEN]
 
 
 def make_track_token(pedido_id: int) -> str:
-    """Gera o token público assinado para o pedido."""
-    return _serializer().dumps({"pid": int(pedido_id)})
+    """Gera o token público curto e assinado para o pedido."""
+    pid_b62 = _b62_encode(int(pedido_id))
+    return f"{pid_b62}{_sign(pid_b62)}"
 
 
 def build_track_url(pedido_id: int) -> str:
@@ -57,9 +83,14 @@ def build_track_url(pedido_id: int) -> str:
 
 
 def parse_track_token(token: str) -> int | None:
-    """Retorna o pedido_id, ou None se o token for inválido OU expirado (> max_age)."""
+    """Retorna o pedido_id, ou None se o token for inválido/forjado."""
     try:
-        data = _serializer().loads(token, max_age=_max_age_seconds())
-        return int(data["pid"])
-    except (SignatureExpired, BadSignature, KeyError, ValueError, TypeError):
+        if not token or len(token) <= _SIG_LEN:
+            return None
+        pid_b62 = token[:-_SIG_LEN]
+        sig = token[-_SIG_LEN:]
+        if not pid_b62 or not hmac.compare_digest(sig, _sign(pid_b62)):
+            return None
+        return _b62_decode(pid_b62)
+    except (ValueError, TypeError):
         return None

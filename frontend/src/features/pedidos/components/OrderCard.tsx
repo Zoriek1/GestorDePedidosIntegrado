@@ -58,7 +58,7 @@ import { useDeletePedido } from '../../../api/endpoints/pedidos';
 import dayjs from 'dayjs';
 import { formatOrderSourceLabel } from '../utils/sourceLabel';
 
-export type SelectionMode = 'route' | 'print';
+export type SelectionMode = 'route' | 'print' | 'pickup';
 
 interface OrderCardProps {
   pedido: Pedido;
@@ -68,6 +68,8 @@ interface OrderCardProps {
   selected?: boolean;
   onToggleSelect?: (pedido: Pedido) => void;
   selectionMode?: SelectionMode;
+  /** Variante enxuta (usada no Kanban): só o essencial, sem ações pesadas. */
+  compact?: boolean;
 }
 
 export function OrderCard({
@@ -78,6 +80,7 @@ export function OrderCard({
   selected = false,
   onToggleSelect,
   selectionMode = 'route',
+  compact = false,
 }: OrderCardProps) {
   const navigate = useNavigate();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -377,6 +380,53 @@ export function OrderCard({
 
   const contextualCTA = getContextualCTA();
 
+  // Variante compacta (Kanban): só o essencial, sem menu/ações/CTA. #6
+  if (compact) {
+    return (
+      <Card
+        variant="outlined"
+        sx={{
+          cursor: onClick ? 'pointer' : 'default',
+          '&:hover': onClick ? { boxShadow: 3 } : {},
+        }}
+        onClick={onClick}
+      >
+        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} mb={0.5}>
+            <Typography variant="subtitle2" fontWeight={700} noWrap>
+              #{pedido.id} · {pedido.destinatario || pedido.cliente || 'Sem nome'}
+            </Typography>
+            <Chip
+              label={statusLabel}
+              color={statusColor}
+              size="small"
+              sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
+            />
+          </Stack>
+          {enderecoCompleto && (
+            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+              {enderecoCompleto}
+            </Typography>
+          )}
+          <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">
+            <Typography variant="caption" color="text.secondary">
+              {pedido.dia_entrega ? dayjs(pedido.dia_entrega).format('DD/MM') : '—'}
+              {pedido.horario ? ` · ${pedido.horario}` : ''}
+            </Typography>
+            {isAtrasado && (
+              <Chip
+                label="Atrasado"
+                color="error"
+                size="small"
+                sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }}
+              />
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card
       sx={{
@@ -420,11 +470,14 @@ export function OrderCard({
               {selectable && (() => {
                 const isRouteMode = selectionMode === 'route';
                 const blockedForRoute = isRouteMode && pedido.tipo_pedido !== 'Entrega';
-                const tooltip = isRouteMode
-                  ? pedido.tipo_pedido === 'Entrega'
-                    ? 'Selecionar para rota'
-                    : 'Apenas entregas podem ser roteirizadas'
-                  : 'Selecionar para imprimir em lote';
+                const tooltip =
+                  selectionMode === 'pickup'
+                    ? 'Selecionar para pegar entrega'
+                    : isRouteMode
+                      ? pedido.tipo_pedido === 'Entrega'
+                        ? 'Selecionar para rota'
+                        : 'Apenas entregas podem ser roteirizadas'
+                      : 'Selecionar para imprimir em lote';
                 return (
                   <Tooltip title={tooltip}>
                     <span>

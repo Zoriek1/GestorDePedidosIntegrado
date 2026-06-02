@@ -213,6 +213,11 @@ class Pedido(db.Model):
     fbc = db.Column(db.String(255), nullable=True, comment="Facebook Click ID (fbclid)")
     fbp = db.Column(db.String(255), nullable=True, comment="Facebook Browser ID (cookie _fbp)")
 
+    # Token de rastreio do WhatsApp usado para costurar o pedido ao Lead (e ao CAPI).
+    codigo_whatsapp = db.Column(
+        db.String(64), nullable=True, comment="Token de rastreio do WhatsApp (token_rastreio do Lead)"
+    )
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, comment="Data de criação")
     updated_at = db.Column(
@@ -304,6 +309,7 @@ class Pedido(db.Model):
             "coords_lon": self.coords_lon,
             "fbc": self.fbc or "",
             "fbp": self.fbp or "",
+            "codigo_whatsapp": self.codigo_whatsapp or "",
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else "",
             "deleted_at": (

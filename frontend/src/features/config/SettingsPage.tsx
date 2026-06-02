@@ -118,7 +118,7 @@ function BatchActionsTab() {
 export default function SettingsPage() {
   const { getUserRole } = useAuth();
   const [tabValue, setTabValue] = React.useState(0);
-  const userRole = getUserRole() ?? 'admin';
+  const userRole = getUserRole() ?? 'viewer';
   const isEntregador = userRole === 'entregador';
   const isAdmin = userRole === 'admin';
 
@@ -151,7 +151,7 @@ export default function SettingsPage() {
           <Tab icon={<Build />} label="Ações em Lote" iconPosition="start" />
           {!isEntregador && <Tab icon={<Build />} label="Fontes" iconPosition="start" />}
           {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
-          {!isEntregador && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
+          {isAdmin && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
           {isAdmin && <Tab icon={<People />} label="Funcionários" iconPosition="start" />}
         </Tabs>
       </Paper>
@@ -163,7 +163,7 @@ export default function SettingsPage() {
           {tabValue === (isAdmin ? 2 : 1) && <BatchActionsTab />}
           {!isEntregador && tabValue === (isAdmin ? 3 : 2) && <FontesPage />}
           {!isEntregador && tabValue === (isAdmin ? 4 : 3) && <CustomersPage />}
-          {!isEntregador && tabValue === (isAdmin ? 5 : 4) && <NuvemshopPage />}
+          {isAdmin && tabValue === 5 && <NuvemshopPage />}
           {isAdmin && tabValue === 6 && <UserListPage />}
         </Suspense>
       </Box>

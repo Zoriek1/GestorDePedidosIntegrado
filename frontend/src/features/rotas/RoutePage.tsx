@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -38,7 +38,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
 import { useAuth } from '../auth/authStore';
 import { isEntregador } from '../auth/roleHelpers';
-import { AssignDeliveryDialog } from '../entregas/AssignDeliveryDialog';
+import { PickupDeliveriesPanel } from '../entregas/PickupDeliveriesPanel';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
@@ -134,7 +134,12 @@ export default function RoutePage() {
   const me = getUser();
   const role = getUserRole();
   const viewerIsEntregador = isEntregador(role);
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  // O FAB global "Pegar entregas" (AppShell) navega para cá com state.pickup, abrindo
+  // direto o painel de seleção de entregas disponíveis. #8
+  const location = useLocation();
+  const [pickupOpen, setPickupOpen] = useState(
+    Boolean((location.state as { pickup?: boolean } | null)?.pickup)
+  );
 
   const [onlyAgendados, setOnlyAgendados] = useState(false);
   const [searchParams] = useSearchParams();
@@ -536,6 +541,7 @@ export default function RoutePage() {
         </Stack>
       </Stack>
 
+      {!pickupOpen && (
       <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap mb={isMobile ? 1 : 2} sx={{ gap: isMobile ? 0.5 : 1 }}>
         <Button
           variant="outlined"
@@ -606,8 +612,11 @@ export default function RoutePage() {
           </Button>
         )}
       </Stack>
+      )}
 
-      {isLoading ? (
+      {pickupOpen ? (
+        <PickupDeliveriesPanel onClose={() => setPickupOpen(false)} />
+      ) : isLoading ? (
         <Loading variant="skeleton" count={4} />
       ) : error ? (
         <ErrorState message="Erro ao carregar pedidos" onRetry={() => refetch()} />
@@ -692,7 +701,7 @@ export default function RoutePage() {
                           variant="contained"
                           size="small"
                           startIcon={<RouteIcon fontSize="small" />}
-                          onClick={() => setAssignDialogOpen(true)}
+                          onClick={() => setPickupOpen(true)}
                           sx={{ mt: 1 }}
                         >
                           Pegar entregas
@@ -792,12 +801,6 @@ export default function RoutePage() {
             </Grid>
           </Grid>
         </>
-      )}
-      {viewerIsEntregador && (
-        <AssignDeliveryDialog
-          open={assignDialogOpen}
-          onClose={() => setAssignDialogOpen(false)}
-        />
       )}
     </Box>
   );

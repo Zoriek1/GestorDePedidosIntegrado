@@ -137,3 +137,32 @@ export function agruparPorDia(vendas: Pedido[], startDate: string, endDate: stri
 
   return Object.values(days);
 }
+
+/** Agrupa por mês (granularidade usada quando o período abrange vários meses). */
+export function agruparPorMes(vendas: Pedido[], startDate: string, endDate: string): DailyBucket[] {
+  const start = dayjs(startDate).startOf('month');
+  const end = dayjs(endDate).startOf('month');
+  const months: Record<string, DailyBucket> = {};
+
+  let current = start;
+  while (current.isBefore(end) || current.isSame(end, 'month')) {
+    const dateKey = current.format('YYYY-MM');
+    months[dateKey] = {
+      dateKey,
+      label: current.format('MMM/YY'),
+      valor: 0,
+      quantidade: 0,
+    };
+    current = current.add(1, 'month');
+  }
+
+  vendas.forEach((venda) => {
+    const vendaDate = dayjs(venda.created_at || venda.dia_entrega);
+    const dateKey = vendaDate.format('YYYY-MM');
+    if (!months[dateKey]) return;
+    months[dateKey].valor += calcularValorBrutoPedido(venda);
+    months[dateKey].quantidade += 1;
+  });
+
+  return Object.values(months);
+}

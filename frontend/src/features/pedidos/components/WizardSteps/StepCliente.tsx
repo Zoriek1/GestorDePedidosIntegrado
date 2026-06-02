@@ -23,6 +23,7 @@ import { PhoneInput } from '../../../../components/form';
 import { useDebouncedValue } from '../../../../hooks/useDebouncedValue';
 import { useCustomerSearch } from '../../../../api/endpoints/customers';
 import { useFontesPedido } from '../../../../api/endpoints/fontes';
+import { useLeads } from '../../../../api/endpoints/leads';
 import type { Customer } from '../../../../api/endpoints/customers';
 import type { PedidoFormData } from '../../schemas';
 import { useAuth } from '../../../auth/authStore';
@@ -59,6 +60,30 @@ export function StepCliente() {
   const vendedores = (usersData ?? []).filter((u) => u.role === 'vendedor' && u.is_active);
 
   const origemAnuncio = useWatch({ control, name: 'origem_anuncio' });
+
+  // Lookup de lead pelo código do WhatsApp (#4): se o token bater com um lead, mostramos
+  // um box verde "LEAD ENCONTRADO" e escondemos os campos manuais de anúncio/fbclid.
+  const codigoWhatsapp = useWatch({ control, name: 'codigo_whatsapp' }) ?? '';
+  const tokenLookup = useDebouncedValue(codigoWhatsapp.trim().toUpperCase(), 400);
+  const tokenLooksValid = /^[A-Z0-9]{10}$/.test(tokenLookup);
+  const { data: leadLookup } = useLeads(
+    { token_rastreio: tokenLookup },
+    { enabled: tokenLooksValid }
+  );
+  const foundLead = tokenLooksValid
+    ? (leadLookup?.leads?.find((l) => l.token_rastreio) ?? null)
+    : null;
+
+  // Quando o lead é encontrado, propaga fbp/fbclid para o form (campos ocultos) — assim o
+  // pedido carrega os parâmetros Meta sem o usuário digitar.
+  useEffect(() => {
+    if (!foundLead) return;
+    if (foundLead.fbp) setValue('fbp', foundLead.fbp);
+    if (foundLead.fbclid) {
+      setValue('fbclid', foundLead.fbclid);
+      setValue('origem_anuncio', true);
+    }
+  }, [foundLead, setValue]);
 
   const [inputValue, setInputValue] = useState('');
   const [mesmoQueCliente, setMesmoQueCliente] = useState(false);
@@ -440,41 +465,65 @@ export function StepCliente() {
           />
         )}
 
-        {/* Origem: anúncio Meta Ads */}
-        <Controller
-          name="origem_anuncio"
-          control={control}
-          render={({ field }) => (
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={field.value ?? false}
-                  onChange={(e) => field.onChange(e.target.checked)}
-                />
-              }
-              label="Pedido vindo de anúncio?"
-            />
-          )}
-        />
-
-        <Collapse in={origemAnuncio}>
-          <Controller
-            name="fbclid"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                value={field.value ?? ''}
-                label="Facebook Click ID (fbclid)"
-                placeholder="Ex: AbCdEfGhIjKlMnOpQrStUvWxYz"
-                fullWidth
-                required={origemAnuncio}
-                error={!!errors.fbclid}
-                helperText={errors.fbclid?.message || 'Cole o fbclid da mensagem do WhatsApp'}
-              />
+        {foundLead ? (
+          /* Lead encontrado pelo código do WhatsApp: status verde, sem campos manuais. #4 */
+          <Alert severity="success" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+            <Typography variant="subtitle2" fontWeight={700}>
+              LEAD ENCONTRADO
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Token: {foundLead.token_rastreio}
+            </Typography>
+            {foundLead.fbp && (
+              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                Fbp: {foundLead.fbp}
+              </Typography>
             )}
-          />
-        </Collapse>
+            {foundLead.fbclid && (
+              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                fbclid: {foundLead.fbclid}
+              </Typography>
+            )}
+          </Alert>
+        ) : (
+          <>
+            {/* Origem: anúncio Meta Ads (manual, quando não há lead vinculado) */}
+            <Controller
+              name="origem_anuncio"
+              control={control}
+              render={({ field }) => (
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={field.value ?? false}
+                      onChange={(e) => field.onChange(e.target.checked)}
+                    />
+                  }
+                  label="Pedido vindo de anúncio?"
+                />
+              )}
+            />
+
+            <Collapse in={origemAnuncio}>
+              <Controller
+                name="fbclid"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    value={field.value ?? ''}
+                    label="Facebook Click ID (fbclid)"
+                    placeholder="Ex: AbCdEfGhIjKlMnOpQrStUvWxYz"
+                    fullWidth
+                    required={origemAnuncio}
+                    error={!!errors.fbclid}
+                    helperText={errors.fbclid?.message || 'Cole o fbclid da mensagem do WhatsApp'}
+                  />
+                )}
+              />
+            </Collapse>
+          </>
+        )}
 
         {/* fbp: identificador do cookie _fbp do Meta Pixel (sempre registrado, invisível) */}
         <input type="hidden" {...register('fbp')} />

@@ -35,7 +35,6 @@ import { useAuth } from '../features/auth/authStore';
 import { NotificationManager } from '../features/notifications/NotificationManager';
 import { useOffline } from '../lib/offline/useOffline';
 import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
-import { AssignDeliveryDialog } from '../features/entregas/AssignDeliveryDialog';
 import { BrandLogo } from './BrandLogo';
 
 interface AppShellProps {
@@ -65,7 +64,6 @@ export function AppShell({ children }: AppShellProps) {
   const [navMenuEl, setNavMenuEl] = React.useState<null | HTMLElement>(null);
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
-  const [assignDeliveryOpen, setAssignDeliveryOpen] = useState(false);
 
   // Full width para páginas de wizard de pedido
   const isOrderWizardPage =
@@ -494,7 +492,7 @@ export function AppShell({ children }: AppShellProps) {
           color="primary"
           aria-label="Pegar entregas"
           variant="extended"
-          onClick={() => setAssignDeliveryOpen(true)}
+          onClick={() => navigate('/rota-entrega', { state: { pickup: true } })}
           sx={{ position: 'fixed', bottom: 24, right: 24, gap: 1 }}
         >
           <LocalShippingIcon />
@@ -550,12 +548,6 @@ export function AppShell({ children }: AppShellProps) {
             }}
           />
         </SpeedDial>
-      )}
-      {authenticated && (
-        <AssignDeliveryDialog
-          open={assignDeliveryOpen}
-          onClose={() => setAssignDeliveryOpen(false)}
-        />
       )}
 
       {/* Push Notification Manager (invisível, registra subscription) */}

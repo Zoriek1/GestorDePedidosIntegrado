@@ -5,6 +5,7 @@ import LocalShipping from '@mui/icons-material/LocalShipping';
 import MapIcon from '@mui/icons-material/Map';
 import { useMinhasEntregas } from './services/entregasApi';
 import { OrderCard } from '../pedidos/components/OrderCard';
+import { groupOrdersByDate } from '../pedidos/utils/dateGrouping';
 
 /**
  * Home dedicada do entregador (#7): em vez da lista geral de pedidos ("Todos"), mostra só as
@@ -17,6 +18,10 @@ export function EntregadorHome() {
     () => (data?.pedidos ?? []).filter((p) => !p.deleted_at),
     [data?.pedidos]
   );
+
+  // Agrupa e ordena por dia de entrega (ATRASADOS, HOJE, AMANHÃ, …) como no resto do app,
+  // em vez de uma lista achatada de todos os pedidos.
+  const grupos = useMemo(() => groupOrdersByDate(pedidos), [pedidos]);
 
   const goPickup = () => navigate('/rota-entrega', { state: { pickup: true } });
 
@@ -57,14 +62,22 @@ export function EntregadorHome() {
           </Button>
         </Paper>
       ) : (
-        <Stack spacing={1.5}>
-          {pedidos.map((p) => (
-            <OrderCard
-              key={p.id}
-              pedido={p}
-              compact
-              onClick={() => navigate(`/pedidos/${p.id}`)}
-            />
+        <Stack spacing={2}>
+          {grupos.map((grupo) => (
+            <Box key={grupo.label}>
+              <Typography
+                variant="overline"
+                color="text.secondary"
+                sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}
+              >
+                {grupo.label} · {grupo.pedidos.length}
+              </Typography>
+              <Stack spacing={1}>
+                {grupo.pedidos.map((p) => (
+                  <OrderCard key={p.id} pedido={p} compact />
+                ))}
+              </Stack>
+            </Box>
           ))}
         </Stack>
       )}

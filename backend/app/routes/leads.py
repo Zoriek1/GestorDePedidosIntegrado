@@ -4,8 +4,6 @@ Rotas de Leads UTM — captura cliques da landing page e lista para o admin.
 """
 import hashlib
 import json
-import logging
-import os
 import uuid
 from datetime import datetime, timedelta
 
@@ -32,8 +30,6 @@ from app.utils.tracking_token import (
 )
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
-
-logger = logging.getLogger(__name__)
 
 # Evento padrão quando nenhum filtro de evento é enviado pelo frontend
 DEFAULT_KEY_EVENTS = ("whatsapp_click",)
@@ -569,26 +565,6 @@ def atualizar_status_lead(lead_id: int):
     return _apply_lead_status_update(lead, data)
 
 
-def _capture_phone_and_promote(lead: Lead, phone: str) -> None:
-    """Grava o telefone e promove o status — SEM disparar CAPI.
-
-    Núcleo compartilhado pela captura manual (PATCH /phone, operador) e pela
-    captura automática (webhook do Evolution). Promove o lead pra fila de decisão
-    (`lead_pendente`) a partir de qualquer estágio "sem decisão tomada":
-      - pendente_whatsapp (triagem)
-      - nao_entrou_em_contato (Trilha A reabriu — agora temos número)
-      - descarte (reabertura explícita; ver item 4 do checklist do owner)
-    whatsapp_iniciado e compra_realizada mantêm status (telefone corrigido).
-    Não faz commit — o caller decide a fronteira da transação.
-    """
-    lead.phone = phone
-    if _is_whatsapp_event(lead.event):
-        if lead.status in {"pendente_whatsapp", "nao_entrou_em_contato", "descarte"}:
-            lead.status = "lead_pendente"
-    elif lead.status == "pendente_whatsapp":
-        lead.status = None
-
-
 def _apply_lead_phone_update(lead: Lead, data: dict):
     """Captura/atualiza telefone do lead.
 
@@ -624,7 +600,19 @@ def _apply_lead_phone_update(lead: Lead, data: dict):
                 )
             lead.meta_event_id_lead = new_lead_eid
 
-    _capture_phone_and_promote(lead, phone)
+    lead.phone = phone
+    if _is_whatsapp_event(lead.event):
+        # Captura de telefone promove o lead pra fila de decisão (`lead_pendente`)
+        # a partir de qualquer estágio "sem decisão tomada":
+        #   - pendente_whatsapp (triagem)
+        #   - nao_entrou_em_contato (Trilha A reabriu — agora temos número)
+        #   - descarte (reabertura explícita; ver item 4 do checklist do owner)
+        # whatsapp_iniciado e compra_realizada mantêm status (telefone corrigido).
+        if lead.status in {"pendente_whatsapp", "nao_entrou_em_contato", "descarte"}:
+            lead.status = "lead_pendente"
+    elif lead.status == "pendente_whatsapp":
+        lead.status = None
+
     db.session.commit()
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
@@ -649,115 +637,6 @@ def atualizar_telefone_lead(lead_id: int):
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
     return _apply_lead_phone_update(lead, data)
-
-
-def _phone_from_jid(jid: object) -> str | None:
-    """JID do WhatsApp ('5562999138278@s.whatsapp.net') → telefone no formato da LP.
-
-    Reusa `_normalize_phone` (mesma normalização do app) e remove o DDI 55 quando
-    presente, para casar com o telefone digitado no modal da LP (que vem sem o 55)
-    e com o cruzamento por `Pedido.telefone_cliente`. O match primário é por token,
-    então o formato aqui só importa pro fallback por telefone e pro cruzamento.
-    """
-    if not jid:
-        return None
-    jid = str(jid)
-    # Só @s.whatsapp.net carrega telefone real. @lid (id de privacidade do
-    # WhatsApp, comum em contas Business), @g.us (grupo) etc. NÃO são telefones —
-    # retorna None pra não gravar lixo. O match por token cobre esses casos.
-    domain = jid.split("@", 1)[1] if "@" in jid else ""
-    if domain and domain != "s.whatsapp.net":
-        return None
-    digits = _normalize_phone(jid.split("@")[0])
-    if digits and digits.startswith("55") and len(digits) >= 12:
-        digits = digits[2:]
-    return digits or None
-
-
-@leads_bp.route("/whatsapp-inbound", methods=["POST"])
-def whatsapp_inbound():
-    """Webhook do Evolution API: captura automática do telefone do lead (read-only).
-
-    Recebe `messages.upsert` (mensagem recebida) e `connection.update` (saúde da
-    sessão). Extrai o token `[Cod: XXXXXXXXXX]` do texto, casa o lead, grava o
-    telefone e promove `pendente_whatsapp → lead_pendente`. NÃO responde no
-    WhatsApp, NÃO qualifica e NÃO dispara CAPI — qualificação segue 100% manual.
-
-    Endpoint público protegido por header `X-Webhook-Secret`.
-    """
-    secret = os.environ.get("EVOLUTION_WEBHOOK_SECRET")
-    if not secret or request.headers.get("X-Webhook-Secret") != secret:
-        return jsonify({"ok": False}), 401
-
-    payload = _parse_request_payload()
-    evento = (payload.get("event") or "").lower()
-
-    # Monitoramento de sessão: enquanto cair, nenhum telefone é capturado.
-    if evento == "connection.update":
-        if (payload.get("data") or {}).get("state") == "close":
-            logger.warning("[Evolution] sessão caiu (connection.update=close) — captura parada")
-        return jsonify({"ok": True}), 200
-
-    if evento != "messages.upsert":
-        return jsonify({"ok": True}), 200
-
-    data = payload.get("data") or {}
-    if isinstance(data, list):  # defensivo: algumas versões mandam lista
-        data = data[0] if data else {}
-    key = data.get("key") or {}
-    if key.get("fromMe"):  # ignora mensagens enviadas pela própria conta
-        return jsonify({"ok": True, "skipped": "fromMe"}), 200
-
-    msg = data.get("message") or {}
-    texto = msg.get("conversation") or (msg.get("extendedTextMessage") or {}).get("text") or ""
-    fone = _phone_from_jid(key.get("remoteJid"))
-
-    # Match: token primeiro (à prova de formato de telefone); fallback por telefone.
-    lead = None
-    token = extract_tracking_token_from_text(texto)
-    if token and is_tracking_token_valid(token):
-        lead = (
-            Lead.query.filter(Lead.token_rastreio == token)
-            .order_by(Lead.created_at.desc(), Lead.id.desc())
-            .first()
-        )
-    if lead is None and fone:
-        lead = (
-            Lead.query.filter(Lead.phone == fone)
-            .order_by(Lead.created_at.desc(), Lead.id.desc())
-            .first()
-        )
-    if lead is None:
-        return jsonify({"ok": True, "matched": False}), 200
-
-    # Idempotência: lead que já saiu da triagem com telefone preenchido = no-op.
-    if (lead.phone or "").strip() and lead.status not in {
-        "pendente_whatsapp",
-        "nao_entrou_em_contato",
-    }:
-        return jsonify({"ok": True, "matched": True, "noop": True}), 200
-
-    if fone:
-        _capture_phone_and_promote(lead, fone)
-        db.session.commit()
-        phone_captured = True
-    else:
-        # Sem telefone real no JID (ex.: @lid de conta Business, que esconde o
-        # número). NÃO promove pra lead_pendente — evita "Lead Pendente sem
-        # número". O lead segue em Contact até conseguirmos o número.
-        phone_captured = False
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "matched": True,
-                "phone_captured": phone_captured,
-                "lead_id": lead.id,
-                "status": lead.status,
-            }
-        ),
-        200,
-    )
 
 
 @leads_bp.route("/<int:lead_id>/followup", methods=["PATCH"])

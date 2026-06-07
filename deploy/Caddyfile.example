@@ -5,9 +5,3 @@
 seu-dominio.com {
     reverse_proxy 127.0.0.1:5000
 }
-
-# Evolution API (Manager + webhook) — só necessário se usar a captura automática
-# de telefone de leads (profile `evolution`). Aponta para o container na 8080.
-evolution.seu-dominio.com {
-    reverse_proxy 127.0.0.1:8080
-}

@@ -1793,3 +1793,41 @@ def test_phone_from_jid_remove_ddi_br():
     assert _phone_from_jid("62988887777@s.whatsapp.net") == "62988887777"
     assert _phone_from_jid("") is None
     assert _phone_from_jid(None) is None
+    # @lid (id de privacidade, contas Business) e grupos NÃO são telefones reais.
+    assert _phone_from_jid("34449966297109@lid") is None
+    assert _phone_from_jid("120363000000000000@g.us") is None
+
+
+def test_whatsapp_inbound_formato_codigo_atendimento_e_lid(client, session, monkeypatch):
+    """Mensagem real da LP: '(código de atendimento: TOKEN)' vinda de um @lid
+    (Business). Casa pelo token e promove pra lead_pendente; telefone fica vazio
+    (o @lid não revela o número), sem gravar o id de privacidade como telefone."""
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    lead = Lead(
+        dedup_key="evo-codigo-atendimento",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    texto = (
+        "Olá! Vi o anúncio de vocês e quero pedir um buquê.\n\n"
+        f"(código de atendimento: {_VALID_TOKEN})"
+    )
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(text=texto, remote_jid="34449966297109@lid"),
+        headers=_EVO_HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["matched"] is True
+    assert data["status"] == "lead_pendente"
+
+    session.refresh(lead)
+    assert lead.status == "lead_pendente"
+    assert lead.phone is None  # @lid não vira telefone

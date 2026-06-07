@@ -661,7 +661,14 @@ def _phone_from_jid(jid: object) -> str | None:
     """
     if not jid:
         return None
-    digits = _normalize_phone(str(jid).split("@")[0])
+    jid = str(jid)
+    # Só @s.whatsapp.net carrega telefone real. @lid (id de privacidade do
+    # WhatsApp, comum em contas Business), @g.us (grupo) etc. NÃO são telefones —
+    # retorna None pra não gravar lixo. O match por token cobre esses casos.
+    domain = jid.split("@", 1)[1] if "@" in jid else ""
+    if domain and domain != "s.whatsapp.net":
+        return None
+    digits = _normalize_phone(jid.split("@")[0])
     if digits and digits.startswith("55") and len(digits) >= 12:
         digits = digits[2:]
     return digits or None
@@ -732,6 +739,15 @@ def whatsapp_inbound():
 
     if fone:
         _capture_phone_and_promote(lead, fone)
+        db.session.commit()
+    elif _is_whatsapp_event(lead.event) and lead.status in {
+        "pendente_whatsapp",
+        "nao_entrou_em_contato",
+    }:
+        # Token casou mas o JID não revela telefone real (ex.: @lid). Marca o lead
+        # como respondido promovendo pra fila de decisão; o telefone fica pra
+        # captura manual. Mesmo comportamento do /whatsapp-start.
+        lead.status = "lead_pendente"
         db.session.commit()
     return (
         jsonify({"ok": True, "matched": True, "lead_id": lead.id, "status": lead.status}),

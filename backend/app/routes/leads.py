@@ -740,17 +740,22 @@ def whatsapp_inbound():
     if fone:
         _capture_phone_and_promote(lead, fone)
         db.session.commit()
-    elif _is_whatsapp_event(lead.event) and lead.status in {
-        "pendente_whatsapp",
-        "nao_entrou_em_contato",
-    }:
-        # Token casou mas o JID não revela telefone real (ex.: @lid). Marca o lead
-        # como respondido promovendo pra fila de decisão; o telefone fica pra
-        # captura manual. Mesmo comportamento do /whatsapp-start.
-        lead.status = "lead_pendente"
-        db.session.commit()
+        phone_captured = True
+    else:
+        # Sem telefone real no JID (ex.: @lid de conta Business, que esconde o
+        # número). NÃO promove pra lead_pendente — evita "Lead Pendente sem
+        # número". O lead segue em Contact até conseguirmos o número.
+        phone_captured = False
     return (
-        jsonify({"ok": True, "matched": True, "lead_id": lead.id, "status": lead.status}),
+        jsonify(
+            {
+                "ok": True,
+                "matched": True,
+                "phone_captured": phone_captured,
+                "lead_id": lead.id,
+                "status": lead.status,
+            }
+        ),
         200,
     )
 

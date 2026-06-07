@@ -1800,8 +1800,8 @@ def test_phone_from_jid_remove_ddi_br():
 
 def test_whatsapp_inbound_formato_codigo_atendimento_e_lid(client, session, monkeypatch):
     """Mensagem real da LP: '(código de atendimento: TOKEN)' vinda de um @lid
-    (Business). Casa pelo token e promove pra lead_pendente; telefone fica vazio
-    (o @lid não revela o número), sem gravar o id de privacidade como telefone."""
+    (Business, que esconde o número). Casa pelo token, mas SEM telefone real NÃO
+    promove pra lead_pendente — evita 'Lead Pendente sem número'. Fica em Contact."""
     monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
     lead = Lead(
         dedup_key="evo-codigo-atendimento",
@@ -1826,8 +1826,9 @@ def test_whatsapp_inbound_formato_codigo_atendimento_e_lid(client, session, monk
     assert r.status_code == 200
     data = r.get_json()
     assert data["matched"] is True
-    assert data["status"] == "lead_pendente"
+    assert data["phone_captured"] is False
 
     session.refresh(lead)
-    assert lead.status == "lead_pendente"
-    assert lead.phone is None  # @lid não vira telefone
+    # Sem número real (@lid) → permanece em Contact, não vira Lead Pendente.
+    assert lead.status == "pendente_whatsapp"
+    assert lead.phone is None

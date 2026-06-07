@@ -221,7 +221,7 @@ telefone é no-op. `fromMe` é ignorado.
 ### Infra (opt-in via profile `evolution`)
 
 Serviços no [docker-compose.yml](../docker-compose.yml): `evolution-api` (tag fixa
-`v2.3.7`), `evolution_db` (Postgres dedicado, isolado do banco de produção) e
+`v2.2.3` — última estável v2 no Docker Hub), `evolution_db` (Postgres dedicado, isolado do banco de produção) e
 `evolution_redis`. Só sobem com o profile `evolution` (defina `COMPOSE_PROFILES=evolution`
 no `.env` ou rode `docker compose --profile evolution up -d`).
 

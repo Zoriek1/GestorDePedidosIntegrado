@@ -119,7 +119,7 @@ services:
   # (db/backend/capi-worker) sobe inalterado.
   # ---------------------------------------------------------------------------
   evolution-api:
-    image: atendai/evolution-api:v2.3.7
+    image: atendai/evolution-api:v2.2.3
     container_name: evolution_api
     restart: unless-stopped
     profiles: ["evolution"]

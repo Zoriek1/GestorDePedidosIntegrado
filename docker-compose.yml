@@ -135,6 +135,11 @@ services:
       DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD:-evolution}@evolution_db:5432/evolution
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://evolution_redis:6379/0
+      # Versão do WhatsApp Web apresentada ao conectar. A embutida na v2.2.3 ficou
+      # velha (jun/2026) e o WhatsApp rejeitava a conexão (loop sem QR). Fixada numa
+      # versão atual do Baileys; se um dia voltar a falhar, atualize este valor
+      # (fonte: github WhiskeySockets/Baileys → src/Defaults/baileys-version.json).
+      CONFIG_SESSION_PHONE_VERSION: ${EVOLUTION_WA_VERSION:-2.3000.1035194821}
     ports:
       # Host 8081 → container 8080 (a 8080 do host costuma estar ocupada).
       # Aponte o Cloudflare Tunnel para a porta 8081.

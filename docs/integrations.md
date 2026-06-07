@@ -120,12 +120,17 @@ T0  POST /api/leads (event=whatsapp_click)
     │  meta_event_id_contact obrigatório no payload (vem do Pixel)
     └→ [META] Contact event — sem value/currency, user_data sem phone (lead ainda não mandou msg)
 
-T1  POST /api/leads/whatsapp-start (bot detecta "[Cod: XXX]" na mensagem)
-    │  status muda para "whatsapp_iniciado"
-    └→ [META] nada (Lead requer phone, ainda não temos)
+T1  Lead manda WhatsApp com "[Cod: XXX]" pré-preenchido
+    │  Captura AUTOMÁTICA: o Evolution detecta a mensagem recebida e POSTa em
+    │  POST /api/leads/whatsapp-inbound (ver "Evolution API" abaixo). Casa o lead
+    │  pelo token, grava o phone (extraído do JID) e status → "lead_pendente".
+    │  Fallback manual: POST /api/leads/whatsapp-start (só casa token, sem phone)
+    │  ou PATCH /api/leads/<id>/phone (operador digita no modal).
+    └→ [META] nada — captura de telefone NÃO dispara CAPI (telefone é dado de
+       match, não gatilho). O lead fica na fila de decisão aguardando triagem.
 
-T1.5 PATCH /api/leads/<id>/phone (operador registra telefone)
-    │  status confirmado em "whatsapp_iniciado"
+T1.5 PATCH /api/leads/<id>/status (operador confirma → "whatsapp_iniciado")
+    │  Decisão manual de 1-clique a partir de "lead_pendente"
     │  meta_event_id_lead gerado
     └→ [META] Lead event — sem value/currency, user_data.ph com hash do telefone
 
@@ -146,7 +151,8 @@ Disparos em T0/T1.5/T2 **enfileiram** no outbox (`MetaCapiLeadOutbox`) e o reque
 | Chave no DB (`leads.status`) | Label na UI | Evento Meta disparado |
 |---|---|---|
 | `pendente_whatsapp` | P. Whatsapp (Contact) | `Contact` (em T0) |
-| `whatsapp_iniciado` | Lead Confirmado | `Lead` (em T1.5, ao adicionar phone) |
+| `lead_pendente` | Lead (Pendente) | — (captura de phone, sem CAPI) |
+| `whatsapp_iniciado` | Lead Confirmado | `Lead` (em T1.5, ao confirmar) |
 | `nao_entrou_em_contato` | Não entrou em contato | — (nenhum) |
 | `descarte` | **Lead Desqualificado** | `LeadDisqualified` (em T2) |
 | `compra_realizada` | Compra realizada | `Purchase` (outbox separado) |
@@ -185,3 +191,73 @@ Como usar no Ads Manager:
 3. Meta passa a evitar mostrar anúncio para lookalikes dos desqualificados
 
 Em 2-3 semanas, a métrica "% de leads desqualificados" deve cair se a exclusão estiver pegando.
+
+## Evolution API (captura automática de telefone — read-only)
+
+Automatiza o preenchimento do telefone do lead (antes feito à mão no modal "Atualizar
+WhatsApp do lead"). Um container Evolution (Baileys, pareado por QR) escuta as mensagens
+**recebidas** no WhatsApp da captação e POSTa no Gestor. **Não envia mensagens, não
+qualifica, não dispara CAPI** — só grava o telefone e deixa a linha pronta pra triagem.
+
+### Fluxo
+
+1. Lead clica no anúncio → LP cria o lead em `pendente_whatsapp` **sem telefone** (o
+   telefone é zerado de propósito quando há token — [routes/leads.py](../backend/app/routes/leads.py)).
+2. Lead manda WhatsApp com `[Cod: XXXXXXXXXX]` pré-preenchido.
+3. Evolution recebe `messages.upsert` e POSTa em `POST /api/leads/whatsapp-inbound`.
+4. O endpoint extrai o token (`extract_tracking_token_from_text`), casa o lead, grava o
+   telefone (do JID, via `_phone_from_jid` — remove o DDI 55) e promove → `lead_pendente`.
+
+Match: **token primeiro** (à prova de formato de telefone); fallback por telefone para
+mensagens seguintes de número já conhecido. Idempotente: lead que já saiu da triagem com
+telefone é no-op. `fromMe` é ignorado.
+
+### Endpoint
+
+`POST /api/leads/whatsapp-inbound` — público, protegido pelo header `X-Webhook-Secret`
+(deve bater com `EVOLUTION_WEBHOOK_SECRET`). Trata `messages.upsert` (captura) e
+`connection.update` (loga quando a sessão cai — enquanto caída, nada é capturado).
+
+### Infra (opt-in via profile `evolution`)
+
+Serviços no [docker-compose.yml](../docker-compose.yml): `evolution-api` (tag fixa
+`v2.3.7`), `evolution_db` (Postgres dedicado, isolado do banco de produção) e
+`evolution_redis`. Só sobem com o profile `evolution` (defina `COMPOSE_PROFILES=evolution`
+no `.env` ou rode `docker compose --profile evolution up -d`).
+
+Tudo num `.env` único da raiz (sem `.env.evolution`) — a config do Evolution
+(`DATABASE_*`/`CACHE_*`) está embutida no `environment:` do serviço `evolution-api`
+no compose, e a connection URI deriva de `EVOLUTION_DB_PASSWORD` (fonte única):
+```env
+COMPOSE_PROFILES=evolution
+EVOLUTION_WEBHOOK_SECRET=<segredo-forte>
+EVOLUTION_API_KEY=<chave-forte>
+EVOLUTION_DB_PASSWORD=<senha-url-safe>
+```
+Expor `evolution.<dominio>` no proxy reverso → `127.0.0.1:8080` (ver [deploy/Caddyfile.example](../deploy/Caddyfile.example)).
+
+### Setup da instância
+
+1. Acessar `https://evolution.<dominio>/manager` (login com `AUTHENTICATION_API_KEY`).
+2. Criar instância `plante` (Baileys, QR habilitado) e parear lendo o QR com o celular.
+3. Registrar o webhook (eventos `MESSAGES_UPSERT` + `CONNECTION_UPDATE`):
+
+```bash
+curl -X POST https://evolution.<dominio>/webhook/set/plante \
+ -H "apikey: SUA_API_KEY" -H "Content-Type: application/json" \
+ -d '{"webhook":{"enabled":true,
+   "url":"https://gestaopedidos.planteumaflor.online/api/leads/whatsapp-inbound",
+   "headers":{"X-Webhook-Secret":"<EVOLUTION_WEBHOOK_SECRET>"},
+   "byEvents":false,"base64":false,
+   "events":["MESSAGES_UPSERT","CONNECTION_UPDATE"]}}'
+```
+
+### Rollback
+
+`enabled:false` no webhook (ou parar o container). Volta na hora pro modal manual
+(`PATCH /api/leads/<id>/phone`). Nenhuma linha de lead é afetada.
+
+> **Risco de ban (Baileys):** cliente não-oficial viola os ToS do WhatsApp. O uso aqui é
+> 100% read-only (o gatilho nº 1 de ban é automação de **envio**, que não existe). Nunca
+> disparar broadcast pela mesma sessão. Se um dia precisar enviar em escala, migrar o envio
+> para o Cloud API oficial mantendo o listener no Evolution.

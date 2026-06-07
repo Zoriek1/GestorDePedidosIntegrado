@@ -71,6 +71,8 @@ services:
       GOOGLE_CREDENTIALS_JSON: ${GOOGLE_CREDENTIALS_JSON:-}
       # Google Maps Platform (geocodificação e rotas)
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      # Evolution API: segredo que valida o webhook /api/leads/whatsapp-inbound
+      EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
     volumes:
       - ./backend:/app/backend
     ports:
@@ -106,5 +108,65 @@ services:
     volumes:
       - ./backend:/app/backend
 
+  # ---------------------------------------------------------------------------
+  # Evolution API (WhatsApp listener read-only) — captura automática de telefone
+  # de leads. Lê messages.upsert e POSTa em /api/leads/whatsapp-inbound.
+  # NÃO envia mensagens. Banco/cache próprios, isolados do Postgres de produção.
+  #
+  # OPT-IN: estes serviços só sobem com o profile `evolution`. Para ativar, defina
+  # COMPOSE_PROFILES=evolution no .env (assim `docker compose up -d` os inclui) ou
+  # rode `docker compose --profile evolution up -d`. Sem isso, o stack base
+  # (db/backend/capi-worker) sobe inalterado.
+  # ---------------------------------------------------------------------------
+  evolution-api:
+    image: atendai/evolution-api:v2.3.7
+    container_name: evolution_api
+    restart: unless-stopped
+    profiles: ["evolution"]
+    depends_on:
+      - evolution_db
+      - evolution_redis
+    environment:
+      # Config do Evolution vem do .env ÚNICO da raiz (sem .env.evolution).
+      # A senha do banco é derivada de EVOLUTION_DB_PASSWORD (fonte única).
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-CHANGE_ME_set_EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD:-evolution}@evolution_db:5432/evolution
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution_redis:6379/0
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+
+  evolution_db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    profiles: ["evolution"]
+    environment:
+      POSTGRES_USER: evolution
+      # Banco interno (sem ports expostos). Defina EVOLUTION_DB_PASSWORD no .env;
+      # o default existe só para o stack base não falhar na interpolação.
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD:-evolution}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 5s
+      timeout: 7s
+      retries: 5
+
+  evolution_redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    profiles: ["evolution"]
+    volumes:
+      - evolution_redis:/data
+
 volumes:
   postgres_data:
+  evolution_instances:
+  evolution_pg:
+  evolution_redis:

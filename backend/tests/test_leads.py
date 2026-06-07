@@ -1586,3 +1586,210 @@ def test_filtro_pending_followup_days_lista_apenas_atrasados(client, session):
     assert lead_atrasado.id in ids
     assert lead_recente.id not in ids
     assert lead_pendente.id not in ids
+
+
+# ---------------------------------------------------------------------------
+# Webhook do Evolution: POST /api/leads/whatsapp-inbound (captura automática
+# do telefone, read-only — sem CAPI, sem confirmar lead).
+# ---------------------------------------------------------------------------
+
+_EVO_SECRET = "segredo-de-teste"
+_EVO_HEADERS = {"X-Webhook-Secret": _EVO_SECRET}
+
+
+def _upsert_payload(*, text="", remote_jid="556298888777@s.whatsapp.net", from_me=False):
+    """Monta um payload messages.upsert no formato do Evolution v2."""
+    return {
+        "event": "messages.upsert",
+        "data": {
+            "key": {"remoteJid": remote_jid, "fromMe": from_me},
+            "message": {"conversation": text},
+        },
+    }
+
+
+def test_whatsapp_inbound_captura_telefone_por_token(client, session, monkeypatch):
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    lead = Lead(
+        dedup_key="evo-token",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(
+            text=f"Olá, tenho interesse [Cod: {_VALID_TOKEN}]",
+            remote_jid="5562988887777@s.whatsapp.net",
+        ),
+        headers=_EVO_HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["matched"] is True
+    assert data["status"] == "lead_pendente"
+
+    session.refresh(lead)
+    # DDI 55 removido → formato que a LP grava.
+    assert lead.phone == "62988887777"
+    assert lead.status == "lead_pendente"
+
+
+def test_whatsapp_inbound_ignora_from_me(client, session, monkeypatch):
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    lead = Lead(
+        dedup_key="evo-fromme",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(text=f"[Cod: {_VALID_TOKEN}]", from_me=True),
+        headers=_EVO_HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.get_json().get("skipped") == "fromMe"
+
+    session.refresh(lead)
+    assert lead.phone is None
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_whatsapp_inbound_segunda_mensagem_noop(client, session, monkeypatch):
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    lead = Lead(
+        dedup_key="evo-noop",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="lead_pendente",
+        phone="62988887777",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(
+            text=f"mais uma msg [Cod: {_VALID_TOKEN}]",
+            remote_jid="5562988887777@s.whatsapp.net",
+        ),
+        headers=_EVO_HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["matched"] is True
+    assert data.get("noop") is True
+
+    session.refresh(lead)
+    assert lead.phone == "62988887777"
+    assert lead.status == "lead_pendente"
+
+
+def test_whatsapp_inbound_numero_desconhecido_sem_token(client, session, monkeypatch):
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    lead = Lead(
+        dedup_key="evo-unknown",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+        phone=None,
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(
+            text="oi, vi o anúncio de vocês",
+            remote_jid="5511999990000@s.whatsapp.net",
+        ),
+        headers=_EVO_HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.get_json()["matched"] is False
+
+    session.refresh(lead)
+    assert lead.phone is None
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_whatsapp_inbound_fallback_por_telefone(client, session, monkeypatch):
+    """Mensagem sem token de número já conhecido casa pelo telefone (fallback)."""
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    lead = Lead(
+        dedup_key="evo-fallback",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="nao_entrou_em_contato",
+        phone="62988887777",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(
+            text="voltei pra falar com vocês",
+            remote_jid="5562988887777@s.whatsapp.net",
+        ),
+        headers=_EVO_HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["matched"] is True
+    # nao_entrou_em_contato é reaberto pra fila de decisão.
+    assert data["status"] == "lead_pendente"
+
+    session.refresh(lead)
+    assert lead.status == "lead_pendente"
+
+
+def test_whatsapp_inbound_sem_secret_retorna_401(client, session, monkeypatch):
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(text=f"[Cod: {_VALID_TOKEN}]"),
+    )
+    assert r.status_code == 401
+
+    r2 = client.post(
+        "/api/leads/whatsapp-inbound",
+        json=_upsert_payload(text=f"[Cod: {_VALID_TOKEN}]"),
+        headers={"X-Webhook-Secret": "errado"},
+    )
+    assert r2.status_code == 401
+
+
+def test_whatsapp_inbound_connection_update_close(client, monkeypatch):
+    monkeypatch.setenv("EVOLUTION_WEBHOOK_SECRET", _EVO_SECRET)
+    r = client.post(
+        "/api/leads/whatsapp-inbound",
+        json={"event": "connection.update", "data": {"state": "close"}},
+        headers=_EVO_HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+
+def test_phone_from_jid_remove_ddi_br():
+    from app.routes.leads import _phone_from_jid
+
+    assert _phone_from_jid("5562988887777@s.whatsapp.net") == "62988887777"
+    # Sem DDI (número já no formato local) é preservado.
+    assert _phone_from_jid("62988887777@s.whatsapp.net") == "62988887777"
+    assert _phone_from_jid("") is None
+    assert _phone_from_jid(None) is None

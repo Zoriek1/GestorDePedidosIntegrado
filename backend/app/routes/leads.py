@@ -65,6 +65,11 @@ BULK_TARGET_STATUSES = {
 STATUSES_REQUIRING_PHONE = {"whatsapp_iniciado", "descarte"}
 BULK_MAX_IDS = 500
 
+# Subestados operacionais do lead confirmado (`status='whatsapp_iniciado'`).
+# Etiqueta marcada pelo operador — NÃO dispara evento Meta nem mexe nas stats.
+SITUACAO_VALUES = {"aguardando_resposta", "orcamento_enviado", "sem_resposta"}
+DEFAULT_SITUACAO = "aguardando_resposta"
+
 # Status considerados "ocultos" para o operador: leads que pararam de gerar valor
 # (descarte explícito ou ausência de retorno do cliente). Filtrados por padrão na
 # listagem (`hidden=exclude`) para não inflar a paginação. Ver Change 1 do plano.
@@ -526,6 +531,10 @@ def _apply_lead_status_update(lead: Lead, data: dict):
         lead.meta_event_id_lead = str(uuid.uuid4())
 
     lead.status = new_status
+    # Lead confirmado entra no funil por situação já em "aguardando_resposta"
+    # (grupo "Em conversa"). Sem efeito no CAPI — situacao é etiqueta separada.
+    if new_status == "whatsapp_iniciado" and not lead.situacao:
+        lead.situacao = DEFAULT_SITUACAO
     db.session.commit()
 
     # Enfileira no outbox; o capi-worker envia de forma assíncrona.
@@ -637,6 +646,47 @@ def atualizar_telefone_lead(lead_id: int):
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
     return _apply_lead_phone_update(lead, data)
+
+
+def _apply_lead_situacao_update(lead: Lead, data: dict):
+    """Marca o subestado operacional (`situacao`) de um lead confirmado.
+
+    `situacao` refina o lead confirmado (`status='whatsapp_iniciado'`) em
+    `aguardando_resposta | orcamento_enviado | sem_resposta`. É etiqueta pura:
+    não muda `status`, não dispara evento Meta, não enfileira no outbox.
+    """
+    if lead.status != "whatsapp_iniciado":
+        return jsonify({"ok": False, "error": "lead_nao_confirmado"}), 422
+
+    new_situacao = _clip(data.get("situacao"), 30)
+    if new_situacao not in SITUACAO_VALUES:
+        return jsonify({"ok": False, "error": "situacao inválida"}), 400
+
+    lead.situacao = new_situacao
+    db.session.commit()
+    return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
+
+
+@leads_bp.route("/by-token/situacao", methods=["PATCH"])
+@requires_any_role("admin", "atendente", "vendedor")
+def atualizar_situacao_lead_por_token():
+    """Igual a PATCH /<id>/situacao, mas identifica o lead por token_rastreio no body."""
+    data = _parse_request_payload()
+    lead, err = _resolve_lead_by_token_payload(data)
+    if err:
+        return err
+    return _apply_lead_situacao_update(lead, data)
+
+
+@leads_bp.route("/<int:lead_id>/situacao", methods=["PATCH"])
+@requires_any_role("admin", "atendente", "vendedor")
+def atualizar_situacao_lead(lead_id: int):
+    """Marca a situação operacional de um lead confirmado (etiqueta de funil)."""
+    data = _parse_request_payload()
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
+    return _apply_lead_situacao_update(lead, data)
 
 
 @leads_bp.route("/<int:lead_id>/followup", methods=["PATCH"])
@@ -806,6 +856,11 @@ def listar_leads():
         )
     elif hidden_mode == "only":
         query = query.filter(Lead.status.in_(HIDDEN_STATUSES))
+
+    # Filtro opcional por situação (subestado do lead confirmado).
+    situacao_q = request.args.get("situacao")
+    if situacao_q:
+        query = query.filter(Lead.situacao == situacao_q)
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
@@ -987,6 +1042,8 @@ def atualizar_status_leads_em_lote():
         if new_status == "whatsapp_iniciado" and lead.status != "whatsapp_iniciado":
             if not lead.meta_event_id_lead:
                 lead.meta_event_id_lead = str(uuid.uuid4())
+            if not lead.situacao:
+                lead.situacao = DEFAULT_SITUACAO
             transitioned_to_confirmed.append(lead)
         lead.status = new_status
         updated += 1

@@ -1586,3 +1586,166 @@ def test_filtro_pending_followup_days_lista_apenas_atrasados(client, session):
     assert lead_atrasado.id in ids
     assert lead_recente.id not in ids
     assert lead_pendente.id not in ids
+
+
+# ---------------------------------------------------------------------------
+# Situação (subestado do lead confirmado) — funil por situação
+# ---------------------------------------------------------------------------
+
+
+def test_patch_situacao_em_lead_confirmado_grava_e_nao_dispara_outbox(
+    client, session, monkeypatch
+):
+    """Marcar situação num lead confirmado grava o valor e NÃO enfileira no outbox."""
+    monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
+    monkeypatch.setenv("META_PIXEL_ID", "1")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "test_token")
+    from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
+
+    # Lead já confirmado direto (sem transição) — não há outbox pré-existente.
+    lead = Lead(
+        dedup_key="situacao-confirmado",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+        phone="62988887777",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/situacao",
+        json={"situacao": "orcamento_enviado"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    assert r.get_json()["lead"]["situacao"] == "orcamento_enviado"
+    session.refresh(lead)
+    assert lead.situacao == "orcamento_enviado"
+    assert lead.status == "whatsapp_iniciado"  # status intocado
+
+    # Etiqueta operacional não toca o outbox Meta CAPI.
+    assert session.query(MetaCapiLeadOutbox).count() == 0
+
+
+def test_patch_situacao_em_lead_nao_confirmado_retorna_422(client, session):
+    """Situação só vale para lead confirmado; lead_pendente é rejeitado."""
+    lead = Lead(
+        dedup_key="situacao-nao-confirmado",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="lead_pendente",
+        phone="62988887777",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/situacao",
+        json={"situacao": "orcamento_enviado"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 422
+    assert r.get_json()["error"] == "lead_nao_confirmado"
+    session.refresh(lead)
+    assert lead.situacao is None
+
+
+def test_patch_situacao_valor_invalido_retorna_400(client, session):
+    lead = Lead(
+        dedup_key="situacao-invalida",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+        phone="62988887777",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/situacao",
+        json={"situacao": "qualquer_coisa"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 400
+    session.refresh(lead)
+    assert lead.situacao is None
+
+
+def test_patch_situacao_por_token_rastreio(client, session):
+    lead = Lead(
+        dedup_key="situacao-by-token",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+        phone="62988887777",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        "/api/leads/by-token/situacao",
+        json={"token_rastreio": _VALID_TOKEN, "situacao": "sem_resposta"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.situacao == "sem_resposta"
+
+
+def test_confirmar_lead_aplica_situacao_default(client, session):
+    """Ao confirmar (whatsapp_iniciado), situacao recebe default 'aguardando_resposta'."""
+    lead = Lead(
+        dedup_key="situacao-default-on-confirm",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="lead_pendente",
+        phone="62988887777",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.patch(
+        f"/api/leads/{lead.id}/status",
+        json={"status": "whatsapp_iniciado"},
+        headers=_ADMIN_AUTH,
+    )
+    assert r.status_code == 200
+    session.refresh(lead)
+    assert lead.status == "whatsapp_iniciado"
+    assert lead.situacao == "aguardando_resposta"
+
+
+def test_listar_leads_filtra_situacao(client, session):
+    confirmado_orcamento = Lead(
+        dedup_key="situacao-filtro-orcamento",
+        event="whatsapp_click",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+        phone="62988887777",
+        situacao="orcamento_enviado",
+    )
+    confirmado_conversa = Lead(
+        dedup_key="situacao-filtro-conversa",
+        event="whatsapp_click",
+        token_rastreio=_SECOND_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+        phone="62977776666",
+        situacao="aguardando_resposta",
+    )
+    session.add_all([confirmado_orcamento, confirmado_conversa])
+    session.commit()
+
+    r = client.get("/api/leads?situacao=orcamento_enviado", headers=_ADMIN_AUTH)
+    assert r.status_code == 200
+    data = r.get_json()
+    ids = {lead["id"] for lead in data["leads"]}
+    assert confirmado_orcamento.id in ids
+    assert confirmado_conversa.id not in ids

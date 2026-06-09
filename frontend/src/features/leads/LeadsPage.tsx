@@ -67,11 +67,23 @@ import {
   useBulkDisqualifyLeads,
   useUpdateLeadPhone,
   useUpdateLeadStatus,
+  useUpdateLeadSituacao,
+  useMarkLeadFollowup,
   type LeadsFilters,
   type LeadsPeriod,
   type Lead,
 } from '../../api/endpoints/leads';
 import { KeyboardCheatsheet } from './KeyboardCheatsheet';
+import {
+  SITUACAO_VALUES,
+  SITUACAO_LABELS,
+  SITUACAO_CHIP_COLOR,
+  getLeadGroup,
+  GROUP_ORDER,
+  GROUP_LABELS,
+  type Situacao,
+  type LeadGroup,
+} from './leadGrouping';
 import { QuickEntryModal } from '../pedidos/components/QuickEntryModal';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -104,6 +116,7 @@ const LEAD_STATUS_LABELS: Record<string, string> = {
   nao_entrou_em_contato: 'Não entrou em contato',
   descarte: 'Lead Desqualificado',
 };
+
 
 const FILTERS_STORAGE_KEY = 'leads:filters:v1';
 
@@ -171,22 +184,65 @@ function formatLeadAge(createdAt: string | null): string {
   return `${days}d`;
 }
 
-type LeadGroup = 'confirmados' | 'pendentes' | 'descartados';
-
-function getLeadGroup(status: string | null): LeadGroup {
-  if (status === 'whatsapp_iniciado' || status === 'compra_realizada') return 'confirmados';
-  if (status === 'nao_entrou_em_contato' || status === 'descarte') return 'descartados';
-  // pendente_whatsapp (sem fone) e lead_pendente (com fone) ficam juntos na fila.
-  return 'pendentes';
+/**
+ * Chips segmentados de situação para o lead confirmado (`whatsapp_iniciado`).
+ * 1 clique troca a etiqueta de funil. Em `sem_resposta`, expõe o botão de
+ * followup (reativação) — registrar contato tira o lead da fila de pendência.
+ */
+function SituacaoControls({
+  lead,
+  busy,
+  onSet,
+  onFollowup,
+}: {
+  lead: Lead;
+  busy: boolean;
+  onSet: (lead: Lead, situacao: Situacao) => void;
+  onFollowup: (lead: Lead) => void;
+}) {
+  if (lead.status !== 'whatsapp_iniciado') return null;
+  const current = (lead.situacao ?? 'aguardando_resposta') as Situacao;
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={current}
+        onChange={(_e, val) => {
+          if (val) onSet(lead, val as Situacao);
+        }}
+        sx={{ flexWrap: 'wrap' }}
+      >
+        {SITUACAO_VALUES.map((s) => (
+          <ToggleButton
+            key={s}
+            value={s}
+            color={SITUACAO_CHIP_COLOR[s]}
+            disabled={busy}
+            sx={{ textTransform: 'none', py: 0.1, px: 1 }}
+          >
+            {SITUACAO_LABELS[s]}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+      {current === 'sem_resposta' ? (
+        <Tooltip title={lead.followup_feito_em ? 'Followup já registrado — registrar novo contato' : 'Registrar contato (followup)'}>
+          <span>
+            <Button
+              size="small"
+              variant={lead.followup_feito_em ? 'text' : 'outlined'}
+              onClick={() => onFollowup(lead)}
+              disabled={busy}
+              sx={{ textTransform: 'none', py: 0.1, px: 1, minWidth: 0 }}
+            >
+              {lead.followup_feito_em ? 'Contato ✓' : 'Registrei contato'}
+            </Button>
+          </span>
+        </Tooltip>
+      ) : null}
+    </Box>
+  );
 }
-
-const GROUP_ORDER: readonly LeadGroup[] = ['confirmados', 'pendentes', 'descartados'] as const;
-
-const GROUP_LABELS: Record<LeadGroup, string> = {
-  confirmados: 'Confirmados',
-  pendentes: 'Pendentes / Sem resposta',
-  descartados: 'Descartados',
-};
 
 function loadPersistedFilters(): LeadsFilters {
   if (typeof window === 'undefined') return DEFAULT_FILTERS;
@@ -388,6 +444,8 @@ export default function LeadsPage() {
   const { data: statsData } = useLeadsStats();
   const updateLeadPhone = useUpdateLeadPhone();
   const updateLeadStatus = useUpdateLeadStatus();
+  const updateLeadSituacao = useUpdateLeadSituacao();
+  const markLeadFollowup = useMarkLeadFollowup();
   const bulkUpdateStatus = useBulkUpdateLeadStatus();
   const bulkDisqualifyLeads = useBulkDisqualifyLeads();
   useEffect(() => {
@@ -447,30 +505,42 @@ export default function LeadsPage() {
   const handleSavePhone = useCallback(async () => {
     if (!editingLead) return;
 
-    if (!respondeuPrimeiraMensagem) {
-      showError('Confirme que o cliente respondeu a primeira mensagem');
-      return;
-    }
-
     const digits = manualPhone.replace(/\D/g, '');
     if (digits.length < 10) {
       showError('Informe um telefone válido com DDD');
       return;
     }
 
+    const target = editingLead.token_rastreio
+      ? { token_rastreio: editingLead.token_rastreio }
+      : { id: editingLead.id };
+    const wantsConfirm = respondeuPrimeiraMensagem;
+
     try {
-      await updateLeadPhone.mutateAsync(
-        editingLead.token_rastreio
-          ? { token_rastreio: editingLead.token_rastreio, phone: manualPhone }
-          : { id: editingLead.id, phone: manualPhone },
-      );
-      success('Telefone do lead atualizado');
+      // Telefone sempre é capturado (backend promove o lead pra `lead_pendente`).
+      await updateLeadPhone.mutateAsync({ ...target, phone: manualPhone });
+      if (wantsConfirm) {
+        // Cliente já respondeu: confirma o lead num clique (dispara o evento Meta `Lead`).
+        await updateLeadStatus.mutateAsync({ ...target, status: 'whatsapp_iniciado' });
+        success('Lead confirmado');
+      } else {
+        success('Telefone capturado');
+      }
       handleClosePhoneDialog();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao atualizar telefone';
       showError(message);
     }
-  }, [editingLead, handleClosePhoneDialog, manualPhone, respondeuPrimeiraMensagem, showError, success, updateLeadPhone]);
+  }, [
+    editingLead,
+    handleClosePhoneDialog,
+    manualPhone,
+    respondeuPrimeiraMensagem,
+    showError,
+    success,
+    updateLeadPhone,
+    updateLeadStatus,
+  ]);
 
   const handleOpenStatusMenu = useCallback((event: MouseEvent<HTMLElement>, lead: Lead) => {
     event.stopPropagation();
@@ -538,6 +608,37 @@ export default function LeadsPage() {
     [showError, success, updateLeadStatus],
   );
 
+  const handleSetSituacao = useCallback(
+    async (lead: Lead, situacao: Situacao) => {
+      if (lead.situacao === situacao) return; // já está nesse estado
+      try {
+        await updateLeadSituacao.mutateAsync(
+          lead.token_rastreio
+            ? { token_rastreio: lead.token_rastreio, situacao }
+            : { id: lead.id, situacao },
+        );
+        success(`Situação: ${SITUACAO_LABELS[situacao]}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao atualizar situação';
+        showError(message);
+      }
+    },
+    [showError, success, updateLeadSituacao],
+  );
+
+  const handleMarkFollowup = useCallback(
+    async (lead: Lead) => {
+      try {
+        await markLeadFollowup.mutateAsync({ id: lead.id, action: 'mark' });
+        success('Followup registrado');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao registrar followup';
+        showError(message);
+      }
+    },
+    [markLeadFollowup, showError, success],
+  );
+
   const openPhoneCapture = useCallback((lead: Lead) => {
     setPhoneCaptureLeadId(lead.id);
     setPhoneCaptureValue('');
@@ -601,33 +702,38 @@ export default function LeadsPage() {
   const groupedLeads = useMemo(() => {
     const src = data?.leads ?? [];
     const groups: Record<LeadGroup, Lead[]> = {
-      confirmados: [],
-      pendentes: [],
+      orcamento: [],
+      em_conversa: [],
+      a_confirmar: [],
+      sem_telefone: [],
+      sem_resposta: [],
+      fechados: [],
       descartados: hiddenLeads,
     };
     for (const lead of src) {
-      const g = getLeadGroup(lead.status);
+      const g = getLeadGroup(lead);
       if (g === 'descartados') continue; // defensivo: backend já filtra
       groups[g].push(lead);
     }
-    sortLeadsByPhoneThenRecent(groups.confirmados);
-    sortLeadsByPhoneThenRecent(groups.pendentes);
+    // Ordena os grupos ativos (descartados já vêm ordenados de hiddenLeads).
+    for (const key of GROUP_ORDER) {
+      if (key === 'descartados') continue;
+      sortLeadsByPhoneThenRecent(groups[key]);
+    }
     return groups;
   }, [data?.leads, hiddenLeads, sortLeadsByPhoneThenRecent]);
 
   // Achata para navegação por teclado (J/K) e shift+click. Inclui descartados
   // apenas quando o accordion está aberto (e a 2ª query carregou).
   const orderedLeads = useMemo(() => {
-    return [
-      ...groupedLeads.confirmados,
-      ...groupedLeads.pendentes,
-      ...(descartadosOpen ? groupedLeads.descartados : []),
-    ];
+    return GROUP_ORDER.flatMap((g) =>
+      g === 'descartados' && !descartadosOpen ? [] : groupedLeads[g],
+    );
   }, [groupedLeads, descartadosOpen]);
 
   // Todos os leads conhecidos (úteis + ocultos já carregados) para ações em lote.
   const allLeads = useMemo(
-    () => [...groupedLeads.confirmados, ...groupedLeads.pendentes, ...groupedLeads.descartados],
+    () => GROUP_ORDER.flatMap((g) => groupedLeads[g]),
     [groupedLeads],
   );
 
@@ -1271,6 +1377,17 @@ export default function LeadsPage() {
                       ) : null}
                     </Stack>
 
+                    {lead.status === 'whatsapp_iniciado' ? (
+                      <Box sx={{ mb: 1 }}>
+                        <SituacaoControls
+                          lead={lead}
+                          busy={updateLeadSituacao.isPending || markLeadFollowup.isPending}
+                          onSet={handleSetSituacao}
+                          onFollowup={handleMarkFollowup}
+                        />
+                      </Box>
+                    ) : null}
+
                     <Divider sx={{ my: 1 }} />
 
                     {/* Linha 3: metadados secundários */}
@@ -1645,7 +1762,7 @@ export default function LeadsPage() {
                         ) : null}
                       </Stack>
                     ) : (
-                      <Stack direction="row" spacing={0.5} alignItems="center">
+                      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Chip
                           size="small"
                           color={leadStatusColor(lead.status)}
@@ -1653,6 +1770,14 @@ export default function LeadsPage() {
                           variant={lead.status ? 'filled' : 'outlined'}
                           sx={{ borderRadius: '4px' }}
                         />
+                        {lead.status === 'whatsapp_iniciado' ? (
+                          <SituacaoControls
+                            lead={lead}
+                            busy={updateLeadSituacao.isPending || markLeadFollowup.isPending}
+                            onSet={handleSetSituacao}
+                            onFollowup={handleMarkFollowup}
+                          />
+                        ) : null}
                       </Stack>
                     )}
                   </TableCell>
@@ -1753,6 +1878,15 @@ export default function LeadsPage() {
       <Dialog open={!!editingLead} onClose={handleClosePhoneDialog} fullWidth maxWidth="xs">
         <DialogTitle>Atualizar WhatsApp do lead</DialogTitle>
         <DialogContent>
+          <TextField
+            margin="dense"
+            label="Telefone/WhatsApp"
+            placeholder="(62) 99999-0000"
+            fullWidth
+            autoFocus
+            value={manualPhone}
+            onChange={(e) => setManualPhone(e.target.value)}
+          />
           <FormControlLabel
             sx={{ mt: 0.5, mb: 0.5 }}
             control={
@@ -1761,31 +1895,17 @@ export default function LeadsPage() {
                 onChange={(e) => setRespondeuPrimeiraMensagem(e.target.checked)}
               />
             }
-            label="Respondeu primeira mensagem?"
-          />
-          <TextField
-            margin="dense"
-            label="Telefone/WhatsApp"
-            placeholder="(62) 99999-0000"
-            fullWidth
-            disabled={!respondeuPrimeiraMensagem}
-            helperText={
-              respondeuPrimeiraMensagem
-                ? undefined
-                : 'Marque a confirmação acima para liberar o campo'
-            }
-            value={manualPhone}
-            onChange={(e) => setManualPhone(e.target.value)}
+            label="Respondeu primeira mensagem? (confirma o lead)"
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClosePhoneDialog} disabled={updateLeadPhone.isPending}>Cancelar</Button>
+          <Button onClick={handleClosePhoneDialog} disabled={updateLeadPhone.isPending || updateLeadStatus.isPending}>Cancelar</Button>
           <Button
             onClick={handleSavePhone}
             variant="contained"
-            disabled={updateLeadPhone.isPending || !respondeuPrimeiraMensagem}
+            disabled={updateLeadPhone.isPending || updateLeadStatus.isPending}
           >
-            Salvar
+            {respondeuPrimeiraMensagem ? 'Salvar e confirmar' : 'Salvar'}
           </Button>
         </DialogActions>
       </Dialog>

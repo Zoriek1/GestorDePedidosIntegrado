@@ -10,6 +10,7 @@ fi
 python scripts/migrations/add_pedido_id_to_leads.py
 python scripts/migrations/add_default_vendor_to_nuvemshop_store.py
 python scripts/migrations/add_followup_to_leads.py
+python scripts/migrations/add_situacao_to_leads.py
 python scripts/migrations/add_slot_entrega_to_pedidos.py
 python scripts/migrations/add_session_fields_to_lead_touchpoints.py
 python scripts/migrations/add_pedido_id_to_push_subscriptions.py

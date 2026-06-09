@@ -44,6 +44,8 @@ export interface Lead {
   token_rastreio: string | null;
   token_valido: boolean | null;
   status: string | null;
+  /** Subestado do lead confirmado: aguardando_resposta | orcamento_enviado | sem_resposta. */
+  situacao: string | null;
   fbclid: string | null;
   fbp: string | null;
   ip_address: string | null;
@@ -93,6 +95,10 @@ export interface LeadsFilters {
   token_rastreio?: string;
   /** Filtra pelo status do lead */
   status?: string;
+  /** Filtra pela situação do lead confirmado (aguardando_resposta | orcamento_enviado | sem_resposta). */
+  situacao?: string;
+  /** Confirmados sem followup há N dias (status=whatsapp_iniciado + followup nulo/antigo). */
+  pending_followup_days?: number;
   /** Janela temporal resolvida no backend (today, 14d, all). Use `custom` com date_from/date_to. */
   period?: LeadsPeriod;
   date_from?: string;
@@ -164,6 +170,10 @@ export function useLeads(filters: LeadsFilters = {}, options: UseLeadsOptions = 
         params.set('token_rastreio', filters.token_rastreio.trim());
       }
       if (filters.status) params.set('status', filters.status);
+      if (filters.situacao) params.set('situacao', filters.situacao);
+      if (filters.pending_followup_days) {
+        params.set('pending_followup_days', String(filters.pending_followup_days));
+      }
       if (filters.period) params.set('period', filters.period);
       if (filters.date_from) params.set('date_from', filters.date_from);
       if (filters.date_to) params.set('date_to', filters.date_to);
@@ -219,6 +229,72 @@ export function useUpdateLeadStatus() {
         throw new Error(response.message ?? 'Erro ao atualizar status do lead');
       }
 
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+/**
+ * Marca a situação de um lead confirmado (etiqueta de funil).
+ * PATCH /leads/:id/situacao ou /leads/by-token/situacao. Não dispara CAPI.
+ */
+export function useUpdateLeadSituacao() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { id?: number; token_rastreio?: string; situacao: string }) => {
+      const { id, token_rastreio, situacao } = input;
+      const useToken = token_rastreio != null && token_rastreio.trim() !== '';
+      if (!useToken && id == null) {
+        throw new Error('Informe o id do lead ou o token de rastreio');
+      }
+      const path = useToken ? '/leads/by-token/situacao' : `/leads/${id}/situacao`;
+      const body = useToken
+        ? JSON.stringify({ token_rastreio: token_rastreio!.trim(), situacao })
+        : JSON.stringify({ situacao });
+      const response = await apiRequest<UpdateLeadStatusResponse>(path, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao atualizar situação do lead');
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+/**
+ * Registra/desfaz followup manual de um lead.
+ * PATCH /leads/:id/followup com { action: 'mark' | 'undo' }.
+ */
+export function useMarkLeadFollowup() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { id: number; action?: 'mark' | 'undo' }) => {
+      const response = await apiRequest<UpdateLeadStatusResponse>(
+        `/leads/${input.id}/followup`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: input.action ?? 'mark' }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao registrar followup');
+      }
       return response.data;
     },
     onSuccess: () => {

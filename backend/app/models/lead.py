@@ -37,6 +37,10 @@ class Lead(db.Model):
     token_rastreio = db.Column(db.String(64), index=True, nullable=True)
     token_valido = db.Column(db.Boolean, nullable=True)
     status = db.Column(db.String(50), index=True, nullable=True, default="pendente_whatsapp")
+    # Subestado operacional do lead confirmado (`status='whatsapp_iniciado'`), marcado
+    # pelo operador: aguardando_resposta | orcamento_enviado | sem_resposta. Etiqueta
+    # pura — não dispara evento Meta nem entra no _aggregate_lead_stats.
+    situacao = db.Column(db.String(30), index=True, nullable=True)
     fbclid = db.Column(db.String(255), index=True)
     fbp = db.Column(db.String(255))
     ip_address = db.Column(db.String(45))
@@ -96,6 +100,7 @@ class Lead(db.Model):
             "token_rastreio": self.token_rastreio,
             "token_valido": self.token_valido,
             "status": self.status,
+            "situacao": self.situacao,
             "fbclid": self.fbclid,
             "fbp": self.fbp,
             "ip_address": self.ip_address,

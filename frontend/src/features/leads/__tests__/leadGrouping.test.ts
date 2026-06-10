@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { getLeadGroup, GROUP_ORDER, type LeadGroup } from '../leadGrouping';
+import {
+  getLeadGroup,
+  GROUP_ORDER,
+  ACTIONS_BY_STATUS,
+  getLeadActions,
+  type LeadGroup,
+} from '../leadGrouping';
 
 type Input = { status: string | null; situacao: string | null };
 
@@ -51,6 +57,48 @@ describe('getLeadGroup', () => {
     ];
     for (const s of samples) {
       expect(GROUP_ORDER).toContain(getLeadGroup(s));
+    }
+  });
+});
+
+describe('ACTIONS_BY_STATUS / getLeadActions', () => {
+  it('pendente_whatsapp oferece captura de telefone e "não contatou"', () => {
+    expect(getLeadActions('pendente_whatsapp')).toEqual(['capture_phone', 'mark_no_contact']);
+  });
+
+  it('lead_pendente oferece confirmar e descartar', () => {
+    expect(getLeadActions('lead_pendente')).toEqual(['confirm', 'disqualify']);
+  });
+
+  it('whatsapp_iniciado é terminal manual: só situação, sem descarte/compra', () => {
+    const actions = getLeadActions('whatsapp_iniciado');
+    expect(actions).toEqual(['situacao']);
+    expect(actions).not.toContain('disqualify');
+    expect(actions).not.toContain('confirm');
+    // Não há ação de "compra" na linha — a compra chega pelo fluxo de pedido.
+    expect(actions).not.toContain('view_order');
+  });
+
+  it('compra_realizada só expõe ver o pedido', () => {
+    expect(getLeadActions('compra_realizada')).toEqual(['view_order']);
+  });
+
+  it('descarte / nao_entrou_em_contato não têm ação rápida na linha', () => {
+    expect(getLeadActions('descarte')).toEqual([]);
+    expect(getLeadActions('nao_entrou_em_contato')).toEqual([]);
+  });
+
+  it('status nulo ou desconhecido devolve lista vazia (sem crash)', () => {
+    expect(getLeadActions(null)).toEqual([]);
+    expect(getLeadActions(undefined)).toEqual([]);
+    expect(getLeadActions('status_inexistente')).toEqual([]);
+  });
+
+  it('nenhum status oferece descartar um lead já confirmado/comprado', () => {
+    for (const [status, actions] of Object.entries(ACTIONS_BY_STATUS)) {
+      if (status === 'whatsapp_iniciado' || status === 'compra_realizada') {
+        expect(actions).not.toContain('disqualify');
+      }
     }
   });
 });

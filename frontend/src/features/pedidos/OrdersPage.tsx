@@ -57,7 +57,9 @@ export default function OrdersPage() {
     sort_by: 'dia_entrega',
     sort_order: 'asc', // Mais próximos primeiro (asc = datas mais próximas primeiro: hoje antes de amanhã)
     page: 1,
-    per_page: 20,
+    // Sem per_page no estado inicial: o valor é derivado de `effectivePerPage` (ver
+    // abaixo). Modo operação (filtro ativo) carrega o conjunto inteiro; só a visão
+    // global "Tudo" mantém um teto de segurança.
   });
   const [selectionMode, setSelectionMode] = useState<null | 'route' | 'print'>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -76,10 +78,19 @@ export default function OrdersPage() {
   const isEntregador = userRole === 'entregador';
   const canOcultarConcluidos = isAdmin || userRole === 'vendedor';
   
+  // Modo operação: qualquer filtro de data/status/busca ativo → carrega o conjunto
+  // inteiro (per_page indefinido = backend devolve o array todo, sem total_pages, e a
+  // paginação some sozinha). Visão global "Tudo" sem filtro → teto de segurança pra
+  // não puxar o histórico inteiro no PWA (200, ou o que o usuário escolher no seletor).
+  const hasActiveFilter = Boolean(
+    filters.status || filters.data_inicio || filters.data_fim || filters.search
+  );
+  const effectivePerPage = hasActiveFilter ? undefined : (filters.per_page ?? 200);
+
   // Entregadores só podem ver pedidos agendados e em rota
-  const adjustedFilters = isEntregador 
-    ? { ...filters, statuses: ['agendado', 'em_rota'] }
-    : filters;
+  const adjustedFilters = isEntregador
+    ? { ...filters, statuses: ['agendado', 'em_rota'], per_page: effectivePerPage }
+    : { ...filters, per_page: effectivePerPage };
   
   const { data: pedidosData, isLoading: isLoadingPedidos, isFetching: isFetchingPedidos, error: pedidosError, refetch: refetchPedidos } = usePedidos(adjustedFilters);
   const { data: statsData, isFetching: isFetchingStats } = useStats();
@@ -608,7 +619,7 @@ export default function OrdersPage() {
           {pedidosData.total_pages > 1 && (
             <OrdersPagination
               page={filters.page || 1}
-              perPage={filters.per_page || 20}
+              perPage={effectivePerPage ?? 200}
               total={pedidosData.total}
               totalPages={pedidosData.total_pages}
               onPageChange={(page) => {

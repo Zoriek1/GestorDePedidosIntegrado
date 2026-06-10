@@ -47,12 +47,8 @@ import {
 } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import CheckIcon from '@mui/icons-material/Check';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import PhoneDisabledIcon from '@mui/icons-material/PhoneDisabled';
@@ -75,15 +71,16 @@ import {
 } from '../../api/endpoints/leads';
 import { KeyboardCheatsheet } from './KeyboardCheatsheet';
 import {
-  SITUACAO_VALUES,
   SITUACAO_LABELS,
-  SITUACAO_CHIP_COLOR,
   getLeadGroup,
   GROUP_ORDER,
   GROUP_LABELS,
+  buildWhatsAppUrl,
   type Situacao,
   type LeadGroup,
 } from './leadGrouping';
+import { SituacaoSegmented } from './components/SituacaoSegmented';
+import { LeadActions } from './components/LeadActions';
 import { QuickEntryModal } from '../pedidos/components/QuickEntryModal';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -184,66 +181,6 @@ function formatLeadAge(createdAt: string | null): string {
   return `${days}d`;
 }
 
-/**
- * Chips segmentados de situação para o lead confirmado (`whatsapp_iniciado`).
- * 1 clique troca a etiqueta de funil. Em `sem_resposta`, expõe o botão de
- * followup (reativação) — registrar contato tira o lead da fila de pendência.
- */
-function SituacaoControls({
-  lead,
-  busy,
-  onSet,
-  onFollowup,
-}: {
-  lead: Lead;
-  busy: boolean;
-  onSet: (lead: Lead, situacao: Situacao) => void;
-  onFollowup: (lead: Lead) => void;
-}) {
-  if (lead.status !== 'whatsapp_iniciado') return null;
-  const current = (lead.situacao ?? 'aguardando_resposta') as Situacao;
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-      <ToggleButtonGroup
-        size="small"
-        exclusive
-        value={current}
-        onChange={(_e, val) => {
-          if (val) onSet(lead, val as Situacao);
-        }}
-        sx={{ flexWrap: 'wrap' }}
-      >
-        {SITUACAO_VALUES.map((s) => (
-          <ToggleButton
-            key={s}
-            value={s}
-            color={SITUACAO_CHIP_COLOR[s]}
-            disabled={busy}
-            sx={{ textTransform: 'none', py: 0.1, px: 1 }}
-          >
-            {SITUACAO_LABELS[s]}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
-      {current === 'sem_resposta' ? (
-        <Tooltip title={lead.followup_feito_em ? 'Followup já registrado — registrar novo contato' : 'Registrar contato (followup)'}>
-          <span>
-            <Button
-              size="small"
-              variant={lead.followup_feito_em ? 'text' : 'outlined'}
-              onClick={() => onFollowup(lead)}
-              disabled={busy}
-              sx={{ textTransform: 'none', py: 0.1, px: 1, minWidth: 0 }}
-            >
-              {lead.followup_feito_em ? 'Contato ✓' : 'Registrei contato'}
-            </Button>
-          </span>
-        </Tooltip>
-      ) : null}
-    </Box>
-  );
-}
-
 function loadPersistedFilters(): LeadsFilters {
   if (typeof window === 'undefined') return DEFAULT_FILTERS;
   try {
@@ -265,13 +202,6 @@ function persistFilters(filters: LeadsFilters): void {
   } catch {
     /* ignore */
   }
-}
-
-function buildWhatsAppUrl(phone: string): string | null {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length < 10) return null;
-  const full = digits.length <= 11 ? `55${digits}` : digits;
-  return `https://wa.me/${full}`;
 }
 
 /** ISO com fuso → instante absoluto. Sem fuso: Postgres/SQLAlchemy costuma devolver UTC naive — não tratar como BRT. */
@@ -296,22 +226,6 @@ function formatDate(iso: string | null): string {
 function formatEventLabel(raw: string | null): string {
   if (!raw) return '—';
   return EVENT_LABELS[raw] ?? raw.replace(/_/g, ' ');
-}
-
-function sourceColor(source: string | null): 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default' {
-  switch (source) {
-    case 'facebook': return 'primary';
-    case 'google': return 'success';
-    case 'instagram': return 'secondary';
-    case 'tiktok': return 'warning';
-    default: return 'default';
-  }
-}
-
-function tokenValidColor(valid: boolean | null): 'success' | 'error' | 'default' {
-  if (valid === true) return 'success';
-  if (valid === false) return 'error';
-  return 'default';
 }
 
 function tokenValidLabel(valid: boolean | null): string {
@@ -360,27 +274,22 @@ function canEditLeadPhone(lead: Lead): boolean {
 }
 
 function ageBorderColor(lead: Pick<Lead, 'created_at' | 'status' | 'followup_feito_em'>, theme: Theme): string {
+  // Disciplina de cor (A4): a borda de idade só sinaliza em vermelho ao estourar o
+  // SLA (bucket `cold`). Abaixo disso é neutra — sem verde/âmbar competindo por atenção.
   if (!shouldShowAge(lead)) return theme.palette.divider;
-  const bucket = getLeadAgeBucket(lead.created_at);
-  if (bucket === 'fresh') return theme.palette.success.light;
-  if (bucket === 'warm') return theme.palette.warning.light;
-  return theme.palette.error.main;
+  return getLeadAgeBucket(lead.created_at) === 'cold'
+    ? theme.palette.error.main
+    : theme.palette.divider;
 }
-
-const AGE_BUCKET_META: Record<AgeBucket, { Icon: typeof CheckCircleIcon; color: 'success' | 'warning' | 'error' }> = {
-  fresh: { Icon: CheckCircleIcon, color: 'success' },
-  warm: { Icon: ScheduleIcon, color: 'warning' },
-  cold: { Icon: ReportProblemIcon, color: 'error' },
-};
 
 function AgeChip({ lead }: { lead: Pick<Lead, 'created_at' | 'status' | 'followup_feito_em'> }) {
   const theme = useTheme();
   if (!shouldShowAge(lead)) return null;
-  const bucket = getLeadAgeBucket(lead.created_at);
-  const { Icon, color } = AGE_BUCKET_META[bucket];
-  // Saturação reduzida: usa `light` exceto no caso crítico (>30min)
-  const bg = bucket === 'cold' ? theme.palette.error.main : theme.palette[color].light;
-  const fg = bucket === 'cold' ? theme.palette.error.contrastText : theme.palette[color].contrastText;
+  // Neutro → vermelho: cinza enquanto dentro do SLA, vermelho só no estouro (bucket cold).
+  const isOverdue = getLeadAgeBucket(lead.created_at) === 'cold';
+  const bg = isOverdue ? theme.palette.error.main : theme.palette.action.hover;
+  const fg = isOverdue ? theme.palette.error.contrastText : theme.palette.text.secondary;
+  const Icon = isOverdue ? ReportProblemIcon : ScheduleIcon;
   return (
     <Chip
       size="small"
@@ -966,7 +875,6 @@ export default function LeadsPage() {
   if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
 
   const today = statsData?.today;
-  const last14d = statsData?.last_14d;
   const period: LeadsPeriod = filters.period ?? 'custom';
   // Modo "Dia" é UI-only: mapeia para period=custom com date_from === date_to.
   const isDayMode =
@@ -976,6 +884,20 @@ export default function LeadsPage() {
   const periodUiValue: PeriodUiValue = isDayMode ? 'day' : period;
   const selectedDayLabel =
     isDayMode && filters.date_from ? dayjs(filters.date_from).format('DD/MM') : null;
+
+  // KPIs do funil. As 3 situações + Compras vêm de `groupedLeads` (reflete a janela/
+  // filtro carregado, não um total global). A conversão usa a janela fixa de hoje do
+  // endpoint /stats. Disciplina de cor (A4): verde só p/ compra, âmbar p/ sem resposta.
+  const funnelKpis: Array<{ label: string; value: number; color: string }> = [
+    { label: 'Em conversa', value: groupedLeads.em_conversa.length, color: 'text.primary' },
+    { label: 'Orçamento', value: groupedLeads.orcamento.length, color: 'text.primary' },
+    { label: 'Sem resposta', value: groupedLeads.sem_resposta.length, color: 'warning.main' },
+    { label: 'Compras', value: groupedLeads.fechados.length, color: 'success.main' },
+  ];
+  const confirmadosToday = today?.confirmados ?? 0;
+  const comprasToday = today?.compras ?? 0;
+  const conversao =
+    confirmadosToday > 0 ? Math.round((comprasToday / confirmadosToday) * 100) : null;
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, pb: selectedIds.size > 0 ? 12 : { xs: 2, md: 3 } }}>
@@ -992,16 +914,33 @@ export default function LeadsPage() {
           </Typography>
         </Stack>
         {statsData ? (
-          <Stack spacing={0.25} sx={{ ml: { sm: 2 } }}>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Hoje:</strong> {today?.pendentes ?? 0} pendentes ·{' '}
-              {today?.lead_pendentes ?? 0} em fila · {today?.confirmados ?? 0} confirmados ·{' '}
-              {today?.compras ?? 0} compras
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              <strong>14 dias:</strong> {last14d?.pendentes ?? 0} pendentes ·{' '}
-              {last14d?.lead_pendentes ?? 0} em fila · {last14d?.confirmados ?? 0} confirmados ·{' '}
-              {last14d?.compras ?? 0} compras
+          <Stack spacing={0.5} sx={{ ml: { sm: 2 } }}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {funnelKpis.map((kpi) => (
+                <Paper
+                  key={kpi.label}
+                  variant="outlined"
+                  sx={{ px: 1.5, py: 0.75, minWidth: 88, borderRadius: '6px' }}
+                >
+                  <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1, color: kpi.color }}>
+                    {kpi.value}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {kpi.label}
+                  </Typography>
+                </Paper>
+              ))}
+              <Paper variant="outlined" sx={{ px: 1.5, py: 0.75, minWidth: 88, borderRadius: '6px' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+                  {conversao === null ? '—' : `${conversao}%`}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  Conversão
+                </Typography>
+              </Paper>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              Funil no filtro atual · conversão (confirmados→compra) de hoje
             </Typography>
           </Stack>
         ) : (
@@ -1275,65 +1214,16 @@ export default function LeadsPage() {
                       )}
                       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}>
                         <AgeChip lead={lead} />
-                        {lead.phone ? (
-                          <IconButton
-                            size="small"
-                            color="success"
-                            component="a"
-                            href={buildWhatsAppUrl(lead.phone) ?? '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <WhatsAppIcon fontSize="small" />
-                          </IconButton>
-                        ) : lead.status === 'pendente_whatsapp' ? (
-                          <IconButton size="small" color="success" onClick={() => openPhoneCapture(lead)}>
-                            <WhatsAppIcon fontSize="small" />
-                          </IconButton>
-                        ) : (
-                          <IconButton size="small" disabled>
-                            <WhatsAppIcon fontSize="small" />
-                          </IconButton>
-                        )}
-                        {lead.status === 'lead_pendente' ? (
-                          <>
-                            <IconButton
-                              size="small"
-                              color="success"
-                              onClick={() => handleQuickConfirm(lead)}
-                              disabled={updateLeadStatus.isPending}
-                              aria-label="Confirmar lead"
-                            >
-                              <CheckCircleIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() => handleQuickDisqualify(lead)}
-                              disabled={updateLeadStatus.isPending}
-                              aria-label="Desqualificar lead"
-                            >
-                              <PersonOffIcon fontSize="small" />
-                            </IconButton>
-                          </>
-                        ) : null}
-                        {lead.pedido_id ? (
-                          <IconButton
-                            size="small"
-                            color="secondary"
-                            onClick={() => handleViewOrder(lead.pedido_id!)}
-                          >
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        ) : lead.status === 'compra_realizada' ? (
-                          <IconButton size="small" disabled>
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        ) : (
-                          <IconButton size="small" color="primary" onClick={(e) => openCreateModeMenu(e, lead)}>
-                            <AddShoppingCartIcon fontSize="small" />
-                          </IconButton>
-                        )}
+                        <LeadActions
+                          lead={lead}
+                          pending={updateLeadStatus.isPending}
+                          onCapturePhone={openPhoneCapture}
+                          onMarkNoContact={handleQuickMarkNoContact}
+                          onConfirm={handleQuickConfirm}
+                          onDisqualify={handleQuickDisqualify}
+                          onViewOrder={handleViewOrder}
+                          onCreateOrder={openCreateModeMenu}
+                        />
                       </Stack>
                     </Stack>
 
@@ -1379,7 +1269,7 @@ export default function LeadsPage() {
 
                     {lead.status === 'whatsapp_iniciado' ? (
                       <Box sx={{ mb: 1 }}>
-                        <SituacaoControls
+                        <SituacaoSegmented
                           lead={lead}
                           busy={updateLeadSituacao.isPending || markLeadFollowup.isPending}
                           onSet={handleSetSituacao}
@@ -1415,7 +1305,7 @@ export default function LeadsPage() {
                       </Stack>
                       <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
                         {lead.utm_source ? (
-                          <Chip label={lead.utm_source} size="small" color={sourceColor(lead.utm_source)} sx={{ borderRadius: '4px' }} />
+                          <Chip label={lead.utm_source} size="small" variant="outlined" sx={{ borderRadius: '4px' }} />
                         ) : null}
                         {lead.utm_campaign ? (
                           <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
@@ -1442,6 +1332,12 @@ export default function LeadsPage() {
                       pb: 0.5,
                       borderTop: '1px solid',
                       borderColor: 'divider',
+                      // Cola no topo ao rolar — a posição no funil vem do header,
+                      // então ele precisa ficar visível enquanto o grupo passa.
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 2,
+                      backgroundColor: 'background.paper',
                     }}
                   >
                     <Typography
@@ -1570,6 +1466,12 @@ export default function LeadsPage() {
                       borderBottom: 0,
                       py: 0.5,
                       cursor: isDescartados ? 'pointer' : 'default',
+                      // Cabeçalho de grupo cola no topo ao rolar (a página é o container
+                      // scrollável). Fundo opaco pra as linhas não vazarem por trás.
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 2,
+                      backgroundColor: theme.palette.background.default,
                     }}
                     onClick={() => {
                       if (isDescartados) setDescartadosOpen((v) => !v);
@@ -1634,102 +1536,17 @@ export default function LeadsPage() {
                     />
                   </TableCell>
                   <TableCell align="center">
-                    <Stack direction="row" spacing={0.5} justifyContent="center">
-                      {lead.phone ? (
-                        <Tooltip title="Chamar no WhatsApp">
-                          <IconButton
-                            size="small"
-                            color="success"
-                            component="a"
-                            href={buildWhatsAppUrl(lead.phone) ?? '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            disabled={loadingWhatsAppId === lead.id}
-                          >
-                            <WhatsAppIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      ) : lead.status === 'pendente_whatsapp' ? (
-                        <Tooltip title="Capturar telefone do lead">
-                          <IconButton
-                            size="small"
-                            color="success"
-                            onClick={() => openPhoneCapture(lead)}
-                          >
-                            <WhatsAppIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip title="Sem telefone">
-                          <span>
-                            <IconButton size="small" disabled>
-                              <WhatsAppIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      )}
-                      {lead.pedido_id ? (
-                        <Tooltip title="Visualizar pedido vinculado">
-                          <IconButton
-                            size="small"
-                            color="secondary"
-                            onClick={() => handleViewOrder(lead.pedido_id!)}
-                          >
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      ) : lead.status === 'compra_realizada' ? (
-                        <Tooltip title="Compra realizada — pedido não localizado">
-                          <span>
-                            <IconButton size="small" disabled>
-                              <VisibilityIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip title="Criar pedido a partir deste lead">
-                          <IconButton size="small" color="primary" onClick={(e) => openCreateModeMenu(e, lead)}>
-                            <AddShoppingCartIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {lead.status === 'pendente_whatsapp' ? (
-                        <Tooltip title="Marcar como não contatou">
-                          <IconButton
-                            size="small"
-                            color="default"
-                            onClick={() => handleQuickMarkNoContact(lead)}
-                            disabled={updateLeadStatus.isPending}
-                          >
-                            <CheckIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      ) : null}
-                      {lead.status === 'lead_pendente' ? (
-                        <>
-                          <Tooltip title="Confirmar lead (positivo CAPI agora)">
-                            <IconButton
-                              size="small"
-                              color="success"
-                              onClick={() => handleQuickConfirm(lead)}
-                              disabled={updateLeadStatus.isPending}
-                            >
-                              <CheckCircleIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Desqualificar lead">
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() => handleQuickDisqualify(lead)}
-                              disabled={updateLeadStatus.isPending}
-                            >
-                              <PersonOffIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </>
-                      ) : null}
-                    </Stack>
+                    <LeadActions
+                      lead={lead}
+                      pending={updateLeadStatus.isPending}
+                      loadingWhatsAppId={loadingWhatsAppId}
+                      onCapturePhone={openPhoneCapture}
+                      onMarkNoContact={handleQuickMarkNoContact}
+                      onConfirm={handleQuickConfirm}
+                      onDisqualify={handleQuickDisqualify}
+                      onViewOrder={handleViewOrder}
+                      onCreateOrder={openCreateModeMenu}
+                    />
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(lead.created_at)}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
@@ -1771,7 +1588,7 @@ export default function LeadsPage() {
                           sx={{ borderRadius: '4px' }}
                         />
                         {lead.status === 'whatsapp_iniciado' ? (
-                          <SituacaoControls
+                          <SituacaoSegmented
                             lead={lead}
                             busy={updateLeadSituacao.isPending || markLeadFollowup.isPending}
                             onSet={handleSetSituacao}
@@ -1826,7 +1643,7 @@ export default function LeadsPage() {
                     {shouldShowTokenFields(lead) ? (
                       <Chip
                         size="small"
-                        color={tokenValidColor(lead.token_valido)}
+                        color="default"
                         label={tokenValidLabel(lead.token_valido)}
                         variant={lead.token_valido === null ? 'outlined' : 'filled'}
                         sx={{ borderRadius: '4px' }}
@@ -1841,7 +1658,7 @@ export default function LeadsPage() {
                       <Chip
                         label={lead.utm_source}
                         size="small"
-                        color={sourceColor(lead.utm_source)}
+                        variant="outlined"
                         sx={{ borderRadius: '4px' }}
                       />
                     ) : '—'}

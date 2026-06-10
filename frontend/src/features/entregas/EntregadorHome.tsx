@@ -72,9 +72,9 @@ export function EntregadorHome() {
               >
                 {grupo.label} · {grupo.pedidos.length}
               </Typography>
-              <Stack spacing={1}>
+              <Stack spacing={1.5}>
                 {grupo.pedidos.map((p) => (
-                  <OrderCard key={p.id} pedido={p} compact />
+                  <OrderCard key={p.id} pedido={p} />
                 ))}
               </Stack>
             </Box>

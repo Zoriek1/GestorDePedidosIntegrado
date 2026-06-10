@@ -69,3 +69,50 @@ export const GROUP_LABELS: Record<LeadGroup, string> = {
   fechados: 'Fechados',
   descartados: 'Descartados',
 };
+
+/**
+ * Ações operacionais que a linha do lead expõe, por estado canônico (`status`).
+ *
+ * Fonte única que espelha `ALLOWED_STATUS_TRANSITIONS` do backend
+ * (routes/leads.py): cada estado só oferece os controles/transições válidos.
+ * `LeadActions` lê este mapa em vez de ternários espalhados pelos dois renderers.
+ *
+ * Travas (espelho do backend, sem regra nova):
+ *  - `whatsapp_iniciado` é terminal manual → sem `disqualify`/compra (compra chega
+ *    pelo fluxo de pedido). Expõe só o segmented de `situacao`.
+ *  - `situacao` é valor único → segmented control (o followup mora dentro dele).
+ *  - `descarte`/`nao_entrou_em_contato` não têm ação rápida na linha; a reabertura
+ *    acontece pela captura de telefone (chip de status / bulk), inalterada.
+ *
+ * A chamada de WhatsApp (depende de ter telefone, não de status) e o botão de
+ * ver/criar pedido ficam FORA do mapa — `LeadActions` os renderiza sempre.
+ */
+export type LeadAction =
+  | 'capture_phone' // pendente sem telefone: botão de captura inline
+  | 'mark_no_contact' // marcar "não entrou em contato"
+  | 'confirm' // confirmar lead (dispara CAPI Lead)
+  | 'disqualify' // descartar lead
+  | 'situacao' // segmented de situação (lead confirmado)
+  | 'view_order'; // ver o pedido vinculado (compra realizada)
+
+export const ACTIONS_BY_STATUS: Record<string, LeadAction[]> = {
+  pendente_whatsapp: ['capture_phone', 'mark_no_contact'],
+  lead_pendente: ['confirm', 'disqualify'],
+  whatsapp_iniciado: ['situacao'],
+  compra_realizada: ['view_order'],
+  descarte: [],
+  nao_entrou_em_contato: [],
+};
+
+/** Ações válidas para um status (lista vazia para status nulo/desconhecido). */
+export function getLeadActions(status: string | null | undefined): LeadAction[] {
+  return ACTIONS_BY_STATUS[status ?? ''] ?? [];
+}
+
+/** Telefone BR (com DDD) → URL `wa.me`, ou `null` se inválido (<10 dígitos). */
+export function buildWhatsAppUrl(phone: string): string | null {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${full}`;
+}

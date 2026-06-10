@@ -34,7 +34,10 @@ export function SituacaoSegmented({
         onChange={(_e, val) => {
           if (val) onSet(lead, val as Situacao);
         }}
-        sx={{ flexWrap: 'wrap' }}
+        // Os 3 segmentos ficam SEMPRE em linha (segmented control horizontal). O wrap
+        // mora só no Box externo, pra o botão de followup descer quando aparecer — sem
+        // empilhar os segmentos um sobre o outro em colunas estreitas.
+        sx={{ flexShrink: 0 }}
       >
         {SITUACAO_VALUES.map((s) => (
           <ToggleButton
@@ -42,7 +45,7 @@ export function SituacaoSegmented({
             value={s}
             color={SITUACAO_CHIP_COLOR[s]}
             disabled={busy}
-            sx={{ textTransform: 'none', py: 0.1, px: 1 }}
+            sx={{ textTransform: 'none', py: 0.1, px: 1, whiteSpace: 'nowrap' }}
           >
             {SITUACAO_LABELS[s]}
           </ToggleButton>

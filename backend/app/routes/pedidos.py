@@ -1724,7 +1724,7 @@ def obter_comprovante(pedido_id):
 
 @pedidos_bp.route("/comprovante-lote", methods=["POST"])
 def obter_comprovante_lote():
-    """Gera comprovante em lote (HTML A4 com até 4 pedidos por folha)."""
+    """Gera comprovante em lote (HTML A4). Moldura `layout` = 1, 2 ou 4 por folha."""
     try:
         from flask import Response
 
@@ -1740,9 +1740,14 @@ def obter_comprovante_lote():
             return error_response("IDs de pedido inválidos", 400)
 
         if len(pedido_ids) > MAX_PEDIDOS_POR_LOTE:
-            return error_response(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por folha", 400)
+            return error_response(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por lote", 400)
 
-        command = GerarComprovanteLoteCommand(pedido_ids)
+        try:
+            layout = int(payload.get("layout", 4))
+        except (TypeError, ValueError):
+            layout = 4
+
+        command = GerarComprovanteLoteCommand(pedido_ids, layout=layout)
         html = command.execute()
         return Response(html, mimetype="text/html")
     except ValueError as e:

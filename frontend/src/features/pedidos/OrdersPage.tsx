@@ -41,11 +41,11 @@ import { OrdersPagination } from './components/OrdersPagination';
 import { KanbanBoard } from './components/KanbanBoard';
 import { EntregadorHome } from '../entregas/EntregadorHome';
 import { usePedidoPrintService } from './services/PedidoPrintService';
+import type { PrintLayout } from './services/IPedidoPrintService';
 
 type ViewMode = 'lista' | 'quadro';
 
-const MAX_BATCH_PRINT = 20;
-const PEDIDOS_POR_FOLHA = 4;
+const MAX_BATCH_PRINT = 100;
 
 export default function OrdersPage() {
   const theme = useTheme();
@@ -63,6 +63,7 @@ export default function OrdersPage() {
   });
   const [selectionMode, setSelectionMode] = useState<null | 'route' | 'print'>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [printLayout, setPrintLayout] = useState<PrintLayout>(4);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('lista');
 
@@ -214,13 +215,35 @@ export default function OrdersPage() {
       return;
     }
     try {
-      await printService.printBatch(ids);
+      await printService.printBatch(ids, printLayout);
       success('Impressão iniciada');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao imprimir em lote';
       showError(errorMessage);
     }
   };
+
+  // Seleção em massa para impressão (limitada ao teto do lote).
+  const handleSelecionarTodos = () => {
+    const ids = visiblePedidos.map((p) => p.id).slice(0, MAX_BATCH_PRINT);
+    setSelectedIds(new Set(ids));
+    if (visiblePedidos.length > MAX_BATCH_PRINT) {
+      info(`Selecionados os primeiros ${MAX_BATCH_PRINT} pedidos (limite por lote)`);
+    }
+  };
+
+  const handleSelecionarNaoImpressos = () => {
+    const ids = visiblePedidos
+      .filter((p) => !p.impresso)
+      .map((p) => p.id)
+      .slice(0, MAX_BATCH_PRINT);
+    setSelectedIds(new Set(ids));
+    if (ids.length === 0) {
+      info('Nenhum pedido não impresso na lista atual');
+    }
+  };
+
+  const handleLimparSelecao = () => setSelectedIds(new Set());
 
   const handleOcultarConcluidos = async () => {
     const confirmed = await confirm({
@@ -349,7 +372,7 @@ export default function OrdersPage() {
               </Tooltip>
 
               {/* Botão Imprimir lote */}
-              <Tooltip title={selectionMode === 'print' ? 'Sair do modo de impressão em lote' : `Selecionar até ${MAX_BATCH_PRINT} pedidos (4 por folha A4)`}>
+              <Tooltip title={selectionMode === 'print' ? 'Sair do modo de impressão em lote' : `Selecionar até ${MAX_BATCH_PRINT} pedidos (moldura 1, 2 ou 4 por folha A4)`}>
                 <Button
                   variant={selectionMode === 'print' ? 'contained' : 'outlined'}
                   size="small"
@@ -537,29 +560,69 @@ export default function OrdersPage() {
                 </>
               )}
               {selectionMode === 'print' && (
-                <Tooltip
-                  title={
-                    selectedIds.size === 0
-                      ? `Selecione 1 a ${MAX_BATCH_PRINT} pedidos`
-                      : selectedIds.size > MAX_BATCH_PRINT
-                        ? `Máximo de ${MAX_BATCH_PRINT} pedidos por lote`
-                        : `${Math.ceil(selectedIds.size / PEDIDOS_POR_FOLHA)} folha(s) A4 — ${PEDIDOS_POR_FOLHA} pedidos por folha`
-                  }
-                >
-                  <span>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      startIcon={<Print />}
-                      onClick={handleImprimirSelecionados}
-                      disabled={selectedIds.size === 0 || selectedIds.size > MAX_BATCH_PRINT}
-                      fullWidth={isMobile}
-                    >
-                      Imprimir {selectedIds.size > 0 ? `(${selectedIds.size})` : 'selecionados'}
-                    </Button>
-                  </span>
-                </Tooltip>
+                <>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleSelecionarTodos}
+                    fullWidth={isMobile}
+                  >
+                    Selecionar todos
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleSelecionarNaoImpressos}
+                    fullWidth={isMobile}
+                  >
+                    Não impressos
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="inherit"
+                    onClick={handleLimparSelecao}
+                    disabled={selectedIds.size === 0}
+                    fullWidth={isMobile}
+                  >
+                    Limpar
+                  </Button>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={printLayout}
+                    onChange={(_e, val) => { if (val) setPrintLayout(val as PrintLayout); }}
+                    aria-label="Moldura (pedidos por folha)"
+                    fullWidth={isMobile}
+                  >
+                    <ToggleButton value={1} aria-label="1 por página">1/pág</ToggleButton>
+                    <ToggleButton value={2} aria-label="2 por página">2/pág</ToggleButton>
+                    <ToggleButton value={4} aria-label="4 por página">4/pág</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Tooltip
+                    title={
+                      selectedIds.size === 0
+                        ? `Selecione 1 a ${MAX_BATCH_PRINT} pedidos`
+                        : selectedIds.size > MAX_BATCH_PRINT
+                          ? `Máximo de ${MAX_BATCH_PRINT} pedidos por lote`
+                          : `${Math.ceil(selectedIds.size / printLayout)} folha(s) A4 — ${printLayout} por folha`
+                    }
+                  >
+                    <span>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={<Print />}
+                        onClick={handleImprimirSelecionados}
+                        disabled={selectedIds.size === 0 || selectedIds.size > MAX_BATCH_PRINT}
+                        fullWidth={isMobile}
+                      >
+                        Imprimir {selectedIds.size > 0 ? `(${selectedIds.size})` : 'selecionados'}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </>
               )}
             </Stack>
             <Stack direction="column" spacing={0.5} alignItems={{ xs: 'center', sm: 'flex-end' }}>
@@ -573,7 +636,7 @@ export default function OrdersPage() {
               />
               {selectionMode === 'print' && (
                 <Typography variant="caption" color="text.secondary">
-                  Até {MAX_BATCH_PRINT} pedidos · {PEDIDOS_POR_FOLHA} por folha A4
+                  Até {MAX_BATCH_PRINT} pedidos · {printLayout} por folha A4
                 </Typography>
               )}
             </Stack>

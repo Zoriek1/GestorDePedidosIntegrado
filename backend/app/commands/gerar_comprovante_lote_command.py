@@ -1,43 +1,40 @@
 # -*- coding: utf-8 -*-
 """
-Command para geração de comprovantes em lote (até 20 pedidos, 4 por folha A4).
+Command para geração de comprovantes em lote (até 100 pedidos).
 
-Layout por folha:
-- 1 pedido  → A4 cheio (delega ao GerarComprovanteCommand)
-- 2 pedidos → A4 retrato com 2 guias retrato lado a lado (2 colunas) — VIS-05
-- 3 pedidos → grid 2x2 com 1 célula vazia
-- 4 pedidos → grid 2x2 cheio
+A moldura é escolhida pelo usuário (pedidos por folha A4):
+- layout=1 → comprovante rico (mesmo template do single), 1 folha por pedido.
+- layout=2 → 2 guias retrato lado a lado (2 colunas) por folha — VIS-05.
+- layout=4 → grid 2x2 (4 guias) por folha; última folha completa com células vazias.
 
-Para mais de 4 pedidos, são empilhadas múltiplas folhas (até 5 folhas / 20 pedidos).
 Espaçamento de ~6mm entre células e borda dashed para corte com tesoura.
 """
 from app.commands.gerar_comprovante_command import (
-    GerarComprovanteCommand,
+    COMPROVANTE_CSS,
     build_pedido_context,
     fmt,
     fmt_brl,
+    render_comprovante_body,
 )
 from app.repositories.pedido_repository import PedidoRepository
 
-PEDIDOS_POR_FOLHA = 4
-MAX_FOLHAS_POR_LOTE = 5
-MAX_PEDIDOS_POR_LOTE = PEDIDOS_POR_FOLHA * MAX_FOLHAS_POR_LOTE  # 20
+# Moldura escolhida pelo usuário: 1, 2 ou 4 pedidos por folha A4.
+LAYOUTS_VALIDOS = (1, 2, 4)
+MAX_PEDIDOS_POR_LOTE = 100
 
 
 class GerarComprovanteLoteCommand:
-    def __init__(self, pedido_ids: list[int]):
+    def __init__(self, pedido_ids: list[int], layout: int = 4):
         self.pedido_ids = pedido_ids
+        # Normaliza a moldura; valores fora de {1,2,4} caem no padrão 4.
+        self.layout = layout if layout in LAYOUTS_VALIDOS else 4
         self.pedido_repo = PedidoRepository()
 
     def execute(self) -> str:
         if not self.pedido_ids:
             raise ValueError("Nenhum pedido selecionado")
         if len(self.pedido_ids) > MAX_PEDIDOS_POR_LOTE:
-            raise ValueError(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por folha")
-
-        # 1 pedido: comportamento atual preservado
-        if len(self.pedido_ids) == 1:
-            return GerarComprovanteCommand(self.pedido_ids[0]).execute()
+            raise ValueError(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por lote")
 
         contexts = []
         for pid in self.pedido_ids:
@@ -46,7 +43,11 @@ class GerarComprovanteLoteCommand:
                 raise ValueError(f"Pedido #{pid} não encontrado")
             contexts.append(build_pedido_context(pedido))
 
-        return self._render_grid(contexts)
+        # 1 por página: comprovante rico (mesmo template do single), uma folha por pedido.
+        if self.layout == 1:
+            return self._render_full_pages(contexts)
+        # 2 ou 4 por página: guias compactas em grade.
+        return self._render_grid(contexts, self.layout)
 
     @staticmethod
     def _payment_seal(ctx: dict) -> tuple[str, str]:
@@ -165,24 +166,21 @@ class GerarComprovanteLoteCommand:
         </div>
         """
 
-    def _render_sheet(self, page_contexts: list[dict]) -> str:
-        n = len(page_contexts)
+    def _render_sheet(self, page_contexts: list[dict], layout: int) -> str:
         slips_html = "".join(self._render_slip(c) for c in page_contexts)
-        # Em grid 2x2 com 3 pedidos, completar a 4ª célula com placeholder vazio
-        if n == 3:
-            slips_html += '<div class="slip slip-empty"></div>'
+        # Completa as células faltantes da última folha com placeholders vazios,
+        # preservando a grade da moldura escolhida.
+        empties = layout - len(page_contexts)
+        slips_html += '<div class="slip slip-empty"></div>' * max(0, empties)
 
-        grid_class = "grid-2" if n == 2 else "grid-4"
+        grid_class = "grid-2" if layout == 2 else "grid-4"
         return f'<div class="sheet {grid_class}">{slips_html}</div>'
 
-    def _render_grid(self, contexts: list[dict]) -> str:
+    def _render_grid(self, contexts: list[dict], layout: int) -> str:
         n = len(contexts)
-        # Quebra em folhas de PEDIDOS_POR_FOLHA pedidos
-        pages = [
-            contexts[i : i + PEDIDOS_POR_FOLHA]
-            for i in range(0, n, PEDIDOS_POR_FOLHA)
-        ]
-        sheets_html = "".join(self._render_sheet(p) for p in pages)
+        # Quebra em folhas de `layout` pedidos (2 ou 4 por folha).
+        pages = [contexts[i : i + layout] for i in range(0, n, layout)]
+        sheets_html = "".join(self._render_sheet(p, layout) for p in pages)
 
         ids_str = ", ".join(f"#{c['id']}" for c in contexts)
 
@@ -428,6 +426,34 @@ class GerarComprovanteLoteCommand:
     <span>Lote: {ids_str}</span>
     <span>{contexts[0]['impresso_em']}</span>
   </div>
+  <script>
+    window.onload = function() {{
+        setTimeout(function() {{ window.print(); }}, 500);
+    }};
+  </script>
+</body>
+</html>
+"""
+
+    def _render_full_pages(self, contexts: list[dict]) -> str:
+        """Moldura 1 por página: comprovante rico (mesmo corpo do single), uma folha
+        por pedido, com quebra de página entre eles."""
+        pages = "".join(
+            f'<div class="page-1up">{render_comprovante_body(c)}</div>' for c in contexts
+        )
+        ids_str = ", ".join(f"#{c['id']}" for c in contexts)
+        return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Comprovantes em lote ({len(contexts)} pedidos · 1 por página)</title>
+  <style>{COMPROVANTE_CSS}
+    .page-1up {{ page-break-after: always; break-after: page; }}
+    .page-1up:last-child {{ page-break-after: auto; break-after: auto; }}
+  </style>
+</head>
+<body>
+  {pages}
   <script>
     window.onload = function() {{
         setTimeout(function() {{ window.print(); }}, 500);

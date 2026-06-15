@@ -23,6 +23,9 @@ export interface Pedido {
   valor?: string;
   dia_entrega: string; // YYYY-MM-DD
   horario: string;
+  slot_inicio?: string | null; // "HH:MM"
+  slot_deadline?: string | null; // "HH:MM"
+  is_expressa?: boolean;
   cep?: string;
   rua?: string;
   numero?: string;
@@ -30,6 +33,12 @@ export interface Pedido {
   cidade?: string;
   endereco?: string;
   obs_entrega?: string;
+  tipo_local?: 'casa' | 'predio' | 'comercial';
+  nome_local?: string;
+  apartamento?: string;
+  bloco?: string;
+  torre?: string;
+  andar?: string;
   mensagem?: string;
   pagamento?: string;
   parcelas_cartao?: number | null;
@@ -55,6 +64,7 @@ export interface Pedido {
   coords_lon?: number;
   fbc?: string;
   fbp?: string;
+  codigo_whatsapp?: string;
   created_at?: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -180,6 +190,12 @@ export interface CreatePedidoPayload {
   cidade?: string;
   endereco?: string;
   obs_entrega?: string;
+  tipo_local?: 'casa' | 'predio' | 'comercial';
+  nome_local?: string;
+  apartamento?: string;
+  bloco?: string;
+  torre?: string;
+  andar?: string;
   mensagem?: string;
   pagamento?: string;
   parcelas_cartao?: number | null;
@@ -202,7 +218,7 @@ export function useCreatePedido() {
   return useMutation({
     mutationFn: async (data: CreatePedidoPayload) => {
       if (isOnline) {
-        const response = await apiRequest<{ pedido_id: number; pedido: Pedido }>('/pedidos', {
+        const response = await apiRequest<{ pedido_id: number; pedido: Pedido; track_url?: string }>('/pedidos', {
           method: 'POST',
           body: JSON.stringify({ ...data, clientTimestamp: Date.now() }),
           headers: { 'Content-Type': 'application/json' }
@@ -217,6 +233,20 @@ export function useCreatePedido() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+    }
+  });
+}
+
+/** Busca o link público de acompanhamento de um pedido já existente (token assinado server-side). */
+export function useTrackLink() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useMutation({
+    mutationFn: async (id: number): Promise<string> => {
+      const response = await apiRequest<{ track_url: string }>(`/pedidos/${id}/track-link`);
+      if (!response.ok) throw new Error(response.message);
+      return response.data.track_url;
     }
   });
 }

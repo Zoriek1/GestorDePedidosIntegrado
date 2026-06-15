@@ -3,6 +3,7 @@
 Modelo de dados para Pedidos - PWA v3.0
 Model completo com todos os campos do formulário de 4 steps
 """
+
 from datetime import datetime, timedelta
 
 try:
@@ -46,6 +47,23 @@ class Pedido(db.Model):
         nullable=False,
         comment="Horário de entrega (HH:MM ou HH:MM - HH:MM)",
     )
+    slot_inicio = db.Column(
+        db.Time,
+        nullable=True,
+        comment="Slot de entrega alocado (HH:00). Janela de 1h. Pedidos do site.",
+    )
+    slot_deadline = db.Column(
+        db.Time,
+        nullable=True,
+        comment="Horário-limite que o cliente espera (Expressa: paid_at+1h; padrão: fim do horário).",
+    )
+    is_expressa = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.text("FALSE"),
+        comment="Frete expresso (~1h).",
+    )
 
     # Step 3 - Logística (campos separados de endereço)
     cep = db.Column(db.String(10), nullable=True, comment="CEP")
@@ -55,6 +73,24 @@ class Pedido(db.Model):
     cidade = db.Column(db.String(100), nullable=True, comment="Cidade")
     endereco = db.Column(db.Text, nullable=True, comment="Endereço completo (gerado ou manual)")
     obs_entrega = db.Column(db.Text, nullable=True, comment="Como entregar/Observações de entrega")
+
+    # Step 3 - Tipo e detalhe do local de entrega (visão do entregador / impressão)
+    tipo_local = db.Column(
+        db.String(20),
+        nullable=True,
+        default="casa",
+        server_default="casa",
+        comment="Tipo do local: casa | predio | comercial",
+    )
+    nome_local = db.Column(
+        db.String(200),
+        nullable=True,
+        comment="Nome do prédio/condomínio ou do estabelecimento",
+    )
+    apartamento = db.Column(db.String(20), nullable=True, comment="Apartamento (prédio)")
+    bloco = db.Column(db.String(20), nullable=True, comment="Bloco (prédio)")
+    torre = db.Column(db.String(20), nullable=True, comment="Torre (prédio)")
+    andar = db.Column(db.String(20), nullable=True, comment="Andar (prédio)")
 
     # Step 4 - Finalização
     mensagem = db.Column(db.Text, nullable=True, comment="Carta/Mensagem")
@@ -195,6 +231,13 @@ class Pedido(db.Model):
     fbc = db.Column(db.String(255), nullable=True, comment="Facebook Click ID (fbclid)")
     fbp = db.Column(db.String(255), nullable=True, comment="Facebook Browser ID (cookie _fbp)")
 
+    # Token de rastreio do WhatsApp usado para costurar o pedido ao Lead (e ao CAPI).
+    codigo_whatsapp = db.Column(
+        db.String(64),
+        nullable=True,
+        comment="Token de rastreio do WhatsApp (token_rastreio do Lead)",
+    )
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, comment="Data de criação")
     updated_at = db.Column(
@@ -233,6 +276,9 @@ class Pedido(db.Model):
             "valor": self.valor or "",
             "dia_entrega": self.dia_entrega.strftime("%Y-%m-%d") if self.dia_entrega else "",
             "horario": self.horario or "",
+            "slot_inicio": self.slot_inicio.strftime("%H:%M") if self.slot_inicio else None,
+            "slot_deadline": self.slot_deadline.strftime("%H:%M") if self.slot_deadline else None,
+            "is_expressa": bool(self.is_expressa),
             # Step 3 - Endereço
             "cep": self.cep or "",
             "rua": self.rua or "",
@@ -241,6 +287,12 @@ class Pedido(db.Model):
             "cidade": self.cidade or "",
             "endereco": self.endereco or "",
             "obs_entrega": self.obs_entrega or "",
+            "tipo_local": self.tipo_local or "casa",
+            "nome_local": self.nome_local or "",
+            "apartamento": self.apartamento or "",
+            "bloco": self.bloco or "",
+            "torre": self.torre or "",
+            "andar": self.andar or "",
             # Step 4
             "mensagem": self.mensagem or "",
             "pagamento": self.pagamento or "",
@@ -263,12 +315,16 @@ class Pedido(db.Model):
             "cliente_id": self.cliente_id,
             "vendedor_id": self.vendedor_id,
             "entregador_id": self.entregador_id,
-            "delivery_assigned_at": self.delivery_assigned_at.strftime("%Y-%m-%d %H:%M:%S")
-            if self.delivery_assigned_at
-            else None,
-            "delivery_completed_at": self.delivery_completed_at.strftime("%Y-%m-%d %H:%M:%S")
-            if self.delivery_completed_at
-            else None,
+            "delivery_assigned_at": (
+                self.delivery_assigned_at.strftime("%Y-%m-%d %H:%M:%S")
+                if self.delivery_assigned_at
+                else None
+            ),
+            "delivery_completed_at": (
+                self.delivery_completed_at.strftime("%Y-%m-%d %H:%M:%S")
+                if self.delivery_completed_at
+                else None
+            ),
             "distancia_km": self.distancia_km,
             "taxa_entrega": self.taxa_entrega,
             # Frete (vindo da Order API)
@@ -279,11 +335,41 @@ class Pedido(db.Model):
             "coords_lon": self.coords_lon,
             "fbc": self.fbc or "",
             "fbp": self.fbp or "",
+            "codigo_whatsapp": self.codigo_whatsapp or "",
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else "",
-            "deleted_at": self.deleted_at.strftime("%Y-%m-%d %H:%M:%S")
-            if self.deleted_at
-            else None,
+            "deleted_at": (
+                self.deleted_at.strftime("%Y-%m-%d %H:%M:%S") if self.deleted_at else None
+            ),
+        }
+
+    # Mapa status interno -> rótulo amigável ao cliente final
+    _STATUS_PUBLICO = {
+        "agendado": "Pedido confirmado",
+        "em_producao": "Em preparação",
+        "pronto_entrega": "Pronto para entrega",
+        "em_rota": "Saiu para entrega",
+        "pronto_retirada": "Pronto para retirada",
+        "concluido": "Entregue",
+    }
+
+    def _primeiro_nome(self, nome):
+        return (nome or "").strip().split(" ")[0] if nome else ""
+
+    def to_public_dict(self) -> dict:
+        """Serializer SEGURO para o cliente final (página de acompanhamento).
+
+        Whitelist estrita: NUNCA incluir id, telefone, endereço, cartinha (mensagem),
+        valores, taxas, frete, ids de vendedor/entregador ou parâmetros Meta (fbc/fbp).
+        """
+        return {
+            "status": Pedido._STATUS_PUBLICO.get(self.status, "Em andamento"),
+            "status_key": self.status or "agendado",  # usado pelo stepper do front
+            "tipo_pedido": self.tipo_pedido or "Entrega",
+            "destinatario": self._primeiro_nome(self.destinatario),  # só 1º nome
+            "produto": self.produto or "",
+            "dia_entrega": self.dia_entrega.strftime("%d/%m/%Y") if self.dia_entrega else "",
+            "janela": self.horario or "",
         }
 
     def total_pago(self) -> float:

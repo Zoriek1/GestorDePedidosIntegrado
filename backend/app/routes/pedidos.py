@@ -31,6 +31,7 @@ from app.services.order_commission_lifecycle import (
     apply_commission_lifecycle,
     snapshot_commission_fields,
 )
+from app.services.track_token import build_track_url, parse_track_token
 from app.utils.destructive_action_guard import (
     ensure_backup_before_destructive_action,
 )
@@ -144,7 +145,53 @@ def _link_lead_by_whatsapp_code(
     return None
 
 
+def _upsert_cliente_endereco_from_pedido(pedido) -> None:
+    """Salva o endereço de entrega do pedido na agenda de endereços do cliente (#17).
+
+    Idempotente: dedup por `address_hash`. Não lança erro para não bloquear o pedido.
+    Só age para pedidos de entrega com cliente vinculado e endereço minimamente preenchido.
+    """
+    try:
+        from app import db
+        from app.models import EnderecoCliente
+
+        if not getattr(pedido, "cliente_id", None):
+            return
+        if (pedido.tipo_pedido or "").strip().lower() != "entrega":
+            return
+        if not (pedido.rua or pedido.cep):
+            return
+
+        candidate = EnderecoCliente(
+            cliente_id=pedido.cliente_id,
+            cep=pedido.cep,
+            rua=pedido.rua,
+            numero=pedido.numero,
+            bairro=pedido.bairro,
+            cidade=pedido.cidade,
+        )
+        address_hash = candidate.compute_address_hash()
+
+        existing = EnderecoCliente.query.filter_by(
+            cliente_id=pedido.cliente_id, address_hash=address_hash
+        ).first()
+        if existing:
+            return
+
+        candidate.address_canonical = candidate.build_address_canonical()
+        candidate.address_hash = address_hash
+        # Primeiro endereço do cliente vira o principal.
+        if EnderecoCliente.query.filter_by(cliente_id=pedido.cliente_id).count() == 0:
+            candidate.principal = True
+        db.session.add(candidate)
+    except Exception as e:  # noqa: BLE001 - upsert é best-effort
+        print(
+            f"[AVISO] Falha ao salvar endereço do cliente do pedido #{getattr(pedido, 'id', '?')}: {e}"
+        )
+
+
 @pedidos_bp.route("", methods=["GET"])
+@requires_edit_auth
 def listar_pedidos():
     """Lista pedidos com filtros opcionais"""
     try:
@@ -221,6 +268,7 @@ def listar_pedidos():
 
 
 @pedidos_bp.route("/<int:pedido_id>", methods=["GET"])
+@requires_edit_auth
 def obter_pedido(pedido_id):
     """Obtém pedido por ID"""
     try:
@@ -231,6 +279,36 @@ def obter_pedido(pedido_id):
         return success_response({"pedido": pedido.to_dict()})
     except Exception as e:
         return error_response(f"Erro ao obter pedido: {str(e)}", 500)
+
+
+@pedidos_bp.route("/track/<token>", methods=["GET"])
+def acompanhar_pedido(token):
+    """Status público do pedido via token assinado. SEM auth (rota pública por design).
+
+    O converter <int:pedido_id> não casa com "track/<token>", então não há conflito de
+    rotas. 404 sempre genérico para não revelar se o id existe.
+    """
+    pedido_id = parse_track_token(token)
+    if pedido_id is None:
+        return error_response("Pedido não encontrado", 404)
+    pedido = pedido_repo.get_by_id(pedido_id)
+    if not pedido or pedido.oculto or pedido.deleted_at:
+        return error_response("Pedido não encontrado", 404)
+    return success_response({"pedido": pedido.to_public_dict()})
+
+
+@pedidos_bp.route("/<int:pedido_id>/track-link", methods=["GET"])
+@requires_edit_auth
+def obter_track_link(pedido_id):
+    """Devolve a URL pública de acompanhamento de um pedido já existente.
+
+    Usado pelo painel para enviar o link por WhatsApp a qualquer momento. Exige auth
+    (o token só pode ser gerado server-side, com a SECRET_KEY).
+    """
+    pedido = pedido_repo.get_by_id(pedido_id)
+    if not pedido:
+        return error_response("Pedido não encontrado", 404)
+    return success_response({"track_url": build_track_url(pedido.id)})
 
 
 @pedidos_bp.route("/<int:pedido_id>/status", methods=["PUT", "POST"])
@@ -268,12 +346,7 @@ def atualizar_status(pedido_id):
         pedido.updated_at = datetime_now_brazil()
         db.session.commit()
 
-        try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
-        except Exception as e:
-            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+        # Meta CAPI: Purchase é disparado na criação do pedido, não em mudança de status.
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase
@@ -281,6 +354,38 @@ def atualizar_status(pedido_id):
             send_utmify_if_purchase(pedido, status_anterior, status_pagamento_anterior)
         except Exception as e:
             print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido_id}: {e}")
+
+        # Aviso ao cliente que optou por receber notificações (push vinculado ao pedido).
+        # Best-effort: só dispara em transições relevantes e nunca derruba a resposta.
+        try:
+            if novo_status != status_anterior:
+                if novo_status == "concluido":
+                    is_retirada = "retirada" in (pedido.tipo_pedido or "").lower()
+                    body = (
+                        "Seu pedido foi retirado. Obrigado! 💚"
+                        if is_retirada
+                        else "Seu pedido foi entregue. Obrigado! 💚"
+                    )
+                else:
+                    body = {
+                        "pronto_entrega": "Seu pedido está pronto e logo sai para entrega 🌷",
+                        "pronto_retirada": "Seu pedido está pronto para retirada 🌷",
+                        "em_rota": "Seu pedido saiu para entrega 🚚",
+                    }.get(novo_status)
+                if body:
+                    from flask import current_app
+
+                    from app.services.notification_service import send_push_to_pedido_async
+
+                    send_push_to_pedido_async(
+                        app=current_app._get_current_object(),
+                        pedido_id=pedido.id,
+                        title="Plante uma Flor",
+                        body=body,
+                        url=build_track_url(pedido.id),
+                    )
+        except Exception as e:
+            print(f"[AVISO] Erro ao notificar cliente do pedido #{pedido_id}: {e}")
 
         return success_response(
             {"pedido": pedido.to_dict()}, message="Status atualizado com sucesso"
@@ -390,6 +495,11 @@ def listar_minhas_entregas():
         return error_response(f"Erro ao listar minhas entregas: {str(e)}", 500)
 
 
+# EST-02: status a partir dos quais "pegar o pedido" promove para em_rota.
+# em_rota não entra (já está em rota) e concluido nunca é rebaixado.
+_PROMOVIVEIS_PARA_EM_ROTA = ("agendado", "em_producao", "pronto_entrega")
+
+
 def _atribuir_um(pedido, target_entregador_id: int, override: bool) -> tuple[bool, str]:
     if pedido.deleted_at is not None:
         return False, "pedido deletado"
@@ -399,6 +509,9 @@ def _atribuir_um(pedido, target_entregador_id: int, override: bool) -> tuple[boo
         return False, "já atribuído a outro entregador"
     pedido.entregador_id = target_entregador_id
     pedido.delivery_assigned_at = datetime_now_brazil()
+    # EST-02: pegar o pedido coloca em rota (sem rebaixar concluido).
+    if (pedido.status or "").lower() in _PROMOVIVEIS_PARA_EM_ROTA:
+        pedido.status = "em_rota"
     pedido.updated_at = datetime_now_brazil()
     return True, "ok"
 
@@ -426,17 +539,22 @@ def atribuir_entregador(pedido_id):
         # Entregador NÃO pode "roubar" pedido alheio: override fica False.
         override = role in ("admin", "vendedor")
 
-        # Desatribuir: admin ou vendedor podem passar entregador_id=null
-        if (
-            role in ("admin", "vendedor")
-            and "entregador_id" in body
-            and body["entregador_id"] in (None, "")
-        ):
+        # Desatribuir / retirar da rota (entregador_id=null):
+        # - admin/vendedor desatribuem qualquer pedido;
+        # - entregador pode retirar da rota apenas o próprio (EST-02).
+        if "entregador_id" in body and body["entregador_id"] in (None, ""):
+            if role == "entregador" and pedido.entregador_id != _get_current_user_id():
+                return error_response("Esta entrega não está atribuída a você", 403)
             pedido.entregador_id = None
             pedido.delivery_assigned_at = None
+            # EST-02: retirar da rota volta para pronto_entrega (nunca rebaixa concluido).
+            if (pedido.status or "").lower() == "em_rota":
+                pedido.status = "pronto_entrega"
             pedido.updated_at = datetime_now_brazil()
             db.session.commit()
-            return success_response({"pedido": pedido.to_dict()}, message="Entrega desatribuída")
+            return success_response(
+                {"pedido": pedido.to_dict()}, message="Entrega retirada da rota"
+            )
 
         if role == "entregador":
             target_id = _get_current_user_id()
@@ -566,12 +684,7 @@ def finalizar_entrega(pedido_id):
         pedido.updated_at = datetime_now_brazil()
         db.session.commit()
 
-        try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
-        except Exception as e:
-            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+        # Meta CAPI: Purchase é disparado na criação do pedido, não na finalização da entrega.
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase
@@ -676,7 +789,7 @@ def deletar_pedido(pedido_id):
 
 
 @pedidos_bp.route("/exportar-planilha", methods=["POST"])
-@requires_any_role("admin", "atendente")
+@requires_edit_auth  # qualquer cargo autenticado pode exportar (admin/vendedor/atendente/entregador/viewer)
 def exportar_planilha():
     """
     Exporta vendas para Google Sheets
@@ -734,17 +847,6 @@ def batch_mark_paid():
     try:
         from app import db
         from app.models import Pedido
-        from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-        # Buscar pedidos afetados ANTES do update para notificar Meta depois
-        pedidos_a_marcar = (
-            Pedido.query.filter(
-                (Pedido.status_pagamento.is_(None)) | (Pedido.status_pagamento == "Pendente")
-            )
-            .filter(Pedido.deleted_at.is_(None))
-            .all()
-        )
-        status_anteriores = {p.id: p.status_pagamento for p in pedidos_a_marcar}
 
         count = (
             Pedido.query.filter(
@@ -758,14 +860,7 @@ def batch_mark_paid():
         )
         db.session.commit()
 
-        # Notificar Meta para cada pedido afetado
-        for pedido in pedidos_a_marcar:
-            try:
-                create_outbox_if_purchase(
-                    pedido, status_pagamento_anterior=status_anteriores[pedido.id]
-                )
-            except Exception:
-                pass  # Não falhar a resposta por erro de Meta
+        # Meta CAPI: Purchase é disparado na criação do pedido; não há disparo em batch-mark-paid.
 
         return success_response(message=f"{count} pedidos marcados como Pago")
     except Exception as e:
@@ -810,6 +905,7 @@ def batch_recalc_taxa():
 
 
 @pedidos_bp.route("/daily-freight", methods=["GET"])
+@requires_edit_auth
 def daily_freight():
     """Retorna lista de entregas e soma de taxa_entrega para uma data"""
     try:
@@ -847,6 +943,7 @@ def daily_freight():
 
 
 @pedidos_bp.route("/freight-by-source", methods=["GET"])
+@requires_edit_auth
 def freight_by_source():
     """Média/total de frete agrupada por fonte para um intervalo de datas.
 
@@ -935,9 +1032,7 @@ def freight_by_source():
             }
         )
     except Exception as e:
-        return error_response(
-            "Erro ao calcular frete por fonte", 500, details={"error": str(e)}
-        )
+        return error_response("Erro ao calcular frete por fonte", 500, details={"error": str(e)})
 
 
 @pedidos_bp.route("", methods=["POST"])
@@ -982,6 +1077,12 @@ def criar_pedido():
         cidade = _clean_str(data.get("cidade"))
         endereco = _clean_str(data.get("endereco"))
         obs_entrega = _clean_str(data.get("obs_entrega"))
+        tipo_local = _clean_str(data.get("tipo_local")) or "casa"
+        nome_local = _clean_str(data.get("nome_local"))
+        apartamento = _clean_str(data.get("apartamento"))
+        bloco = _clean_str(data.get("bloco"))
+        torre = _clean_str(data.get("torre"))
+        andar = _clean_str(data.get("andar"))
 
         mensagem = _clean_str(data.get("mensagem"))
         pagamento = _clean_str(data.get("pagamento"))
@@ -1019,6 +1120,12 @@ def criar_pedido():
                 f'Campos obrigatórios ausentes: {", ".join(campos_faltantes)}',
                 400,
                 details={"campos_enviados": list(data.keys())},
+            )
+
+        # Guarda: status "Pago" exige uma forma de pagamento (espelha a validação do front).
+        if (status_pagamento or "").strip().lower() == "pago" and not pagamento:
+            return error_response(
+                "Defina a forma de pagamento para marcar o pedido como Pago.", 400
             )
 
         # Conversão de quantidade
@@ -1149,6 +1256,12 @@ def criar_pedido():
             except (ValueError, TypeError):
                 vendedor_id_final = None
 
+        # INT-01: derivar slot_inicio (Time) do horário também no pedido manual, para
+        # ordenação cronológica confiável e para entrar na ocupação do alocador (INT-02).
+        from app.services.delivery_slot_allocator import derive_slot_inicio
+
+        slot_inicio_manual = derive_slot_inicio(horario)
+
         # Criar pedido
         pedido = Pedido(
             cliente=cliente if cliente else None,
@@ -1161,6 +1274,7 @@ def criar_pedido():
             flores_cor=flores_cor if flores_cor else None,
             valor=valor if valor else None,
             horario=horario,
+            slot_inicio=slot_inicio_manual,
             dia_entrega=dia_entrega,
             cep=cep if cep else None,
             rua=rua if rua else None,
@@ -1169,6 +1283,12 @@ def criar_pedido():
             cidade=cidade if cidade else None,
             endereco=endereco if endereco else None,
             obs_entrega=obs_entrega if obs_entrega else None,
+            tipo_local=tipo_local,
+            nome_local=nome_local if nome_local else None,
+            apartamento=apartamento if apartamento else None,
+            bloco=bloco if bloco else None,
+            torre=torre if torre else None,
+            andar=andar if andar else None,
             mensagem=mensagem if mensagem else None,
             pagamento=pagamento if pagamento else None,
             parcelas_cartao=parcelas_cartao,
@@ -1179,23 +1299,25 @@ def criar_pedido():
             cliente_id=cliente_id_int,
             fbc=fbc,
             fbp=fbp,
+            codigo_whatsapp=codigo_whatsapp,
             vendedor_id=vendedor_id_final,
         )
 
         db.session.add(pedido)
         db.session.flush()  # gera pedido.id antes de vincular o lead
         _link_lead_by_whatsapp_code(codigo_whatsapp, telefone_cliente, pedido_id=pedido.id)
+        _upsert_cliente_endereco_from_pedido(pedido)
         from app.services.taxa_cartao import aplicar_taxa_cartao_snapshot
 
         aplicar_taxa_cartao_snapshot(pedido)
         apply_commission_lifecycle(pedido, previous=None, actor_id=vendedor_id_final)
         db.session.commit()
 
-        # Hook de Purchase (mantém regra atual: status_pagamento=Pago/Parcial)
+        # Hook de Purchase: dispara CAPI no ato da criação do pedido (exceto fonte site/Nuvemshop)
         try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
+            from app.utils.meta_capi_helper import create_outbox_for_new_order
 
-            create_outbox_if_purchase(pedido, status_anterior=None, status_pagamento_anterior=None)
+            create_outbox_for_new_order(pedido)
         except Exception as e:
             print(f"[AVISO] Erro ao criar outbox para pedido #{pedido.id}: {e}")
 
@@ -1242,8 +1364,15 @@ def criar_pedido():
         except Exception:
             pass  # Best-effort: não falhar criação do pedido
 
+        # Link público de acompanhamento (token assinado). Base via env, sem hardcode.
+        track_url = build_track_url(pedido.id)
+
         return success_response(
-            {"pedido_id": pedido.id, "pedido": pedido.to_dict()},
+            {
+                "pedido_id": pedido.id,
+                "pedido": pedido.to_dict(),
+                "track_url": track_url,
+            },
             message="Pedido criado com sucesso",
             status_code=201,
         )
@@ -1333,6 +1462,10 @@ def atualizar_pedido(pedido_id):
         if "horario" in data:
             track_change("horario", pedido.horario, data["horario"])
             pedido.horario = data["horario"]
+            # INT-01: manter slot_inicio coerente com o horário editado.
+            from app.services.delivery_slot_allocator import derive_slot_inicio
+
+            pedido.slot_inicio = derive_slot_inicio(data["horario"])
         if "dia_entrega" in data:
             dia_entrega_str = data["dia_entrega"]
             if "/" in dia_entrega_str:
@@ -1357,6 +1490,11 @@ def atualizar_pedido(pedido_id):
         if "obs_entrega" in data:
             track_change("obs_entrega", pedido.obs_entrega, data["obs_entrega"])
             pedido.obs_entrega = data["obs_entrega"]
+        # Tipo/detalhe do local (não reseta distância)
+        for campo in ["tipo_local", "nome_local", "apartamento", "bloco", "torre", "andar"]:
+            if campo in data and data[campo] != getattr(pedido, campo):
+                track_change(campo, getattr(pedido, campo), data[campo])
+                setattr(pedido, campo, data[campo])
         if "mensagem" in data:
             track_change("mensagem", pedido.mensagem, data["mensagem"])
             pedido.mensagem = data["mensagem"]
@@ -1383,6 +1521,15 @@ def atualizar_pedido(pedido_id):
             track_change("status_pagamento", pedido.status_pagamento, data["status_pagamento"])
             pedido.status_pagamento = data["status_pagamento"]
 
+        # Guarda: status "Pago" exige uma forma de pagamento (espelha a validação do front).
+        if (pedido.status_pagamento or "").strip().lower() == "pago" and not (
+            (pedido.pagamento or "").strip()
+        ):
+            db.session.rollback()
+            return error_response(
+                "Defina a forma de pagamento para marcar o pedido como Pago.", 400
+            )
+
         if "status" in data:
             track_change("status", pedido.status, data["status"])
             pedido.status = data["status"]
@@ -1395,6 +1542,12 @@ def atualizar_pedido(pedido_id):
             new_fbp = _clean_str(data["fbp"]) or None
             track_change("fbp", pedido.fbp, new_fbp)
             pedido.fbp = new_fbp
+
+        # Persiste o token do WhatsApp quando vier um (não apaga o existente se o payload
+        # de edição não trouxer token). `codigo_whatsapp` já foi extraído acima.
+        if codigo_whatsapp and codigo_whatsapp != pedido.codigo_whatsapp:
+            track_change("codigo_whatsapp", pedido.codigo_whatsapp, codigo_whatsapp)
+            pedido.codigo_whatsapp = codigo_whatsapp
 
         # Vendedor: admin pode reatribuir; vendedor vincula a si mesmo se ainda sem vendedor
         # Resolve current_user: tenta request.current_user (JWT via decorator),
@@ -1447,15 +1600,7 @@ def atualizar_pedido(pedido_id):
         apply_commission_lifecycle(pedido, previous=previous_commission_snapshot, actor_id=actor_id)
         db.session.commit()
 
-        # Hook: Verificar se mudou para Purchase (status_pagamento = Pago ou Parcial)
-        # Não verificar status="concluido" porque pode agendar pedido para ano que vem
-        try:
-            from app.utils.meta_capi_helper import create_outbox_if_purchase
-
-            create_outbox_if_purchase(pedido, status_anterior, status_pagamento_anterior)
-        except Exception as e:
-            # Não falhar a atualização se houver erro na outbox
-            print(f"[AVISO] Erro ao criar outbox para pedido #{pedido_id}: {e}")
+        # Meta CAPI: Purchase é disparado na criação do pedido, não em update.
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase
@@ -1479,6 +1624,7 @@ def atualizar_pedido(pedido_id):
 
 
 @pedidos_bp.route("/por-data", methods=["GET"])
+@requires_edit_auth
 def get_pedidos_por_data():
     """Retorna contagem de pedidos por horário para uma data específica"""
     try:
@@ -1612,7 +1758,7 @@ def obter_comprovante(pedido_id):
 
 @pedidos_bp.route("/comprovante-lote", methods=["POST"])
 def obter_comprovante_lote():
-    """Gera comprovante em lote (HTML A4 com até 4 pedidos por folha)."""
+    """Gera comprovante em lote (HTML A4). Moldura `layout` = 1, 2 ou 4 por folha."""
     try:
         from flask import Response
 
@@ -1628,9 +1774,14 @@ def obter_comprovante_lote():
             return error_response("IDs de pedido inválidos", 400)
 
         if len(pedido_ids) > MAX_PEDIDOS_POR_LOTE:
-            return error_response(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por folha", 400)
+            return error_response(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por lote", 400)
 
-        command = GerarComprovanteLoteCommand(pedido_ids)
+        try:
+            layout = int(payload.get("layout", 4))
+        except (TypeError, ValueError):
+            layout = 4
+
+        command = GerarComprovanteLoteCommand(pedido_ids, layout=layout)
         html = command.execute()
         return Response(html, mimetype="text/html")
     except ValueError as e:

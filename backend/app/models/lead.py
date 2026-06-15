@@ -37,6 +37,10 @@ class Lead(db.Model):
     token_rastreio = db.Column(db.String(64), index=True, nullable=True)
     token_valido = db.Column(db.Boolean, nullable=True)
     status = db.Column(db.String(50), index=True, nullable=True, default="pendente_whatsapp")
+    # Subestado operacional do lead confirmado (`status='whatsapp_iniciado'`), marcado
+    # pelo operador: aguardando_resposta | orcamento_enviado | sem_resposta. Etiqueta
+    # pura — não dispara evento Meta nem entra no _aggregate_lead_stats.
+    situacao = db.Column(db.String(30), index=True, nullable=True)
     fbclid = db.Column(db.String(255), index=True)
     fbp = db.Column(db.String(255))
     ip_address = db.Column(db.String(45))
@@ -46,6 +50,11 @@ class Lead(db.Model):
     meta_event_id_lead = db.Column(db.String(100), nullable=True, index=True)
     client_user_agent = db.Column(db.String(512), nullable=True)
     pedido_id = db.Column(db.Integer, db.ForeignKey("pedidos.id"), nullable=True, index=True)
+    # Followup: rastreia o último contato manual com um Lead Confirmado.
+    # NULL = nunca foi feito followup. Preenchido = quem fez e quando. Permite
+    # filtrar "confirmados sem followup há X dias" sem migrations futuras.
+    followup_feito_em = db.Column(db.DateTime, nullable=True)
+    followup_por = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     # Atribuição: utm_* deste lead refletem o ÚLTIMO toque pago (last non-direct).
     # first_touch_id congela o toque que descobriu o lead; last_touch_id segue
     # o toque pago mais recente. Toques diretos viram histórico mas não mexem em last.
@@ -91,6 +100,7 @@ class Lead(db.Model):
             "token_rastreio": self.token_rastreio,
             "token_valido": self.token_valido,
             "status": self.status,
+            "situacao": self.situacao,
             "fbclid": self.fbclid,
             "fbp": self.fbp,
             "ip_address": self.ip_address,
@@ -98,6 +108,8 @@ class Lead(db.Model):
             "meta_event_id_contact": self.meta_event_id_contact,
             "meta_event_id_lead": self.meta_event_id_lead,
             "pedido_id": self.pedido_id,
+            "followup_feito_em": self.followup_feito_em.isoformat() if self.followup_feito_em else None,
+            "followup_por": self.followup_por,
             "first_touch_id": self.first_touch_id,
             "last_touch_id": self.last_touch_id,
             "first_touch": self.first_touch.to_dict() if self.first_touch else None,

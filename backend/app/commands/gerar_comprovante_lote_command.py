@@ -1,43 +1,42 @@
 # -*- coding: utf-8 -*-
 """
-Command para geração de comprovantes em lote (até 20 pedidos, 4 por folha A4).
+Command para geração de comprovantes em lote (até 100 pedidos).
 
-Layout por folha:
-- 1 pedido  → A4 cheio (delega ao GerarComprovanteCommand)
-- 2 pedidos → A4 retrato com 2 metades horizontais empilhadas
-- 3 pedidos → grid 2x2 com 1 célula vazia
-- 4 pedidos → grid 2x2 cheio
+A moldura é escolhida pelo usuário (pedidos por folha A4):
+- layout=1 → comprovante rico (mesmo template do single), 1 folha por pedido.
+- layout=2 → 2 guias retrato lado a lado (2 colunas) por folha — VIS-05.
+- layout=4 → grid 2x2 (4 guias) por folha; última folha completa com células vazias.
 
-Para mais de 4 pedidos, são empilhadas múltiplas folhas (até 5 folhas / 20 pedidos).
 Espaçamento de ~6mm entre células e borda dashed para corte com tesoura.
 """
 from app.commands.gerar_comprovante_command import (
-    GerarComprovanteCommand,
+    COMPROVANTE_CSS,
     build_pedido_context,
     fmt,
     fmt_brl,
+    format_detalhe_local,
+    render_comprovante_body,
+    tipo_local_label,
 )
 from app.repositories.pedido_repository import PedidoRepository
 
-PEDIDOS_POR_FOLHA = 4
-MAX_FOLHAS_POR_LOTE = 5
-MAX_PEDIDOS_POR_LOTE = PEDIDOS_POR_FOLHA * MAX_FOLHAS_POR_LOTE  # 20
+# Moldura escolhida pelo usuário: 1, 2 ou 4 pedidos por folha A4.
+LAYOUTS_VALIDOS = (1, 2, 4)
+MAX_PEDIDOS_POR_LOTE = 100
 
 
 class GerarComprovanteLoteCommand:
-    def __init__(self, pedido_ids: list[int]):
+    def __init__(self, pedido_ids: list[int], layout: int = 4):
         self.pedido_ids = pedido_ids
+        # Normaliza a moldura; valores fora de {1,2,4} caem no padrão 4.
+        self.layout = layout if layout in LAYOUTS_VALIDOS else 4
         self.pedido_repo = PedidoRepository()
 
     def execute(self) -> str:
         if not self.pedido_ids:
             raise ValueError("Nenhum pedido selecionado")
         if len(self.pedido_ids) > MAX_PEDIDOS_POR_LOTE:
-            raise ValueError(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por folha")
-
-        # 1 pedido: comportamento atual preservado
-        if len(self.pedido_ids) == 1:
-            return GerarComprovanteCommand(self.pedido_ids[0]).execute()
+            raise ValueError(f"Máximo de {MAX_PEDIDOS_POR_LOTE} pedidos por lote")
 
         contexts = []
         for pid in self.pedido_ids:
@@ -46,7 +45,23 @@ class GerarComprovanteLoteCommand:
                 raise ValueError(f"Pedido #{pid} não encontrado")
             contexts.append(build_pedido_context(pedido))
 
-        return self._render_grid(contexts)
+        # 1 por página: comprovante rico (mesmo template do single), uma folha por pedido.
+        if self.layout == 1:
+            return self._render_full_pages(contexts)
+        # 2 ou 4 por página: guias compactas em grade.
+        return self._render_grid(contexts, self.layout)
+
+    @staticmethod
+    def _payment_seal(ctx: dict) -> tuple[str, str]:
+        """VIS-05: selo de pagamento visível (PAGO sólido / PENDENTE contornado)."""
+        status = str(ctx.get("status_pagto") or "").strip().lower()
+        if status == "pendente":
+            return "seal-pending", "PENDENTE"
+        if status == "parcial":
+            return "seal-pending", "PARCIAL"
+        if status:
+            return "seal-paid", "PAGO"
+        return "", ""
 
     def _render_slip(self, ctx: dict) -> str:
         """Renderiza um comprovante compacto com hierarquia visual forte
@@ -66,11 +81,26 @@ class GerarComprovanteLoteCommand:
             distancia = f"{ctx['distancia']:.2f} km" if ctx.get("distancia") is not None else ""
             extras = " · ".join(p for p in [cidade, cep, distancia, taxa] if p and p != "-")
             extras_html = f'<div class="slip-sub">{extras}</div>' if extras else ""
+
+            # Local em destaque (tipo + nome + detalhe do prédio + ponto de referência).
+            local_tipo = tipo_local_label(ctx.get("tipo_local"))
+            detalhe = format_detalhe_local(ctx)
+            local_html = ""
+            if local_tipo or ctx.get("nome_local"):
+                badge = f'<span class="slip-local-badge">{local_tipo}</span>' if local_tipo else ""
+                nome = fmt(ctx["nome_local"]) if ctx.get("nome_local") else ""
+                local_html += f'<div class="slip-local-line">{badge}<span class="slip-local-nome">{nome}</span></div>'
+            if detalhe:
+                local_html += f'<div class="slip-local-det">{detalhe}</div>'
+            if ctx.get("obs_entrega"):
+                local_html += f'<div class="slip-local-ref">Ref.: {fmt(ctx["obs_entrega"])}</div>'
+
             endereco_html = f"""
               <div class="slip-block">
                 <div class="slip-lbl">Endereço</div>
                 <div class="slip-val-md">{fmt(ctx['endereco'])}</div>
                 {extras_html}
+                {local_html}
               </div>
             """
         elif is_retirada:
@@ -103,10 +133,10 @@ class GerarComprovanteLoteCommand:
             f'<div class="slip-sub">{" · ".join(flores_qtd)}</div>' if flores_qtd else ""
         )
 
-        pagamento_parts = [fmt(ctx.get("pagamento"))]
-        if ctx.get("status_pagto"):
-            pagamento_parts.append(fmt(ctx["status_pagto"]))
-        pagamento_str = " · ".join(p for p in pagamento_parts if p and p != "-")
+        # Status agora aparece no selo do cabeçalho; o rodapé mostra só a forma.
+        seal_class, seal_text = self._payment_seal(ctx)
+        seal_html = f'<span class="slip-seal {seal_class}">{seal_text}</span>' if seal_text else ""
+        pagamento_str = fmt(ctx.get("pagamento"))
 
         cliente_tel_html = (
             f'<span class="slip-tel"> · {fmt(ctx.get("cliente_tel"))}</span>'
@@ -120,6 +150,7 @@ class GerarComprovanteLoteCommand:
             <div class="slip-head-l">
               <span class="slip-id">#{ctx['id']}</span>
               <span class="slip-tipo">{fmt(ctx.get('tipo')).upper()}</span>
+              {seal_html}
             </div>
             <div class="slip-head-r">
               <span class="slip-data">{fmt(ctx.get('data_entrega'))} {fmt(ctx.get('horario')) if ctx.get('horario') else ''}</span>
@@ -150,24 +181,21 @@ class GerarComprovanteLoteCommand:
         </div>
         """
 
-    def _render_sheet(self, page_contexts: list[dict]) -> str:
-        n = len(page_contexts)
+    def _render_sheet(self, page_contexts: list[dict], layout: int) -> str:
         slips_html = "".join(self._render_slip(c) for c in page_contexts)
-        # Em grid 2x2 com 3 pedidos, completar a 4ª célula com placeholder vazio
-        if n == 3:
-            slips_html += '<div class="slip slip-empty"></div>'
+        # Completa as células faltantes da última folha com placeholders vazios,
+        # preservando a grade da moldura escolhida.
+        empties = layout - len(page_contexts)
+        slips_html += '<div class="slip slip-empty"></div>' * max(0, empties)
 
-        grid_class = "grid-2" if n == 2 else "grid-4"
+        grid_class = "grid-2" if layout == 2 else "grid-4"
         return f'<div class="sheet {grid_class}">{slips_html}</div>'
 
-    def _render_grid(self, contexts: list[dict]) -> str:
+    def _render_grid(self, contexts: list[dict], layout: int) -> str:
         n = len(contexts)
-        # Quebra em folhas de PEDIDOS_POR_FOLHA pedidos
-        pages = [
-            contexts[i : i + PEDIDOS_POR_FOLHA]
-            for i in range(0, n, PEDIDOS_POR_FOLHA)
-        ]
-        sheets_html = "".join(self._render_sheet(p) for p in pages)
+        # Quebra em folhas de `layout` pedidos (2 ou 4 por folha).
+        pages = [contexts[i : i + layout] for i in range(0, n, layout)]
+        sheets_html = "".join(self._render_sheet(p, layout) for p in pages)
 
         ids_str = ", ".join(f"#{c['id']}" for c in contexts)
 
@@ -200,9 +228,11 @@ class GerarComprovanteLoteCommand:
       page-break-after: auto;
       break-after: auto;
     }}
+    /* VIS-05: 2-up são guias RETRATO lado a lado → 2 colunas, 1 linha
+       (antes eram 2 metades horizontais empilhadas, que liam como paisagem). */
     .grid-2 {{
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr;
     }}
     .grid-4 {{
       grid-template-columns: 1fr 1fr;
@@ -252,6 +282,17 @@ class GerarComprovanteLoteCommand:
       font-weight: 700;
       letter-spacing: 0.6px;
     }}
+    /* VIS-05: selo de pagamento (alto contraste em P&B) */
+    .slip-seal {{
+      display: inline-block;
+      padding: 0.6mm 2mm;
+      border-radius: 2px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+    }}
+    .seal-paid {{ background: #000; color: #fff; }}
+    .seal-pending {{ background: #fff; color: #000; border: 1.5px solid #000; }}
     .slip-head-r {{
       text-align: right;
       display: flex;
@@ -322,6 +363,13 @@ class GerarComprovanteLoteCommand:
       font-size: 13px;
       letter-spacing: 1px;
     }}
+
+    /* Local de entrega em destaque dentro do slip */
+    .slip-local-line {{ display: flex; align-items: center; gap: 1.5mm; margin-top: 1mm; }}
+    .slip-local-badge {{ background: #000; color: #fff; font-size: 8px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; padding: 0.4mm 1.6mm; border-radius: 2px; }}
+    .slip-local-nome {{ font-size: 12px; font-weight: 800; color: #000; }}
+    .slip-local-det {{ display: inline-block; margin-top: 0.8mm; font-size: 11px; font-weight: 800; border: 1px solid #000; border-radius: 2px; padding: 0.4mm 1.6mm; }}
+    .slip-local-ref {{ margin-top: 0.8mm; font-size: 9.5px; font-weight: 600; color: #333; }}
 
     /* Mensagem do cartão — bloco destacado, alta prioridade visual */
     .slip-msg {{
@@ -400,6 +448,34 @@ class GerarComprovanteLoteCommand:
     <span>Lote: {ids_str}</span>
     <span>{contexts[0]['impresso_em']}</span>
   </div>
+  <script>
+    window.onload = function() {{
+        setTimeout(function() {{ window.print(); }}, 500);
+    }};
+  </script>
+</body>
+</html>
+"""
+
+    def _render_full_pages(self, contexts: list[dict]) -> str:
+        """Moldura 1 por página: comprovante rico (mesmo corpo do single), uma folha
+        por pedido, com quebra de página entre eles."""
+        pages = "".join(
+            f'<div class="page-1up">{render_comprovante_body(c)}</div>' for c in contexts
+        )
+
+        return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Comprovantes em lote ({len(contexts)} pedidos · 1 por página)</title>
+  <style>{COMPROVANTE_CSS}
+    .page-1up {{ page-break-after: always; break-after: page; }}
+    .page-1up:last-child {{ page-break-after: auto; break-after: auto; }}
+  </style>
+</head>
+<body>
+  {pages}
   <script>
     window.onload = function() {{
         setTimeout(function() {{ window.print(); }}, 500);

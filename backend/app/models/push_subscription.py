@@ -15,6 +15,15 @@ class PushSubscription(db.Model):
     endpoint = db.Column(db.Text, nullable=False, unique=True)
     p256dh = db.Column(db.String(255), nullable=False)
     auth = db.Column(db.String(255), nullable=False)
+    # Pedido associado (inscrição do CLIENTE, opt-in na tela de acompanhamento).
+    # NULL = inscrição da EQUIPE (broadcast de novos pedidos). Os dois públicos são
+    # separados por este campo para que o aviso de um não vaze para o outro.
+    pedido_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pedidos.id"),
+        nullable=True,
+        index=True,
+    )
     created_at = db.Column(db.DateTime, default=datetime_now_brazil)
 
     def to_dict(self):
@@ -22,6 +31,7 @@ class PushSubscription(db.Model):
             "endpoint": self.endpoint,
             "p256dh": self.p256dh,
             "auth": self.auth,
+            "pedido_id": self.pedido_id,
         }
 
     def __repr__(self):

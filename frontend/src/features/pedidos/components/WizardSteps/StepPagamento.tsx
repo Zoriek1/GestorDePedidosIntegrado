@@ -19,11 +19,13 @@ import {
   Divider,
   FormHelperText,
   Grid,
+  Alert,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
 import PaymentIcon from '@mui/icons-material/Payment';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import dayjs from 'dayjs';
 import { parseCurrencyToFloat, formatCurrency, FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from '../../schemas';
 import type { PedidoFormData } from '../../schemas';
@@ -73,6 +75,8 @@ export function StepPagamento() {
   const valorLiquido = Math.max(0, valorFloat - taxaFloat - taxaCartaoFloat);
 
   const isCredito = formaPagamento === 'Cartão de Crédito';
+  // Status "Pago" exige forma de pagamento (espelha a guarda do backend).
+  const pagamentoInvalido = statusPagamento === 'Pago' && !formaPagamento;
   const opcoesParcelas = (taxaCartaoConfig?.credito ?? [])
     .map((f) => Number(f.parcelas))
     .filter((n) => Number.isFinite(n) && n >= 1)
@@ -268,7 +272,7 @@ export function StepPagamento() {
               name="pagamento"
               control={control}
               render={({ field }) => (
-                <FormControl fullWidth error={!!errors.pagamento}>
+                <FormControl fullWidth required={statusPagamento === 'Pago'} error={!!errors.pagamento || pagamentoInvalido}>
                   <InputLabel>Forma de Pagamento</InputLabel>
                   <Select {...field} label="Forma de Pagamento">
                     <MenuItem value="">
@@ -280,12 +284,21 @@ export function StepPagamento() {
                       </MenuItem>
                     ))}
                   </Select>
-                  {errors.pagamento && (
-                    <FormHelperText>{errors.pagamento.message}</FormHelperText>
+                  {(errors.pagamento || pagamentoInvalido) && (
+                    <FormHelperText>
+                      {errors.pagamento?.message ||
+                        'Status "Pago" exige uma forma de pagamento antes de concluir.'}
+                    </FormHelperText>
                   )}
                 </FormControl>
               )}
             />
+
+            {pagamentoInvalido && (
+              <Alert severity="warning" icon={<WarningAmberIcon />}>
+                Status “Pago” exige uma forma de pagamento antes de concluir.
+              </Alert>
+            )}
 
             {/* Parcelas (apenas para Cartão de Crédito) */}
             {isCredito && (

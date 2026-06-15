@@ -66,31 +66,20 @@ def format_delivery_datetime(dia_entrega, horario: Optional[str] = None) -> str:
     return f"{data_formatada} às {horario_limpo}"
 
 
-def send_push_to_all(
+def _dispatch_to_subscriptions(
+    subscriptions: list,
     title: str,
     body: str,
-    url: Optional[str] = "/",
-    icon: Optional[str] = "/pwa-192x192.png",
+    url: Optional[str],
+    icon: Optional[str],
 ) -> dict:
-    """
-    Envia push notification para TODAS as inscrições ativas.
-
-    Args:
-        title: Título da notificação.
-        body: Corpo da notificação.
-        url: URL para abrir ao clicar na notificação.
-        icon: Caminho do ícone.
-
-    Returns:
-        dict com contadores: sent, failed, removed.
-    """
+    """Envia o payload para uma lista de inscrições e limpa as inválidas (404/410)."""
     if not Config.VAPID_PRIVATE_KEY or not Config.VAPID_PUBLIC_KEY:
         logger.warning("[Push] VAPID keys não configuradas. Notificação ignorada.")
         return {"sent": 0, "failed": 0, "removed": 0, "error": "vapid_not_configured"}
 
-    subscriptions = PushSubscription.query.all()
     if not subscriptions:
-        logger.info("[Push] Nenhuma inscrição ativa. Nada a enviar.")
+        logger.info("[Push] Nenhuma inscrição alvo. Nada a enviar.")
         return {"sent": 0, "failed": 0, "removed": 0}
 
     payload = json.dumps(
@@ -161,6 +150,40 @@ def send_push_to_all(
     return result
 
 
+def send_push_to_all(
+    title: str,
+    body: str,
+    url: Optional[str] = "/",
+    icon: Optional[str] = "/pwa-192x192.png",
+) -> dict:
+    """
+    Envia push notification para as inscrições da EQUIPE (broadcast).
+
+    Apenas inscrições com ``pedido_id IS NULL`` — as inscrições de clientes
+    (vinculadas a um pedido) NÃO recebem este broadcast.
+
+    Returns:
+        dict com contadores: sent, failed, removed.
+    """
+    subscriptions = PushSubscription.query.filter(PushSubscription.pedido_id.is_(None)).all()
+    return _dispatch_to_subscriptions(subscriptions, title, body, url, icon)
+
+
+def send_push_to_pedido(
+    pedido_id: int,
+    title: str,
+    body: str,
+    url: Optional[str] = "/",
+    icon: Optional[str] = "/pwa-192x192.png",
+) -> dict:
+    """
+    Envia push apenas para as inscrições do CLIENTE de um pedido específico
+    (``pedido_id`` preenchido). Usado para avisar mudança de status.
+    """
+    subscriptions = PushSubscription.query.filter_by(pedido_id=pedido_id).all()
+    return _dispatch_to_subscriptions(subscriptions, title, body, url, icon)
+
+
 def send_push_to_all_async(
     app,
     title: str,
@@ -183,4 +206,27 @@ def send_push_to_all_async(
                 logger.exception("[Push] Erro no envio assíncrono de push.")
 
     thread = threading.Thread(target=_worker, name="PushNotify", daemon=True)
+    thread.start()
+
+
+def send_push_to_pedido_async(
+    app,
+    pedido_id: int,
+    title: str,
+    body: str,
+    url: Optional[str] = "/",
+    icon: Optional[str] = "/pwa-192x192.png",
+) -> None:
+    """Versão assíncrona (background thread) de send_push_to_pedido."""
+
+    def _worker():
+        with app.app_context():
+            try:
+                send_push_to_pedido(
+                    pedido_id=pedido_id, title=title, body=body, url=url, icon=icon
+                )
+            except Exception:
+                logger.exception("[Push] Erro no envio assíncrono de push (pedido).")
+
+    thread = threading.Thread(target=_worker, name="PushNotifyPedido", daemon=True)
     thread.start()

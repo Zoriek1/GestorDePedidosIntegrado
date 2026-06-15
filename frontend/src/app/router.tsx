@@ -24,6 +24,7 @@ const SettingsPage = lazy(() => import('../features/config/SettingsPage'));
 const LeadsPage = lazy(() => import('../features/leads/LeadsPage'));
 const LedgerPage = lazy(() => import('../features/ledger/LedgerPage'));
 const MinhasEntregasMapaPage = lazy(() => import('../features/entregas/MinhasEntregasMapaPage'));
+const TrackingPage = lazy(() => import('../features/tracking/TrackingPage'));
 
 // Componente vazio para rotas do backend que não devem ser processadas pelo React Router
 // Essas rotas são processadas pelo backend Flask
@@ -47,6 +48,15 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  // Página pública de acompanhamento do pedido pelo cliente (sem login, fora do AppShell).
+  {
+    path: '/acompanhar/:token',
+    element: (
+      <Suspense fallback={<Loading />}>
+        <TrackingPage />
+      </Suspense>
+    ),
   },
   // Rotas do Meta Gateway - devem ser processadas pelo backend, não pelo React Router
   // Essas rotas são ignoradas pelo React Router para que o backend Flask as processe

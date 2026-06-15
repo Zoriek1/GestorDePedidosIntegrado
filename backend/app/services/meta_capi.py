@@ -369,6 +369,8 @@ class MetaConversionsApiService:
                 ids.append(h)
 
         lead_id = getattr(lead, "id", None) if lead is not None else None
+        lead_token_raw = getattr(lead, "token_rastreio", None) if lead is not None else None
+        lead_token = str(lead_token_raw).strip().upper() if lead_token_raw else None
 
         if event_type == "Contact":
             # Sem telefone garantido neste estágio — usa lead.id + fbp/fbclid.
@@ -380,6 +382,8 @@ class MetaConversionsApiService:
             fbclid = getattr(lead, "fbclid", None) if lead is not None else None
             if fbclid:
                 add(f"fbclid:{str(fbclid).strip()}")
+            if lead_token:
+                add(f"token:{lead_token}")
         elif event_type == "Lead":
             # Lead já tem telefone — amarra Contact via lead:{id} e amarra
             # Purchase via phone.
@@ -391,6 +395,8 @@ class MetaConversionsApiService:
             fbp = getattr(lead, "fbp", None) if lead is not None else None
             if fbp:
                 add(f"fbp:{str(fbp).strip()}")
+            if lead_token:
+                add(f"token:{lead_token}")
         elif event_type == "Purchase":
             phone_e164 = self._phone_e164_or_none(
                 getattr(pedido, "telefone_cliente", None) if pedido else None
@@ -402,6 +408,11 @@ class MetaConversionsApiService:
                 add(f"cliente:{cliente_id}")
             if lead_id:
                 add(f"lead:{lead_id}")
+            purchase_token = (
+                getattr(pedido, "codigo_whatsapp", None) if pedido else None
+            ) or lead_token
+            if purchase_token:
+                add(f"token:{str(purchase_token).strip().upper()}")
             if not ids and pedido is not None:
                 # Garante pelo menos um identificador.
                 add(f"order:{pedido.id}")
@@ -618,8 +629,13 @@ class MetaConversionsApiService:
 
     def build_contact_event_from_lead(self, lead) -> Dict:
         """
-        Evento Contact (clique WhatsApp na landing). value=1, currency BRL.
+        Evento Contact (clique WhatsApp na landing).
         event_id deve ser o mesmo enviado pelo Pixel (meta_event_id_contact).
+
+        value/currency omitidos: o Pixel da LP não envia preço no Contact, então
+        a CAPI também não envia — evita divergência de preço Pixel × CAPI que a
+        Meta sinalizava (~4% dos Contact). O sinal é a presença do evento + dados
+        de matching (ph/fbc/fbp) no user_data, não um valor monetário.
         """
         from app.models.lead import Lead
 
@@ -644,12 +660,6 @@ class MetaConversionsApiService:
             except ValueError:
                 pass
 
-        if _flag("META_CAPI_VALUE_MAP_ENABLED", default=False):
-            from app.utils.meta_capi_value_resolver import resolve_value
-            contact_value = resolve_value(lead, "contact")
-        else:
-            contact_value = 1.0
-
         event = {
             "event_name": "Contact",
             "event_time": event_time,
@@ -658,17 +668,21 @@ class MetaConversionsApiService:
             "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
             "user_data": user_data,
             "custom_data": {
-                "value": contact_value,
-                "currency": "BRL",
                 "lead_id": str(lead.id),
             },
         }
         return event
 
-    def build_lead_event_from_lead(self, lead, *, event_time_override: Optional[int] = None) -> Dict:
+    def build_lead_event_from_lead(
+        self, lead, *, event_time_override: Optional[int] = None
+    ) -> Dict:
         """
-        Evento Lead (telefone salvo). value=15, currency BRL.
-        event_id em meta_event_id_lead (novo em relação ao Contact).
+        Evento Lead (telefone salvo). event_id em meta_event_id_lead.
+
+        value/currency omitidos: o Lead é CAPI-only (sem Pixel na LP) e o preço
+        antes vinha por ad set (utm_content) — a Meta sinalizava isso como
+        pricing de baixa qualidade ("todos o mesmo preço"). O sinal é a presença
+        do evento + ph (hash do telefone) no user_data, não um valor monetário.
         """
         from app.models.lead import Lead
 
@@ -700,12 +714,6 @@ class MetaConversionsApiService:
         user_data = self._lead_user_data_base(lead, event_type="Lead")
         user_data["ph"] = [phone_hash]
 
-        if _flag("META_CAPI_VALUE_MAP_ENABLED", default=False):
-            from app.utils.meta_capi_value_resolver import resolve_value
-            lead_value = resolve_value(lead, "lead")
-        else:
-            lead_value = 15.0
-
         event = {
             "event_name": "Lead",
             "event_time": event_time,
@@ -714,8 +722,57 @@ class MetaConversionsApiService:
             "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
             "user_data": user_data,
             "custom_data": {
-                "value": lead_value,
-                "currency": "BRL",
+                "lead_id": str(lead.id),
+            },
+        }
+        return event
+
+    def build_disqualified_event_from_lead(
+        self,
+        lead,
+        *,
+        event_time_override: Optional[int] = None,
+        event_id: Optional[str] = None,
+    ) -> Dict:
+        """
+        Evento custom `LeadDisqualified` (lead marcado como descarte).
+        Sinal qualitativo para construir Custom Audience de exclusão no Ads Manager.
+        value/currency omitidos: evento custom não tem pricing aplicável; sinal
+        é a presença do evento + `ph` no user_data. Meta antes recebia value=0
+        e marcava como "preço inválido" na qualidade.
+        """
+        from app.models.lead import Lead
+
+        if not isinstance(lead, Lead):
+            raise TypeError("lead deve ser instância de Lead")
+        eid = (event_id or "").strip() or str(__import__("uuid").uuid4())
+
+        if event_time_override is not None:
+            event_time = int(event_time_override)
+        else:
+            event_time = int(time.time())
+        now_timestamp = int(time.time())
+        max_past = now_timestamp - (7 * 24 * 60 * 60)
+        if event_time > now_timestamp or event_time < max_past:
+            event_time = now_timestamp
+
+        user_data = self._lead_user_data_base(lead, event_type="LeadDisqualified")
+        phone_raw = getattr(lead, "phone", None) or ""
+        if phone_raw:
+            try:
+                phone_norm = self.normalize_phone_br_e164(phone_raw)
+                user_data["ph"] = [self.hash_sha256(phone_norm)]
+            except ValueError:
+                pass
+
+        event = {
+            "event_name": "LeadDisqualified",
+            "event_time": event_time,
+            "event_id": eid,
+            "action_source": "website",
+            "event_source_url": (lead.url or "")[:4096] if getattr(lead, "url", None) else None,
+            "user_data": user_data,
+            "custom_data": {
                 "lead_id": str(lead.id),
             },
         }

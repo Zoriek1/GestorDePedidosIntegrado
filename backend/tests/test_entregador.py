@@ -529,6 +529,92 @@ class TestEndpointAtribuir:
         assert p_outro.id in ig_ids
 
 
+class TestStatusTransicaoEntrega:
+    """EST-02: pegar promove em_rota; retirar volta pronto_entrega; concluido nunca regride."""
+
+    def test_pegar_promove_em_rota(self, client, session):
+        e = make_user(session, "tr1@t.com")
+        p = make_pedido(session, status="pronto_entrega")
+        session.commit()
+        token = generate_token(e)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["pedido"]["status"] == "em_rota"
+        assert body["pedido"]["entregador_id"] == e.id
+
+    def test_pegar_lote_promove_em_rota(self, client, session):
+        e = make_user(session, "tr2@t.com")
+        p1 = make_pedido(session, status="agendado", destinatario="A")
+        p2 = make_pedido(session, status="em_producao", destinatario="B")
+        session.commit()
+        token = generate_token(e)
+
+        resp = client.post(
+            "/api/pedidos/atribuir-entregadores-lote",
+            json={"pedido_ids": [p1.id, p2.id]},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        db.session.refresh(p1)
+        db.session.refresh(p2)
+        assert p1.status == "em_rota"
+        assert p2.status == "em_rota"
+
+    def test_pegar_nao_rebaixa_concluido(self, client, session):
+        from datetime import datetime
+
+        admin = make_user(session, "tr3a@t.com", role="admin", name="A")
+        e = make_user(session, "tr3b@t.com", name="E")
+        p = make_pedido(session, status="concluido")
+        p.delivery_completed_at = datetime.utcnow()
+        session.commit()
+        token = generate_token(admin)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={"entregador_id": e.id},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["pedido"]["status"] == "concluido"
+
+    def test_retirar_da_rota_volta_pronto_entrega(self, client, session):
+        e = make_user(session, "tr4@t.com")
+        p = make_pedido(session, status="em_rota", entregador_id=e.id)
+        session.commit()
+        token = generate_token(e)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={"entregador_id": None},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["pedido"]["status"] == "pronto_entrega"
+        assert body["pedido"]["entregador_id"] is None
+
+    def test_entregador_nao_retira_pedido_de_outro(self, client, session):
+        e1 = make_user(session, "tr5a@t.com", name="E1")
+        e2 = make_user(session, "tr5b@t.com", name="E2")
+        p = make_pedido(session, status="em_rota", entregador_id=e1.id)
+        session.commit()
+        token = generate_token(e2)
+
+        resp = client.post(
+            f"/api/pedidos/{p.id}/atribuir-entregador",
+            json={"entregador_id": None},
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 403
+
+
 class TestEndpointMinhasEntregas:
     def test_filtra_por_user_e_exclui_concluidos_por_padrao(self, client, session):
         e = make_user(session, "min1@t.com")

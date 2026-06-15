@@ -166,8 +166,12 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || '22' }}
-          source: "ci-frontend-dist/"
+          # strip_components=1 remove o prefixo "ci-frontend-dist/" para que index.html
+          # caia direto em docker/prebuilt-dist/ (sem isso, o Dockerfile não acha o prebuilt
+          # e roda Vite de novo na VPS).
+          source: "ci-frontend-dist/*"
           target: "${{ secrets.VPS_DEPLOY_PATH }}/docker/prebuilt-dist"
+          strip_components: 1
 
       - name: Docker compose (USE_PREBUILT_DIST=1)
         uses: appleboy/ssh-action@v1

@@ -14,7 +14,7 @@ Serviços ([docker-compose.yml](../docker-compose.yml)):
 |---|---|---|
 | `db` | `postgres:16-alpine` | Banco principal. Volume `pg_data`. |
 | `backend` | build local (target `backend` em [Dockerfile](../Dockerfile)) | API Flask + SPA Vite servido como estático. Porta 5000. |
-| `scheduler` | build local (target `scheduler`) | Flush do outbox Meta CAPI. Sem Node. Entrypoint: `python meta_scheduler_entrypoint.py`. |
+| `capi-worker` | build local (target `capi-worker`) | Envio assíncrono do outbox Meta CAPI (polling) + safety-net diário e payroll. Sem Node. Entrypoint: `python meta_capi_worker_entrypoint.py`. |
 
 O `frontend-assets` (stage do Dockerfile) faz `npm ci && npm run build` no container; se `USE_PREBUILT_DIST=1` e `docker/prebuilt-dist/index.html` existir, copia direto (CI pré-builda e injeta).
 

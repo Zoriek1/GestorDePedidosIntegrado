@@ -2,7 +2,7 @@
 # Uso: cp .env.example .env && docker compose up -d
 #
 # USE_PREBUILT_DIST=1 — usa docker/prebuilt-dist/ (ex.: deploy via CI) e não roda Vite na VPS.
-# meta-scheduler usa target scheduler (imagem sem Node).
+# capi-worker usa target capi-worker (imagem sem Node).
 
 services:
   db:
@@ -76,17 +76,17 @@ services:
     ports:
       - "5000:5000"
 
-  meta-scheduler:
+  capi-worker:
     build:
       context: .
-      target: scheduler
+      target: capi-worker
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     env_file:
       - .env
-    entrypoint: ["python", "meta_scheduler_entrypoint.py"]
+    entrypoint: ["python", "meta_capi_worker_entrypoint.py"]
     environment:
       FLASK_ENV: production
       APP_ENV: production
@@ -99,6 +99,9 @@ services:
       META_CAPI_USE_GATEWAY: ${META_CAPI_USE_GATEWAY:-false}
       META_CAPI_GATEWAY_DOMAIN: ${META_CAPI_GATEWAY_DOMAIN:-gestaopedidos.planteumaflor.online}
       META_CAPI_GATEWAY_ENDPOINT: ${META_CAPI_GATEWAY_ENDPOINT:-}
+      # Polling assíncrono do outbox (envio em segundo plano)
+      META_CAPI_WORKER_INTERVAL_SECONDS: ${META_CAPI_WORKER_INTERVAL_SECONDS:-5}
+      META_CAPI_RETRY_BACKOFF_SECONDS: ${META_CAPI_RETRY_BACKOFF_SECONDS:-300}
       META_SCHEDULER_HOUR: ${META_SCHEDULER_HOUR:-23}
     volumes:
       - ./backend:/app/backend

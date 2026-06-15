@@ -3,7 +3,7 @@
  * O que será entregue
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import {
   Box,
@@ -13,15 +13,29 @@ import {
   Grid,
   Button,
   FormHelperText,
+  Autocomplete,
 } from '@mui/material';
 import { FloristDatePicker } from '../FloristDatePicker';
 import LocalFloristIcon from '@mui/icons-material/LocalFlorist';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
 import { CurrencyInput } from '../../../../components/form';
 import { TimeSlotDialog } from '../TimeSlotDialog';
 import type { PedidoFormData } from '../../schemas';
-import { getFloristHoliday, getUpcomingHolidays } from '../../utils/floristHolidays';
+import { getFloristHoliday } from '../../utils/floristHolidays';
+import { useArranjoSugestoes, usePromoverArranjo } from '../../services/catalogoApi';
+import { useToast } from '../../../../components/system/useToast';
+
+/** Debounce simples para não bater no endpoint a cada tecla (CAT-01). */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 // ============================================================================
 // Componente
@@ -38,8 +52,20 @@ export function StepProduto() {
   const diaEntrega = useWatch({ control, name: 'dia_entrega' });
   const horario = useWatch({ control, name: 'horario' });
 
+  // CAT-01: autocomplete do catálogo de arranjos para o campo `produto`.
+  const produtoAtual = useWatch({ control, name: 'produto' }) || '';
+  const produtoDebounced = useDebouncedValue(produtoAtual.trim(), 300);
+  const { data: sugestoesArranjo = [] } = useArranjoSugestoes(
+    produtoDebounced,
+    produtoDebounced.length >= 2
+  );
+  const promoverArranjo = usePromoverArranjo();
+  const toast = useToast();
+  const jaNoCatalogo = sugestoesArranjo.some(
+    (s) => s.toLowerCase() === produtoAtual.trim().toLowerCase()
+  );
+
   const selectedHoliday = diaEntrega ? getFloristHoliday(dayjs(diaEntrega)) : null;
-  const upcomingHolidays = getUpcomingHolidays(dayjs(), 90).slice(0, 3);
 
   const handleSelectSlot = (slot: string) => {
     setValue('horario', slot, { shouldValidate: true });
@@ -66,22 +92,58 @@ export function StepProduto() {
             Dados do Item
           </Typography>
           <Stack spacing={2.5}>
-            {/* Descrição do Produto */}
+            {/* Descrição do Produto — combobox do catálogo curado (CAT-01) */}
             <Controller
               name="produto"
               control={control}
               render={({ field }) => (
-                <TextField
-                  {...field}
-                  label="Descrição do Produto"
-                  placeholder="Ex: Buquê de 12 rosas vermelhas com folhagens"
-                  multiline
-                  rows={3}
-                  fullWidth
-                  required
-                  error={!!errors.produto}
-                  helperText={errors.produto?.message}
-                />
+                <Box>
+                  <Autocomplete
+                    freeSolo
+                    options={sugestoesArranjo}
+                    inputValue={field.value || ''}
+                    onInputChange={(_e, value) => field.onChange(value)}
+                    onChange={(_e, value) => field.onChange(value || '')}
+                    filterOptions={(opts) => opts}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Descrição do Produto"
+                        placeholder="Ex: Buquê de 12 rosas vermelhas com folhagens"
+                        multiline
+                        minRows={2}
+                        fullWidth
+                        required
+                        error={!!errors.produto}
+                        helperText={
+                          errors.produto?.message ||
+                          'Sugestões do catálogo aparecem ao digitar; nome novo é sempre aceito'
+                        }
+                      />
+                    )}
+                  />
+                  {produtoAtual.trim().length >= 2 && !jaNoCatalogo && (
+                    <Button
+                      size="small"
+                      startIcon={<AddIcon />}
+                      sx={{ mt: 0.5, textTransform: 'none' }}
+                      disabled={promoverArranjo.isPending}
+                      onClick={async () => {
+                        const nome = produtoAtual.trim();
+                        try {
+                          await promoverArranjo.mutateAsync(nome);
+                          toast.success(`"${nome}" adicionado ao catálogo`);
+                        } catch (e) {
+                          toast.error(
+                            e instanceof Error ? e.message : 'Erro ao adicionar ao catálogo'
+                          );
+                        }
+                      }}
+                    >
+                      Adicionar "{produtoAtual.trim()}" ao catálogo
+                    </Button>
+                  )}
+                </Box>
               )}
             />
 
@@ -172,35 +234,6 @@ export function StepProduto() {
                 >
                   <LocalFloristIcon fontSize="small" /> {selectedHoliday.name}
                   {selectedHoliday.tier === 'peak' && ' — pico de demanda'}
-                </Box>
-              ) : upcomingHolidays.length > 0 ? (
-                <Box
-                  sx={{
-                    mt: 1,
-                    fontSize: 12,
-                    color: 'text.secondary',
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 0.75,
-                  }}
-                >
-                  <span>Próximas datas:</span>
-                  {upcomingHolidays.map((u) => (
-                    <Box
-                      key={u.date.format('YYYY-MM-DD')}
-                      component="span"
-                      sx={{
-                        px: 0.75,
-                        py: 0.25,
-                        borderRadius: 0.5,
-                        backgroundColor: `${u.holiday.color}1f`,
-                        color: u.holiday.color,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {u.holiday.name} ({u.date.format('DD/MM')})
-                    </Box>
-                  ))}
                 </Box>
               ) : null}
             </Grid>

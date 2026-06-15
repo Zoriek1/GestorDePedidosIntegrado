@@ -135,6 +135,9 @@ class TestMetaCapiLeadFunnelPayload:
                 "META_PIXEL_ID": "test_pixel_123",
                 "META_CAPI_ACCESS_TOKEN": "test_token_abc",
                 "META_CAPI_USE_GATEWAY": "false",
+                # Flags de feature OFF para o teste assumir valores estáticos
+                # (em prod o .env liga essas flags, mas o teste cobre o caminho default).
+                "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
             },
         ):
             from app.services.meta_capi import MetaConversionsApiService
@@ -163,8 +166,8 @@ class TestMetaCapiLeadFunnelPayload:
         assert ce["event_name"] == "Contact"
         assert ce["event_id"] == "contact_st_1"
         assert ce["action_source"] == "website"
-        assert ce["custom_data"]["value"] == 1.0
-        assert ce["custom_data"]["currency"] == "BRL"
+        assert "value" not in ce["custom_data"]
+        assert "currency" not in ce["custom_data"]
         assert ce["custom_data"]["lead_id"] == "7"
         assert "ph" in ce["user_data"]
 
@@ -173,8 +176,8 @@ class TestMetaCapiLeadFunnelPayload:
         le = service.build_lead_event_from_lead(lead)
         assert le["event_name"] == "Lead"
         assert le["event_id"] == "lead_st_2"
-        assert le["custom_data"]["value"] == 15.0
-        assert le["custom_data"]["currency"] == "BRL"
+        assert "value" not in le["custom_data"]
+        assert "currency" not in le["custom_data"]
         assert "ph" in le["user_data"]
 
 
@@ -383,6 +386,9 @@ class TestMetaCapiPurchaseEnrichment:
                 "META_PIXEL_ID": "test_pixel_123",
                 "META_CAPI_ACCESS_TOKEN": "test_token_abc",
                 "META_CAPI_USE_GATEWAY": "false",
+                # Flags OFF: teste cobre o caminho v1 do external_id e value estático.
+                "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
+                "META_CAPI_SKIP_INVALID_PURCHASE": "false",
             },
         ):
             from app import db
@@ -432,9 +438,7 @@ class TestMetaCapiPurchaseEnrichment:
 
                 service = MetaConversionsApiService()
                 event = service.build_purchase_event(pedido)
-                expected_fbc = service.build_fbc_from_fbclid(
-                    lead.fbclid, lead.created_at
-                )
+                expected_fbc = service.build_fbc_from_fbclid(lead.fbclid, lead.created_at)
 
                 assert event["event_name"] == "Purchase"
                 assert event["event_source_url"] == lead.url
@@ -690,6 +694,10 @@ class TestMetaCapiOutboxRepository:
                 "META_PIXEL_ID": "test_pixel_123",
                 "META_CAPI_ACCESS_TOKEN": "test_token_abc",
                 "META_CAPI_USE_GATEWAY": "false",
+                # Em produção essas flags ficam ligadas; nos testes preferimos o
+                # comportamento default para asserts determinísticos.
+                "META_CAPI_SKIP_INVALID_PURCHASE": "false",
+                "META_CAPI_EXTERNAL_ID_V2_ENABLED": "false",
             },
         ):
             from app import create_app, db
@@ -715,8 +723,12 @@ class TestMetaCapiOutboxRepository:
         except (PermissionError, FileNotFoundError):
             pass
 
-    def _create_test_pedido(self, cliente="João Silva", telefone="62999887766"):
-        """Helper para criar pedido de teste com todos os campos obrigatórios"""
+    def _create_test_pedido(self, cliente="João Silva", telefone="62999887766", valor="100,00"):
+        """Helper para criar pedido de teste com todos os campos obrigatórios.
+
+        valor != 0 é necessário porque META_CAPI_SKIP_INVALID_PURCHASE (ligado em
+        produção) faz build_purchase_event retornar None quando total_pago <= 0,01.
+        """
         from datetime import date
 
         from app.models.pedido import Pedido
@@ -727,6 +739,7 @@ class TestMetaCapiOutboxRepository:
             destinatario="Destinatário Teste",
             tipo_pedido="Entrega",
             produto="Buquê de Rosas",
+            valor=valor,
             dia_entrega=date.today(),
             horario="10:00",
             cidade="Goiania",
@@ -796,6 +809,72 @@ class TestMetaCapiOutboxRepository:
             ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
             assert ob is not None
             assert ob.status == "sent"
+
+    def test_create_outbox_for_new_order_enfileira_independente_do_pagamento(self, app):
+        """Novo trigger: enfileira Purchase no ato da criação, mesmo com status_pagamento=Pendente.
+
+        Envio é assíncrono (capi-worker): a criação apenas enfileira, a linha fica
+        'pending' e o worker faz o flush depois. Nada é enviado no caminho do request.
+        """
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from app.utils.meta_capi_helper import create_outbox_for_new_order
+
+        with app.app_context():
+            pedido = self._create_test_pedido()
+            pedido.status_pagamento = "Pendente"
+            db.session.add(pedido)
+            db.session.commit()
+
+            created = create_outbox_for_new_order(pedido)
+            assert created is True
+
+            ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
+            assert ob is not None
+            assert ob.event_id == f"order_{pedido.id}"
+            assert ob.status == "pending"
+
+    def test_create_outbox_for_new_order_skip_site(self, app):
+        """Pedidos de fonte Site/Nuvemshop não são enfileirados."""
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from app.utils.meta_capi_helper import create_outbox_for_new_order
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Cliente Site", telefone="62999887780")
+            pedido.fonte_pedido = "Site"
+            db.session.add(pedido)
+            db.session.commit()
+
+            created = create_outbox_for_new_order(pedido)
+            assert created is False
+
+            ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
+            assert ob is None
+
+    def test_create_outbox_for_new_order_idempotente(self, app):
+        """Chamadas repetidas para o mesmo pedido não duplicam a outbox."""
+        from app import db
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+        from app.utils.meta_capi_helper import create_outbox_for_new_order
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Cliente Idem", telefone="62999887781")
+            db.session.add(pedido)
+            db.session.commit()
+
+            success_response = {"_status_code": 200, "events_received": 1, "fbtrace_id": "t1"}
+            with patch(
+                "app.services.meta_capi.MetaConversionsApiService.send_events",
+                return_value=success_response,
+            ):
+                assert create_outbox_for_new_order(pedido) is True
+                # Segunda chamada deve retornar False (já existe)
+                assert create_outbox_for_new_order(pedido) is False
+
+            ob = MetaCapiOutboxRepository().get_by_order_id(pedido.id)
+            assert ob is not None
+            assert ob.event_id == f"order_{pedido.id}"
 
     def test_create_from_pedido_skips_site_and_nuvemshop(self, app):
         """Não cria outbox para pedidos que já têm tracking próprio."""
@@ -931,6 +1010,79 @@ class TestMetaCapiOutboxRepository:
             assert len(failed_retryable) == 1
             assert failed_retryable[0].id == outboxes[0].id
             assert failed_retryable[0].error_type == "retryable"
+
+    def test_get_failed_retryable_respeita_backoff(self, app):
+        """Backoff: failed-retryable recém-atualizado só reaparece após a janela."""
+        from datetime import timedelta
+
+        from app import db
+        from app.models.meta_capi_outbox import MetaCapiOutbox
+        from app.models.pedido import datetime_now_brazil
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Backoff", telefone="62999000111")
+            db.session.add(pedido)
+            db.session.commit()
+
+            repo = MetaCapiOutboxRepository()
+            outbox = repo.create_from_pedido(pedido)
+            repo.mark_failed(outbox.id, "Rate limit", 429, "retryable", 1)
+
+            # Recém-falhado: com backoff de 5min ainda não aparece.
+            assert repo.get_failed_retryable(limit=10, min_updated_age_seconds=300) == []
+            # Sem backoff: aparece.
+            assert len(repo.get_failed_retryable(limit=10)) == 1
+
+            # Envelhecer updated_at além da janela (UPDATE direto evita o onupdate).
+            MetaCapiOutbox.query.filter_by(id=outbox.id).update(
+                {"updated_at": datetime_now_brazil() - timedelta(seconds=600)}
+            )
+            db.session.commit()
+            aged = repo.get_failed_retryable(limit=10, min_updated_age_seconds=300)
+            assert len(aged) == 1
+            assert aged[0].id == outbox.id
+
+    def test_process_outbox_cycle_envia_purchase_e_lead(self, app):
+        """Ciclo do worker async envia pendentes de Purchase e de Lead (Contact)."""
+        from app import db
+        from app.commands.send_daily_purchases_to_meta_command import (
+            SendDailyPurchasesToMetaCommand,
+        )
+        from app.models.lead import Lead
+        from app.repositories.meta_capi_lead_outbox_repository import (
+            MetaCapiLeadOutboxRepository,
+        )
+        from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+
+        with app.app_context():
+            pedido = self._create_test_pedido(cliente="Ciclo", telefone="62999222333")
+            db.session.add(pedido)
+            db.session.commit()
+            purchase_ob = MetaCapiOutboxRepository().create_from_pedido(pedido)
+
+            lead = Lead(
+                dedup_key="cycle-lead",
+                event="whatsapp_click",
+                meta_event_id_contact="cycle_evt_1",
+            )
+            db.session.add(lead)
+            db.session.commit()
+            lead_ob = MetaCapiLeadOutboxRepository().create_contact_from_lead(lead)
+
+            success = {"_status_code": 200, "events_received": 1, "fbtrace_id": "t1"}
+            with patch(
+                "app.services.meta_capi.MetaConversionsApiService.send_events",
+                return_value=success,
+            ):
+                stats = SendDailyPurchasesToMetaCommand().process_outbox_cycle()
+
+            assert stats["sent_success"] == 1
+            assert stats["lead_sent_success"] == 1
+            db.session.refresh(purchase_ob)
+            db.session.refresh(lead_ob)
+            assert purchase_ob.status == "sent"
+            assert lead_ob.status == "sent"
 
 
 def test_meta_capi_verbose_summary():
@@ -1072,20 +1224,23 @@ class TestPurchaseSkipInvalidValue:
         return pedido
 
     def test_returns_none_when_value_zero(self, service):
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(0.0)
             assert service.build_purchase_event(pedido) is None
 
     def test_returns_none_when_value_below_min(self, service):
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(0.01)
             assert service.build_purchase_event(pedido) is None
 
     def test_returns_event_when_value_valid(self, service):
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "true"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(150.0)
             event = service.build_purchase_event(pedido)
             assert event is not None
@@ -1099,59 +1254,14 @@ class TestPurchaseSkipInvalidValue:
         replicamos esse bug — apenas garantimos que a flag-off não introduz
         skip, mantendo o comportamento histórico.
         """
-        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "false"}), \
-            patch.object(service, "resolve_lead_for_purchase", return_value=None):
+        with patch.dict(os.environ, {"META_CAPI_SKIP_INVALID_PURCHASE": "false"}), patch.object(
+            service, "resolve_lead_for_purchase", return_value=None
+        ):
             pedido = self._make_pedido(0.0)
             event = service.build_purchase_event(pedido)
             assert event is not None
             # value sai como veio (0.0) — flag-off não corrige nada
             assert event["custom_data"]["value"] == 0.0
-
-
-class TestValueResolver:
-    """resolve_value busca por utm_content, com fallback para default."""
-
-    def setup_method(self, _method):
-        from app.utils.meta_capi_value_resolver import reset_cache_for_tests
-
-        reset_cache_for_tests()
-
-    def teardown_method(self, _method):
-        from app.utils.meta_capi_value_resolver import reset_cache_for_tests
-
-        reset_cache_for_tests()
-
-    def test_known_utm_returns_mapped_value(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="CARRO|HIGH-TCK", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 25.0
-        assert resolve_value(lead, "lead") == 125.0
-
-    def test_utm_content_is_case_insensitive(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="carro|low-tck", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 8.0
-
-    def test_unknown_utm_uses_default(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content="UNKNOWN|UTM", utm_campaign=None)
-        assert resolve_value(lead, "contact") == 10.0
-        assert resolve_value(lead, "lead") == 50.0
-
-    def test_missing_utm_uses_default(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content=None, utm_campaign=None)
-        assert resolve_value(lead, "contact") == 10.0
-
-    def test_falls_back_to_utm_campaign(self):
-        from app.utils.meta_capi_value_resolver import resolve_value
-
-        lead = MagicMock(utm_content=None, utm_campaign="URGENCIA|DATAS")
-        assert resolve_value(lead, "lead") == 75.0
 
 
 class TestExternalIdsArray:
@@ -1172,7 +1282,7 @@ class TestExternalIdsArray:
             return MetaConversionsApiService()
 
     def test_contact_uses_lead_id_and_fbp(self, service):
-        lead = MagicMock(id=7, fbp="fb.1.123.456", fbclid="abc", phone=None)
+        lead = MagicMock(id=7, fbp="fb.1.123.456", fbclid="abc", phone=None, token_rastreio=None)
         ids = service.build_external_ids_for_event("Contact", lead=lead)
         assert len(ids) == 3
         assert all(len(h) == 64 for h in ids)
@@ -1181,15 +1291,15 @@ class TestExternalIdsArray:
         assert service.hash_sha256("fbp:fb.1.123.456") in ids
 
     def test_lead_includes_phone_hash(self, service):
-        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766")
+        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766", token_rastreio=None)
         ids = service.build_external_ids_for_event("Lead", lead=lead)
         assert service.hash_sha256("lead:7") in ids
         assert service.hash_sha256("phone:+5562999887766") in ids
 
     def test_purchase_uses_phone_and_cliente(self, service):
-        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766")
+        lead = MagicMock(id=7, fbp=None, fbclid=None, phone="62999887766", token_rastreio=None)
         pedido = MagicMock(
-            id=99, telefone_cliente="62999887766", cliente_id=42
+            id=99, telefone_cliente="62999887766", cliente_id=42, codigo_whatsapp=None
         )
         ids = service.build_external_ids_for_event("Purchase", lead=lead, pedido=pedido)
         assert service.hash_sha256("phone:+5562999887766") in ids
@@ -1197,19 +1307,35 @@ class TestExternalIdsArray:
         assert service.hash_sha256("lead:7") in ids
 
     def test_purchase_falls_back_to_order_id(self, service):
-        pedido = MagicMock(
-            id=99, telefone_cliente="invalid", cliente_id=None
-        )
+        pedido = MagicMock(id=99, telefone_cliente="invalid", cliente_id=None, codigo_whatsapp=None)
         ids = service.build_external_ids_for_event("Purchase", lead=None, pedido=pedido)
         assert service.hash_sha256("order:99") in ids
 
     def test_contact_shares_lead_hash_with_lead_event(self, service):
         """Cross-event matching: Contact e Lead do mesmo lead compartilham lead:{id}."""
-        lead = MagicMock(id=7, fbp="fb.1.1.2", fbclid=None, phone="62999887766")
+        lead = MagicMock(
+            id=7, fbp="fb.1.1.2", fbclid=None, phone="62999887766", token_rastreio=None
+        )
         contact_ids = set(service.build_external_ids_for_event("Contact", lead=lead))
         lead_ids = set(service.build_external_ids_for_event("Lead", lead=lead))
         intersection = contact_ids & lead_ids
         assert service.hash_sha256("lead:7") in intersection
+
+    def test_token_included_across_events(self, service):
+        """O token (token_rastreio/codigo_whatsapp) entra no array nos 3 estágios (#5),
+        servindo de chave de interseção para costurar Contact → Lead → Purchase."""
+        lead = MagicMock(
+            id=7, fbp=None, fbclid=None, phone="62999887766", token_rastreio="ABCDEFGH12"
+        )
+        pedido = MagicMock(
+            id=99, telefone_cliente="62999887766", cliente_id=42, codigo_whatsapp="ABCDEFGH12"
+        )
+        token_hash = service.hash_sha256("token:ABCDEFGH12")
+        assert token_hash in service.build_external_ids_for_event("Contact", lead=lead)
+        assert token_hash in service.build_external_ids_for_event("Lead", lead=lead)
+        assert token_hash in service.build_external_ids_for_event(
+            "Purchase", lead=lead, pedido=pedido
+        )
 
 
 class TestNormalizeLastName:

@@ -15,8 +15,16 @@ import { CreateOrderWizard } from './CreateOrderWizard';
 import { OrderFormProvider } from './contexts/OrderFormContext';
 import { useCreatePedido, CreatePedidoPayload } from '../../api/endpoints/pedidos';
 import { useToast } from '../../components/system/useToast';
+import { useConfirm } from '../../components/system/useConfirm';
 import { SourceSelectionModal } from './components/SourceSelectionModal';
 import type { PedidoFormData } from './schemas';
+
+/** Formata telefone BR para wa.me (prepende 55 quando tem 10/11 dígitos). */
+function formatWhatsappPhone(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
 
 // Tipo para os dados passados via location.state (Quick Entry)
 interface QuickEntryLocationState {
@@ -32,6 +40,7 @@ export default function CreateOrderPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { success, error: showError } = useToast();
+  const confirm = useConfirm();
   const createPedido = useCreatePedido();
   
   // Extrair dados de Quick Entry do location.state
@@ -98,8 +107,28 @@ export default function CreateOrderPage() {
     setSubmitError(null);
     
     try {
-      await createPedido.mutateAsync(data as unknown as CreatePedidoPayload);
+      const result = await createPedido.mutateAsync(data as unknown as CreatePedidoPayload);
       success('Pedido criado com sucesso!');
+
+      // Oferecer envio do link público de acompanhamento ao remetente via WhatsApp.
+      const trackUrl = result?.track_url;
+      const telefone = formatWhatsappPhone(String((data as Record<string, unknown>).telefone_cliente || ''));
+      if (trackUrl && telefone) {
+        const enviar = await confirm({
+          title: 'Enviar acompanhamento?',
+          description: 'Deseja enviar ao cliente, pelo WhatsApp, o link para acompanhar o status do pedido?',
+          confirmText: 'Enviar no WhatsApp',
+          cancelText: 'Agora não',
+          confirmColor: 'success',
+        });
+        if (enviar) {
+          const mensagem =
+            `Olá! Seu pedido na Plante uma Flor foi confirmado.\n` +
+            `Acompanhe o status da sua entrega por aqui: ${trackUrl}`;
+          window.open(`https://wa.me/${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
+        }
+      }
+
       navigate('/');
       return true;
     } catch (err) {
@@ -114,7 +143,7 @@ export default function CreateOrderPage() {
       showError(errorMessage);
       return false;
     }
-  }, [createPedido, navigate, success, showError]);
+  }, [createPedido, navigate, success, showError, confirm]);
 
   const handleFonteConfirm = useCallback((fonteId: number) => {
     setFonteSelecionada(fonteId);

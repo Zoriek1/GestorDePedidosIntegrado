@@ -1,11 +1,12 @@
 :root {
-  /* Paleta principal */
-  --color-primary: #047857;
-  --color-primary-hover: #059669;
-  --color-primary-light: #10b981;
-  --color-secondary: #2563eb;
+  /* Paleta principal — identidade Plante Uma Flor */
+  --color-primary: #143d28;
+  --color-primary-hover: #1f5234;
+  --color-primary-light: #1a5c3a;
+  --color-secondary: #d4af7a;
+  --color-accent: #d4af7a;
   --color-surface: #ffffff;
-  --color-surface-alt: #f9fafb;
+  --color-surface-alt: #f7f5ef;
   --color-border: #e5e7eb;
   --color-text: #111827;
   --color-text-secondary: #4b5563;
@@ -18,8 +19,9 @@
   --color-neutral-600: #4b5563;
   --color-neutral-900: #111827;
 
-  /* Tipografia - Escala de hierarquia visual */
-  --font-family: 'Inter', 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* Tipografia — Jost (UI) + Fraunces (títulos) */
+  --font-family: 'Jost', 'Inter', 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-family-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
   --line-height: 1.5;
   --font-size-base: 16px;
   

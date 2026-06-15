@@ -75,6 +75,39 @@ def test_atualizar_pedido_vincula_lead_por_codigo_whatsapp(client, session):
     assert lead.status == "compra_realizada"
 
 
+def test_pedido_fecha_lead_confirmado_independente_da_situacao(client, session):
+    """Pedido sobrescreve para compra_realizada mesmo num lead confirmado com situação."""
+    lead = Lead(
+        dedup_key="lead-token-situacao",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="whatsapp_iniciado",
+        situacao="orcamento_enviado",
+        phone="62999990000",
+    )
+    session.add(lead)
+    session.commit()
+
+    payload = {
+        "cliente": "Cliente Funil",
+        "telefone_cliente": "(62) 99999-0000",
+        "destinatario": "Destinatário",
+        "tipo_pedido": "Entrega",
+        "produto": "Buquê Premium",
+        "dia_entrega": date.today().isoformat(),
+        "horario": "10:00",
+        "codigo_whatsapp": _VALID_TOKEN.lower(),
+    }
+
+    r = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
+    assert r.status_code == 201
+
+    session.refresh(lead)
+    assert lead.status == "compra_realizada"
+    # situacao permanece gravada mas é irrelevante (getLeadGroup ignora p/ fechados).
+    assert lead.situacao == "orcamento_enviado"
+
+
 def test_codigo_whatsapp_inexistente_nao_bloqueia_criacao_pedido(client, session):
     payload = {
         "cliente": "Cliente Sem Lead",

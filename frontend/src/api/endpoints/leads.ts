@@ -44,12 +44,16 @@ export interface Lead {
   token_rastreio: string | null;
   token_valido: boolean | null;
   status: string | null;
+  /** Subestado do lead confirmado: aguardando_resposta | orcamento_enviado | sem_resposta. */
+  situacao: string | null;
   fbclid: string | null;
   fbp: string | null;
   ip_address: string | null;
   created_at: string | null;
   pedido_id: number | null;
   valor_pedido: string | null;
+  followup_feito_em: string | null;
+  followup_por: number | null;
   first_touch_id: number | null;
   last_touch_id: number | null;
   first_touch: LeadTouchpoint | null;
@@ -69,7 +73,14 @@ export interface LeadsResponse {
   total: number;
   page: number;
   pages: number;
+  /** Quantos leads ocultos (descarte + nao_entrou_em_contato) existem na janela atual. */
+  hidden_count: number;
 }
+
+export type LeadsPeriod = 'today' | '14d' | 'all' | 'custom';
+
+/** Controla como os status "ocultos" (descarte, nao_entrou_em_contato) entram na listagem. */
+export type LeadsHiddenMode = 'exclude' | 'only' | 'include';
 
 export interface LeadsFilters {
   page?: number;
@@ -84,16 +95,66 @@ export interface LeadsFilters {
   token_rastreio?: string;
   /** Filtra pelo status do lead */
   status?: string;
+  /** Filtra pela situação do lead confirmado (aguardando_resposta | orcamento_enviado | sem_resposta). */
+  situacao?: string;
+  /** Confirmados sem followup há N dias (status=whatsapp_iniciado + followup nulo/antigo). */
+  pending_followup_days?: number;
+  /** Janela temporal resolvida no backend (today, 14d, all). Use `custom` com date_from/date_to. */
+  period?: LeadsPeriod;
   date_from?: string;
   date_to?: string;
+  /** Default `exclude` no backend — esconde descarte/nao_entrou_em_contato. */
+  hidden?: LeadsHiddenMode;
 }
 
-export function useLeads(filters: LeadsFilters = {}) {
+export interface LeadsStatsBucket {
+  /** Leads `pendente_whatsapp` — triagem, sem telefone (vieram do anúncio). */
+  pendentes: number;
+  /** Leads `lead_pendente` — fila de decisão (têm telefone, aguardando triagem). */
+  lead_pendentes: number;
+  /** Leads `whatsapp_iniciado` com telefone preenchido (Lead Confirmado qualificado). */
+  confirmados: number;
+  compras: number;
+  total: number;
+}
+
+export interface LeadsStatsResponse {
+  ok: boolean;
+  today: LeadsStatsBucket;
+  last_14d: LeadsStatsBucket;
+}
+
+export interface BulkStatusResponse {
+  ok: boolean;
+  updated: number;
+  skipped: number;
+  skipped_ids: number[];
+}
+
+export interface BulkDisqualifyUpdate {
+  id: number;
+  phone?: string;
+}
+
+export interface BulkDisqualifyResponse {
+  ok: boolean;
+  updated: number;
+  skipped: number;
+  skipped_ids: number[];
+}
+
+export interface UseLeadsOptions {
+  /** Quando `false`, a query não dispara. Útil para fetches lazy (ex.: descartados). */
+  enabled?: boolean;
+}
+
+export function useLeads(filters: LeadsFilters = {}, options: UseLeadsOptions = {}) {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<LeadsResponse>({
     queryKey: ['leads', filters],
+    enabled: options.enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.page) params.set('page', String(filters.page));
@@ -109,8 +170,14 @@ export function useLeads(filters: LeadsFilters = {}) {
         params.set('token_rastreio', filters.token_rastreio.trim());
       }
       if (filters.status) params.set('status', filters.status);
+      if (filters.situacao) params.set('situacao', filters.situacao);
+      if (filters.pending_followup_days) {
+        params.set('pending_followup_days', String(filters.pending_followup_days));
+      }
+      if (filters.period) params.set('period', filters.period);
       if (filters.date_from) params.set('date_from', filters.date_from);
       if (filters.date_to) params.set('date_to', filters.date_to);
+      if (filters.hidden) params.set('hidden', filters.hidden);
 
       const qs = params.toString();
       const endpoint = `/leads${qs ? `?${qs}` : ''}`;
@@ -163,6 +230,141 @@ export function useUpdateLeadStatus() {
       }
 
       return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+/**
+ * Marca a situação de um lead confirmado (etiqueta de funil).
+ * PATCH /leads/:id/situacao ou /leads/by-token/situacao. Não dispara CAPI.
+ */
+export function useUpdateLeadSituacao() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { id?: number; token_rastreio?: string; situacao: string }) => {
+      const { id, token_rastreio, situacao } = input;
+      const useToken = token_rastreio != null && token_rastreio.trim() !== '';
+      if (!useToken && id == null) {
+        throw new Error('Informe o id do lead ou o token de rastreio');
+      }
+      const path = useToken ? '/leads/by-token/situacao' : `/leads/${id}/situacao`;
+      const body = useToken
+        ? JSON.stringify({ token_rastreio: token_rastreio!.trim(), situacao })
+        : JSON.stringify({ situacao });
+      const response = await apiRequest<UpdateLeadStatusResponse>(path, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao atualizar situação do lead');
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+/**
+ * Registra/desfaz followup manual de um lead.
+ * PATCH /leads/:id/followup com { action: 'mark' | 'undo' }.
+ */
+export function useMarkLeadFollowup() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { id: number; action?: 'mark' | 'undo' }) => {
+      const response = await apiRequest<UpdateLeadStatusResponse>(
+        `/leads/${input.id}/followup`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: input.action ?? 'mark' }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao registrar followup');
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+export function useLeadsStats() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useQuery<LeadsStatsResponse>({
+    queryKey: ['leads', 'stats'],
+    queryFn: async () => {
+      const response = await apiRequest<LeadsStatsResponse>('/leads/stats');
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao carregar stats de leads');
+      }
+      return response.data as LeadsStatsResponse;
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function useBulkUpdateLeadStatus() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { ids: number[]; status: string }) => {
+      if (!input.ids.length) {
+        throw new Error('Selecione ao menos um lead');
+      }
+      const response = await apiRequest<BulkStatusResponse>('/leads/bulk/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: input.ids, status: input.status }),
+      });
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao atualizar leads em lote');
+      }
+      return response.data as BulkStatusResponse;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}
+
+export function useBulkDisqualifyLeads() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { updates: BulkDisqualifyUpdate[] }) => {
+      if (!input.updates.length) {
+        throw new Error('Selecione ao menos um lead');
+      }
+      const response = await apiRequest<BulkDisqualifyResponse>('/leads/bulk/disqualify', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: input.updates }),
+      });
+      if (!response.ok) {
+        throw new Error(response.message ?? 'Erro ao desqualificar leads');
+      }
+      return response.data as BulkDisqualifyResponse;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });

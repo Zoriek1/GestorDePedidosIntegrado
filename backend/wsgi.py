@@ -58,8 +58,8 @@ app = create_app(
     }
 )
 
-# Meta CAPI scheduler agora roda como serviço Docker separado (meta-scheduler).
-# Ver meta_scheduler_entrypoint.py e docker-compose.yml.
+# Meta CAPI roda como serviço Docker separado (capi-worker), enviando o outbox
+# de forma assíncrona. Ver meta_capi_worker_entrypoint.py e docker-compose.yml.
 
 
 # Para execução direta (python wsgi.py)

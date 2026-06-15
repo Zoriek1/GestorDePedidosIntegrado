@@ -5,20 +5,13 @@ API completa para o frontend PWA
 """
 from __future__ import annotations
 
-import re
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
 from app import db
 from app.middleware import requires_edit_auth
-from app.models import Cliente, FontePedido, Pedido
-from app.models.pedido import datetime_now_brazil
-from app.utils.backup_helper import (
-    get_backup_stats,
-    get_last_backup_time,
-    has_recent_backup,
-)
+from app.models import FontePedido
 
 # ============================================
 # ENDPOINT DE CRIAÇÃO DE PEDIDO - MIGRADO
@@ -28,9 +21,11 @@ from app.utils.backup_helper import (
 # NOVO LOCAL: app/routes/pedidos.py -> criar_pedido()
 
 
-
 fontes_bp = Blueprint("fontes", __name__, url_prefix="/api")
+
+
 @fontes_bp.route("/fontes-pedido", methods=["GET"])
+@requires_edit_auth
 def listar_fontes_pedido():
     """Lista todas as fontes de pedido ativas"""
     try:
@@ -70,6 +65,7 @@ def listar_fontes_pedido():
 
 
 @fontes_bp.route("/fontes-pedido/all", methods=["GET"])
+@requires_edit_auth
 def listar_todas_fontes():
     """Lista todas as fontes (ativas e inativas)"""
     try:
@@ -260,6 +256,7 @@ def deletar_fonte_pedido(fonte_id):
 
 
 @fontes_bp.route("/pedidos/fonte/<int:fonte_id>", methods=["GET"])
+@requires_edit_auth
 def listar_pedidos_fonte(fonte_id):
     """
     Lista pedidos de uma fonte específica
@@ -300,6 +297,7 @@ def listar_pedidos_fonte(fonte_id):
 
 
 @fontes_bp.route("/pedidos/fonte/<int:fonte_id>/consolidado", methods=["GET"])
+@requires_edit_auth
 def estatisticas_fonte(fonte_id):
     """
     Retorna estatísticas consolidadas de uma fonte
@@ -360,5 +358,3 @@ def estatisticas_fonte(fonte_id):
 # def check_auth_status():
 #     """MIGRADO: Ver app/routes/auth.py"""
 #     pass
-
-

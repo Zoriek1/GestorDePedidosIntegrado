@@ -1,7 +1,9 @@
 import { getApiBaseUrl } from '../../../api/http';
-import { IPedidoPrintService } from './IPedidoPrintService';
+import { IPedidoPrintService, PrintLayout } from './IPedidoPrintService';
 import { useAuth } from '../../auth/authStore';
 import { useMarcarImpresso } from '../../../api/endpoints/pedidos';
+
+export const MAX_BATCH_PRINT = 100;
 
 /**
  * Serviço de impressão (Arquitetura Command Pattern)
@@ -53,12 +55,12 @@ export class PedidoPrintService implements IPedidoPrintService {
     }
   }
 
-  async printBatch(pedidoIds: number[]): Promise<void> {
+  async printBatch(pedidoIds: number[], layout: PrintLayout = 4): Promise<void> {
     if (pedidoIds.length === 0) {
       throw new Error('Selecione ao menos 1 pedido para imprimir');
     }
-    if (pedidoIds.length > 20) {
-      throw new Error('Máximo de 20 pedidos por lote (5 folhas × 4)');
+    if (pedidoIds.length > MAX_BATCH_PRINT) {
+      throw new Error(`Máximo de ${MAX_BATCH_PRINT} pedidos por lote`);
     }
 
     const authHeaders = this.getAuthHeader();
@@ -72,7 +74,7 @@ export class PedidoPrintService implements IPedidoPrintService {
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ pedido_ids: pedidoIds }),
+      body: JSON.stringify({ pedido_ids: pedidoIds, layout }),
     });
 
     if (!response.ok) {

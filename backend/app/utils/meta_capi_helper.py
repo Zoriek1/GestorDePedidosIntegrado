@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 """
 Helper para Meta Conversions API
-Função utilitária para criar outbox quando pedido muda para Purchase
+Função utilitária para criar outbox quando pedido é criado (Purchase imediato).
 """
+import json
+import logging
+
 from app.models.pedido import Pedido
 from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
+
+logger = logging.getLogger(__name__)
 
 
 def try_flush_pending_meta_capi_for_order(order_id: int) -> None:
     """
     Envia imediatamente o registro pending da outbox para a Meta (se existir).
-    Falhas não propagam: o agendador diário continua como fallback.
+    Falhas não propagam: o agendador continua como fallback.
     """
     try:
         from app.commands.send_daily_purchases_to_meta_command import (
@@ -30,8 +35,18 @@ def try_flush_pending_meta_capi_for_order(order_id: int) -> None:
             "errors": [],
         }
         cmd._send_batch([entry], stats)
+        logger.info(
+            "meta_capi.flush_immediate pedido_id=%s event_id=order_%s sent=%s failed=%s permanent=%s",
+            order_id,
+            order_id,
+            stats["sent_success"],
+            stats["sent_failed"],
+            stats["failed_permanent"],
+        )
     except Exception as e:
-        print(f"[AVISO] Meta CAPI envio imediato falhou para pedido #{order_id}: {e}")
+        logger.exception(
+            "meta_capi.flush_immediate_failed pedido_id=%s error=%s", order_id, e
+        )
 
 
 def _normalize_source_text(value: str | None) -> str:
@@ -66,22 +81,95 @@ def should_skip_purchase_for_meta_capi(pedido: Pedido) -> bool:
     return False
 
 
+def _resolve_fonte_label(pedido: Pedido) -> str | None:
+    rel_name = getattr(getattr(pedido, "fonte_pedido_rel", None), "nome", None)
+    return rel_name or getattr(pedido, "fonte_pedido", None)
+
+
+def create_outbox_for_new_order(pedido: Pedido) -> bool:
+    """
+    Enfileira Purchase CAPI no ato da criação do pedido.
+
+    - Roda independente de `status_pagamento` (envio na criação, não no pagamento).
+    - Exclui fontes com pixel próprio (site/Nuvemshop) via `should_skip_purchase_for_meta_capi`.
+    - Idempotente: se já existir outbox para o `event_id` (`order_<id>`), não recria.
+    - Envio é assíncrono: o `capi-worker` faz polling do outbox e envia em segundo
+      plano. O request apenas enfileira (não bloqueia esperando a Meta).
+    """
+    fonte = _resolve_fonte_label(pedido)
+
+    if should_skip_purchase_for_meta_capi(pedido):
+        logger.info(
+            "meta_capi.skip pedido_id=%s reason=fonte_site_or_nuvemshop fonte=%s",
+            pedido.id,
+            fonte,
+        )
+        return False
+
+    try:
+        repo = MetaCapiOutboxRepository()
+        if repo.get_by_order_id(pedido.id):
+            logger.info(
+                "meta_capi.skip pedido_id=%s reason=already_enqueued fonte=%s",
+                pedido.id,
+                fonte,
+            )
+            return False
+
+        outbox_entry = repo.create_from_pedido(pedido)
+        if outbox_entry is None:
+            # Builder pulou (ex.: META_CAPI_SKIP_INVALID_PURCHASE com valor inválido).
+            logger.info(
+                "meta_capi.skip pedido_id=%s reason=builder_returned_none fonte=%s",
+                pedido.id,
+                fonte,
+            )
+            return False
+
+        logger.info(
+            "meta_capi.enqueued pedido_id=%s event_id=order_%s fonte=%s "
+            "fbp_present=%s fbc_present=%s phone_present=%s",
+            pedido.id,
+            pedido.id,
+            fonte,
+            bool(getattr(pedido, "fbp", None)),
+            bool(getattr(pedido, "fbc", None)),
+            bool(getattr(pedido, "telefone_cliente", None)),
+        )
+
+        # Dump do payload (hash-only, sem PII em claro) para conferir no Events
+        # Manager / Test Events sem precisar consultar o DB.
+        try:
+            payload = json.loads(outbox_entry.payload_json)
+            logger.info(
+                "meta_capi.event pedido_id=%s payload=%s",
+                pedido.id,
+                json.dumps(payload, ensure_ascii=False),
+            )
+        except Exception:
+            pass
+
+        # Envio assíncrono: o capi-worker faz polling do outbox e envia.
+        return True
+    except Exception as e:
+        logger.exception(
+            "meta_capi.enqueue_failed pedido_id=%s fonte=%s error=%s",
+            pedido.id,
+            fonte,
+            e,
+        )
+        return False
+
+
 def create_outbox_if_purchase(
     pedido: Pedido, status_anterior: str = None, status_pagamento_anterior: str = None
 ) -> bool:
     """
-    Cria registro na outbox se pedido é Purchase (status_pagamento = Pago ou Parcial)
+    DEPRECATED — Purchase agora dispara na criação via `create_outbox_for_new_order`.
 
-    Args:
-        pedido: Objeto Pedido
-        status_anterior: Status anterior (opcional, para verificar se realmente mudou)
-        status_pagamento_anterior: Status de pagamento anterior (opcional)
-
-    Returns:
-        bool: True se outbox foi criada, False caso contrário
+    Mantida para compatibilidade com testes e código legado que possa importar a função.
+    Não é mais chamada nos endpoints de update de status/pagamento.
     """
-    # Verificar se é Purchase: apenas status_pagamento="Pago" ou "Parcial" (case-insensitive)
-    # Não verificar status="concluido" porque pode agendar pedido para ano que vem
     if not pedido.status_pagamento:
         return False
 
@@ -90,28 +178,36 @@ def create_outbox_if_purchase(
         return False
 
     if should_skip_purchase_for_meta_capi(pedido):
-        print(f"[META_CAPI] Ignorando pedido #{pedido.id} por origem site/nuvemshop")
+        logger.info(
+            "meta_capi.skip pedido_id=%s reason=fonte_site_or_nuvemshop fonte=%s via=legacy_if_purchase",
+            pedido.id,
+            _resolve_fonte_label(pedido),
+        )
         return False
 
-    # Se status_pagamento_anterior fornecido, verificar se realmente mudou
-    # Só criar se NÃO estava já Pago ou Parcial antes
     if status_pagamento_anterior:
         status_anterior_upper = status_pagamento_anterior.upper().strip()
         if status_anterior_upper in ["PAGO", "PARCIAL"]:
-            # Já estava pago, não criar novamente
             return False
 
     try:
         outbox_repo = MetaCapiOutboxRepository()
-        # Verificar se já existe (evitar duplicação)
         existing = outbox_repo.get_by_order_id(pedido.id)
         if not existing:
             outbox_repo.create_from_pedido(pedido)
-            print(f"[META_CAPI] Outbox criada para pedido #{pedido.id}")
+            logger.info(
+                "meta_capi.enqueued pedido_id=%s event_id=order_%s fonte=%s via=legacy_if_purchase",
+                pedido.id,
+                pedido.id,
+                _resolve_fonte_label(pedido),
+            )
             try_flush_pending_meta_capi_for_order(pedido.id)
             return True
         return False
     except Exception as e:
-        # Não falhar operação principal se houver erro na outbox
-        print(f"[AVISO] Erro ao criar outbox para pedido #{pedido.id}: {e}")
+        logger.exception(
+            "meta_capi.enqueue_failed pedido_id=%s error=%s via=legacy_if_purchase",
+            pedido.id,
+            e,
+        )
         return False

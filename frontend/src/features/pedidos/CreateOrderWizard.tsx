@@ -4,7 +4,7 @@
  * Integra todos os steps com validação incremental
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createLogger } from '../../lib/logger';
 
 const _log = createLogger('CreateOrderWizard');
@@ -45,6 +45,7 @@ import {
   StepPagamento,
 } from './components/WizardSteps';
 import { useOrderFormContext } from './contexts/OrderFormContext';
+import { useConfirm } from '../../components/system/useConfirm';
 
 // ============================================================================
 // Constantes
@@ -52,6 +53,31 @@ import { useOrderFormContext } from './contexts/OrderFormContext';
 
 const STORAGE_KEY = 'puf_pedido_draft_v2';
 const DEBOUNCE_DELAY = 500;
+
+/**
+ * Um rascunho só vale o pop-up de "Retomar?" se o usuário tiver digitado algo de fato —
+ * ignorando os campos que vieram de prefill (initialData), para não perguntar à toa.
+ */
+function isDraftMeaningful(
+  draft: Partial<PedidoFormData> | null,
+  initialData?: Partial<PedidoFormData>,
+): boolean {
+  if (!draft) return false;
+  const fields: (keyof PedidoFormData)[] = [
+    'cliente', 'telefone_cliente', 'destinatario', 'produto', 'valor', 'mensagem',
+    'rua', 'numero', 'endereco', 'flores_cor', 'obs_entrega', 'observacoes',
+    'cep', 'bairro', 'cidade',
+  ];
+  return fields.some((k) => {
+    const v = draft[k];
+    if (typeof v !== 'string') return false;
+    const trimmed = v.trim();
+    if (!trimmed) return false;
+    const initVal = initialData?.[k];
+    if (typeof initVal === 'string' && initVal.trim() === trimmed) return false;
+    return true;
+  });
+}
 
 const STEPS = [
   { label: 'Cliente', component: StepCliente, fields: ['cliente', 'telefone_cliente', 'destinatario', 'tipo_pedido'] as const },
@@ -77,6 +103,12 @@ interface CreateOrderWizardProps {
   initialData?: Partial<PedidoFormData>;
   /** Callback para reiniciar o fluxo completo */
   onReset?: () => void;
+  /**
+   * Liga o rascunho local (autosave + diálogo "Retomar?"). Default `true` (criação).
+   * Em edição deve ser `false`: os dados do servidor são a fonte da verdade e o rascunho
+   * global de criação não deve interferir nem ser sobrescrito.
+   */
+  enableDraft?: boolean;
 }
 
 // ============================================================================
@@ -90,6 +122,7 @@ export function CreateOrderWizard({
   onClearError,
   initialData,
   onReset,
+  enableDraft = true,
 }: CreateOrderWizardProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -97,36 +130,86 @@ export function CreateOrderWizard({
   const [stepErrors, setStepErrors] = useState<Record<number, boolean>>({});
   const [isReadyToSubmit, setIsReadyToSubmit] = useState(false);
 
-  // Carrega dados do localStorage
-  const loadDraft = useCallback((): PedidoFormData => {
+  // Lê o rascunho salvo uma única vez no mount, ANTES de o auto-save sobrescrevê-lo.
+  // Não injeta direto: a decisão de retomar é feita via diálogo (#1).
+  const [storedDraft] = useState<Partial<PedidoFormData> | null>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // Importante: `initialData` deve ganhar do rascunho (ex: fonte escolhida no modal)
-        return { ...pedidoFormDefaultValues, ...parsed, ...initialData };
-      }
+      return stored ? (JSON.parse(stored) as Partial<PedidoFormData>) : null;
     } catch {
-      // Erro ao carregar rascunho (silenciado em produção)
+      return null;
     }
-    return { ...pedidoFormDefaultValues, ...initialData };
-  }, [initialData]);
+  });
+  const confirm = useConfirm();
+  // Auto-save só liga depois que o usuário decide sobre o rascunho — assim o form vazio
+  // inicial não sobrescreve o rascunho antes da resposta.
+  const [draftResolved, setDraftResolved] = useState(false);
+  const draftDecidedRef = useRef(false);
 
-  // Hook Form com Zod
+  // Hook Form com Zod — inicia limpo (defaults + prefill), sem o rascunho.
   const methods = useForm<PedidoFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(pedidoFormSchema) as any,
-    defaultValues: loadDraft(),
+    defaultValues: { ...pedidoFormDefaultValues, ...initialData },
     mode: 'onBlur',
   });
 
   const { handleSubmit, watch, trigger, setError, getValues, formState } = methods;
 
-  // Salva no localStorage com debounce
+  // Aplica initialData via reset quando muda (ex: fonte escolhida após prefill de lead).
+  // RHF só lê defaultValues uma vez no mount; sem isso, prefill chega "tarde" e fica perdido.
+  const initialDataKey = useMemo(
+    () => JSON.stringify(initialData ?? {}),
+    [initialData]
+  );
+  const appliedInitialDataRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!initialData) return;
+    if (appliedInitialDataRef.current === initialDataKey) return;
+    appliedInitialDataRef.current = initialDataKey;
+    methods.reset({ ...methods.getValues(), ...initialData }, { keepDirty: true });
+  }, [initialData, initialDataKey, methods]);
+
+  // No mount, decide o que fazer com o rascunho salvo: pergunta antes de retomar (#1).
+  useEffect(() => {
+    if (draftDecidedRef.current) return;
+    draftDecidedRef.current = true;
+
+    // Em edição (enableDraft=false), o servidor é a fonte da verdade: não retoma rascunho.
+    if (!enableDraft || !isDraftMeaningful(storedDraft, initialData)) {
+      setDraftResolved(true);
+      return;
+    }
+
+    (async () => {
+      const resume = await confirm({
+        title: 'Retomar rascunho?',
+        description:
+          'Encontramos um pedido que você começou e não finalizou. Deseja continuar de onde parou?',
+        confirmText: 'Retomar',
+        cancelText: 'Começar novo',
+      });
+      if (resume && storedDraft) {
+        // initialData (prefill) continua tendo prioridade sobre o rascunho.
+        methods.reset({ ...pedidoFormDefaultValues, ...storedDraft, ...initialData });
+      } else {
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          // noop
+        }
+      }
+      setDraftResolved(true);
+    })();
+    // Executa só uma vez no mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Salva no localStorage com debounce (só após a decisão sobre o rascunho).
+  useEffect(() => {
+    if (!draftResolved || !enableDraft) return;
     let timeoutId: ReturnType<typeof setTimeout>;
-    
-    // eslint-disable-next-line react-hooks/incompatible-library
+
     const subscription = watch((data) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
@@ -142,7 +225,7 @@ export function CreateOrderWizard({
       clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [watch]);
+  }, [watch, draftResolved, enableDraft]);
 
   // Limpa erros ao mudar de step
   useEffect(() => {
@@ -221,18 +304,11 @@ export function CreateOrderWizard({
     }
   };
 
-  const handleStepClick = async (step: number) => {
-    // Só permite ir para frente se os steps anteriores são válidos
-    if (step > activeStep) {
-      for (let i = activeStep; i < step; i++) {
-        const isValid = await validateStep(i);
-        if (!isValid) {
-          setActiveStep(i);
-          return;
-        }
-      }
+  const handleStepClick = (step: number) => {
+    // Passos clicáveis apenas para voltar (<= índice atual). Avançar só pelo botão "Próximo".
+    if (step <= activeStep) {
+      setActiveStep(step);
     }
-    setActiveStep(step);
   };
 
   // Salvar apenas rascunho (sem submeter)
@@ -349,6 +425,9 @@ export function CreateOrderWizard({
     }
   };
 
+  // Status "Pago" exige forma de pagamento — bloqueia "Salvar e Concluir".
+  const pagamentoInvalido = watch('status_pagamento') === 'Pago' && !watch('pagamento');
+
   // Componente do step atual
   const CurrentStepComponent = STEPS[activeStep].component;
 
@@ -362,7 +441,12 @@ export function CreateOrderWizard({
         component="form" 
         onSubmit={handleSubmit(onFormSubmit as any)} // eslint-disable-line @typescript-eslint/no-explicit-any
         onKeyDown={handleFormKeyDown}
-        sx={{ maxWidth: 960, mx: 'auto' }}
+        sx={{
+          maxWidth: 960,
+          mx: 'auto',
+          // Evita zoom automático no iOS: inputs com pelo menos 16px no mobile.
+          '& .MuiInputBase-input': { fontSize: { xs: 16, md: 'inherit' } },
+        }}
       >
         {/* Stepper - Desktop */}
         {!isMobile && (
@@ -371,7 +455,7 @@ export function CreateOrderWizard({
               <Step
                 key={step.label}
                 completed={index < activeStep}
-                sx={{ cursor: 'pointer' }}
+                sx={{ cursor: index <= activeStep ? 'pointer' : 'default' }}
                 onClick={() => handleStepClick(index)}
               >
                 <StepLabel error={stepErrors[index]}>
@@ -443,11 +527,13 @@ export function CreateOrderWizard({
                 </Button>
                 <Tooltip
                   title={
-                    isSubmitting 
-                      ? 'Salvando pedido...' 
-                      : !isReadyToSubmit 
-                        ? 'Navegue até o último passo para salvar' 
-                        : 'Clique para salvar o pedido'
+                    isSubmitting
+                      ? 'Salvando pedido...'
+                      : pagamentoInvalido
+                        ? 'Defina a forma de pagamento para concluir'
+                        : !isReadyToSubmit
+                          ? 'Navegue até o último passo para salvar'
+                          : 'Clique para salvar o pedido'
                   }
                   arrow
                 >
@@ -456,7 +542,7 @@ export function CreateOrderWizard({
                       type="submit"
                       variant="contained"
                       color="primary"
-                      disabled={isSubmitting || !isReadyToSubmit}
+                      disabled={isSubmitting || !isReadyToSubmit || pagamentoInvalido}
                       onClick={() => console.log('Botão Salvar clicado! isReadyToSubmit:', isReadyToSubmit)}
                       startIcon={
                         isSubmitting ? (
@@ -492,51 +578,49 @@ export function CreateOrderWizard({
             position="static"
             activeStep={activeStep}
             sx={{
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 5,
               bgcolor: 'background.paper',
               borderRadius: 1,
-              boxShadow: 1,
+              boxShadow: 3,
+              py: 1,
+              '& .MuiMobileStepper-dots': { flex: 0 },
             }}
             nextButton={
               activeStep === STEPS.length - 1 ? (
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="outlined"
-                    onClick={handleSaveDraft}
-                    disabled={isSubmitting}
-                  >
-                    Rascunho
-                  </Button>
-                  <Tooltip
-                    title={
-                      isSubmitting 
-                        ? 'Salvando...' 
-                        : !isReadyToSubmit 
-                          ? 'Navegue até o último passo' 
+                <Tooltip
+                  title={
+                    isSubmitting
+                      ? 'Salvando...'
+                      : pagamentoInvalido
+                        ? 'Defina a forma de pagamento'
+                        : !isReadyToSubmit
+                          ? 'Navegue até o último passo'
                           : 'Salvar pedido'
-                    }
-                    arrow
-                  >
-                    <span>
-                      <Button
-                        type="submit"
-                        size="small"
-                        disabled={isSubmitting || !isReadyToSubmit}
-                        onClick={() => console.log('Botão Concluir clicado! isReadyToSubmit:', isReadyToSubmit)}
-                        startIcon={
-                          isSubmitting ? (
-                            <CircularProgress size={16} color="inherit" />
-                          ) : null
-                        }
-                      >
-                        {isSubmitting ? '...' : 'Concluir'}
-                      </Button>
-                    </span>
-                  </Tooltip>
-                </Box>
+                  }
+                  arrow
+                >
+                  <span>
+                    <Button
+                      type="submit"
+                      size="small"
+                      variant="contained"
+                      sx={{ flex: 1 }}
+                      disabled={isSubmitting || !isReadyToSubmit || pagamentoInvalido}
+                      onClick={() => console.log('Botão Concluir clicado! isReadyToSubmit:', isReadyToSubmit)}
+                      startIcon={
+                        isSubmitting ? (
+                          <CircularProgress size={16} color="inherit" />
+                        ) : null
+                      }
+                    >
+                      {isSubmitting ? '...' : 'Concluir'}
+                    </Button>
+                  </span>
+                </Tooltip>
               ) : (
-                <Button type="button" size="small" onClick={handleNext}>
+                <Button type="button" size="small" variant="contained" sx={{ flex: 1 }} onClick={handleNext}>
                   Próximo
                   <KeyboardArrowRight />
                 </Button>

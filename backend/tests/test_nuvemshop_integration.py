@@ -10,9 +10,12 @@ Inclui testes para:
 - Extração de frete
 - Proteção de overrides manuais
 """
+
 import hashlib
 import hmac
 from datetime import date
+
+import pytest
 
 from app.integrations.nuvemshop.mapper import map_nuvemshop_order_to_pedido_data
 from app.integrations.nuvemshop.service import NuvemshopOrderImporter
@@ -26,6 +29,14 @@ from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
 from app.models.user import CommissionConfig, User
 from app.services.auth_service import generate_token, hash_password
+
+
+@pytest.fixture(autouse=True)
+def _no_nuvemshop_sleep(monkeypatch):
+    """O retry da cartinha dorme 5s entre tentativas (3x). Em teste o mock é fixo,
+    não há propagação a esperar — neutraliza o sleep p/ não desperdiçar ~10-20s por teste.
+    Produção segue inalterada (gap_seconds=5 continua valendo no runtime real)."""
+    monkeypatch.setattr("app.integrations.nuvemshop.service.time.sleep", lambda *a, **k: None)
 
 
 def _make_user(session, email: str, role: str = "vendedor", name: str = "Teste") -> User:
@@ -362,6 +373,100 @@ def test_map_order_shipping_option_expressa_um_hora():
 
     pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
     assert pedido_data["horario"] == "10:15 - 11:15"
+    assert pedido_data["is_expressa"] is True
+
+
+def test_detect_express_em_shipping_lines():
+    """Expressa identificada via shipping_lines mesmo sem aparecer no shipping_option."""
+    order = {
+        "id": 99,
+        "number": 99,
+        "token": "x",
+        "contact_name": "C",
+        "contact_phone": "+55 (62) 99999-9999",
+        "created_at": "2026-05-29T11:46:00-0300",
+        "currency": "BRL",
+        "total": "100.00",
+        "shipping_option": "Entrega Agendada (Huapps)",  # sem "Expressa"
+        "shipping_lines": [{"name": "Expressa"}],
+        "shipping_address": {
+            "name": "Dest",
+            "address": "Rua A",
+            "number": "1",
+            "locality": "Bairro",
+            "city": "Goiânia",
+            "zipcode": "74000000",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["is_expressa"] is True
+
+
+def test_detect_express_em_custom_field_value():
+    """Expressa identificada via custom_fields[*].value."""
+    order = {
+        "id": 100,
+        "number": 100,
+        "token": "x",
+        "contact_name": "C",
+        "contact_phone": "+55 (62) 99999-9999",
+        "created_at": "2026-05-29T11:46:00-0300",
+        "currency": "BRL",
+        "total": "100.00",
+        "shipping_option": "Entrega Agendada (Huapps)",
+        "custom_fields": [{"name": "Modalidade", "value": "Expressa"}],
+        "shipping_address": {
+            "name": "Dest",
+            "address": "Rua A",
+            "number": "1",
+            "locality": "Bairro",
+            "city": "Goiânia",
+            "zipcode": "74000000",
+        },
+        "products": [{"name": "Buquê", "quantity": 1}],
+    }
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["is_expressa"] is True
+
+
+def test_map_order_expressa_cenario_263():
+    """
+    Replica o pedido #263: Expressa no shipping_option + custom_field "Período" =
+    "Dia inteiro" (que normalmente sobrescreveria pra "08:00 - 18:00").
+
+    Regra: horario VEM do site (não sobreposto), mas is_expressa=True permite
+    que o alocador de slot calcule a janela correta na camada de service.
+    """
+    order = {
+        "id": 1891180263,
+        "number": 263,
+        "token": "abc",
+        "contact_name": "Will Alexandre Bispo",
+        "contact_phone": "+55 (62) 98129-8519",
+        "created_at": "2026-05-29T11:44:00-0300",
+        "currency": "BRL",
+        "total": "175.16",
+        "payment_status": "paid",
+        "shipping_option": "Entrega Agendada (Huapps) - Expressa",
+        "custom_fields": [
+            {"name": "Data da Entrega", "value": "29/05/2026"},
+            {"name": "Período da Entrega", "value": "Dia inteiro (08:00 - 18:00)"},
+        ],
+        "shipping_address": {
+            "name": "Laura, Will e Ágata",
+            "address": "Rua C55",
+            "number": "590",
+            "locality": "Setor Sudoeste",
+            "city": "Goiânia",
+            "zipcode": "74305440",
+        },
+        "products": [{"name": "Arranjo de Mão Lírios", "quantity": 1}],
+    }
+    pedido_data, _, _, _ = map_nuvemshop_order_to_pedido_data(order)
+    assert pedido_data["is_expressa"] is True
+    # horario continua vindo do Huapps (não sobreposto), conforme decisão do usuário
+    assert pedido_data["horario"] == "08:00 - 18:00"
 
 
 def test_map_order_storefront_to_canal():

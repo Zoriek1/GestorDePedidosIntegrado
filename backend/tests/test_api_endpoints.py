@@ -2,9 +2,13 @@
 """
 Testes de API - Endpoints HTTP
 """
+import base64
 from datetime import date
 
 from app.models import Pedido
+
+# GETs de pedidos passaram a exigir auth (não vazam PII publicamente).
+_ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').decode()}"}
 
 
 class TestPedidosAPI:
@@ -12,7 +16,7 @@ class TestPedidosAPI:
 
     def test_listar_pedidos(self, client):
         """Testa GET /api/pedidos"""
-        response = client.get("/api/pedidos")
+        response = client.get("/api/pedidos", headers=_ADMIN_AUTH)
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
@@ -36,7 +40,7 @@ class TestPedidosAPI:
         session.add(pedido)
         session.commit()
 
-        response = client.get("/api/pedidos?status=agendado")
+        response = client.get("/api/pedidos?status=agendado", headers=_ADMIN_AUTH)
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
@@ -59,7 +63,7 @@ class TestPedidosAPI:
         session.add(pedido)
         session.commit()
 
-        response = client.get(f"/api/pedidos/{pedido.id}")
+        response = client.get(f"/api/pedidos/{pedido.id}", headers=_ADMIN_AUTH)
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
@@ -69,7 +73,7 @@ class TestPedidosAPI:
 
     def test_obter_pedido_nao_encontrado(self, client):
         """Testa GET /api/pedidos/<id> com ID inexistente"""
-        response = client.get("/api/pedidos/99999")
+        response = client.get("/api/pedidos/99999", headers=_ADMIN_AUTH)
         assert response.status_code == 404
         data = response.get_json()
         # Pode retornar 'success': False ou apenas 'error'
@@ -91,7 +95,7 @@ class TestPedidosAPI:
         session.add(pedido)
         session.commit()
 
-        response = client.get("/api/pedidos/por-data?data=2024-12-31")
+        response = client.get("/api/pedidos/por-data?data=2024-12-31", headers=_ADMIN_AUTH)
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True

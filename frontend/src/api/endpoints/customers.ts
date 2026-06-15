@@ -155,6 +155,49 @@ export interface CustomerOrdersResponse {
   }>;
 }
 
+export interface ClienteEndereco {
+  id: number;
+  cliente_id: number;
+  apelido: string;
+  principal: boolean;
+  cep: string;
+  rua: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  endereco_completo: string;
+}
+
+export interface ClienteEnderecosResponse {
+  success: boolean;
+  total: number;
+  enderecos: ClienteEndereco[];
+}
+
+/**
+ * Endereços salvos de um cliente.
+ * GET /api/clientes/:id/enderecos — usado no wizard para reusar endereços (#17).
+ */
+export function useClienteEnderecos(id?: number | null) {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useQuery<ClienteEnderecosResponse>({
+    queryKey: ['cliente.enderecos', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const response = await apiRequest<ClienteEnderecosResponse>(`/clientes/${id}/enderecos`);
+      if (!response.ok) {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    staleTime: 30000,
+  });
+}
+
 export function useCustomerOrders(id?: number, limit = 50) {
   const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);

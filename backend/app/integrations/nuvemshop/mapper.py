@@ -506,6 +506,57 @@ def _is_express_shipping(text: str) -> bool:
     return any(kw in lowered for kw in _EXPRESS_KEYWORDS)
 
 
+def _detect_express_from_order(order: Dict[str, Any], shipping_option_text: str) -> bool:
+    """
+    Detecta Expressa em múltiplas fontes do payload Nuvemshop:
+      - shipping_option_text (já calculado pelo caller)
+      - shipping_lines[].name / .title / .method / etc.
+      - custom_fields[].name e .value (Huapps)
+      - order_custom_fields idem
+    """
+    if shipping_option_text and _is_express_shipping(shipping_option_text):
+        return True
+
+    shipping_lines = order.get("shipping_lines")
+    if isinstance(shipping_lines, list):
+        for line in shipping_lines:
+            if not isinstance(line, dict):
+                continue
+            for key in (
+                "name",
+                "title",
+                "method",
+                "shipping_method",
+                "delivery_type",
+                "type",
+                "service_name",
+                "code",
+            ):
+                value = line.get(key)
+                if isinstance(value, str) and _is_express_shipping(value):
+                    return True
+
+    for key in ("custom_fields", "order_custom_fields"):
+        entries = order.get(key)
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            name = _safe_str(
+                entry.get("name") or entry.get("key") or entry.get("label") or entry.get("title")
+            )
+            value = _safe_str(
+                entry.get("value") or entry.get("text") or entry.get("data") or entry.get("string")
+            )
+            if name and _is_express_shipping(name):
+                return True
+            if value and _is_express_shipping(value):
+                return True
+
+    return False
+
+
 def _compute_express_time_window(created_at: Optional[datetime]) -> str:
     """
     Calcula janela de 1h para frete expresso a partir do horário de criação do pedido.
@@ -528,12 +579,24 @@ def _is_pickup_shipping_text(text: str) -> bool:
 
 
 _STREET_PREFIXES = (
-    "rua ", "r. ", "r ",
-    "avenida ", "av. ", "av ",
-    "alameda ", "al. ", "al ",
-    "travessa ", "tv. ", "tv ",
-    "praca ", "pca. ", "pca ",
-    "rodovia ", "rod. ", "rod ",
+    "rua ",
+    "r. ",
+    "r ",
+    "avenida ",
+    "av. ",
+    "av ",
+    "alameda ",
+    "al. ",
+    "al ",
+    "travessa ",
+    "tv. ",
+    "tv ",
+    "praca ",
+    "pca. ",
+    "pca ",
+    "rodovia ",
+    "rod. ",
+    "rod ",
 )
 
 
@@ -546,7 +609,7 @@ def _normalize_street(value: str) -> str:
     lowered = ascii_val.lower().strip()
     for prefix in _STREET_PREFIXES:
         if lowered.startswith(prefix):
-            lowered = lowered[len(prefix):]
+            lowered = lowered[len(prefix) :]
             break
     lowered = re.sub(r"[^\w\s]", " ", lowered)
     return re.sub(r"\s+", " ", lowered).strip()
@@ -648,8 +711,7 @@ def _is_pickup_order(order: Dict[str, Any], shipping_option_text: str) -> bool:
     # billing_address por estar cadastrado, mas o pedido em si não envia
     # nada.
     has_real_shipping_address = bool(
-        _safe_str(shipping_address.get("zipcode"))
-        or _safe_str(shipping_address.get("address"))
+        _safe_str(shipping_address.get("zipcode")) or _safe_str(shipping_address.get("address"))
     )
     shipping_lines = order.get("shipping_lines")
     has_shipping_lines = bool(shipping_lines) if isinstance(shipping_lines, list) else False
@@ -914,9 +976,10 @@ def map_nuvemshop_order_to_pedido_data(
     shipping_option_text = _get_shipping_option_text(order)
     tipo_pedido = "Retirada" if _is_pickup_order(order, shipping_option_text) else "Entrega"
     horario_from_shipping = _extract_time_interval(shipping_option_text)
+    is_expressa = _detect_express_from_order(order, shipping_option_text)
 
     # Frete expresso: calcular janela dinâmica de 1h a partir do horário do pedido
-    if not horario_from_shipping and _is_express_shipping(shipping_option_text):
+    if not horario_from_shipping and is_expressa:
         created_at_express = _parse_datetime(order.get("created_at"))
         horario_from_shipping = _compute_express_time_window(created_at_express)
 
@@ -1009,6 +1072,8 @@ def map_nuvemshop_order_to_pedido_data(
         "frete_cobrado_cliente": frete_cobrado if frete_cobrado > 0 else None,
         "desconto_frete": desconto_frete if desconto_frete > 0 else None,
         "frete_liquido_cliente": frete_liquido if frete_liquido > 0 else None,
+        # Frete expresso
+        "is_expressa": is_expressa,
     }
 
     return pedido_data, schedule_pending, shipping_option_text, agendamento_source

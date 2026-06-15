@@ -38,10 +38,12 @@ import LanguageIcon from '@mui/icons-material/Language';
 import { useFontesPedido } from '../../../api/endpoints/fontes';
 import { parseQuickEntry, QUICK_ENTRY_TEMPLATE } from '../utils/quickEntryParser';
 import { useToast } from '../../../components/system/useToast';
+import type { Lead } from '../../../api/endpoints/leads';
 
 interface QuickEntryModalProps {
   open: boolean;
   onClose: () => void;
+  lead?: Lead | null;
 }
 
 // Mapeamento de fontes para ícones
@@ -54,7 +56,7 @@ const matchFonte = (fontes: Array<{ id: number; nome: string }>, ...keywords: st
   return found?.id;
 };
 
-export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
+export function QuickEntryModal({ open, onClose, lead }: QuickEntryModalProps) {
   const navigate = useNavigate();
   const { success, warning } = useToast();
   const { data, isLoading } = useFontesPedido(true);
@@ -113,11 +115,25 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
     // Processar texto
     const result = parseQuickEntry(text, fonteSelecionada);
     // resultado utilizado para UI / logs futuros
-    
+
+    // Mescla dados do Lead (fbp/fbclid/token/phone vêm do banco via /api/leads, não do texto)
+    const prefillData = {
+      ...result.formData,
+      ...(lead
+        ? {
+            telefone_cliente: lead.phone || result.formData.telefone_cliente || undefined,
+            codigo_whatsapp: lead.token_rastreio || undefined,
+            origem_anuncio: !!lead.fbclid,
+            fbclid: lead.fbclid || undefined,
+            fbp: lead.fbp || undefined,
+          }
+        : {}),
+    };
+
     // Navegar para página de criação com dados pré-preenchidos
     navigate('/pedidos/novo', {
       state: {
-        prefillData: result.formData,
+        prefillData,
         quickEntryWarnings: result.warnings,
         orderReset: Date.now(),
       },
@@ -134,7 +150,7 @@ export function QuickEntryModal({ open, onClose }: QuickEntryModalProps) {
     } else {
       success(`${result.extractedFields.length} campos extraídos com sucesso!`);
     }
-  }, [text, fonteSelecionada, navigate, onClose, success, warning]);
+  }, [text, fonteSelecionada, lead, navigate, onClose, success, warning]);
   
   // Handler para fechar
   const handleClose = useCallback(() => {

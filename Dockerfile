@@ -1,7 +1,7 @@
 # Plante Uma Flor - Deploy VPS
 # Targets:
 #   backend     — API + SPA (Vite no build ou dist pré-compilado em docker/prebuilt-dist/)
-#   scheduler   — meta-scheduler apenas Python (sem Node)
+#   capi-worker — worker Meta CAPI (polling do outbox) apenas Python (sem Node)
 
 # ---------------------------------------------------------------------------
 # Estágio: assets do frontend (Vite na VPS OU cópia de docker/prebuilt-dist/)
@@ -30,9 +30,9 @@ RUN if [ "$USE_PREBUILT_DIST" = "1" ] && [ -f /prebuilt/index.html ]; then \
     fi
 
 # ---------------------------------------------------------------------------
-# Target: meta-scheduler (sem frontend / sem Node)
+# Target: capi-worker (sem frontend / sem Node)
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim AS scheduler
+FROM python:3.11-slim AS capi-worker
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -112,6 +112,12 @@ export default function EditOrderPage() {
   const { data, isLoading, error, refetch } = usePedido(pedidoId);
   const updatePedido = useUpdatePedido();
 
+  // Dados do servidor hidratam o wizard (memoizado para reset estável em edição).
+  const initialData = useMemo(
+    () => (data?.pedido ? orderToForm(data.pedido) : undefined),
+    [data]
+  );
+
   const handleSubmit = useCallback(async (payload: Record<string, unknown>) => {
     try {
       await updatePedido.mutateAsync({ id: pedidoId, ...(payload as Partial<CreatePedidoPayload>) });
@@ -132,8 +138,6 @@ export default function EditOrderPage() {
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message={error.message || 'Erro ao carregar pedido'} onRetry={() => refetch()} />;
   if (!data?.pedido) return <ErrorState message="Pedido não encontrado" onRetry={() => refetch()} />;
-
-  const initialData = orderToForm(data.pedido);
 
   return (
     <OrderFormProvider>
@@ -180,6 +184,7 @@ export default function EditOrderPage() {
             submitError={null}
             onClearError={handleClearError}
             initialData={initialData}
+            enableDraft={false}
           />
         </Paper>
       </Container>

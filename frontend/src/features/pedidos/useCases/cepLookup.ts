@@ -148,6 +148,42 @@ export class ViaCepLookupService implements ICepLookupService {
 }
 
 // ============================================================================
+// Busca reversa de CEP (por endereço) — proxy same-origin /api/cep/busca
+// ============================================================================
+
+export interface AddressSearchItem {
+  cep: string;
+  rua: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+}
+
+/**
+ * Busca CEPs a partir de UF + cidade + parte da rua (quando o cliente não sabe o CEP).
+ * Usa o proxy backend para manter a CSP restrita (mesmo padrão do lookup direto).
+ */
+export async function searchCepByAddress(
+  uf: string,
+  cidade: string,
+  rua: string,
+): Promise<AddressSearchItem[]> {
+  const params = new URLSearchParams({
+    uf: uf.trim().toUpperCase(),
+    cidade: cidade.trim(),
+    rua: rua.trim(),
+  });
+  const res = await fetch(`/api/cep/busca?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    throw new Error('Falha na busca de endereço');
+  }
+  const data = await res.json();
+  return Array.isArray(data?.resultados) ? (data.resultados as AddressSearchItem[]) : [];
+}
+
+// ============================================================================
 // Singleton Instance (para uso direto sem DI container)
 // ============================================================================
 

@@ -2,10 +2,24 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import { execSync } from 'node:child_process'
+
+const gitSha = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'dev';
+  }
+})();
+const buildDate = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+const buildVersion = `v${buildDate}-${gitSha}`;
+
+// .env central na raiz do repositório (um arquivo só para backend + frontend).
+const ENV_DIR = path.resolve(__dirname, '..');
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  const env = loadEnv(mode, ENV_DIR, '');
   const apiTarget = env.VITE_API_TARGET || 'http://localhost:5000';
 
   const apiProxy = {
@@ -50,8 +64,8 @@ export default defineConfig(({ mode }) => {
           name: 'Plante Uma Flor - Gestão de Pedidos',
           short_name: 'Plante Uma Flor',
           description: 'Sistema de gestão de pedidos',
-          theme_color: '#047857',
-          background_color: '#ffffff',
+          theme_color: '#143d28',
+          background_color: '#143d28',
           display: 'standalone',
           start_url: '/',
           icons: [
@@ -168,6 +182,10 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
+    envDir: ENV_DIR,
+    define: {
+      __BUILD_VERSION__: JSON.stringify(buildVersion),
+    },
     server: {
       port: 5173,
       host: true,

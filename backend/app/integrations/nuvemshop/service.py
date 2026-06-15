@@ -163,6 +163,8 @@ class NuvemshopOrderImporter:
                 agendamento_source,
             ) = map_nuvemshop_order_to_pedido_data(order)
 
+            self._apply_delivery_slot(pedido_data, order)
+
             pedido_data["endereco"] = self._compose_endereco(pedido_data)
 
             # 'complemento' foi usado para compor 'endereco' e 'obs_entrega',
@@ -225,6 +227,41 @@ class NuvemshopOrderImporter:
         ]
         clean = [p for p in parts if p]
         return " - ".join(clean) if clean else None
+
+    def _apply_delivery_slot(self, pedido_data: Dict[str, Any], order: Dict[str, Any]) -> None:
+        """
+        Calcula slot_inicio e slot_deadline para pedidos importados do site.
+        Idempotente: ignora silenciosamente se faltar dia_entrega.
+        """
+        from app.integrations.nuvemshop.mapper import _parse_datetime
+        from app.services.delivery_slot_allocator import (
+            allocate_slot,
+            parse_customer_window,
+        )
+
+        dia_entrega = pedido_data.get("dia_entrega")
+        if not dia_entrega:
+            return
+
+        paid_at = _parse_datetime(order.get("created_at")) or datetime_now_brazil()
+        customer_window = parse_customer_window(pedido_data.get("horario"))
+
+        try:
+            slot_inicio, slot_deadline = allocate_slot(
+                dia_entrega=dia_entrega,
+                paid_at_local=paid_at,
+                is_expressa=bool(pedido_data.get("is_expressa")),
+                customer_window=customer_window,
+            )
+        except Exception:
+            logger.warning(
+                "[NUVEMSHOP] Falha ao alocar slot — pedido segue sem slot.",
+                exc_info=True,
+            )
+            return
+
+        pedido_data["slot_inicio"] = slot_inicio
+        pedido_data["slot_deadline"] = slot_deadline
 
     def _get_or_create_cliente(self, pedido_data: Dict[str, Any]) -> Optional[int]:
         """
@@ -505,6 +542,17 @@ class NuvemshopOrderImporter:
                 updates["dia_entrega"] = pedido_data.get("dia_entrega")
             if pedido_data.get("horario"):
                 updates["horario"] = pedido_data.get("horario")
+            # Quando a info do agendamento chega depois, o slot original foi
+            # alocado com base em dados parciais — realocar agora que temos a info real.
+            if pedido_data.get("slot_inicio") is not None:
+                updates["slot_inicio"] = pedido_data.get("slot_inicio")
+            if pedido_data.get("slot_deadline") is not None:
+                updates["slot_deadline"] = pedido_data.get("slot_deadline")
+
+        # is_expressa é determinístico pelos campos do pedido — atualiza sempre
+        # (idempotente; o mesmo webhook sempre produz o mesmo valor).
+        if "is_expressa" in pedido_data:
+            updates["is_expressa"] = bool(pedido_data.get("is_expressa"))
 
         if pedido_data.get("endereco") and not pedido.endereco:
             updates["endereco"] = pedido_data.get("endereco")

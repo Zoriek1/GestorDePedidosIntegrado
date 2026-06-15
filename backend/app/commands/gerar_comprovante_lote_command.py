@@ -441,7 +441,7 @@ class GerarComprovanteLoteCommand:
         pages = "".join(
             f'<div class="page-1up">{render_comprovante_body(c)}</div>' for c in contexts
         )
-        ids_str = ", ".join(f"#{c['id']}" for c in contexts)
+        
         return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>

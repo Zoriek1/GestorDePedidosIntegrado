@@ -7,7 +7,21 @@
       "Bash(python -m pytest tests/test_google_credentials_setup.py -v)",
       "Bash(npm run test -- src/features/pedidos/__tests__/schemas.test.ts)",
       "Bash(python -m pytest tests/test_export_sheets.py -v)",
-      "Bash(xargs grep -l \"goomer\\\\|Goomer\")"
+      "Bash(xargs grep -l \"goomer\\\\|Goomer\")",
+      "Bash(./venv/Scripts/pytest.exe tests/test_tracking.py -q)",
+      "Bash(./venv/Scripts/pytest.exe -q)",
+      "Bash(./venv/Scripts/pytest.exe tests/test_api_endpoints.py tests/test_tracking.py -q)",
+      "Bash(./venv/Scripts/ruff.exe check *)",
+      "Bash(./venv/Scripts/black.exe app/routes/pedidos.py app/routes/clientes.py app/routes/fontes.py app/middleware.py app/models/pedido.py app/services/track_token.py tests/test_tracking.py tests/test_api_endpoints.py)",
+      "Bash(./venv/Scripts/python.exe -m black app/routes/pedidos.py app/routes/clientes.py app/routes/fontes.py app/middleware.py app/models/pedido.py app/services/track_token.py tests/test_tracking.py tests/test_api_endpoints.py)",
+      "Bash(./venv/Scripts/pytest.exe tests/test_tracking.py tests/test_api_endpoints.py -q)",
+      "Bash(git fetch *)",
+      "Bash(git commit -m 'feat\\(pedidos\\): acompanhamento público do pedido + gating de GETs com PII' -m 'Parte 1 — fecha vazamento: aplica auth nos GETs internos que devolviam PII *)",
+      "Bash(./venv/Scripts/pytest.exe -p no:warnings -q --durations=15 tests/test_nuvemshop_integration.py tests/test_recebiveis.py)",
+      "Bash(./venv/Scripts/pytest.exe -p no:warnings -q --durations=8 tests/test_tracking.py tests/test_nuvemshop_integration.py)",
+      "Bash(./venv/Scripts/python.exe -m black app/routes/pedidos.py app/services/track_token.py tests/test_tracking.py tests/test_nuvemshop_integration.py)",
+      "Bash(git commit -m 'feat\\(tracking\\): enviar link de acompanhamento de pedidos já criados + acelera testes nuvemshop' -m '- Endpoint autenticado GET /api/pedidos/<id>/track-link \\(token gerado server-side\\); *)",
+      "PowerShell(Write-Output \"=== docker ===\"; \\(Get-Command docker -ErrorAction SilentlyContinue\\)?.Source; Write-Output \"=== docker compose ps ===\"; try { docker compose ps 2>&1 | Select-Object -First 10 } catch { \"no docker compose\" }; Write-Output \"=== venv ===\"; Test-Path \"backend/venv/Scripts/pytest.exe\"; Write-Output \"=== node ===\"; \\(Get-Command node -ErrorAction SilentlyContinue\\)?.Source; node -v)"
     ]
   }
 }

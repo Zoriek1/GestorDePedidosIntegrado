@@ -132,9 +132,16 @@ class GerarComprovanteCommand:
         Gera HTML otimizado para impressão térmica/A4
         """
 
-        status_pagto_class = (
-            "badge-black" if str(ctx.get("status_pagto")).lower() == "pendente" else "badge"
-        )
+        # VIS-05: selo de pagamento visível (PAGO sólido / PENDENTE contornado).
+        status_raw = str(ctx.get("status_pagto") or "").strip().lower()
+        if status_raw == "pendente":
+            seal_class, seal_text = "seal-pending", "PENDENTE"
+        elif status_raw == "parcial":
+            seal_class, seal_text = "seal-pending", "PARCIAL"
+        elif status_raw:
+            seal_class, seal_text = "seal-paid", "PAGO"
+        else:
+            seal_class, seal_text = "seal-pending", "—"
 
         html_destinatario = ""
         if ctx["show_destinatario"]:
@@ -177,20 +184,20 @@ class GerarComprovanteCommand:
     :root {{ --text: #000; --bg: #fff; --border: #ccc; }}
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     @page {{ size: A4; margin: 10mm; }}
-    body {{ font-family: 'Helvetica', 'Arial', sans-serif; color: var(--text); background: var(--bg); padding: 10mm; font-size: 14px; }}
+    body {{ font-family: 'Helvetica', 'Arial', sans-serif; color: var(--text); background: var(--bg); padding: 0; font-size: 14px; }}
 
-    .header {{ border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }}
+    .header {{ border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }}
     .title {{ font-size: 32px; font-weight: 900; line-height: 1; }}
     .subtitle {{ font-size: 18px; font-weight: 700; margin-top: 5px; }}
     .meta {{ text-align: right; font-size: 12px; }}
 
-    .key-info {{ display: flex; gap: 15px; margin-bottom: 20px; background: #f0f0f0; padding: 15px; border-radius: 8px; border: 1px solid #999; }}
+    .key-info {{ display: flex; gap: 12px; margin-bottom: 12px; background: #f0f0f0; padding: 12px; border-radius: 8px; border: 1px solid #999; align-items: center; }}
     .k-item {{ flex: 1; }}
     .k-label {{ font-size: 10px; text-transform: uppercase; font-weight: 700; color: #555; }}
     .k-val {{ font-size: 16px; font-weight: 900; }}
 
-    .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }}
-    .card {{ border: 1px solid #999; border-radius: 8px; padding: 12px; page-break-inside: avoid; }}
+    .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
+    .card {{ border: 1px solid #999; border-radius: 8px; padding: 10px; page-break-inside: avoid; }}
     .card.full {{ grid-column: 1 / -1; }}
 
     .h {{ display: flex; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
@@ -205,6 +212,12 @@ class GerarComprovanteCommand:
     .box {{ border: 2px dashed #999; padding: 10px; background: #fafafa; font-weight: 700; white-space: pre-wrap; }}
 
     .badge-black {{ background: #000; color: #fff; padding: 2px 6px; border-radius: 4px; display: inline-block; }}
+
+    /* VIS-05: produto em destaque (montagem) + selo de pagamento visível */
+    .produto-xl {{ font-size: 22px; font-weight: 800; line-height: 1.2; }}
+    .slip-seal {{ display: inline-block; padding: 3px 10px; border-radius: 4px; font-weight: 800; font-size: 14px; letter-spacing: 0.5px; }}
+    .seal-paid {{ background: #000; color: #fff; }}
+    .seal-pending {{ background: #fff; color: #000; border: 2px solid #000; }}
 
     @media print {{
         .no-print {{ display: none; }}
@@ -237,33 +250,18 @@ class GerarComprovanteCommand:
         <div class="k-label">Valor Total</div>
         <div class="k-val">{fmt_brl(ctx['valor'])}</div>
     </div>
+    <div class="k-item">
+        <div class="k-label">Pagamento</div>
+        <div class="k-val"><span class="slip-seal {seal_class}">{seal_text}</span></div>
+    </div>
   </div>
 
   <div class="grid">
-    <!-- Cliente -->
-    <div class="card">
-        <div class="h"><span class="dot"></span><span class="h-title">Dados do Cliente</span></div>
-        <div class="rows">
-            <div class="row">
-                <div class="label">Nome</div>
-                <div class="value">{fmt(ctx['cliente_nome'])}</div>
-            </div>
-            <div class="row">
-                <div class="label">Telefone</div>
-                <div class="value">{fmt(ctx['cliente_tel'])}</div>
-            </div>
-            {html_destinatario}
-        </div>
-    </div>
-
-    <!-- Produto -->
-    <div class="card">
+    <!-- Produto (destaque para a montagem) -->
+    <div class="card full">
         <div class="h"><span class="dot"></span><span class="h-title">Produto</span></div>
-        <div class="row" style="margin-bottom:8px">
-            <div class="label">Descrição</div>
-            <div class="value">{fmt(ctx['produto'])}</div>
-        </div>
-        <div class="rows">
+        <div class="produto-xl">{fmt(ctx['produto'])}</div>
+        <div class="rows" style="margin-top:8px">
             <div class="row">
                 <div class="label">Flores/Cor</div>
                 <div class="value">{fmt(ctx['flores_cor'])}</div>
@@ -284,8 +282,24 @@ class GerarComprovanteCommand:
     <!-- Logística (Endereço ou Retirada) -->
     {html_endereco}
 
+    <!-- Cliente -->
+    <div class="card">
+        <div class="h"><span class="dot"></span><span class="h-title">Dados do Cliente</span></div>
+        <div class="rows">
+            <div class="row">
+                <div class="label">Nome</div>
+                <div class="value">{fmt(ctx['cliente_nome'])}</div>
+            </div>
+            <div class="row">
+                <div class="label">Telefone</div>
+                <div class="value">{fmt(ctx['cliente_tel'])}</div>
+            </div>
+            {html_destinatario}
+        </div>
+    </div>
+
     <!-- Pagamento -->
-    <div class="card full">
+    <div class="card">
         <div class="h"><span class="dot"></span><span class="h-title">Pagamento</span></div>
         <div class="rows">
             <div class="row">
@@ -294,7 +308,7 @@ class GerarComprovanteCommand:
             </div>
             <div class="row">
                 <div class="label">Status</div>
-                <div class="value"><span class="{status_pagto_class}">{fmt(ctx['status_pagto'])}</span></div>
+                <div class="value"><span class="slip-seal {seal_class}">{seal_text}</span></div>
             </div>
             <div class="row">
                 <div class="label">Observações</div>

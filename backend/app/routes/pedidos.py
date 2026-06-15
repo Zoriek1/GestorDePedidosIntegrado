@@ -495,6 +495,11 @@ def listar_minhas_entregas():
         return error_response(f"Erro ao listar minhas entregas: {str(e)}", 500)
 
 
+# EST-02: status a partir dos quais "pegar o pedido" promove para em_rota.
+# em_rota não entra (já está em rota) e concluido nunca é rebaixado.
+_PROMOVIVEIS_PARA_EM_ROTA = ("agendado", "em_producao", "pronto_entrega")
+
+
 def _atribuir_um(pedido, target_entregador_id: int, override: bool) -> tuple[bool, str]:
     if pedido.deleted_at is not None:
         return False, "pedido deletado"
@@ -504,6 +509,9 @@ def _atribuir_um(pedido, target_entregador_id: int, override: bool) -> tuple[boo
         return False, "já atribuído a outro entregador"
     pedido.entregador_id = target_entregador_id
     pedido.delivery_assigned_at = datetime_now_brazil()
+    # EST-02: pegar o pedido coloca em rota (sem rebaixar concluido).
+    if (pedido.status or "").lower() in _PROMOVIVEIS_PARA_EM_ROTA:
+        pedido.status = "em_rota"
     pedido.updated_at = datetime_now_brazil()
     return True, "ok"
 
@@ -531,17 +539,20 @@ def atribuir_entregador(pedido_id):
         # Entregador NÃO pode "roubar" pedido alheio: override fica False.
         override = role in ("admin", "vendedor")
 
-        # Desatribuir: admin ou vendedor podem passar entregador_id=null
-        if (
-            role in ("admin", "vendedor")
-            and "entregador_id" in body
-            and body["entregador_id"] in (None, "")
-        ):
+        # Desatribuir / retirar da rota (entregador_id=null):
+        # - admin/vendedor desatribuem qualquer pedido;
+        # - entregador pode retirar da rota apenas o próprio (EST-02).
+        if "entregador_id" in body and body["entregador_id"] in (None, ""):
+            if role == "entregador" and pedido.entregador_id != _get_current_user_id():
+                return error_response("Esta entrega não está atribuída a você", 403)
             pedido.entregador_id = None
             pedido.delivery_assigned_at = None
+            # EST-02: retirar da rota volta para pronto_entrega (nunca rebaixa concluido).
+            if (pedido.status or "").lower() == "em_rota":
+                pedido.status = "pronto_entrega"
             pedido.updated_at = datetime_now_brazil()
             db.session.commit()
-            return success_response({"pedido": pedido.to_dict()}, message="Entrega desatribuída")
+            return success_response({"pedido": pedido.to_dict()}, message="Entrega retirada da rota")
 
         if role == "entregador":
             target_id = _get_current_user_id()
@@ -1231,6 +1242,12 @@ def criar_pedido():
             except (ValueError, TypeError):
                 vendedor_id_final = None
 
+        # INT-01: derivar slot_inicio (Time) do horário também no pedido manual, para
+        # ordenação cronológica confiável e para entrar na ocupação do alocador (INT-02).
+        from app.services.delivery_slot_allocator import derive_slot_inicio
+
+        slot_inicio_manual = derive_slot_inicio(horario)
+
         # Criar pedido
         pedido = Pedido(
             cliente=cliente if cliente else None,
@@ -1243,6 +1260,7 @@ def criar_pedido():
             flores_cor=flores_cor if flores_cor else None,
             valor=valor if valor else None,
             horario=horario,
+            slot_inicio=slot_inicio_manual,
             dia_entrega=dia_entrega,
             cep=cep if cep else None,
             rua=rua if rua else None,
@@ -1424,6 +1442,10 @@ def atualizar_pedido(pedido_id):
         if "horario" in data:
             track_change("horario", pedido.horario, data["horario"])
             pedido.horario = data["horario"]
+            # INT-01: manter slot_inicio coerente com o horário editado.
+            from app.services.delivery_slot_allocator import derive_slot_inicio
+
+            pedido.slot_inicio = derive_slot_inicio(data["horario"])
         if "dia_entrega" in data:
             dia_entrega_str = data["dia_entrega"]
             if "/" in dia_entrega_str:

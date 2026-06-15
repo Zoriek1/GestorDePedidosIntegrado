@@ -3,6 +3,7 @@
 Models do sistema
 """
 from app.models.audit_log import AuditLog
+from app.models.catalogo_arranjo import CatalogoArranjo
 from app.models.cliente import Cliente
 from app.models.endereco_cliente import EnderecoCliente
 from app.models.fonte_pedido import FontePedido
@@ -23,6 +24,7 @@ from app.models.user import CommissionConfig, PayrollConfig, User
 __all__ = [
     "Pedido",
     "RotaOtimizada",
+    "CatalogoArranjo",
     "Cliente",
     "EnderecoCliente",
     "FontePedido",

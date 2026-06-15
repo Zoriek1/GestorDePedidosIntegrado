@@ -8,12 +8,32 @@ que aceita o parâmetro pra facilitar testes determinísticos.
 
 from datetime import date, datetime, time
 
+from app.models.pedido import Pedido
 from app.services.delivery_slot_allocator import (
     DEFAULT_DAY_END,
     SLOT_CAPACITY,
     allocate_slot,
+    build_occupancy,
+    derive_slot_inicio,
     parse_customer_window,
 )
+
+
+def _make_pedido_slot(session, dia, slot, horario):
+    """Cria um pedido mínimo com slot_inicio para testes de ocupação."""
+    p = Pedido(
+        cliente="C",
+        telefone_cliente="11999999999",
+        destinatario="D",
+        tipo_pedido="Entrega",
+        produto="Buquê",
+        dia_entrega=dia,
+        horario=horario,
+        status="agendado",
+        slot_inicio=slot,
+    )
+    session.add(p)
+    return p
 
 # ---------------------------------------------------------------------------
 # parse_customer_window
@@ -38,6 +58,75 @@ def test_parse_customer_window_none():
     assert parse_customer_window(None) is None
     assert parse_customer_window("") is None
     assert parse_customer_window("texto sem hora") is None
+
+
+# ---------------------------------------------------------------------------
+# derive_slot_inicio (INT-01)
+# ---------------------------------------------------------------------------
+
+
+def test_derive_slot_inicio_hora_simples():
+    assert derive_slot_inicio("9:00") == time(9, 0)
+    assert derive_slot_inicio("14:30") == time(14, 30)
+
+
+def test_derive_slot_inicio_faixa_usa_inicio():
+    assert derive_slot_inicio("9:00 - 12:00") == time(9, 0)
+
+
+def test_derive_slot_inicio_nao_parseavel():
+    assert derive_slot_inicio(None) is None
+    assert derive_slot_inicio("sem hora") is None
+
+
+# ---------------------------------------------------------------------------
+# build_occupancy (INT-02) — considera pedidos do Gestor, agrupando por hora
+# ---------------------------------------------------------------------------
+
+
+def test_build_occupancy_agrupa_por_hora(session):
+    dia = date(2026, 6, 20)
+    # Dois pedidos na mesma hora (09:00 e 09:30) → contam no slot 09:00.
+    _make_pedido_slot(session, dia, time(9, 0), "09:00")
+    _make_pedido_slot(session, dia, time(9, 30), "09:30")
+    # Um em outra hora.
+    _make_pedido_slot(session, dia, time(14, 0), "14:00")
+    session.commit()
+
+    occ = build_occupancy(dia)
+    assert occ.get(time(9, 0)) == 2
+    assert occ.get(time(14, 0)) == 1
+
+
+def test_build_occupancy_ignora_soft_deleted(session):
+    dia = date(2026, 6, 21)
+    p = _make_pedido_slot(session, dia, time(10, 0), "10:00")
+    session.commit()
+    p.deleted_at = datetime.utcnow()
+    session.commit()
+
+    occ = build_occupancy(dia)
+    assert occ.get(time(10, 0), 0) == 0
+
+
+def test_allocate_considera_pedidos_do_gestor(session):
+    """INT-02: pedidos manuais do Gestor (com slot_inicio) entram na ocupação e o
+    alocador pula o slot cheio mesmo sem `occupancy` explícito."""
+    dia = date(2026, 6, 20)
+    # Slot 13:00 cheio por pedidos manuais do Gestor.
+    for _ in range(SLOT_CAPACITY):
+        _make_pedido_slot(session, dia, time(13, 0), "13:00")
+    session.commit()
+
+    paid_at = datetime(2026, 6, 20, 11, 0)  # buffer 2h → threshold 13:00
+    slot, _ = allocate_slot(
+        dia_entrega=dia,
+        paid_at_local=paid_at,
+        is_expressa=False,
+        customer_window=(time(8, 0), time(18, 0)),
+        # occupancy=None → consulta o banco via build_occupancy
+    )
+    assert slot == time(14, 0)
 
 
 # ---------------------------------------------------------------------------

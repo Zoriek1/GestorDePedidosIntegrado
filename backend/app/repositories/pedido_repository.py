@@ -2,6 +2,7 @@
 """
 Repository de Pedidos - Isolamento de acesso ao banco para Pedidos
 """
+import re
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -180,15 +181,38 @@ class PedidoRepository(BaseRepository):
                 query = query.filter(Pedido.dia_entrega <= data_fim)
 
         if search:
-            search_term = f"%{search}%"
-            query = query.filter(
-                db.or_(
-                    Pedido.cliente.like(search_term),
-                    Pedido.destinatario.like(search_term),
-                    Pedido.produto.like(search_term),
-                    Pedido.endereco.like(search_term),
-                )
-            )
+            # BUS-01: busca multi-campo, insensível a caixa/acento, somando id e telefone.
+            # Postgres usa f_unaccent + ILIKE (índices trigram); SQLite (testes) cai para
+            # lower()/LIKE sem unaccent/trigram. Guarda por dialeto.
+            from sqlalchemy import func
+
+            search = search.strip()
+            digits = re.sub(r"\D", "", search)
+            is_postgres = db.engine.dialect.name == "postgresql"
+
+            text_cols = (Pedido.cliente, Pedido.destinatario, Pedido.produto, Pedido.endereco)
+            conds = []
+            if is_postgres:
+                unaccent_term = func.f_unaccent(f"%{search}%")
+                conds.extend(func.f_unaccent(col).ilike(unaccent_term) for col in text_cols)
+            else:
+                lowered = f"%{search.lower()}%"
+                conds.extend(func.lower(col).like(lowered) for col in text_cols)
+
+            # Número do pedido (id) quando o termo é só dígitos.
+            if search.isdigit():
+                conds.append(Pedido.id == int(search))
+
+            # Telefone ignorando máscara.
+            if digits:
+                if is_postgres:
+                    conds.append(
+                        db.text("telefone_digits LIKE :tel").bindparams(tel=f"%{digits}%")
+                    )
+                else:
+                    conds.append(Pedido.telefone_cliente.like(f"%{digits}%"))
+
+            query = query.filter(db.or_(*conds))
 
         # Ordenação
         ordenar_direcao_lower = ordenar_direcao.lower() if ordenar_direcao else "asc"
@@ -200,14 +224,24 @@ class PedidoRepository(BaseRepository):
             else:
                 query = query.order_by(Pedido.created_at.asc())
         elif ordenar_por == "dia_entrega":
-            # Ordenar por dia_entrega e depois por horario (para intervalos, usa horário inicial)
-            # Para "mais próximos primeiro": usar ASC (hoje antes de amanhã, mais cedo antes de mais tarde)
-            # Para "mais distantes primeiro": usar DESC (amanhã antes de hoje, mais tarde antes de mais cedo)
+            # INT-01: ordenar pelo horário REAL (slot_inicio, Time) e não pela string
+            # lexicográfica de `horario` ("9:00" vinha depois de "10:00"). slot_inicio é a
+            # chave primária de horário (NULLS LAST para pedidos sem horário parseável) e
+            # `horario` fica só como desempate residual.
+            # Para "mais próximos primeiro": ASC (hoje antes de amanhã, mais cedo primeiro).
+            # Para "mais distantes primeiro": DESC.
             if is_desc:
-                query = query.order_by(Pedido.dia_entrega.desc(), Pedido.horario.desc())
+                query = query.order_by(
+                    Pedido.dia_entrega.desc(),
+                    Pedido.slot_inicio.desc().nullslast(),
+                    Pedido.horario.desc(),
+                )
             else:
-                # ASC: mais próximos primeiro (hoje antes de amanhã, mais cedo antes de mais tarde)
-                query = query.order_by(Pedido.dia_entrega.asc(), Pedido.horario.asc())
+                query = query.order_by(
+                    Pedido.dia_entrega.asc(),
+                    Pedido.slot_inicio.asc().nullslast(),
+                    Pedido.horario.asc(),
+                )
         elif ordenar_por == "created_at":
             if is_desc:
                 query = query.order_by(Pedido.created_at.desc())

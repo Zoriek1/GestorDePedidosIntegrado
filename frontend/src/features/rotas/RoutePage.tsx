@@ -60,11 +60,14 @@ function getMarkerIcon(status: string, selected: boolean) {
   return {
     path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
     fillColor: color,
-    fillOpacity: 1,
+    // ROT-02: "fora da rota" fica visivelmente apagado; selecionado fica sólido.
+    fillOpacity: selected ? 1 : 0.5,
     strokeColor: '#fff',
     strokeWeight: selected ? 2 : 1.5,
     scale: selected ? 2.2 : 1.8,
     anchor: { x: 12, y: 22 } as google.maps.Point,
+    // VIS-04: empurra o rótulo (horário) para baixo do pino.
+    labelOrigin: { x: 12, y: 30 } as google.maps.Point,
   };
 }
 
@@ -439,33 +442,41 @@ export default function RoutePage() {
             .filter((p) => p.coords_lat && p.coords_lon)
             .map((pedido, idx) => {
               const isSelected = selectedPedidoIds.has(pedido.id);
+              // VIS-04: horário sob o pino (slot_inicio quando houver, senão horario).
+              const horaMarcador = pedido.slot_inicio || pedido.horario || '';
+              const labelText = isSelected
+                ? (horaMarcador ? `${idx + 1} · ${horaMarcador}` : String(idx + 1))
+                : horaMarcador;
               return (
                 <Marker
                   key={`pedido-${pedido.id}`}
                   position={{ lat: pedido.coords_lat!, lng: pedido.coords_lon! }}
                   icon={getMarkerIcon(pedido.status, isSelected)}
-                  label={isSelected ? {
-                    text: String(idx + 1),
-                    color: '#fff',
+                  label={labelText ? {
+                    text: labelText,
+                    color: '#202124',
                     fontSize: '11px',
                     fontWeight: 'bold',
                   } : undefined}
                   title={`#${pedido.id} - ${pedido.destinatario || pedido.cliente}`}
-                  onClick={() => {
-                    togglePedido(pedido.id);
-                    setActiveInfoWindow(pedido.id);
-                  }}
+                  // ROT-02: clicar no pino apenas INSPECIONA (abre o InfoWindow);
+                  // a seleção entra/sai por controle explícito (chip / checkbox da lista).
+                  onClick={() => setActiveInfoWindow(pedido.id)}
                 >
                   {activeInfoWindow === pedido.id && (
                     <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
-                      <div style={{ maxWidth: 220 }}>
+                      <div style={{ maxWidth: 230 }}>
                         <strong>Pedido #{pedido.id}</strong>
                         <br />
-                        <strong>Cliente:</strong> {pedido.cliente}
-                        {pedido.destinatario && (
+                        <strong>Buquê:</strong> {pedido.produto || '—'}
+                        <br />
+                        <strong>Horário:</strong> {pedido.slot_inicio || pedido.horario || '—'}
+                        <br />
+                        <strong>Destinatário:</strong> {pedido.destinatario || '—'}
+                        {pedido.cliente && (
                           <>
                             <br />
-                            <strong>Destinatário:</strong> {pedido.destinatario}
+                            <span style={{ color: '#666' }}>De: {pedido.cliente}</span>
                           </>
                         )}
                         <br />
@@ -480,10 +491,11 @@ export default function RoutePage() {
                         )}
                         <br />
                         <Chip
-                          label={isSelected ? 'Selecionado' : 'Não selecionado'}
+                          label={isSelected ? '✓ Na rota · remover' : '+ Adicionar à rota'}
                           size="small"
                           color={isSelected ? 'success' : 'default'}
-                          sx={{ mt: 0.5 }}
+                          onClick={() => togglePedido(pedido.id)}
+                          sx={{ mt: 0.5, cursor: 'pointer' }}
                         />
                       </div>
                     </InfoWindow>
@@ -751,6 +763,7 @@ export default function RoutePage() {
                                   sx={{ mt: -0.5, ml: -0.5, p: isMobile ? 0.25 : undefined }}
                                 />
                                 <Stack spacing={0.25} sx={{ flex: 1, minWidth: 0 }}>
+                                  {/* ROT-01: destinatário em destaque + remetente menor */}
                                   <Typography
                                     variant={isMobile ? 'body2' : 'subtitle1'}
                                     fontWeight="bold"
@@ -758,6 +771,16 @@ export default function RoutePage() {
                                   >
                                     {idx + 1}. #{pedido.id} · {pedido.destinatario || pedido.cliente}
                                   </Typography>
+                                  {pedido.cliente && pedido.cliente !== pedido.destinatario && (
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      noWrap
+                                      sx={{ fontSize: isMobile ? '0.65rem' : undefined }}
+                                    >
+                                      De: {pedido.cliente}
+                                    </Typography>
+                                  )}
                                   <Typography
                                     variant="caption"
                                     color="text.secondary"
@@ -766,6 +789,16 @@ export default function RoutePage() {
                                   >
                                     {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
                                   </Typography>
+                                  {/* ROT-01: buquê (produto) por parada */}
+                                  {pedido.produto && (
+                                    <Typography
+                                      variant="caption"
+                                      sx={{ fontWeight: 600, fontSize: isMobile ? '0.7rem' : undefined }}
+                                      noWrap
+                                    >
+                                      🌸 {pedido.produto}
+                                    </Typography>
+                                  )}
                                   <Stack direction="row" spacing={0.5} alignItems="center">
                                     <Chip
                                       label={pedido.status}
@@ -781,12 +814,13 @@ export default function RoutePage() {
                                       />
                                     )}
                                   </Stack>
+                                  {/* ROT-01: horário usa slot_inicio quando houver */}
                                   <Typography
                                     variant="caption"
                                     color="text.secondary"
                                     sx={{ fontSize: isMobile ? '0.65rem' : undefined }}
                                   >
-                                    {pedido.dia_entrega} {pedido.horario}
+                                    {pedido.dia_entrega} {pedido.slot_inicio || pedido.horario}
                                   </Typography>
                                 </Stack>
                               </Stack>

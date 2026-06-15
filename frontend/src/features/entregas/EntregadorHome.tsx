@@ -74,7 +74,7 @@ export function EntregadorHome() {
               </Typography>
               <Stack spacing={1.5}>
                 {grupo.pedidos.map((p) => (
-                  <OrderCard key={p.id} pedido={p} />
+                  <OrderCard key={p.id} pedido={p} operacional />
                 ))}
               </Stack>
             </Box>

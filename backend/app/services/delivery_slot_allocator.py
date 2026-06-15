@@ -26,8 +26,11 @@ from app.models.pedido import Pedido
 DEFAULT_DAY_START = time(8, 0)
 DEFAULT_DAY_END = time(22, 0)  # último slot que aceita: 21:00 (cobre 21:00-22:00)
 SLOT_CAPACITY = 2
+# INT-02: antecedência mínima entre o pagamento e o slot escolhido no mesmo dia.
+#   - Expressa: 0h (intencional — a entrega expressa precisa de slot imediato).
+#   - Padrão:   2h (piso mínimo para a florista montar e despachar).
 EXPRESS_BUFFER_H = 0
-DEFAULT_BUFFER_H = 2
+DEFAULT_BUFFER_H = 2  # piso mínimo de antecedência (não-expressa)
 
 _TIME_RANGE_RE = re.compile(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})")
 _SINGLE_TIME_RE = re.compile(r"(\d{1,2}):(\d{2})")
@@ -63,16 +66,41 @@ def parse_customer_window(horario: Optional[str]) -> Optional[Tuple[time, time]]
     return None
 
 
+def derive_slot_inicio(horario: Optional[str]) -> Optional[time]:
+    """
+    Deriva um `slot_inicio` (Time) a partir do campo `horario` (string BR) para
+    pedidos manuais. Assim toda origem (site e manual) grava um horário comparável
+    para ordenação (INT-01) e o pedido entra na contagem de ocupação do alocador
+    (INT-02). Retorna None quando o horário não é parseável.
+    """
+    window = parse_customer_window(horario)
+    return window[0] if window else None
+
+
 def build_occupancy(dia_entrega: date) -> Dict[time, int]:
-    """Contagem de pedidos já alocados por slot no dia."""
+    """
+    Contagem de pedidos por slot (janela de 1h) no dia.
+
+    INT-02: conta TODOS os pedidos do dia que já têm `slot_inicio` — inclusive os
+    manuais do Gestor, que agora gravam slot_inicio (INT-01). Como pedidos manuais
+    podem ter slot_inicio fora da grade horária (ex.: 09:30), a contagem é agrupada
+    pela HORA (09:30 conta no slot 09:00), refletindo a carga real de cada janela.
+    Soft-deleted não ocupa slot.
+    """
     rows = (
-        db.session.query(Pedido.slot_inicio, db.func.count(Pedido.id))
+        db.session.query(Pedido.slot_inicio)
         .filter(Pedido.dia_entrega == dia_entrega)
         .filter(Pedido.slot_inicio.isnot(None))
-        .group_by(Pedido.slot_inicio)
+        .filter(Pedido.deleted_at.is_(None))
         .all()
     )
-    return dict(rows)
+    occupancy: Dict[time, int] = {}
+    for (slot,) in rows:
+        if slot is None:
+            continue
+        hour_slot = time(slot.hour, 0)
+        occupancy[hour_slot] = occupancy.get(hour_slot, 0) + 1
+    return occupancy
 
 
 def _compute_deadline(

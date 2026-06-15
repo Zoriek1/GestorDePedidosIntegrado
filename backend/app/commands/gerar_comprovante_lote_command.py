@@ -4,7 +4,7 @@ Command para geração de comprovantes em lote (até 20 pedidos, 4 por folha A4)
 
 Layout por folha:
 - 1 pedido  → A4 cheio (delega ao GerarComprovanteCommand)
-- 2 pedidos → A4 retrato com 2 metades horizontais empilhadas
+- 2 pedidos → A4 retrato com 2 guias retrato lado a lado (2 colunas) — VIS-05
 - 3 pedidos → grid 2x2 com 1 célula vazia
 - 4 pedidos → grid 2x2 cheio
 
@@ -47,6 +47,18 @@ class GerarComprovanteLoteCommand:
             contexts.append(build_pedido_context(pedido))
 
         return self._render_grid(contexts)
+
+    @staticmethod
+    def _payment_seal(ctx: dict) -> tuple[str, str]:
+        """VIS-05: selo de pagamento visível (PAGO sólido / PENDENTE contornado)."""
+        status = str(ctx.get("status_pagto") or "").strip().lower()
+        if status == "pendente":
+            return "seal-pending", "PENDENTE"
+        if status == "parcial":
+            return "seal-pending", "PARCIAL"
+        if status:
+            return "seal-paid", "PAGO"
+        return "", ""
 
     def _render_slip(self, ctx: dict) -> str:
         """Renderiza um comprovante compacto com hierarquia visual forte
@@ -103,10 +115,12 @@ class GerarComprovanteLoteCommand:
             f'<div class="slip-sub">{" · ".join(flores_qtd)}</div>' if flores_qtd else ""
         )
 
-        pagamento_parts = [fmt(ctx.get("pagamento"))]
-        if ctx.get("status_pagto"):
-            pagamento_parts.append(fmt(ctx["status_pagto"]))
-        pagamento_str = " · ".join(p for p in pagamento_parts if p and p != "-")
+        # Status agora aparece no selo do cabeçalho; o rodapé mostra só a forma.
+        seal_class, seal_text = self._payment_seal(ctx)
+        seal_html = (
+            f'<span class="slip-seal {seal_class}">{seal_text}</span>' if seal_text else ""
+        )
+        pagamento_str = fmt(ctx.get("pagamento"))
 
         cliente_tel_html = (
             f'<span class="slip-tel"> · {fmt(ctx.get("cliente_tel"))}</span>'
@@ -120,6 +134,7 @@ class GerarComprovanteLoteCommand:
             <div class="slip-head-l">
               <span class="slip-id">#{ctx['id']}</span>
               <span class="slip-tipo">{fmt(ctx.get('tipo')).upper()}</span>
+              {seal_html}
             </div>
             <div class="slip-head-r">
               <span class="slip-data">{fmt(ctx.get('data_entrega'))} {fmt(ctx.get('horario')) if ctx.get('horario') else ''}</span>
@@ -200,9 +215,11 @@ class GerarComprovanteLoteCommand:
       page-break-after: auto;
       break-after: auto;
     }}
+    /* VIS-05: 2-up são guias RETRATO lado a lado → 2 colunas, 1 linha
+       (antes eram 2 metades horizontais empilhadas, que liam como paisagem). */
     .grid-2 {{
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr;
     }}
     .grid-4 {{
       grid-template-columns: 1fr 1fr;
@@ -252,6 +269,17 @@ class GerarComprovanteLoteCommand:
       font-weight: 700;
       letter-spacing: 0.6px;
     }}
+    /* VIS-05: selo de pagamento (alto contraste em P&B) */
+    .slip-seal {{
+      display: inline-block;
+      padding: 0.6mm 2mm;
+      border-radius: 2px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+    }}
+    .seal-paid {{ background: #000; color: #fff; }}
+    .seal-pending {{ background: #fff; color: #000; border: 1.5px solid #000; }}
     .slip-head-r {{
       text-align: right;
       display: flex;

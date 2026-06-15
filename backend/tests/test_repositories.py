@@ -119,6 +119,79 @@ class TestPedidoRepository:
         assert len(resultados) >= 1
         assert total >= 1
 
+    def test_ordena_por_slot_inicio_nao_lexicografico(self, session):
+        """INT-01: ordenar por horário real (slot_inicio, Time), não pela string.
+
+        '9:00' deve vir antes de '10:00' (lexicograficamente '10:00' < '9:00').
+        Faixa '9:00 - 12:00' (slot 09:00) vem junto das 09:00, com desempate por horário.
+        Pedido sem slot_inicio parseável vai para o fim (NULLS LAST).
+        """
+        from datetime import time
+
+        repo = PedidoRepository()
+        dia = date(2026, 6, 20)
+
+        def novo(horario, slot, dest):
+            p = Pedido(
+                cliente="C",
+                telefone_cliente="11999999999",
+                destinatario=dest,
+                produto="Buquê",
+                dia_entrega=dia,
+                horario=horario,
+                slot_inicio=slot,
+                status="agendado",
+            )
+            session.add(p)
+            return p
+
+        novo("10:00", time(10, 0), "DEZ")
+        novo("9:00", time(9, 0), "NOVE")
+        novo("9:00 - 12:00", time(9, 0), "FAIXA")
+        novo("sem hora", None, "SEMHORA")
+        session.commit()
+
+        resultados, _ = repo.buscar_com_filtros(
+            data_inicio=dia, data_fim=dia, ordenar_por="dia_entrega", ordenar_direcao="asc"
+        )
+        ordem = [p.destinatario for p in resultados]
+        # 09:00 antes de 10:00; entre os 09:00, '9:00' antes de '9:00 - 12:00'; null por último.
+        assert ordem.index("NOVE") < ordem.index("DEZ")
+        assert ordem.index("FAIXA") < ordem.index("DEZ")
+        assert ordem.index("NOVE") < ordem.index("FAIXA")
+        assert ordem[-1] == "SEMHORA"
+
+    def test_busca_por_id_telefone_e_caixa(self, session):
+        """BUS-01: busca acha por número do pedido, telefone (sem máscara) e ignora caixa.
+
+        (Acento é insensível só no Postgres via f_unaccent; aqui, SQLite, valida o
+        fallback lower()/LIKE + id + telefone.)
+        """
+        repo = PedidoRepository()
+        p = Pedido(
+            cliente="Mariana Silva",
+            telefone_cliente="11988887777",
+            destinatario="João",
+            produto="Buquê de rosas",
+            dia_entrega=date(2026, 6, 20),
+            horario="10:00",
+            status="agendado",
+        )
+        session.add(p)
+        session.commit()
+
+        # Por número do pedido (id)
+        res, _ = repo.buscar_com_filtros(search=str(p.id))
+        assert any(r.id == p.id for r in res)
+
+        # Por telefone (só dígitos, sem máscara)
+        res, _ = repo.buscar_com_filtros(search="98888")
+        assert any(r.id == p.id for r in res)
+
+        # Caixa diferente
+        res, _ = repo.buscar_com_filtros(search="mariana")
+        assert any(r.id == p.id for r in res)
+
     def test_atualizar_status(self, session):
         """Testa atualização de status"""
         repo = PedidoRepository()

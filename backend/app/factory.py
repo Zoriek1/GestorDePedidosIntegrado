@@ -64,6 +64,7 @@ def create_app(config=None):
     with app.app_context():
         from app.routes.auth import auth_bp
         from app.routes.backup_admin import backup_admin_bp
+        from app.routes.catalogo import catalogo_bp
         from app.routes.clientes import clientes_bp
         from app.routes.config import config_bp
         from app.routes.core import core_bp
@@ -86,6 +87,7 @@ def create_app(config=None):
         app.register_blueprint(pedidos_bp)
         app.register_blueprint(rotas_bp)
         app.register_blueprint(clientes_bp)
+        app.register_blueprint(catalogo_bp)
         app.register_blueprint(fontes_bp)
         app.register_blueprint(core_bp)
         app.register_blueprint(auth_bp)

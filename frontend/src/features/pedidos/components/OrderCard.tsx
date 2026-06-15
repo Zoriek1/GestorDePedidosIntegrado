@@ -35,6 +35,8 @@ import {
   LocalShipping as LocalShippingIcon,
   CheckCircle,
   RadioButtonUnchecked,
+  Place,
+  Undo,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -59,6 +61,8 @@ import { useConfirm } from '../../../components/system/useConfirm';
 import { useDeletePedido } from '../../../api/endpoints/pedidos';
 import dayjs from 'dayjs';
 import { formatOrderSourceLabel } from '../utils/sourceLabel';
+import { useFinalizarEntrega, useAtribuirEntregadorPedido } from '../../entregas/services/entregasApi';
+import { canFinalizarEntrega, isEntregador } from '../../auth/roleHelpers';
 
 export type SelectionMode = 'route' | 'print' | 'pickup';
 
@@ -72,6 +76,8 @@ interface OrderCardProps {
   selectionMode?: SelectionMode;
   /** Variante enxuta (usada no Kanban): só o essencial, sem ações pesadas. */
   compact?: boolean;
+  /** Variante operacional do entregador (VIS-02): foco em entrega + ações do fluxo. */
+  operacional?: boolean;
 }
 
 export function OrderCard({
@@ -83,6 +89,7 @@ export function OrderCard({
   onToggleSelect,
   selectionMode = 'route',
   compact = false,
+  operacional = false,
 }: OrderCardProps) {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -112,6 +119,36 @@ export function OrderCard({
     (userRole === 'vendedor' &&
       !!pedido.vendedor_id &&
       currentUser?.id === pedido.vendedor_id);
+
+  // Ações do fluxo de entrega (EST-01 / EST-02), usadas na variante operacional.
+  const finalizarEntrega = useFinalizarEntrega();
+  const atribuirEntregador = useAtribuirEntregadorPedido();
+  const canFinalizar = canFinalizarEntrega(currentUser, pedido);
+  const canRetirarDaRota =
+    isEntregador(userRole) &&
+    !!pedido.entregador_id &&
+    currentUser?.id === pedido.entregador_id &&
+    (pedido.status || '').toLowerCase() !== 'concluido';
+
+  const handleFinalizarEntrega = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await finalizarEntrega.mutateAsync(pedido.id);
+      success('Entrega confirmada');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Erro ao confirmar entrega');
+    }
+  };
+
+  const handleRetirarDaRota = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await atribuirEntregador.mutateAsync({ pedidoId: pedido.id, entregadorId: null });
+      success('Pedido retirado da rota');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Erro ao retirar da rota');
+    }
+  };
 
   const paymentStatus = getPaymentStatusLabel(pedido.status_pagamento);
   const paymentStatusColor = getPaymentStatusColor(pedido.status_pagamento);
@@ -427,7 +464,7 @@ export function OrderCard({
           </Typography>
 
           {pedido.produto && (
-            <Typography sx={{ fontSize: '0.64rem', color: 'text.secondary', lineHeight: 1.2 }} noWrap>
+            <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'text.primary', lineHeight: 1.2 }} noWrap>
               {pedido.produto}
             </Typography>
           )}
@@ -475,6 +512,95 @@ export function OrderCard({
               }}
             />
           )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Variante operacional do entregador (VIS-02): hierarquia voltada à entrega —
+  // localidade (bairro/cidade) + horário em destaque, produto legível, ambos os
+  // nomes, e só as ações do fluxo (confirmar entrega / retirar da rota).
+  if (operacional) {
+    const horarioLabel = pedido.slot_inicio || pedido.horario || '—';
+    const localidade = [pedido.bairro, pedido.cidade].filter(Boolean).join(', ');
+    return (
+      <Card
+        variant="outlined"
+        onClick={() => navigate(`/pedidos/${pedido.id}`)}
+        sx={{
+          cursor: 'pointer',
+          borderColor: isAtrasado ? 'error.light' : undefined,
+          '&:hover': { boxShadow: 3 },
+        }}
+      >
+        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+          {/* Topo: localidade (bairro/cidade) + horário em destaque (VIS-01) */}
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+            <Typography sx={{ fontWeight: 700, fontSize: '1rem', lineHeight: 1.25, minWidth: 0 }}>
+              {localidade || 'Local não informado'}
+            </Typography>
+            <Chip
+              label={horarioLabel}
+              color={pedido.is_expressa ? 'error' : 'primary'}
+              size="small"
+              sx={{ fontWeight: 700 }}
+            />
+          </Stack>
+
+          {/* Endereço completo (peso normal) */}
+          <Box display="flex" alignItems="flex-start" gap={0.5} mt={0.5}>
+            <Place fontSize="small" color="action" sx={{ mt: '2px' }} />
+            <Typography variant="body2" color="text.secondary">
+              {enderecoCompleto}
+            </Typography>
+          </Box>
+
+          {/* Produto (legível) */}
+          <Typography sx={{ fontWeight: 600, fontSize: '0.95rem', mt: 1 }}>
+            {pedido.produto}
+          </Typography>
+
+          {/* Nomes: destinatário em destaque, remetente em peso menor */}
+          <Box mt={0.5}>
+            <Typography variant="body2">
+              <strong>Para:</strong> {pedido.destinatario || '—'}
+            </Typography>
+            {pedido.cliente && (
+              <Typography variant="caption" color="text.secondary" display="block">
+                De: {pedido.cliente}
+              </Typography>
+            )}
+          </Box>
+
+          {/* Status + ações do entregador (EST-01 / EST-02) */}
+          <Stack direction="row" spacing={1} alignItems="center" mt={1.5} flexWrap="wrap">
+            <Chip label={statusLabel} color={statusColor} size="small" />
+            <Box flex={1} />
+            {canRetirarDaRota && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="inherit"
+                startIcon={<Undo />}
+                onClick={handleRetirarDaRota}
+                disabled={atribuirEntregador.isPending}
+              >
+                Retirar da rota
+              </Button>
+            )}
+            {canFinalizar && (
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                startIcon={<CheckCircle />}
+                onClick={handleFinalizarEntrega}
+                disabled={finalizarEntrega.isPending}
+              >
+                Confirmar entrega
+              </Button>
+            )}
+          </Stack>
         </CardContent>
       </Card>
     );
@@ -771,6 +897,12 @@ export function OrderCard({
             <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
               Entrega
             </Typography>
+            {/* VIS-01: bairro/cidade em negrito para leitura de relance */}
+            {(pedido.bairro || pedido.cidade) && (
+              <Typography variant="body2" fontWeight="bold" mb={0.5}>
+                {[pedido.bairro, pedido.cidade].filter(Boolean).join(', ')}
+              </Typography>
+            )}
             <Typography variant="body2" color="text.secondary" mb={2}>
               {enderecoCompleto}
             </Typography>

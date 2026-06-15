@@ -15,5 +15,8 @@ python scripts/migrations/add_slot_entrega_to_pedidos.py
 python scripts/migrations/add_session_fields_to_lead_touchpoints.py
 python scripts/migrations/add_pedido_id_to_push_subscriptions.py
 python scripts/migrations/add_codigo_whatsapp_to_pedidos.py
+python scripts/migrations/backfill_slot_inicio_from_horario.py
+python scripts/migrations/add_search_trgm_unaccent.py
+python scripts/migrations/create_catalogo_arranjos.py
 
 exec python wsgi.py

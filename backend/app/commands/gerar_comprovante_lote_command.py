@@ -14,7 +14,9 @@ from app.commands.gerar_comprovante_command import (
     build_pedido_context,
     fmt,
     fmt_brl,
+    format_detalhe_local,
     render_comprovante_body,
+    tipo_local_label,
 )
 from app.repositories.pedido_repository import PedidoRepository
 
@@ -79,11 +81,26 @@ class GerarComprovanteLoteCommand:
             distancia = f"{ctx['distancia']:.2f} km" if ctx.get("distancia") is not None else ""
             extras = " · ".join(p for p in [cidade, cep, distancia, taxa] if p and p != "-")
             extras_html = f'<div class="slip-sub">{extras}</div>' if extras else ""
+
+            # Local em destaque (tipo + nome + detalhe do prédio + ponto de referência).
+            local_tipo = tipo_local_label(ctx.get("tipo_local"))
+            detalhe = format_detalhe_local(ctx)
+            local_html = ""
+            if local_tipo or ctx.get("nome_local"):
+                badge = f'<span class="slip-local-badge">{local_tipo}</span>' if local_tipo else ""
+                nome = fmt(ctx["nome_local"]) if ctx.get("nome_local") else ""
+                local_html += f'<div class="slip-local-line">{badge}<span class="slip-local-nome">{nome}</span></div>'
+            if detalhe:
+                local_html += f'<div class="slip-local-det">{detalhe}</div>'
+            if ctx.get("obs_entrega"):
+                local_html += f'<div class="slip-local-ref">Ref.: {fmt(ctx["obs_entrega"])}</div>'
+
             endereco_html = f"""
               <div class="slip-block">
                 <div class="slip-lbl">Endereço</div>
                 <div class="slip-val-md">{fmt(ctx['endereco'])}</div>
                 {extras_html}
+                {local_html}
               </div>
             """
         elif is_retirada:
@@ -118,9 +135,7 @@ class GerarComprovanteLoteCommand:
 
         # Status agora aparece no selo do cabeçalho; o rodapé mostra só a forma.
         seal_class, seal_text = self._payment_seal(ctx)
-        seal_html = (
-            f'<span class="slip-seal {seal_class}">{seal_text}</span>' if seal_text else ""
-        )
+        seal_html = f'<span class="slip-seal {seal_class}">{seal_text}</span>' if seal_text else ""
         pagamento_str = fmt(ctx.get("pagamento"))
 
         cliente_tel_html = (
@@ -349,6 +364,13 @@ class GerarComprovanteLoteCommand:
       letter-spacing: 1px;
     }}
 
+    /* Local de entrega em destaque dentro do slip */
+    .slip-local-line {{ display: flex; align-items: center; gap: 1.5mm; margin-top: 1mm; }}
+    .slip-local-badge {{ background: #000; color: #fff; font-size: 8px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; padding: 0.4mm 1.6mm; border-radius: 2px; }}
+    .slip-local-nome {{ font-size: 12px; font-weight: 800; color: #000; }}
+    .slip-local-det {{ display: inline-block; margin-top: 0.8mm; font-size: 11px; font-weight: 800; border: 1px solid #000; border-radius: 2px; padding: 0.4mm 1.6mm; }}
+    .slip-local-ref {{ margin-top: 0.8mm; font-size: 9.5px; font-weight: 600; color: #333; }}
+
     /* Mensagem do cartão — bloco destacado, alta prioridade visual */
     .slip-msg {{
       border: 1.5px solid #000;
@@ -441,7 +463,7 @@ class GerarComprovanteLoteCommand:
         pages = "".join(
             f'<div class="page-1up">{render_comprovante_body(c)}</div>' for c in contexts
         )
-        
+
         return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>

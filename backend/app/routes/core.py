@@ -28,8 +28,9 @@ from app.utils.backup_helper import (
 # NOVO LOCAL: app/routes/pedidos.py -> criar_pedido()
 
 
-
 core_bp = Blueprint("core", __name__, url_prefix="/api")
+
+
 @core_bp.route("/stats", methods=["GET"])
 def obter_estatisticas():
     """Retorna estatísticas dos pedidos"""
@@ -880,6 +881,90 @@ def buscar_cep(cep):
             ),
             500,
         )
+
+
+@core_bp.route("/cep/busca", methods=["GET"])
+def buscar_cep_por_endereco():
+    """
+    Proxy para busca reversa de CEP (ViaCEP) quando o cliente não sabe o CEP.
+    Same-origin para manter a CSP restrita (igual ao /cep/<cep>).
+
+    Query params:
+        uf:     UF com 2 letras
+        cidade: nome da cidade (>= 3 caracteres)
+        rua:    parte do logradouro (>= 3 caracteres)
+
+    Returns:
+        JSON { "resultados": [ {cep, rua, bairro, cidade, uf}, ... ] } (até 10).
+    """
+    from urllib.parse import quote
+
+    import requests
+
+    uf = (request.args.get("uf") or "").strip().upper()
+    cidade = (request.args.get("cidade") or "").strip()
+    rua = (request.args.get("rua") or "").strip()
+
+    if len(uf) != 2 or len(cidade) < 3 or len(rua) < 3:
+        return (
+            jsonify(
+                {
+                    "error": "Parâmetros inválidos",
+                    "message": "Informe UF (2 letras), cidade e parte da rua (mín. 3 letras).",
+                }
+            ),
+            400,
+        )
+
+    try:
+        viacep_url = f"https://viacep.com.br/ws/{uf}/{quote(cidade)}/{quote(rua)}/json/"
+        response = requests.get(
+            viacep_url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "PlanteUmaFlor-GestorPedidos/1.0",
+            },
+            timeout=8,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        return (
+            jsonify(
+                {
+                    "error": "Erro ao consultar ViaCEP",
+                    "message": "Falha na comunicação com ViaCEP",
+                    "detalhes": str(e),
+                }
+            ),
+            502,
+        )
+    except ValueError as e:
+        return (
+            jsonify(
+                {
+                    "error": "Resposta inválida do ViaCEP",
+                    "message": "ViaCEP retornou formato inesperado",
+                    "detalhes": str(e),
+                }
+            ),
+            502,
+        )
+
+    if not isinstance(data, list) or not data:
+        return jsonify({"resultados": []}), 200
+
+    resultados = [
+        {
+            "cep": item.get("cep", ""),
+            "rua": item.get("logradouro", ""),
+            "bairro": item.get("bairro", ""),
+            "cidade": item.get("localidade", ""),
+            "uf": item.get("uf", ""),
+        }
+        for item in data[:10]
+    ]
+    return jsonify({"resultados": resultados}), 200
 
 
 # ============================================

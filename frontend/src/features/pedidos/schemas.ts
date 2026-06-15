@@ -133,6 +133,14 @@ export const pedidoFormSchema = z.object({
   endereco: z.string().max(500).optional(),
   obs_entrega: z.string().max(500).optional(),
 
+  // Tipo e detalhe do local de entrega (visão do entregador / impressão)
+  tipo_local: z.enum(['casa', 'predio', 'comercial']).default('casa'),
+  nome_local: z.string().max(200).optional(),
+  apartamento: z.string().max(20).optional(),
+  bloco: z.string().max(20).optional(),
+  torre: z.string().max(20).optional(),
+  andar: z.string().max(20).optional(),
+
   // Step 3 - Dados do Produto
   produto: z.string()
     .min(3, 'Descrição do produto deve ter pelo menos 3 caracteres')
@@ -208,6 +216,15 @@ export const pedidoFormSchema = z.object({
     });
   }
 
+  // Status "Pago" exige uma forma de pagamento
+  if (data.status_pagamento === 'Pago' && !data.pagamento?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Selecione a forma de pagamento para marcar como Pago',
+      path: ['pagamento'],
+    });
+  }
+
   // Validação condicional: endereço obrigatório se for entrega
   if (data.tipo_pedido === 'Entrega') {
     // CEP é recomendado para entregas
@@ -232,6 +249,24 @@ export const pedidoFormSchema = z.object({
         code: z.ZodIssueCode.custom,
         message: 'Cidade é obrigatória para entregas',
         path: ['cidade'],
+      });
+    }
+
+    // Tipo de local: prédio/comercial exigem nome do local; prédio exige apartamento
+    if ((data.tipo_local === 'predio' || data.tipo_local === 'comercial') && !data.nome_local?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: data.tipo_local === 'predio'
+          ? 'Informe o nome do prédio/condomínio'
+          : 'Informe o nome do estabelecimento',
+        path: ['nome_local'],
+      });
+    }
+    if (data.tipo_local === 'predio' && !data.apartamento?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Informe o apartamento',
+        path: ['apartamento'],
       });
     }
   }
@@ -267,6 +302,12 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   cidade: '',
   endereco: '',
   obs_entrega: '',
+  tipo_local: 'casa',
+  nome_local: '',
+  apartamento: '',
+  bloco: '',
+  torre: '',
+  andar: '',
   produto: '',
   flores_cor: '',
   mensagem: '',
@@ -354,15 +395,23 @@ export function parseCepToDigits(cep: string): string {
  * Inclui merge de complemento em observacoes
  */
 export function transformFormToApiPayload(formData: PedidoFormData): Record<string, unknown> {
-  // Monta o endereço completo se não estiver preenchido
+  // Monta o endereço completo se não estiver preenchido. Quadra/Lote entram só quando
+  // o local é Casa; nome do local + AP/Bloco/Torre/Andar entram quando é Prédio.
+  const isCasa = formData.tipo_local === 'casa';
+  const isPredio = formData.tipo_local === 'predio';
   let enderecoCompleto = formData.endereco;
   if (!enderecoCompleto && formData.rua) {
     const parts = [
       formData.rua,
       formData.numero ? `nº ${formData.numero}` : null,
-      formData.quadra ? `Qd ${formData.quadra}` : null,
-      formData.lote ? `Lt ${formData.lote}` : null,
+      isCasa && formData.quadra ? `Qd ${formData.quadra}` : null,
+      isCasa && formData.lote ? `Lt ${formData.lote}` : null,
       formData.complemento ? formData.complemento : null,
+      formData.nome_local ? formData.nome_local : null,
+      isPredio && formData.apartamento ? `AP ${formData.apartamento}` : null,
+      isPredio && formData.bloco ? `Bloco ${formData.bloco}` : null,
+      isPredio && formData.torre ? `Torre ${formData.torre}` : null,
+      isPredio && formData.andar ? `${formData.andar}º andar` : null,
       formData.bairro,
       formData.cidade,
     ].filter(Boolean);
@@ -396,6 +445,12 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     cidade: formData.cidade?.trim() || undefined,
     endereco: enderecoCompleto?.trim() || undefined,
     obs_entrega: formData.obs_entrega?.trim() || undefined,
+    tipo_local: formData.tipo_local || 'casa',
+    nome_local: formData.nome_local?.trim() || undefined,
+    apartamento: isPredio ? formData.apartamento?.trim() || undefined : undefined,
+    bloco: isPredio ? formData.bloco?.trim() || undefined : undefined,
+    torre: isPredio ? formData.torre?.trim() || undefined : undefined,
+    andar: isPredio ? formData.andar?.trim() || undefined : undefined,
     produto: formData.produto.trim(),
     flores_cor: formData.flores_cor?.trim() || undefined,
     mensagem: formData.mensagem?.trim() || undefined,
@@ -466,6 +521,12 @@ export const step2Schema = z.object({
   cidade: pedidoFormSchema.shape.cidade,
   endereco: pedidoFormSchema.shape.endereco,
   obs_entrega: pedidoFormSchema.shape.obs_entrega,
+  tipo_local: pedidoFormSchema.shape.tipo_local,
+  nome_local: pedidoFormSchema.shape.nome_local,
+  apartamento: pedidoFormSchema.shape.apartamento,
+  bloco: pedidoFormSchema.shape.bloco,
+  torre: pedidoFormSchema.shape.torre,
+  andar: pedidoFormSchema.shape.andar,
 }).superRefine((data, ctx) => {
   if (data.tipo_pedido === 'Entrega') {
     const hasAddress = (data.rua && data.numero) || data.endereco;
@@ -481,6 +542,22 @@ export const step2Schema = z.object({
         code: z.ZodIssueCode.custom,
         message: 'Cidade é obrigatória para entregas',
         path: ['cidade'],
+      });
+    }
+    if ((data.tipo_local === 'predio' || data.tipo_local === 'comercial') && !data.nome_local?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: data.tipo_local === 'predio'
+          ? 'Informe o nome do prédio/condomínio'
+          : 'Informe o nome do estabelecimento',
+        path: ['nome_local'],
+      });
+    }
+    if (data.tipo_local === 'predio' && !data.apartamento?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Informe o apartamento',
+        path: ['apartamento'],
       });
     }
   }

@@ -37,6 +37,8 @@ import {
   RadioButtonUnchecked,
   Place,
   Undo,
+  Home,
+  Apartment,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -45,11 +47,13 @@ import { formatDateBR } from '../../../lib/format/date';
 import { formatBRL } from '../../../lib/format/currency';
 import { getStatusColor, getStatusLabel, getPaymentStatusColor, getPaymentStatusLabel } from '../useCases/orderMapping';
 import { StatusSelector } from './StatusSelector';
-import { 
-  isPedidoAtrasado, 
-  formatPhone, 
+import {
+  isPedidoAtrasado,
+  formatPhone,
   getEnderecoCompleto,
   buildEncaminharMensagem,
+  getTipoLocalLabel,
+  getDetalheLocal,
 } from './OrderCardHelpers';
 import { useCalcularDistanciaPedido, useCalcularTaxaEntrega, useUpdatePedido, useToggleCartaoImpresso, useTrackLink } from '../../../api/endpoints/pedidos';
 import { useToast } from '../../../components/system/useToast';
@@ -566,6 +570,49 @@ export function OrderCard({
             </Typography>
           </Box>
 
+          {/* Local de entrega em destaque (tipo + nome + detalhe do prédio) */}
+          {(() => {
+            const tipo = pedido.tipo_local || 'casa';
+            const detalhe = getDetalheLocal(pedido);
+            const TipoIcon = tipo === 'predio' ? Apartment : tipo === 'comercial' ? Store : Home;
+            const mostraNome = tipo !== 'casa' && !!pedido.nome_local;
+            if (!mostraNome && !detalhe) return null;
+            return (
+              <Box mt={0.75}>
+                <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap">
+                  <Chip
+                    size="small"
+                    color="primary"
+                    icon={<TipoIcon sx={{ fontSize: 14 }} />}
+                    label={getTipoLocalLabel(tipo)}
+                    sx={{ fontWeight: 700, height: 20, '& .MuiChip-label': { px: 0.75 } }}
+                  />
+                  {mostraNome && (
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                      {pedido.nome_local}
+                    </Typography>
+                  )}
+                </Stack>
+                {detalhe && (
+                  <Box
+                    sx={{
+                      display: 'inline-block',
+                      mt: 0.5,
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: 1,
+                      bgcolor: 'action.selected',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    {detalhe}
+                  </Box>
+                )}
+              </Box>
+            );
+          })()}
+
           {/* Produto (destaque para montagem/conferência) */}
           <Typography sx={{ fontWeight: 800, fontSize: '1.35rem', lineHeight: 1.2, mt: 1 }}>
             {pedido.produto}
@@ -914,9 +961,38 @@ export function OrderCard({
                 {[pedido.bairro, pedido.cidade].filter(Boolean).join(', ')}
               </Typography>
             )}
-            <Typography variant="body2" color="text.secondary" mb={2}>
+            <Typography variant="body2" color="text.secondary" mb={1}>
               {enderecoCompleto}
             </Typography>
+            {/* Local em destaque: tipo + nome + detalhe do prédio */}
+            {(() => {
+              const tipo = pedido.tipo_local || 'casa';
+              const detalhe = getDetalheLocal(pedido);
+              const TipoIcon = tipo === 'predio' ? Apartment : tipo === 'comercial' ? Store : Home;
+              const mostraNome = tipo !== 'casa' && !!pedido.nome_local;
+              if (!mostraNome && !detalhe) return null;
+              return (
+                <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" mb={2}>
+                  <Chip
+                    size="small"
+                    color="primary"
+                    icon={<TipoIcon sx={{ fontSize: 14 }} />}
+                    label={getTipoLocalLabel(tipo)}
+                    sx={{ fontWeight: 700, height: 20, '& .MuiChip-label': { px: 0.75 } }}
+                  />
+                  {mostraNome && (
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                      {pedido.nome_local}
+                    </Typography>
+                  )}
+                  {detalhe && (
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      · {detalhe}
+                    </Typography>
+                  )}
+                </Stack>
+              );
+            })()}
             <Stack spacing={1.5}>
               <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
                 <Typography variant="body2">

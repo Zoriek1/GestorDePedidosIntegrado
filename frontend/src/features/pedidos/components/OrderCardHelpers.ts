@@ -75,6 +75,38 @@ export function getEnderecoCompleto(pedido: Pedido): string {
   return parts.join(', ') || 'Endereço não informado';
 }
 
+/** Rótulo amigável do tipo de local de entrega. */
+export function getTipoLocalLabel(tipo?: string): string {
+  switch (tipo) {
+    case 'predio':
+      return 'Prédio';
+    case 'comercial':
+      return 'Comercial';
+    default:
+      return 'Casa';
+  }
+}
+
+/**
+ * Monta a linha de detalhe do prédio: "AP 302 · Bloco A · Torre 2 · 3º andar".
+ * Aceita um objeto parcial para servir tanto o pedido quanto o formulário.
+ */
+export function getDetalheLocal(p: {
+  apartamento?: string;
+  bloco?: string;
+  torre?: string;
+  andar?: string;
+}): string {
+  return [
+    p.apartamento ? `AP ${p.apartamento}` : null,
+    p.bloco ? `Bloco ${p.bloco}` : null,
+    p.torre ? `Torre ${p.torre}` : null,
+    p.andar ? `${p.andar}º andar` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /**
  * Format created_at to "DD/MM/YYYY às HH:mm"
  */
@@ -152,6 +184,12 @@ export function buildEncaminharMensagem(pedido: Pedido): string {
     const endereco = getEnderecoCompleto(pedido);
     addLine(lines, 'Endereço:');
     addLine(lines, endereco);
+    // Local: tipo + nome + detalhe do prédio (salta aos olhos do entregador)
+    const tipoLabel = getTipoLocalLabel(pedido.tipo_local);
+    const localLinha = [tipoLabel, pedido.nome_local?.trim()].filter(Boolean).join(': ');
+    if (pedido.nome_local?.trim()) addLine(lines, `Local: ${localLinha}`);
+    const detalhe = getDetalheLocal(pedido);
+    if (detalhe) addLine(lines, detalhe);
     if (pedido.obs_entrega?.trim()) {
       addLine(lines, `Obs entrega: ${pedido.obs_entrega.trim()}`);
     }

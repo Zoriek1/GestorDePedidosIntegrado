@@ -552,7 +552,9 @@ def atribuir_entregador(pedido_id):
                 pedido.status = "pronto_entrega"
             pedido.updated_at = datetime_now_brazil()
             db.session.commit()
-            return success_response({"pedido": pedido.to_dict()}, message="Entrega retirada da rota")
+            return success_response(
+                {"pedido": pedido.to_dict()}, message="Entrega retirada da rota"
+            )
 
         if role == "entregador":
             target_id = _get_current_user_id()
@@ -1075,6 +1077,12 @@ def criar_pedido():
         cidade = _clean_str(data.get("cidade"))
         endereco = _clean_str(data.get("endereco"))
         obs_entrega = _clean_str(data.get("obs_entrega"))
+        tipo_local = _clean_str(data.get("tipo_local")) or "casa"
+        nome_local = _clean_str(data.get("nome_local"))
+        apartamento = _clean_str(data.get("apartamento"))
+        bloco = _clean_str(data.get("bloco"))
+        torre = _clean_str(data.get("torre"))
+        andar = _clean_str(data.get("andar"))
 
         mensagem = _clean_str(data.get("mensagem"))
         pagamento = _clean_str(data.get("pagamento"))
@@ -1112,6 +1120,12 @@ def criar_pedido():
                 f'Campos obrigatórios ausentes: {", ".join(campos_faltantes)}',
                 400,
                 details={"campos_enviados": list(data.keys())},
+            )
+
+        # Guarda: status "Pago" exige uma forma de pagamento (espelha a validação do front).
+        if (status_pagamento or "").strip().lower() == "pago" and not pagamento:
+            return error_response(
+                "Defina a forma de pagamento para marcar o pedido como Pago.", 400
             )
 
         # Conversão de quantidade
@@ -1269,6 +1283,12 @@ def criar_pedido():
             cidade=cidade if cidade else None,
             endereco=endereco if endereco else None,
             obs_entrega=obs_entrega if obs_entrega else None,
+            tipo_local=tipo_local,
+            nome_local=nome_local if nome_local else None,
+            apartamento=apartamento if apartamento else None,
+            bloco=bloco if bloco else None,
+            torre=torre if torre else None,
+            andar=andar if andar else None,
             mensagem=mensagem if mensagem else None,
             pagamento=pagamento if pagamento else None,
             parcelas_cartao=parcelas_cartao,
@@ -1470,6 +1490,11 @@ def atualizar_pedido(pedido_id):
         if "obs_entrega" in data:
             track_change("obs_entrega", pedido.obs_entrega, data["obs_entrega"])
             pedido.obs_entrega = data["obs_entrega"]
+        # Tipo/detalhe do local (não reseta distância)
+        for campo in ["tipo_local", "nome_local", "apartamento", "bloco", "torre", "andar"]:
+            if campo in data and data[campo] != getattr(pedido, campo):
+                track_change(campo, getattr(pedido, campo), data[campo])
+                setattr(pedido, campo, data[campo])
         if "mensagem" in data:
             track_change("mensagem", pedido.mensagem, data["mensagem"])
             pedido.mensagem = data["mensagem"]
@@ -1495,6 +1520,15 @@ def atualizar_pedido(pedido_id):
         if "status_pagamento" in data:
             track_change("status_pagamento", pedido.status_pagamento, data["status_pagamento"])
             pedido.status_pagamento = data["status_pagamento"]
+
+        # Guarda: status "Pago" exige uma forma de pagamento (espelha a validação do front).
+        if (pedido.status_pagamento or "").strip().lower() == "pago" and not (
+            (pedido.pagamento or "").strip()
+        ):
+            db.session.rollback()
+            return error_response(
+                "Defina a forma de pagamento para marcar o pedido como Pago.", 400
+            )
 
         if "status" in data:
             track_change("status", pedido.status, data["status"])

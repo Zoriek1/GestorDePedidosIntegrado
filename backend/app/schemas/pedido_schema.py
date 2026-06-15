@@ -35,6 +35,14 @@ class PedidoSchema(Schema):
     cidade = fields.Str(allow_none=True, validate=validate.Length(max=100))
     endereco = fields.Str(allow_none=True)
     obs_entrega = fields.Str(allow_none=True)
+    tipo_local = fields.Str(
+        allow_none=True, validate=validate.OneOf(["casa", "predio", "comercial"])
+    )
+    nome_local = fields.Str(allow_none=True, validate=validate.Length(max=200))
+    apartamento = fields.Str(allow_none=True, validate=validate.Length(max=20))
+    bloco = fields.Str(allow_none=True, validate=validate.Length(max=20))
+    torre = fields.Str(allow_none=True, validate=validate.Length(max=20))
+    andar = fields.Str(allow_none=True, validate=validate.Length(max=20))
 
     # Step 4 - Finalização
     mensagem = fields.Str(allow_none=True)
@@ -140,6 +148,14 @@ class PedidoUpdateSchema(Schema):
     cidade = fields.Str(allow_none=True)
     endereco = fields.Str(allow_none=True)
     obs_entrega = fields.Str(allow_none=True)
+    tipo_local = fields.Str(
+        allow_none=True, validate=validate.OneOf(["casa", "predio", "comercial"])
+    )
+    nome_local = fields.Str(allow_none=True, validate=validate.Length(max=200))
+    apartamento = fields.Str(allow_none=True, validate=validate.Length(max=20))
+    bloco = fields.Str(allow_none=True, validate=validate.Length(max=20))
+    torre = fields.Str(allow_none=True, validate=validate.Length(max=20))
+    andar = fields.Str(allow_none=True, validate=validate.Length(max=20))
     mensagem = fields.Str(allow_none=True)
     pagamento = fields.Str(allow_none=True)
     observacoes = fields.Str(allow_none=True)

@@ -103,6 +103,12 @@ interface CreateOrderWizardProps {
   initialData?: Partial<PedidoFormData>;
   /** Callback para reiniciar o fluxo completo */
   onReset?: () => void;
+  /**
+   * Liga o rascunho local (autosave + diálogo "Retomar?"). Default `true` (criação).
+   * Em edição deve ser `false`: os dados do servidor são a fonte da verdade e o rascunho
+   * global de criação não deve interferir nem ser sobrescrito.
+   */
+  enableDraft?: boolean;
 }
 
 // ============================================================================
@@ -116,6 +122,7 @@ export function CreateOrderWizard({
   onClearError,
   initialData,
   onReset,
+  enableDraft = true,
 }: CreateOrderWizardProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -168,7 +175,8 @@ export function CreateOrderWizard({
     if (draftDecidedRef.current) return;
     draftDecidedRef.current = true;
 
-    if (!isDraftMeaningful(storedDraft, initialData)) {
+    // Em edição (enableDraft=false), o servidor é a fonte da verdade: não retoma rascunho.
+    if (!enableDraft || !isDraftMeaningful(storedDraft, initialData)) {
       setDraftResolved(true);
       return;
     }
@@ -199,10 +207,9 @@ export function CreateOrderWizard({
 
   // Salva no localStorage com debounce (só após a decisão sobre o rascunho).
   useEffect(() => {
-    if (!draftResolved) return;
+    if (!draftResolved || !enableDraft) return;
     let timeoutId: ReturnType<typeof setTimeout>;
 
-    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = watch((data) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
@@ -218,7 +225,7 @@ export function CreateOrderWizard({
       clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [watch, draftResolved]);
+  }, [watch, draftResolved, enableDraft]);
 
   // Limpa erros ao mudar de step
   useEffect(() => {
@@ -297,18 +304,11 @@ export function CreateOrderWizard({
     }
   };
 
-  const handleStepClick = async (step: number) => {
-    // Só permite ir para frente se os steps anteriores são válidos
-    if (step > activeStep) {
-      for (let i = activeStep; i < step; i++) {
-        const isValid = await validateStep(i);
-        if (!isValid) {
-          setActiveStep(i);
-          return;
-        }
-      }
+  const handleStepClick = (step: number) => {
+    // Passos clicáveis apenas para voltar (<= índice atual). Avançar só pelo botão "Próximo".
+    if (step <= activeStep) {
+      setActiveStep(step);
     }
-    setActiveStep(step);
   };
 
   // Salvar apenas rascunho (sem submeter)
@@ -425,6 +425,9 @@ export function CreateOrderWizard({
     }
   };
 
+  // Status "Pago" exige forma de pagamento — bloqueia "Salvar e Concluir".
+  const pagamentoInvalido = watch('status_pagamento') === 'Pago' && !watch('pagamento');
+
   // Componente do step atual
   const CurrentStepComponent = STEPS[activeStep].component;
 
@@ -438,7 +441,12 @@ export function CreateOrderWizard({
         component="form" 
         onSubmit={handleSubmit(onFormSubmit as any)} // eslint-disable-line @typescript-eslint/no-explicit-any
         onKeyDown={handleFormKeyDown}
-        sx={{ maxWidth: 960, mx: 'auto' }}
+        sx={{
+          maxWidth: 960,
+          mx: 'auto',
+          // Evita zoom automático no iOS: inputs com pelo menos 16px no mobile.
+          '& .MuiInputBase-input': { fontSize: { xs: 16, md: 'inherit' } },
+        }}
       >
         {/* Stepper - Desktop */}
         {!isMobile && (
@@ -447,7 +455,7 @@ export function CreateOrderWizard({
               <Step
                 key={step.label}
                 completed={index < activeStep}
-                sx={{ cursor: 'pointer' }}
+                sx={{ cursor: index <= activeStep ? 'pointer' : 'default' }}
                 onClick={() => handleStepClick(index)}
               >
                 <StepLabel error={stepErrors[index]}>
@@ -519,11 +527,13 @@ export function CreateOrderWizard({
                 </Button>
                 <Tooltip
                   title={
-                    isSubmitting 
-                      ? 'Salvando pedido...' 
-                      : !isReadyToSubmit 
-                        ? 'Navegue até o último passo para salvar' 
-                        : 'Clique para salvar o pedido'
+                    isSubmitting
+                      ? 'Salvando pedido...'
+                      : pagamentoInvalido
+                        ? 'Defina a forma de pagamento para concluir'
+                        : !isReadyToSubmit
+                          ? 'Navegue até o último passo para salvar'
+                          : 'Clique para salvar o pedido'
                   }
                   arrow
                 >
@@ -532,7 +542,7 @@ export function CreateOrderWizard({
                       type="submit"
                       variant="contained"
                       color="primary"
-                      disabled={isSubmitting || !isReadyToSubmit}
+                      disabled={isSubmitting || !isReadyToSubmit || pagamentoInvalido}
                       onClick={() => console.log('Botão Salvar clicado! isReadyToSubmit:', isReadyToSubmit)}
                       startIcon={
                         isSubmitting ? (
@@ -568,51 +578,49 @@ export function CreateOrderWizard({
             position="static"
             activeStep={activeStep}
             sx={{
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 5,
               bgcolor: 'background.paper',
               borderRadius: 1,
-              boxShadow: 1,
+              boxShadow: 3,
+              py: 1,
+              '& .MuiMobileStepper-dots': { flex: 0 },
             }}
             nextButton={
               activeStep === STEPS.length - 1 ? (
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="outlined"
-                    onClick={handleSaveDraft}
-                    disabled={isSubmitting}
-                  >
-                    Rascunho
-                  </Button>
-                  <Tooltip
-                    title={
-                      isSubmitting 
-                        ? 'Salvando...' 
-                        : !isReadyToSubmit 
-                          ? 'Navegue até o último passo' 
+                <Tooltip
+                  title={
+                    isSubmitting
+                      ? 'Salvando...'
+                      : pagamentoInvalido
+                        ? 'Defina a forma de pagamento'
+                        : !isReadyToSubmit
+                          ? 'Navegue até o último passo'
                           : 'Salvar pedido'
-                    }
-                    arrow
-                  >
-                    <span>
-                      <Button
-                        type="submit"
-                        size="small"
-                        disabled={isSubmitting || !isReadyToSubmit}
-                        onClick={() => console.log('Botão Concluir clicado! isReadyToSubmit:', isReadyToSubmit)}
-                        startIcon={
-                          isSubmitting ? (
-                            <CircularProgress size={16} color="inherit" />
-                          ) : null
-                        }
-                      >
-                        {isSubmitting ? '...' : 'Concluir'}
-                      </Button>
-                    </span>
-                  </Tooltip>
-                </Box>
+                  }
+                  arrow
+                >
+                  <span>
+                    <Button
+                      type="submit"
+                      size="small"
+                      variant="contained"
+                      sx={{ flex: 1 }}
+                      disabled={isSubmitting || !isReadyToSubmit || pagamentoInvalido}
+                      onClick={() => console.log('Botão Concluir clicado! isReadyToSubmit:', isReadyToSubmit)}
+                      startIcon={
+                        isSubmitting ? (
+                          <CircularProgress size={16} color="inherit" />
+                        ) : null
+                      }
+                    >
+                      {isSubmitting ? '...' : 'Concluir'}
+                    </Button>
+                  </span>
+                </Tooltip>
               ) : (
-                <Button type="button" size="small" onClick={handleNext}>
+                <Button type="button" size="small" variant="contained" sx={{ flex: 1 }} onClick={handleNext}>
                   Próximo
                   <KeyboardArrowRight />
                 </Button>

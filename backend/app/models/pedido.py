@@ -74,6 +74,24 @@ class Pedido(db.Model):
     endereco = db.Column(db.Text, nullable=True, comment="Endereço completo (gerado ou manual)")
     obs_entrega = db.Column(db.Text, nullable=True, comment="Como entregar/Observações de entrega")
 
+    # Step 3 - Tipo e detalhe do local de entrega (visão do entregador / impressão)
+    tipo_local = db.Column(
+        db.String(20),
+        nullable=True,
+        default="casa",
+        server_default="casa",
+        comment="Tipo do local: casa | predio | comercial",
+    )
+    nome_local = db.Column(
+        db.String(200),
+        nullable=True,
+        comment="Nome do prédio/condomínio ou do estabelecimento",
+    )
+    apartamento = db.Column(db.String(20), nullable=True, comment="Apartamento (prédio)")
+    bloco = db.Column(db.String(20), nullable=True, comment="Bloco (prédio)")
+    torre = db.Column(db.String(20), nullable=True, comment="Torre (prédio)")
+    andar = db.Column(db.String(20), nullable=True, comment="Andar (prédio)")
+
     # Step 4 - Finalização
     mensagem = db.Column(db.Text, nullable=True, comment="Carta/Mensagem")
     pagamento = db.Column(db.String(50), nullable=True, comment="Forma de pagamento")
@@ -269,6 +287,12 @@ class Pedido(db.Model):
             "cidade": self.cidade or "",
             "endereco": self.endereco or "",
             "obs_entrega": self.obs_entrega or "",
+            "tipo_local": self.tipo_local or "casa",
+            "nome_local": self.nome_local or "",
+            "apartamento": self.apartamento or "",
+            "bloco": self.bloco or "",
+            "torre": self.torre or "",
+            "andar": self.andar or "",
             # Step 4
             "mensagem": self.mensagem or "",
             "pagamento": self.pagamento or "",

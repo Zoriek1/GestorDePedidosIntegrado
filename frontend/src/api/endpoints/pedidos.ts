@@ -33,6 +33,12 @@ export interface Pedido {
   cidade?: string;
   endereco?: string;
   obs_entrega?: string;
+  tipo_local?: 'casa' | 'predio' | 'comercial';
+  nome_local?: string;
+  apartamento?: string;
+  bloco?: string;
+  torre?: string;
+  andar?: string;
   mensagem?: string;
   pagamento?: string;
   parcelas_cartao?: number | null;
@@ -184,6 +190,12 @@ export interface CreatePedidoPayload {
   cidade?: string;
   endereco?: string;
   obs_entrega?: string;
+  tipo_local?: 'casa' | 'predio' | 'comercial';
+  nome_local?: string;
+  apartamento?: string;
+  bloco?: string;
+  torre?: string;
+  andar?: string;
   mensagem?: string;
   pagamento?: string;
   parcelas_cartao?: number | null;

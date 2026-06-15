@@ -23,7 +23,7 @@ import dayjs from 'dayjs';
 import { CurrencyInput } from '../../../../components/form';
 import { TimeSlotDialog } from '../TimeSlotDialog';
 import type { PedidoFormData } from '../../schemas';
-import { getFloristHoliday, getUpcomingHolidays } from '../../utils/floristHolidays';
+import { getFloristHoliday } from '../../utils/floristHolidays';
 import { useArranjoSugestoes, usePromoverArranjo } from '../../services/catalogoApi';
 import { useToast } from '../../../../components/system/useToast';
 
@@ -66,7 +66,6 @@ export function StepProduto() {
   );
 
   const selectedHoliday = diaEntrega ? getFloristHoliday(dayjs(diaEntrega)) : null;
-  const upcomingHolidays = getUpcomingHolidays(dayjs(), 90).slice(0, 3);
 
   const handleSelectSlot = (slot: string) => {
     setValue('horario', slot, { shouldValidate: true });
@@ -235,35 +234,6 @@ export function StepProduto() {
                 >
                   <LocalFloristIcon fontSize="small" /> {selectedHoliday.name}
                   {selectedHoliday.tier === 'peak' && ' — pico de demanda'}
-                </Box>
-              ) : upcomingHolidays.length > 0 ? (
-                <Box
-                  sx={{
-                    mt: 1,
-                    fontSize: 12,
-                    color: 'text.secondary',
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 0.75,
-                  }}
-                >
-                  <span>Próximas datas:</span>
-                  {upcomingHolidays.map((u) => (
-                    <Box
-                      key={u.date.format('YYYY-MM-DD')}
-                      component="span"
-                      sx={{
-                        px: 0.75,
-                        py: 0.25,
-                        borderRadius: 0.5,
-                        backgroundColor: `${u.holiday.color}1f`,
-                        color: u.holiday.color,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {u.holiday.name} ({u.date.format('DD/MM')})
-                    </Box>
-                  ))}
                 </Box>
               ) : null}
             </Grid>

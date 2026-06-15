@@ -14,11 +14,12 @@ import {
   Autocomplete,
   CircularProgress,
   Paper,
-  Grid,
   Alert,
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import LockIcon from '@mui/icons-material/Lock';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { PhoneInput } from '../../../../components/form';
 import { useDebouncedValue } from '../../../../hooks/useDebouncedValue';
 import { useCustomerSearch } from '../../../../api/endpoints/customers';
@@ -87,6 +88,10 @@ export function StepCliente() {
 
   const [inputValue, setInputValue] = useState('');
   const [mesmoQueCliente, setMesmoQueCliente] = useState(false);
+  // "Mais opções" abre por padrão só se já houver código do WhatsApp ou origem de anúncio.
+  const [maisOpcoes, setMaisOpcoes] = useState(
+    () => !!codigoWhatsapp.trim() || !!origemAnuncio
+  );
   const debouncedQuery = useDebouncedValue(inputValue.trim(), 300);
   
   // Buscar clientes
@@ -303,86 +308,64 @@ export function StepCliente() {
           </Alert>
         ) : null}
 
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 6 }}>
-            {/* Telefone/WhatsApp */}
-            <Controller
-              name="telefone_cliente"
-              control={control}
-              render={({ field }) => (
-                <PhoneInput
-                  {...field}
-                  label="Telefone/WhatsApp"
-                  fullWidth
-                  required
-                  disabled={hasSelectedCustomer} // ReadOnly se cliente existente
-                  error={!!errors.telefone_cliente}
-                  helperText={
-                    hasSelectedCustomer
-                      ? 'Telefone do cliente selecionado'
-                      : errors.telefone_cliente?.message || 'Formato: (00) 00000-0000'
-                  }
-                />
-              )}
+        {/* Telefone/WhatsApp */}
+        <Controller
+          name="telefone_cliente"
+          control={control}
+          render={({ field }) => (
+            <PhoneInput
+              {...field}
+              label="Telefone/WhatsApp"
+              fullWidth
+              required
+              disabled={hasSelectedCustomer} // ReadOnly se cliente existente
+              error={!!errors.telefone_cliente}
+              helperText={
+                hasSelectedCustomer
+                  ? 'Telefone do cliente selecionado'
+                  : errors.telefone_cliente?.message || 'Formato: (00) 00000-0000'
+              }
             />
-          </Grid>
+          )}
+        />
 
-          <Grid size={{ xs: 12, md: 6 }}>
+        {/* Destinatário — checkbox ANTES; some quando for o próprio cliente */}
+        <Box>
+          <FormControlLabel
+            control={
+              <MinimalCheckbox
+                checked={mesmoQueCliente}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setMesmoQueCliente(checked);
+                  if (checked) {
+                    setValue('destinatario', clienteNome || '', { shouldValidate: true });
+                  }
+                }}
+                aria-label="Destinatário é o próprio cliente"
+              />
+            }
+            label="Destinatário é o próprio cliente"
+          />
+          <Collapse in={!mesmoQueCliente}>
             <Controller
-              name="codigo_whatsapp"
+              name="destinatario"
               control={control}
               render={({ field }) => (
                 <TextField
                   {...field}
-                  label="Código do WhatsApp (Opcional)"
-                  placeholder="Ex: A3F9"
+                  label="Para (Destinatário)"
+                  placeholder="Nome do destinatário"
                   fullWidth
-                  value={field.value ?? ''}
-                  error={!!errors.codigo_whatsapp}
-                  helperText={errors.codigo_whatsapp?.message || 'Use o código exibido na mensagem do cliente'}
+                  required
+                  error={!!errors.destinatario}
+                  helperText={errors.destinatario?.message}
+                  sx={{ mt: 1 }}
                 />
               )}
             />
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 6 }}>
-            {/* Destinatário com Checkbox "Mesmo que o cliente" */}
-            <Box>
-              <Controller
-                name="destinatario"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    label="Para (Destinatário)"
-                    placeholder="Nome do destinatário"
-                    fullWidth
-                    required
-                    error={!!errors.destinatario}
-                    helperText={errors.destinatario?.message}
-                  />
-                )}
-              />
-              <FormControlLabel
-                control={
-                  <MinimalCheckbox
-                    checked={mesmoQueCliente}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setMesmoQueCliente(checked);
-                      if (checked) {
-                        setValue('destinatario', clienteNome || '', { shouldValidate: true });
-                      }
-                    }}
-                    aria-label="Mesmo que o cliente"
-                  />
-                }
-                label="Mesmo que o cliente"
-                sx={{ mt: 1 }}
-              />
-            </Box>
-          </Grid>
-        </Grid>
+          </Collapse>
+        </Box>
 
         {/* Tipo de Pedido */}
         <Controller
@@ -403,39 +386,48 @@ export function StepCliente() {
         />
 
         {/* Fonte do Pedido */}
-        <Controller
-          name="fonte_pedido_id"
-          control={control}
-          render={({ field }) => (
-            <FormControl fullWidth error={!!errors.fonte_pedido_id}>
-              <InputLabel>Fonte do Pedido</InputLabel>
-              {fonteLocked && (
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Fonte selecionada no início e bloqueada para edição.
-                </Typography>
-              )}
-              <Select
-                {...field}
-                label="Fonte do Pedido"
-                value={field.value || ''}
-                onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                disabled={fonteLocked}
-              >
-                <MenuItem value="">
-                  <em>Não informado</em>
-                </MenuItem>
-                {fontes.map((fonte) => (
-                  <MenuItem key={fonte.id} value={fonte.id}>
-                    {fonte.nome}
+        {fonteLocked ? (
+          <TextField
+            label="Fonte do Pedido"
+            value={fontes.find((f) => f.id === fonteSelecionadaId)?.nome || 'Fonte selecionada'}
+            fullWidth
+            disabled
+            helperText="Selecionada no início e bloqueada para edição"
+            slotProps={{
+              input: {
+                startAdornment: <LockIcon fontSize="small" sx={{ mr: 1, color: 'text.disabled' }} />,
+              },
+            }}
+          />
+        ) : (
+          <Controller
+            name="fonte_pedido_id"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth error={!!errors.fonte_pedido_id}>
+                <InputLabel>Fonte do Pedido</InputLabel>
+                <Select
+                  {...field}
+                  label="Fonte do Pedido"
+                  value={field.value || ''}
+                  onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                >
+                  <MenuItem value="">
+                    <em>Não informado</em>
                   </MenuItem>
-                ))}
-              </Select>
-              {errors.fonte_pedido_id && (
-                <FormHelperText>{errors.fonte_pedido_id.message}</FormHelperText>
-              )}
-            </FormControl>
-          )}
-        />
+                  {fontes.map((fonte) => (
+                    <MenuItem key={fonte.id} value={fonte.id}>
+                      {fonte.nome}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {errors.fonte_pedido_id && (
+                  <FormHelperText>{errors.fonte_pedido_id.message}</FormHelperText>
+                )}
+              </FormControl>
+            )}
+          />
+        )}
 
         {/* Vendedor Responsável (apenas admin) */}
         {isAdmin && vendedores.length > 0 && (
@@ -465,65 +457,101 @@ export function StepCliente() {
           />
         )}
 
-        {foundLead ? (
-          /* Lead encontrado pelo código do WhatsApp: status verde, sem campos manuais. #4 */
-          <Alert severity="success" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
-            <Typography variant="subtitle2" fontWeight={700}>
-              LEAD ENCONTRADO
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Token: {foundLead.token_rastreio}
-            </Typography>
-            {foundLead.fbp && (
-              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-                Fbp: {foundLead.fbp}
-              </Typography>
-            )}
-            {foundLead.fbclid && (
-              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-                fbclid: {foundLead.fbclid}
-              </Typography>
-            )}
-          </Alert>
-        ) : (
-          <>
-            {/* Origem: anúncio Meta Ads (manual, quando não há lead vinculado) */}
-            <Controller
-              name="origem_anuncio"
-              control={control}
-              render={({ field }) => (
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={field.value ?? false}
-                      onChange={(e) => field.onChange(e.target.checked)}
-                    />
-                  }
-                  label="Pedido vindo de anúncio?"
-                />
-              )}
-            />
-
-            <Collapse in={origemAnuncio}>
+        {/* Mais opções (opcional): código do WhatsApp + origem de anúncio */}
+        <Box>
+          <Button
+            type="button"
+            variant="text"
+            onClick={() => setMaisOpcoes((v) => !v)}
+            startIcon={
+              <ExpandMoreIcon
+                sx={{ transform: maisOpcoes ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}
+              />
+            }
+            sx={{ textTransform: 'none' }}
+          >
+            Mais opções (opcional)
+          </Button>
+          <Collapse in={maisOpcoes}>
+            <Stack spacing={2.5} sx={{ mt: 1 }}>
               <Controller
-                name="fbclid"
+                name="codigo_whatsapp"
                 control={control}
                 render={({ field }) => (
                   <TextField
                     {...field}
-                    value={field.value ?? ''}
-                    label="Facebook Click ID (fbclid)"
-                    placeholder="Ex: AbCdEfGhIjKlMnOpQrStUvWxYz"
+                    label="Código do WhatsApp (Opcional)"
+                    placeholder="Ex: A3F9"
                     fullWidth
-                    required={origemAnuncio}
-                    error={!!errors.fbclid}
-                    helperText={errors.fbclid?.message || 'Cole o fbclid da mensagem do WhatsApp'}
+                    value={field.value ?? ''}
+                    error={!!errors.codigo_whatsapp}
+                    helperText={errors.codigo_whatsapp?.message || 'Use o código exibido na mensagem do cliente'}
                   />
                 )}
               />
-            </Collapse>
-          </>
-        )}
+
+              {foundLead ? (
+                /* Lead encontrado pelo código do WhatsApp: status verde, sem campos manuais. #4 */
+                <Alert severity="success" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    LEAD ENCONTRADO
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Token: {foundLead.token_rastreio}
+                  </Typography>
+                  {foundLead.fbp && (
+                    <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                      Fbp: {foundLead.fbp}
+                    </Typography>
+                  )}
+                  {foundLead.fbclid && (
+                    <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                      fbclid: {foundLead.fbclid}
+                    </Typography>
+                  )}
+                </Alert>
+              ) : (
+                <>
+                  {/* Origem: anúncio Meta Ads (manual, quando não há lead vinculado) */}
+                  <Controller
+                    name="origem_anuncio"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={field.value ?? false}
+                            onChange={(e) => field.onChange(e.target.checked)}
+                          />
+                        }
+                        label="Pedido vindo de anúncio?"
+                      />
+                    )}
+                  />
+
+                  <Collapse in={origemAnuncio}>
+                    <Controller
+                      name="fbclid"
+                      control={control}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          value={field.value ?? ''}
+                          label="Facebook Click ID (fbclid)"
+                          placeholder="Ex: AbCdEfGhIjKlMnOpQrStUvWxYz"
+                          fullWidth
+                          required={origemAnuncio}
+                          error={!!errors.fbclid}
+                          helperText={errors.fbclid?.message || 'Cole o fbclid da mensagem do WhatsApp'}
+                        />
+                      )}
+                    />
+                  </Collapse>
+                </>
+              )}
+            </Stack>
+          </Collapse>
+        </Box>
 
         {/* fbp: identificador do cookie _fbp do Meta Pixel (sempre registrado, invisível) */}
         <input type="hidden" {...register('fbp')} />

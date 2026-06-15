@@ -68,6 +68,27 @@ def fmt_brl(val):
         return str(val)
 
 
+TIPO_LOCAL_LABELS = {"casa": "Casa", "predio": "Prédio", "comercial": "Comercial"}
+
+
+def tipo_local_label(tipo) -> str:
+    return TIPO_LOCAL_LABELS.get((tipo or "").strip().lower(), "")
+
+
+def format_detalhe_local(ctx: dict) -> str:
+    """Monta a linha de detalhe do prédio: 'AP 302 · Bloco A · Torre 2 · 3º andar'."""
+    partes = []
+    if ctx.get("apartamento"):
+        partes.append(f"AP {ctx['apartamento']}")
+    if ctx.get("bloco"):
+        partes.append(f"Bloco {ctx['bloco']}")
+    if ctx.get("torre"):
+        partes.append(f"Torre {ctx['torre']}")
+    if ctx.get("andar"):
+        partes.append(f"{ctx['andar']}º andar")
+    return " · ".join(partes)
+
+
 def build_pedido_context(pedido) -> dict:
     """Constrói o data bag de contexto a partir do model Pedido."""
     cliente_norm = (pedido.cliente or "").strip().lower()
@@ -100,6 +121,12 @@ def build_pedido_context(pedido) -> dict:
         "distancia": None if is_retirada else pedido.distancia_km,
         "taxa": None if is_retirada else pedido.taxa_entrega,
         "obs_entrega": None if is_retirada else pedido.obs_entrega,
+        "tipo_local": None if is_retirada else (pedido.tipo_local or "casa"),
+        "nome_local": None if is_retirada else pedido.nome_local,
+        "apartamento": None if is_retirada else pedido.apartamento,
+        "bloco": None if is_retirada else pedido.bloco,
+        "torre": None if is_retirada else pedido.torre,
+        "andar": None if is_retirada else pedido.andar,
         "pagamento": pedido.pagamento,
         "status_pagto": pedido.status_pagamento,
         "obs": pedido.observacoes,
@@ -140,6 +167,14 @@ COMPROVANTE_CSS = """
 
     .badge-black { background: #000; color: #fff; padding: 2px 6px; border-radius: 4px; display: inline-block; }
 
+    /* Local de entrega em destaque (visão do entregador) */
+    .local-box { margin-top: 8px; border: 2px solid #000; border-radius: 6px; padding: 8px 10px; background: #fafafa; }
+    .local-line { display: flex; align-items: center; gap: 8px; }
+    .local-badge { background: #000; color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; }
+    .local-nome { font-size: 16px; font-weight: 800; }
+    .local-det { margin-top: 4px; font-size: 14px; font-weight: 800; display: inline-block; border: 1px solid #000; border-radius: 4px; padding: 2px 8px; }
+    .local-ref { margin-top: 4px; font-size: 12px; font-weight: 600; color: #333; }
+
     /* VIS-05: produto em destaque (montagem) + selo de pagamento visível */
     .produto-xl { font-size: 22px; font-weight: 800; line-height: 1.2; }
     .slip-seal { display: inline-block; padding: 3px 10px; border-radius: 4px; font-weight: 800; font-size: 14px; letter-spacing: 0.5px; }
@@ -179,12 +214,33 @@ def render_comprovante_body(ctx: dict) -> str:
             </div>
             """
 
+    # Bloco "Local" em destaque (tipo + nome + detalhe do prédio + ponto de referência),
+    # para o entregador identificar o ponto de entrega de relance.
+    local_html = ""
+    if ctx.get("endereco"):
+        local_tipo = tipo_local_label(ctx.get("tipo_local"))
+        detalhe = format_detalhe_local(ctx)
+        local_linhas = ""
+        if local_tipo or ctx.get("nome_local"):
+            badge = f'<span class="local-badge">{local_tipo}</span>' if local_tipo else ""
+            nome = fmt(ctx["nome_local"]) if ctx.get("nome_local") else ""
+            local_linhas += (
+                f'<div class="local-line">{badge}<span class="local-nome">{nome}</span></div>'
+            )
+        if detalhe:
+            local_linhas += f'<div class="local-det">{detalhe}</div>'
+        if ctx.get("obs_entrega"):
+            local_linhas += f'<div class="local-ref">Ref.: {fmt(ctx["obs_entrega"])}</div>'
+        if local_linhas:
+            local_html = f'<div class="local-box">{local_linhas}</div>'
+
     html_endereco = ""
     if ctx["endereco"]:
         html_endereco = f"""
              <div class="card full">
                 <div class="h"><span class="dot"></span><span class="h-title">Endereço de Entrega</span></div>
                 <div class="box">{fmt(ctx['endereco'])}</div>
+                {local_html}
                 <div class="rows" style="margin-top:8px">
                     <div class="row"><div class="label">Cidade</div><div class="value">{fmt(ctx['cidade'])}</div></div>
                     <div class="row"><div class="label">CEP</div><div class="value">{fmt(ctx['cep'])}</div></div>

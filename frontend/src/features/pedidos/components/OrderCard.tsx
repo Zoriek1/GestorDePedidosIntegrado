@@ -464,7 +464,18 @@ export function OrderCard({
           </Typography>
 
           {pedido.produto && (
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'text.primary', lineHeight: 1.2 }} noWrap>
+            <Typography
+              sx={{
+                fontSize: '1.05rem',
+                fontWeight: 800,
+                color: 'text.primary',
+                lineHeight: 1.2,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
               {pedido.produto}
             </Typography>
           )}
@@ -555,8 +566,8 @@ export function OrderCard({
             </Typography>
           </Box>
 
-          {/* Produto (legível) */}
-          <Typography sx={{ fontWeight: 600, fontSize: '0.95rem', mt: 1 }}>
+          {/* Produto (destaque para montagem/conferência) */}
+          <Typography sx={{ fontWeight: 800, fontSize: '1.35rem', lineHeight: 1.2, mt: 1 }}>
             {pedido.produto}
           </Typography>
 
@@ -811,7 +822,7 @@ export function OrderCard({
 
         {/* 3. Item/Resumo do Pedido */}
         <Box mb={2}>
-          <Typography variant="body1" fontWeight="medium">
+          <Typography sx={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 800, lineHeight: 1.2 }}>
             {pedido.produto}
           </Typography>
         </Box>

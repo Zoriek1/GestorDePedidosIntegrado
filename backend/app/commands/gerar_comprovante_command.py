@@ -105,6 +105,87 @@ def build_delivery_detail_lines(pedido) -> list[tuple[str, str]]:
     return [(label, str(value)) for label, value in lines if value]
 
 
+# tipo_local no banco é "casa | predio | comercial". Aceitamos sinônimos comuns
+# (edificio, condominio, comercio, loja...) para não depender de digitação exata.
+def _normalize_tipo_local(tipo_local) -> str:
+    t = (tipo_local or "casa").strip().lower()
+    if t in ("predio", "prédio", "edificio", "edifício", "apartamento", "ap", "apto",
+             "condominio", "condomínio", "flat"):
+        return "predio"
+    if t in ("comercial", "comercio", "comércio", "empresa", "loja", "escritorio", "escritório"):
+        return "comercial"
+    return "casa"
+
+
+def _s(value) -> str:
+    return (str(value).strip() if value is not None else "")
+
+
+def build_address_block(pedido) -> list[tuple[bool, str]]:
+    """Formatação inteligente do endereço para a comanda da florista.
+
+    Retorna uma lista de (forte, texto), onde `forte` indica destaque (negrito/maior).
+    Regras por tipo de local (usa só os campos já existentes, sem repetir dado):
+      - predio    → "EDIFÍCIO: <nome>, AP <apto>"  +  "RUA: <rua>, <numero>"
+      - casa      → "CASA"                          +  "RUA: <rua>, <numero>"
+      - comercial → "COMÉRCIO: <nome>"              +  "RUA: <rua>, <numero>"
+    Depois: complementos (bloco/torre/andar/quadra/lote/complemento) e bairro/cidade/CEP.
+    """
+    tipo = _normalize_tipo_local(getattr(pedido, "tipo_local", None))
+    nome = _s(getattr(pedido, "nome_local", None))
+    apto = _s(getattr(pedido, "apto", None))
+    rua = _s(getattr(pedido, "rua", None))
+    numero = _s(getattr(pedido, "numero", None))
+    endereco = _s(getattr(pedido, "endereco", None))
+    bairro = _s(getattr(pedido, "bairro", None))
+    cidade = _s(getattr(pedido, "cidade", None))
+    cep = _s(getattr(pedido, "cep", None))
+
+    lines: list[tuple[bool, str]] = []
+
+    # Linha 1 — identificação do local (destaque)
+    if tipo == "predio":
+        head = "EDIFÍCIO"
+        if nome:
+            head += f": {nome}"
+        if apto:
+            head += f", AP {apto}"
+        lines.append((True, head))
+    elif tipo == "comercial":
+        lines.append((True, f"COMÉRCIO: {nome}" if nome else "COMÉRCIO"))
+    else:
+        lines.append((True, "CASA"))
+
+    # Linha 2 — logradouro (destaque). Fallback p/ o campo `endereco` legado.
+    if rua:
+        lines.append((True, f"RUA: {rua}, {numero}" if numero else f"RUA: {rua}"))
+    elif endereco:
+        lines.append((True, f"RUA: {endereco}"))
+
+    # Complementos (discretos) — não repete apto (já está na linha 1).
+    extras = []
+    for label, field in (
+        ("Bloco", "bloco"),
+        ("Torre", "torre"),
+        ("Andar", "andar"),
+        ("Quadra", "quadra"),
+        ("Lote", "lote"),
+        ("Compl.", "complemento"),
+    ):
+        val = _s(getattr(pedido, field, None))
+        if val:
+            extras.append(f"{label} {val}")
+    if extras:
+        lines.append((False, " · ".join(extras)))
+
+    # Bairro / cidade / CEP (discreto)
+    loc = " · ".join(p for p in (bairro, cidade, cep) if p)
+    if loc:
+        lines.append((False, loc))
+
+    return lines
+
+
 def build_pedido_context(pedido) -> dict:
     """Constrói o data bag de contexto a partir do model Pedido."""
     cliente_norm = (pedido.cliente or "").strip().lower()
@@ -113,6 +194,7 @@ def build_pedido_context(pedido) -> dict:
 
     is_retirada = (pedido.tipo_pedido or "").lower() == "retirada"
     delivery_details = [] if is_retirada else build_delivery_detail_lines(pedido)
+    endereco_lines = [] if is_retirada else build_address_block(pedido)
 
     return {
         "id": pedido.id,
@@ -133,6 +215,11 @@ def build_pedido_context(pedido) -> dict:
         "data_entrega": pedido.dia_entrega.strftime("%d/%m/%Y") if pedido.dia_entrega else "",
         "horario": pedido.horario,
         "endereco": None if is_retirada else pedido.endereco,
+        "endereco_lines": endereco_lines,
+        "rua": None if is_retirada else pedido.rua,
+        "numero": None if is_retirada else pedido.numero,
+        "bairro": None if is_retirada else pedido.bairro,
+        "instrucao_entrega": None if is_retirada else pedido.obs_entrega,
         "tipo_local": None if is_retirada else (pedido.tipo_local or "casa"),
         "nome_local": None if is_retirada else pedido.nome_local,
         "apto": None if is_retirada else pedido.apto,
@@ -155,55 +242,71 @@ def build_pedido_context(pedido) -> dict:
     }
 
 
+# P&B / térmica: nada depende de cor. Sinais = caixa alta, negrito, bordas pretas,
+# tracejado e borda dupla. Sem fundos cinza pra transmitir informação (em térmica
+# o fundo costuma não sair) — só tinta preta sobre branco.
 COMPROVANTE_CSS = """
-    :root { --text: #000; --bg: #fff; --border: #ccc; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    @page { size: A4; margin: 10mm; }
-    body { font-family: 'Helvetica', 'Arial', sans-serif; color: var(--text); background: var(--bg); padding: 0; font-size: 14px; }
+    @page { size: A4; margin: 8mm; }
+    body { font-family: 'Arial', 'Helvetica', sans-serif; color: #000; background: #fff; font-size: 13px; line-height: 1.3; }
 
-    .header { border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .title { font-size: 32px; font-weight: 900; line-height: 1; }
-    .subtitle { font-size: 18px; font-weight: 700; margin-top: 5px; }
-    .meta { text-align: right; font-size: 12px; }
+    /* 3. Tipo de operação no topo: GARRAFAIS dentro de retângulo TRACEJADO */
+    .op-banner { border: 3px dashed #000; text-align: center; padding: 7px 10px; margin-bottom: 10px; }
+    .op-text { font-size: 30px; font-weight: 900; letter-spacing: 4px; text-transform: uppercase; line-height: 1; }
 
-    .key-info { display: flex; gap: 12px; margin-bottom: 12px; background: #f0f0f0; padding: 12px; border-radius: 8px; border: 1px solid #999; align-items: center; }
-    .k-item { flex: 1; }
-    .k-label { font-size: 10px; text-transform: uppercase; font-weight: 700; color: #555; }
-    .k-val { font-size: 16px; font-weight: 900; }
+    /* 4. Número do pedido ENORME (>=28pt) + 1. Origem/Fonte ao lado da data */
+    .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 10px; gap: 12px; }
+    .order-no { font-size: 42px; font-weight: 900; line-height: 0.92; }
+    .order-sub { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+    .head-meta { text-align: right; font-size: 12px; line-height: 1.5; white-space: nowrap; }
+    .head-meta .fonte { font-size: 15px; font-weight: 800; text-transform: uppercase; }
+    .head-meta b { font-weight: 800; }
 
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .card { border: 1px solid #999; border-radius: 8px; padding: 10px; page-break-inside: avoid; }
-    .card.full { grid-column: 1 / -1; }
+    /* 2. Pagamento em destaque: CAIXA ALTA, NEGRITO, BORDA DUPLA */
+    .pay { border: 5px double #000; text-align: center; padding: 8px 10px; margin-bottom: 10px; }
+    .pay-text { font-size: 24px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; line-height: 1.05; }
+    .pay-sub { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
-    .h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-    .dot { width: 10px; height: 10px; background: #000; border-radius: 50%; }
-    .h-title { font-weight: 900; font-size: 14px; text-transform: uppercase; }
+    /* Seções genéricas (borda preta sólida) */
+    .sec { border: 1.5px solid #000; padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid; }
+    .sec-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 6px; }
 
-    .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .row { display: flex; flex-direction: column; }
-    .label { font-size: 10px; text-transform: uppercase; color: #666; }
-    .value { font-weight: 700; font-size: 13px; }
-    .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .produto-xl { font-size: 24px; font-weight: 900; line-height: 1.15; }
+    .kv { font-size: 12px; line-height: 1.5; }
+    .kv b { font-weight: 800; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-    .box { border: 2px dashed #999; padding: 10px; background: #fafafa; font-weight: 700; white-space: pre-wrap; }
+    /* 5. Endereço inteligente */
+    .addr-strong { font-size: 16px; font-weight: 800; line-height: 1.35; }
+    .addr-normal { font-size: 12px; line-height: 1.4; }
+    /* 6. Instrução de entrega — destaque tracejado logo abaixo do endereço */
+    .instr { border: 2px dashed #000; padding: 6px 9px; margin-top: 7px; }
+    .instr-lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+    .instr-val { font-size: 14px; font-weight: 800; white-space: pre-wrap; }
 
-    .badge-black { background: #000; color: #fff; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+    .msg { white-space: pre-wrap; font-size: 14px; font-weight: 700; min-height: 14px; }
 
-    /* VIS-05: produto em destaque (montagem) + selo de pagamento visível */
-    .produto-xl { font-size: 22px; font-weight: 800; line-height: 1.2; }
-    .slip-seal { display: inline-block; padding: 3px 10px; border-radius: 4px; font-weight: 800; font-size: 14px; letter-spacing: 0.5px; }
+    .pickup { text-align: center; border: 2px solid #000; padding: 12px; font-size: 16px; font-weight: 900; letter-spacing: 1px; }
+
+    /* 7. Checkbox de conferência do florista (sem assinatura) */
+    .florist { display: flex; align-items: center; gap: 12px; margin-top: 10px; border-top: 2px dashed #000; padding-top: 9px; }
+    .florist .chk { width: 26px; height: 26px; border: 3px solid #000; flex: 0 0 auto; }
+    .florist .chk-lbl { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* Selo inline (reusado pelo lote 1-up; mantém alto contraste) */
+    .slip-seal { display: inline-block; padding: 2px 8px; border: 2px solid #000; font-weight: 800; font-size: 13px; letter-spacing: 0.5px; }
     .seal-paid { background: #000; color: #fff; }
-    .seal-pending { background: #fff; color: #000; border: 2px solid #000; }
+    .seal-pending { background: #fff; color: #000; }
 
     @media print {
         .no-print { display: none; }
-        body { -webkit-print-color-adjust: exact; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
 """
 
 
 def payment_seal(ctx: dict) -> tuple:
-    """VIS-05: classe + texto do selo de pagamento (PAGO sólido / PENDENTE contornado)."""
+    """Selo inline (classe + texto). Reusado pelo lote 1-up."""
     status_raw = str(ctx.get("status_pagto") or "").strip().lower()
     if status_raw == "pendente":
         return "seal-pending", "PENDENTE"
@@ -214,141 +317,172 @@ def payment_seal(ctx: dict) -> tuple:
     return "seal-pending", "—"
 
 
+def payment_display(ctx: dict) -> dict:
+    """Destaque do status de pagamento (caixa alta + símbolo monocromático).
+
+    Usa dingbats P&B (✔ U+2714 / ✘ U+2718), não emoji com cor, pra sair preto na
+    impressora térmica. A PALAVRA em caixa alta é o sinal primário; o símbolo reforça.
+    """
+    status_raw = str(ctx.get("status_pagto") or "").strip().lower()
+    if status_raw == "pendente":
+        return {"word": "PENDENTE", "symbol": "✘", "sub": "AGUARDANDO PAGAMENTO"}
+    if status_raw == "parcial":
+        return {"word": "PAGAMENTO PARCIAL", "symbol": "◑", "sub": "CONFERIR SALDO"}
+    if status_raw:
+        return {"word": "PAGO", "symbol": "✔", "sub": "PAGAMENTO CONFIRMADO"}
+    return {"word": "PAGAMENTO NÃO INFORMADO", "symbol": "?", "sub": ""}
+
+
 def render_comprovante_body(ctx: dict) -> str:
-    """Conteúdo interno do comprovante (header + key-info + grid), sem <html>/<style>/
-    <script>. Reusado pelo comprovante single e pelo lote 1-por-página."""
+    """Comanda da florista em P&B (térmica): tipo de operação garrafal, número
+    enorme, pagamento em borda dupla, endereço inteligente, instrução de entrega
+    e checkbox de conferência. Sem <html>/<style>/<script> — reusado pelo single
+    e pelo lote 1-por-página."""
     seal_class, seal_text = payment_seal(ctx)
+    pay = payment_display(ctx)
+    is_retirada = str(ctx.get("tipo") or "").lower() == "retirada"
 
-    html_destinatario = ""
-    if ctx["show_destinatario"]:
-        html_destinatario = f"""
-            <div class="row">
-                <div class="label">Para (Destinatário)</div>
-                <div class="value">{fmt(ctx['destinatario_nome'])}</div>
-            </div>
-            """
+    # 3. Banner da operação (garrafais, retângulo tracejado)
+    op_text = "RETIRADA NA LOJA" if is_retirada else "ENTREGA"
 
-    html_endereco = ""
-    if ctx["endereco"] or ctx.get("delivery_details"):
-        detalhes_html = ""
-        if ctx.get("delivery_details"):
-            detail_items = "".join(
-                f'<div class="row"><div class="label">{fmt(label)}</div><div class="value">{fmt(value)}</div></div>'
-                for label, value in ctx["delivery_details"]
-            )
-            detalhes_html = f'<div class="detail-grid">{detail_items}</div>'
-        html_endereco = f"""
-             <div class="card full">
-                <div class="h"><span class="dot"></span><span class="h-title">Endereço de Entrega</span></div>
-                <div class="box">{fmt(ctx['endereco'])}</div>
-                {detalhes_html}
-                <div class="rows" style="margin-top:8px">
-                    <div class="row"><div class="label">Cidade</div><div class="value">{fmt(ctx['cidade'])}</div></div>
-                    <div class="row"><div class="label">CEP</div><div class="value">{fmt(ctx['cep'])}</div></div>
-                    <div class="row"><div class="label">Distância</div><div class="value">{f"{ctx['distancia']:.2f} km" if ctx['distancia'] else "-"}</div></div>
-                    <div class="row"><div class="label">Taxa</div><div class="value">{fmt_brl(ctx['taxa'])}</div></div>
-                </div>
-             </div>
-             """
-    elif str(ctx["tipo"]).lower() == "retirada":
-        html_endereco = """
-             <div class="card full">
-                <div class="h"><span class="dot"></span><span class="h-title">Logística</span></div>
-                <div class="box" style="text-align:center; padding:15px">RETIRADA NA LOJA (Sem entrega)</div>
-             </div>
-             """
+    # 4 + 1. Número enorme + origem/fonte ao lado da data
+    order_sub = (
+        f"Para: {fmt(ctx['destinatario_nome'])}"
+        if ctx.get("show_destinatario")
+        else f"Cliente: {fmt(ctx['cliente_nome'])}"
+    )
+
+    # 2. Pagamento em destaque (caixa alta, negrito, borda dupla, símbolo P&B)
+    pay_sub_parts = []
+    if fmt(ctx.get("pagamento")) != "-":
+        pay_sub_parts.append(f"FORMA: {fmt(ctx['pagamento'])}")
+    pay_sub_parts.append(f"TOTAL: {fmt_brl(ctx.get('valor'))}")
+    if pay.get("sub"):
+        pay_sub_parts.append(pay["sub"])
+    pay_sub = " · ".join(pay_sub_parts)
+
+    # 5 + 6. Endereço inteligente + instrução de entrega
+    if is_retirada:
+        endereco_html = (
+            '<div class="sec"><div class="pickup">RETIRADA NA LOJA — SEM ENTREGA</div></div>'
+        )
+    else:
+        addr_rows = "".join(
+            f'<div class="{"addr-strong" if strong else "addr-normal"}">{text}</div>'
+            for strong, text in (ctx.get("endereco_lines") or [])
+        )
+        if not addr_rows:
+            addr_rows = f'<div class="addr-strong">{fmt(ctx.get("endereco"))}</div>'
+
+        op_extra = []
+        if ctx.get("distancia"):
+            op_extra.append(f"<b>Distância:</b> {ctx['distancia']:.2f} km")
+        if ctx.get("taxa"):
+            op_extra.append(f"<b>Taxa:</b> {fmt_brl(ctx['taxa'])}")
+        op_extra_html = (
+            f'<div class="addr-normal" style="margin-top:4px">{" · ".join(op_extra)}</div>'
+            if op_extra
+            else ""
+        )
+
+        instr = fmt(ctx.get("instrucao_entrega"))
+        instr_html = (
+            f'<div class="instr"><div class="instr-lbl">Instrução de entrega</div>'
+            f'<div class="instr-val">{instr}</div></div>'
+            if instr != "-"
+            else ""
+        )
+
+        endereco_html = f"""
+    <div class="sec">
+        <div class="sec-title">Endereço de entrega</div>
+        {addr_rows}
+        {op_extra_html}
+        {instr_html}
+    </div>"""
+
+    # Mensagem do cartão (só imprime se houver)
+    mensagem_html = ""
+    if fmt(ctx.get("mensagem")) != "-":
+        mensagem_html = f"""
+    <div class="sec">
+        <div class="sec-title">Cartão / Mensagem</div>
+        <div class="msg">{fmt(ctx['mensagem'])}</div>
+    </div>"""
+
+    # Linha de produto: Flores/Cor só aparece se preenchida; Qtd sempre.
+    flores = fmt(ctx.get("flores_cor"))
+    produto_meta = (
+        f"<b>Flores/Cor:</b> {flores} &nbsp;·&nbsp; <b>Qtd:</b> {fmt(ctx['quantidade'])}"
+        if flores != "-"
+        else f"<b>Qtd:</b> {fmt(ctx['quantidade'])}"
+    )
+
+    html_destinatario = (
+        f'<div class="kv"><b>Para:</b> {fmt(ctx["destinatario_nome"])}</div>'
+        if ctx.get("show_destinatario")
+        else ""
+    )
+    obs_html = (
+        f'<div class="kv"><b>Obs.:</b> {fmt(ctx["obs"])}</div>'
+        if fmt(ctx.get("obs")) != "-"
+        else ""
+    )
 
     return f"""
-  <div class="header">
+  <!-- 3. Tipo de operação (garrafais, tracejado) -->
+  <div class="op-banner"><div class="op-text">{op_text}</div></div>
+
+  <!-- 4. Número enorme · 1. Fonte/origem ao lado da data -->
+  <div class="head">
     <div>
-        <div class="title">Pedido #{ctx['id']}</div>
-        <div class="subtitle">{fmt(ctx['tipo']).upper()}</div>
+        <div class="order-no">#{ctx['id']}</div>
+        <div class="order-sub">{order_sub}</div>
     </div>
-    <div class="meta">
+    <div class="head-meta">
+        <div class="fonte">Fonte: {fmt(ctx['fonte'])}</div>
+        <div><b>Entrega:</b> {ctx['data_entrega']} {fmt(ctx['horario'])}</div>
         <div>Emissão: {ctx['impresso_em']}</div>
-        <div>Fonte: {fmt(ctx['fonte'])}</div>
     </div>
   </div>
 
-  <div class="key-info">
-    <div class="k-item">
-        <div class="k-label">Data Entrega</div>
-        <div class="k-val">{ctx['data_entrega']} <small>{ctx['horario']}</small></div>
+  <!-- 2. Pagamento (caixa alta, negrito, borda dupla) -->
+  <div class="pay">
+    <div class="pay-text">{pay['symbol']} {pay['word']}</div>
+    <div class="pay-sub">{pay_sub}</div>
+  </div>
+
+  <!-- Produto (destaque para a montagem) -->
+  <div class="sec">
+    <div class="sec-title">Produto — montar</div>
+    <div class="produto-xl">{fmt(ctx['produto'])}</div>
+    <div class="kv" style="margin-top:6px">{produto_meta}</div>
+  </div>
+{mensagem_html}
+  <!-- 5. Endereço inteligente · 6. Instrução de entrega -->
+  {endereco_html}
+
+  <!-- Cliente + Pagamento -->
+  <div class="sec two-col">
+    <div>
+        <div class="sec-title">Cliente</div>
+        <div class="kv"><b>{fmt(ctx['cliente_nome'])}</b></div>
+        <div class="kv">{fmt(ctx['cliente_tel'])}</div>
+        {html_destinatario}
     </div>
-    <div class="k-item">
-        <div class="k-label">Cliente</div>
-        <div class="k-val">{fmt(ctx['cliente_nome'])}</div>
-    </div>
-    <div class="k-item">
-        <div class="k-label">Valor Total</div>
-        <div class="k-val">{fmt_brl(ctx['valor'])}</div>
-    </div>
-    <div class="k-item">
-        <div class="k-label">Pagamento</div>
-        <div class="k-val"><span class="slip-seal {seal_class}">{seal_text}</span></div>
+    <div>
+        <div class="sec-title">Pagamento</div>
+        <div class="kv"><b>Forma:</b> {fmt(ctx['pagamento'])}</div>
+        <div class="kv"><b>Status:</b> <span class="slip-seal {seal_class}">{seal_text}</span></div>
+        <div class="kv"><b>Total:</b> {fmt_brl(ctx['valor'])}</div>
+        {obs_html}
     </div>
   </div>
 
-  <div class="grid">
-    <!-- Produto (destaque para a montagem) -->
-    <div class="card full">
-        <div class="h"><span class="dot"></span><span class="h-title">Produto</span></div>
-        <div class="produto-xl">{fmt(ctx['produto'])}</div>
-        <div class="rows" style="margin-top:8px">
-            <div class="row">
-                <div class="label">Flores/Cor</div>
-                <div class="value">{fmt(ctx['flores_cor'])}</div>
-            </div>
-            <div class="row">
-                <div class="label">Qtd</div>
-                <div class="value">{fmt(ctx['quantidade'])}</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Mensagem (Full Width) -->
-    <div class="card full">
-        <div class="h"><span class="dot"></span><span class="h-title">Cartão / Mensagem</span></div>
-        <div class="box">{fmt(ctx['mensagem'])}</div>
-    </div>
-
-    <!-- Logística (Endereço ou Retirada) -->
-    {html_endereco}
-
-    <!-- Cliente -->
-    <div class="card">
-        <div class="h"><span class="dot"></span><span class="h-title">Dados do Cliente</span></div>
-        <div class="rows">
-            <div class="row">
-                <div class="label">Nome</div>
-                <div class="value">{fmt(ctx['cliente_nome'])}</div>
-            </div>
-            <div class="row">
-                <div class="label">Telefone</div>
-                <div class="value">{fmt(ctx['cliente_tel'])}</div>
-            </div>
-            {html_destinatario}
-        </div>
-    </div>
-
-    <!-- Pagamento -->
-    <div class="card">
-        <div class="h"><span class="dot"></span><span class="h-title">Pagamento</span></div>
-        <div class="rows">
-            <div class="row">
-                <div class="label">Forma</div>
-                <div class="value">{fmt(ctx['pagamento'])}</div>
-            </div>
-            <div class="row">
-                <div class="label">Status</div>
-                <div class="value"><span class="slip-seal {seal_class}">{seal_text}</span></div>
-            </div>
-            <div class="row">
-                <div class="label">Observações</div>
-                <div class="value">{fmt(ctx['obs'])}</div>
-            </div>
-        </div>
-    </div>
+  <!-- 7. Conferência do florista (apenas marcação) -->
+  <div class="florist">
+    <span class="chk"></span>
+    <span class="chk-lbl">Conferido pelo florista</span>
   </div>
 """
 

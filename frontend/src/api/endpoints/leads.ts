@@ -3,9 +3,47 @@
  * React Query hooks para listar leads da landing page
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+
+/**
+ * Aplica o lead atualizado (retornado pela mutação) em TODAS as caches de lista
+ * `['leads', ...]` imediatamente, antes do refetch da invalidação chegar.
+ *
+ * Por quê: as ações da linha são derivadas do `status`/`phone` em cache. Sem este
+ * patch otimista existe uma janela em que a linha ainda mostra o estado antigo
+ * (ex.: já confirmado, mas o botão "Confirmar" continua lá) — clicar de novo
+ * dispara uma transição inválida ("limbo"). Escrever o lead na hora remove a janela.
+ *
+ * Só toca entradas com array `.leads` (a query `['leads','stats']` tem outro
+ * formato e é ignorada).
+ */
+function patchLeadInCaches(queryClient: QueryClient, updated: Lead | undefined) {
+  if (!updated) return;
+  queryClient.setQueriesData<LeadsResponse>({ queryKey: ['leads'] }, (prev) => {
+    if (!prev || !Array.isArray(prev.leads)) return prev;
+    let changed = false;
+    const leads = prev.leads.map((l) => {
+      if (l.id !== updated.id) return l;
+      changed = true;
+      // `valor_pedido` é enriquecido só no endpoint de lista (não vem das mutações);
+      // preserva o valor já exibido pra não piscar o chip até o refetch chegar.
+      return {
+        ...l,
+        ...updated,
+        valor_pedido: updated.valor_pedido ?? l.valor_pedido,
+      };
+    });
+    return changed ? { ...prev, leads } : prev;
+  });
+}
 
 export interface LeadTouchpoint {
   id: number;
@@ -155,6 +193,14 @@ export function useLeads(filters: LeadsFilters = {}, options: UseLeadsOptions = 
   return useQuery<LeadsResponse>({
     queryKey: ['leads', filters],
     enabled: options.enabled ?? true,
+    // Trocar de período/página/filtro NÃO deve piscar a tela inteira: mantém os
+    // dados anteriores visíveis enquanto a nova página carrega (era a principal
+    // causa do "lento para carregar" — cada mudança recriava a queryKey e caía no
+    // <Loading /> de tela cheia).
+    placeholderData: keepPreviousData,
+    // Janela curta de frescor: evita refetch redundante em foco de aba / remontagem
+    // logo após uma ação, sem deixar a lista velha demais.
+    staleTime: 15_000,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.page) params.set('page', String(filters.page));
@@ -231,7 +277,8 @@ export function useUpdateLeadStatus() {
 
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      patchLeadInCaches(queryClient, data?.lead);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
   });
@@ -267,7 +314,8 @@ export function useUpdateLeadSituacao() {
       }
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      patchLeadInCaches(queryClient, data?.lead);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
   });
@@ -297,7 +345,8 @@ export function useMarkLeadFollowup() {
       }
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      patchLeadInCaches(queryClient, data?.lead);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
   });
@@ -403,7 +452,8 @@ export function useUpdateLeadPhone() {
 
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      patchLeadInCaches(queryClient, data?.lead);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
   });

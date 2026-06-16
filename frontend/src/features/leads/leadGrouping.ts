@@ -109,6 +109,48 @@ export function getLeadActions(status: string | null | undefined): LeadAction[] 
   return ACTIONS_BY_STATUS[status ?? ''] ?? [];
 }
 
+/**
+ * Estados pré-confirmação onde capturar o telefone (manualmente) faz sentido e
+ * destrava o lead. Espelha `canEditLeadPhone` / `_apply_lead_phone_update` do backend.
+ */
+const PHONE_CAPTURABLE_STATUSES = new Set<string>([
+  'pendente_whatsapp',
+  'lead_pendente',
+  'nao_entrou_em_contato',
+]);
+
+/**
+ * Ações REAIS da linha considerando o telefone — não só o status.
+ *
+ * O backend exige telefone para `confirm`/`disqualify` (STATUSES_REQUIRING_PHONE
+ * em routes/leads.py → 422 `telefone_obrigatorio`). Um lead sem telefone que só
+ * expõe esses botões vira um beco sem saída: clicar dá erro e não há como avançar.
+ * É exatamente o "limbo" do `lead_pendente` sem número (promovido pelo webhook do
+ * WhatsApp, que não captura o telefone por causa do @lid).
+ *
+ * Regra: sem telefone, escondemos `confirm`/`disqualify` e oferecemos
+ * `capture_phone` para os estados pré-confirmação — capturar o número promove o
+ * lead e reabilita as ações normais.
+ */
+export function getEffectiveLeadActions(
+  lead: Pick<Lead, 'status' | 'phone'>,
+): LeadAction[] {
+  const base = getLeadActions(lead.status);
+  const hasPhone = !!lead.phone && lead.phone.trim() !== '';
+  if (hasPhone) return base;
+
+  const withoutPhoneGated = base.filter(
+    (a) => a !== 'confirm' && a !== 'disqualify',
+  );
+  if (
+    PHONE_CAPTURABLE_STATUSES.has(lead.status ?? '') &&
+    !withoutPhoneGated.includes('capture_phone')
+  ) {
+    return ['capture_phone', ...withoutPhoneGated];
+  }
+  return withoutPhoneGated;
+}
+
 /** Telefone BR (com DDD) → URL `wa.me`, ou `null` se inválido (<10 dígitos). */
 export function buildWhatsAppUrl(phone: string): string | null {
   const digits = phone.replace(/\D/g, '');

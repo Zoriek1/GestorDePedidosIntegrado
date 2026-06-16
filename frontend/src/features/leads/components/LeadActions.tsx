@@ -6,9 +6,11 @@
  * comportamento anterior — só centraliza.
  *
  * Renderiza, nesta ordem:
- *   1. WhatsApp (universal): liga se há telefone; vira "capturar" em `pendente_whatsapp`
- *      (ação `capture_phone`); desabilitado caso contrário.
- *   2. Confirmar / Descartar (em `lead_pendente`).
+ *   1. WhatsApp (universal): liga se há telefone; vira "capturar" em qualquer
+ *      estado pré-confirmação sem telefone (ação `capture_phone`, via
+ *      getEffectiveLeadActions); desabilitado caso contrário.
+ *   2. Confirmar / Descartar (em `lead_pendente` COM telefone — sem número o
+ *      backend recusa com 422, então esses botões não aparecem).
  *   3. "Não entrou em contato" (em `pendente_whatsapp`).
  *   4. Ver/Criar pedido (universal): ver se há pedido vinculado; desabilitado em
  *      `compra_realizada` sem pedido; senão abre o menu de criação.
@@ -25,7 +27,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import type { Lead } from '../../../api/endpoints/leads';
-import { buildWhatsAppUrl, getLeadActions } from '../leadGrouping';
+import { buildWhatsAppUrl, getEffectiveLeadActions } from '../leadGrouping';
 
 interface LeadActionsProps {
   lead: Lead;
@@ -51,7 +53,9 @@ export function LeadActions({
   onViewOrder,
   onCreateOrder,
 }: LeadActionsProps) {
-  const actions = getLeadActions(lead.status);
+  // Ações reais consideram o telefone: sem número, `confirm`/`disqualify` somem
+  // (dariam 422 no backend) e entra `capture_phone` para destravar o lead.
+  const actions = getEffectiveLeadActions(lead);
 
   return (
     <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="center">

@@ -260,6 +260,26 @@ function leadStatusLabel(status: string | null): string {
   return LEAD_STATUS_LABELS[status] ?? status;
 }
 
+/**
+ * Converte erros crus do backend (chaves/strings técnicas) em mensagens claras.
+ * `telefone_obrigatorio` e "Transição não permitida" eram o que o operador via no
+ * limbo do lead — agora viram instruções acionáveis.
+ */
+function leadErrorMessage(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : '';
+  if (!raw) return fallback;
+  if (raw.includes('telefone_obrigatorio')) {
+    return 'Capture o telefone do lead antes de confirmar ou desqualificar.';
+  }
+  if (raw.includes('lead_nao_confirmado')) {
+    return 'Ação disponível apenas para leads já confirmados.';
+  }
+  if (raw.includes('Transição não permitida')) {
+    return 'O status deste lead já mudou. Atualize a lista e tente novamente.';
+  }
+  return raw || fallback;
+}
+
 function displayAdSet(name: string | null | undefined): string {
   if (name === 'LAL | 6km | ADV+') return 'OPEN | 6km | ADV+';
   return name ?? '—';
@@ -484,8 +504,7 @@ export default function LeadsPage() {
         await updateLeadStatus.mutateAsync({ id: lead.id, status: 'nao_entrou_em_contato' });
         success('Lead marcado como não entrou em contato');
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao atualizar status';
-        showError(message);
+        showError(leadErrorMessage(err, 'Erro ao atualizar status'));
       }
     },
     [showError, success, updateLeadStatus],
@@ -497,8 +516,7 @@ export default function LeadsPage() {
         await updateLeadStatus.mutateAsync({ id: lead.id, status: 'whatsapp_iniciado' });
         success('Lead confirmado');
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao confirmar lead';
-        showError(message);
+        showError(leadErrorMessage(err, 'Erro ao confirmar lead'));
       }
     },
     [showError, success, updateLeadStatus],
@@ -510,8 +528,7 @@ export default function LeadsPage() {
         await updateLeadStatus.mutateAsync({ id: lead.id, status: 'descarte' });
         success('Lead desqualificado');
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao desqualificar lead';
-        showError(message);
+        showError(leadErrorMessage(err, 'Erro ao desqualificar lead'));
       }
     },
     [showError, success, updateLeadStatus],
@@ -872,7 +889,15 @@ export default function LeadsPage() {
   }, [clearSelection, isMobile, pageIds, selectedIds.size, orderedLeads, focusedId]);
 
   if (isLoading) return <Loading />;
-  if (error) return <ErrorState message="Erro ao carregar leads" onRetry={refetch} />;
+  if (error) {
+    // Mostra a causa real (ex.: "Acesso negado" quando o papel não tem permissão)
+    // em vez de mascarar tudo como erro genérico de carregamento.
+    const detail = error instanceof Error ? error.message : '';
+    const msg = detail && !/^erro\b/i.test(detail)
+      ? `Erro ao carregar leads: ${detail}`
+      : 'Erro ao carregar leads';
+    return <ErrorState message={msg} onRetry={refetch} />;
+  }
 
   const today = statsData?.today;
   const period: LeadsPeriod = filters.period ?? 'custom';

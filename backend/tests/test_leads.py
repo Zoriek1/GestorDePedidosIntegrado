@@ -3,6 +3,8 @@ import base64
 import json
 
 from app.models.lead import Lead
+from app.models.user import User
+from app.services.auth_service import generate_token, hash_password
 
 _ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').decode()}"}
 _VALID_TOKEN = "A3F9B7K20K"
@@ -11,6 +13,41 @@ _INVALID_TOKEN = "A3F9B7K2ZZ"
 # Quando META_CAPI_LEAD_FUNNEL_ENABLED está ligado em prod, todo POST whatsapp_click
 # precisa de meta_event_id_contact. Os testes refletem isso enviando o campo abaixo.
 _META_EVT_CONTACT = "evt_test_contact"
+
+
+def _bearer_for_role(session, role: str) -> dict:
+    user = User(
+        name=f"{role}-leads",
+        email=f"{role}-leads@test.com",
+        password_hash=hash_password("pass1234"),
+        role=role,
+    )
+    session.add(user)
+    session.commit()
+    return {"Authorization": f"Bearer {generate_token(user)}"}
+
+
+def test_atendente_pode_listar_e_ver_stats_de_leads(client, session):
+    """Regressão (Bug 1): o atendente opera leads (pode mutar status/telefone),
+    mas a listagem e as stats exigiam só admin/vendedor → a página de leads
+    falhava com 403 para o atendente. Agora os GET aceitam atendente também."""
+    headers = _bearer_for_role(session, "atendente")
+
+    resp = client.get("/api/leads", headers=headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert "leads" in body and "total" in body
+
+    resp_stats = client.get("/api/leads/stats", headers=headers)
+    assert resp_stats.status_code == 200
+    assert resp_stats.get_json().get("ok") is True
+
+
+def test_entregador_continua_sem_acesso_a_leads(client, session):
+    """O entregador não opera leads — deve continuar barrado (403) na listagem."""
+    headers = _bearer_for_role(session, "entregador")
+    resp = client.get("/api/leads", headers=headers)
+    assert resp.status_code == 403
 
 
 def test_cria_lead_json_e_nao_duplica_por_hash(client, session):

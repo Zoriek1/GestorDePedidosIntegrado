@@ -4,6 +4,7 @@ import {
   GROUP_ORDER,
   ACTIONS_BY_STATUS,
   getLeadActions,
+  getEffectiveLeadActions,
   type LeadGroup,
 } from '../leadGrouping';
 
@@ -100,5 +101,46 @@ describe('ACTIONS_BY_STATUS / getLeadActions', () => {
         expect(actions).not.toContain('disqualify');
       }
     }
+  });
+});
+
+describe('getEffectiveLeadActions (telefone destrava o limbo)', () => {
+  it('lead_pendente SEM telefone troca confirmar/descartar por captura (evita beco sem saída)', () => {
+    const actions = getEffectiveLeadActions({ status: 'lead_pendente', phone: null });
+    expect(actions).toEqual(['capture_phone']);
+    expect(actions).not.toContain('confirm');
+    expect(actions).not.toContain('disqualify');
+  });
+
+  it('lead_pendente COM telefone mantém confirmar/descartar', () => {
+    expect(getEffectiveLeadActions({ status: 'lead_pendente', phone: '62999990000' })).toEqual([
+      'confirm',
+      'disqualify',
+    ]);
+  });
+
+  it('telefone só com espaços conta como ausente', () => {
+    expect(getEffectiveLeadActions({ status: 'lead_pendente', phone: '   ' })).toEqual([
+      'capture_phone',
+    ]);
+  });
+
+  it('pendente_whatsapp sem telefone segue com captura + não contatou', () => {
+    expect(getEffectiveLeadActions({ status: 'pendente_whatsapp', phone: null })).toEqual([
+      'capture_phone',
+      'mark_no_contact',
+    ]);
+  });
+
+  it('whatsapp_iniciado (sem telefone) não ganha captura — só situação', () => {
+    expect(getEffectiveLeadActions({ status: 'whatsapp_iniciado', phone: null })).toEqual([
+      'situacao',
+    ]);
+  });
+
+  it('compra_realizada permanece em ver pedido independentemente do telefone', () => {
+    expect(getEffectiveLeadActions({ status: 'compra_realizada', phone: null })).toEqual([
+      'view_order',
+    ]);
   });
 });

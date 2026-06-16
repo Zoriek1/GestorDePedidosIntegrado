@@ -1413,3 +1413,116 @@ def test_nuvemshop_mapper_verbose():
     assert pedido_data["status_pagamento"] == "Pago"
     assert "159" in (pedido_data["valor"] or "")
     assert schedule_pending is True
+
+
+# ---------------------------------------------------------------------------
+# Bug 2 — duplicação de pedidos no webhook (created + paid)
+# ---------------------------------------------------------------------------
+
+
+def _order_payload(order_id: int, *, paid: bool) -> dict:
+    """Mesmo pedido em dois estados: pending (created) e paid (paid)."""
+    return {
+        "id": order_id,
+        "number": order_id,
+        "token": f"tok{order_id}",
+        "contact_name": "Maria Compradora",
+        "contact_phone": "+5562999990000",
+        "created_at": "2026-06-16T10:00:00-0300",
+        "currency": "BRL",
+        "total": "150.00",
+        "total_paid_by_customer": "150.00",
+        "payment_status": "paid" if paid else "pending",
+        "storefront": "store",
+        "shipping_option": "Entrega Agendada (Huapps) - Tarde",
+        "shipping_address": {
+            "name": "Joao Destinatario",
+            "address": "Rua T 33",
+            "number": "350",
+            "locality": "Setor Bueno",
+            "city": "Goiania",
+            "zipcode": "74215-140",
+        },
+        "products": [{"name": "Buque Rosas", "quantity": 1}],
+    }
+
+
+def _make_delivery(session, store_id: str, event: str, order_id: int) -> NuvemshopWebhookDelivery:
+    delivery = NuvemshopWebhookDelivery(
+        store_id=store_id,
+        event=event,
+        resource_id=str(order_id),
+        raw_body="{}",
+        headers_json="{}",
+    )
+    session.add(delivery)
+    session.commit()
+    return delivery
+
+
+def test_webhook_created_then_paid_keeps_single_paid_record(session):
+    """created (pending) seguido de paid (paid) para o MESMO pedido resulta em
+    UM único registro, com status final Pago — sem duplicata pendente+paga."""
+    store = NuvemshopStore(store_id="dup-1", access_token="token", active=True)
+    session.add(store)
+    session.commit()
+
+    importer = NuvemshopOrderImporter(store, user_agent="TestApp")
+
+    # Evento 1: order/created (pendente)
+    d1 = _make_delivery(session, "dup-1", "order/created", 9001)
+    importer.client.get_order = lambda _: _order_payload(9001, paid=False)
+    assert importer.process_delivery(d1) is True
+
+    assert Pedido.query.count() == 1
+    assert Pedido.query.first().status_pagamento == "Pendente"
+
+    # Evento 2: order/paid (pago) — deve ATUALIZAR, não criar outro
+    d2 = _make_delivery(session, "dup-1", "order/paid", 9001)
+    importer.client.get_order = lambda _: _order_payload(9001, paid=True)
+    assert importer.process_delivery(d2) is True
+
+    assert Pedido.query.count() == 1
+    assert PedidoExternalRef.query.filter_by(external_order_id="9001").count() == 1
+    assert Pedido.query.first().status_pagamento == "Pago"
+
+
+def test_webhook_race_create_falls_back_to_update(session, monkeypatch):
+    """Corrida created↔paid: mesmo que a leitura de external_ref venha obsoleta
+    (None) — como aconteceria entre processos —, a UniqueConstraint barra o 2º
+    INSERT e o importer cai no caminho de update. Resultado: 1 registro, Pago."""
+    store = NuvemshopStore(store_id="dup-2", access_token="token", active=True)
+    session.add(store)
+    session.commit()
+
+    importer = NuvemshopOrderImporter(store, user_agent="TestApp")
+
+    # "Thread A" já criou pedido + ref (order/created, pendente).
+    d1 = _make_delivery(session, "dup-2", "order/created", 9002)
+    importer.client.get_order = lambda _: _order_payload(9002, paid=False)
+    assert importer.process_delivery(d1) is True
+    assert Pedido.query.count() == 1
+
+    # "Thread B" (order/paid) entra com leitura OBSOLETA: força _get_external_ref
+    # a devolver None na 1ª chamada (simula o SELECT que ocorreu antes do ref
+    # existir). O create atômico bate na UniqueConstraint → IntegrityError →
+    # fallback re-busca o ref real e faz update.
+    real_get_ref = importer._get_external_ref
+    state = {"first": True}
+
+    def flaky_get_ref(order):
+        if state["first"]:
+            state["first"] = False
+            return None
+        return real_get_ref(order)
+
+    monkeypatch.setattr(importer, "_get_external_ref", flaky_get_ref)
+
+    d2 = _make_delivery(session, "dup-2", "order/paid", 9002)
+    importer.client.get_order = lambda _: _order_payload(9002, paid=True)
+    assert importer.process_delivery(d2) is True
+
+    # Nenhum pedido órfão: exatamente 1 pedido e 1 ref, status final Pago.
+    assert Pedido.query.count() == 1
+    assert PedidoExternalRef.query.filter_by(external_order_id="9002").count() == 1
+    assert Pedido.query.first().status_pagamento == "Pago"

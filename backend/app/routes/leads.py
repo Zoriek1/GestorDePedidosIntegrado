@@ -726,7 +726,7 @@ def marcar_followup_lead(lead_id: int):
 
 
 @leads_bp.route("/<int:lead_id>/touchpoints", methods=["GET"])
-@requires_any_role("admin", "vendedor")
+@requires_any_role("admin", "atendente", "vendedor")
 def listar_touchpoints(lead_id: int):
     """Histórico completo de toques de um lead, do mais antigo ao mais recente."""
     lead = db.session.get(Lead, lead_id)
@@ -752,7 +752,7 @@ def listar_touchpoints(lead_id: int):
 
 
 @leads_bp.route("", methods=["GET"])
-@requires_any_role("admin", "vendedor")
+@requires_any_role("admin", "atendente", "vendedor")
 def listar_leads():
     """Lista leads com paginação e filtros opcionais."""
     page = request.args.get("page", 1, type=int)
@@ -972,7 +972,7 @@ def _aggregate_lead_stats(start_dt: datetime) -> dict:
 
 
 @leads_bp.route("/stats", methods=["GET"])
-@requires_any_role("admin", "vendedor")
+@requires_any_role("admin", "atendente", "vendedor")
 def leads_stats():
     """
     Contadores agregados por janela fixa (today + last_14d).

@@ -9,6 +9,7 @@ import time
 from typing import Any, Dict, Optional, Tuple
 
 import requests
+from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.integrations.nuvemshop.client import NuvemshopClient
@@ -23,6 +24,24 @@ from app.models.pedido_fonte import PedidoFonte
 from app.models.pedido_manual_override import PedidoManualOverride
 
 logger = logging.getLogger(__name__)
+
+# Serialização por pedido externo. Cada webhook é processado em sua própria thread
+# (Ack-First, Process-Later em routes/nuvemshop.py). Sem isso, order/created e
+# order/paid do MESMO pedido rodam em paralelo, ambos veem "ref inexistente" e
+# ambos criam um Pedido → duplicata (um pendente, um pago). O lock serializa as
+# threads do mesmo processo; a UniqueConstraint do PedidoExternalRef + o fallback
+# de IntegrityError cobrem corridas entre processos (múltiplos workers).
+_order_locks_guard = threading.Lock()
+_order_locks: Dict[str, threading.Lock] = {}
+
+
+def _get_order_lock(key: str) -> threading.Lock:
+    with _order_locks_guard:
+        lock = _order_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _order_locks[key] = lock
+        return lock
 
 
 class NuvemshopTokenService:
@@ -182,30 +201,67 @@ class NuvemshopOrderImporter:
             # automaticamente pedidos novos no momento da importacao.
             self._apply_default_vendor(pedido_data)
 
-            external_ref = self._get_external_ref(order)
-            if external_ref:
-                self._update_existing_pedido(
-                    external_ref, pedido_data, schedule_pending, agendamento_source
-                )
-            else:
-                pedido = self._create_pedido(pedido_data, fonte.id)
-                self._create_external_ref(order, pedido.id, schedule_pending, agendamento_source)
-
-                # Calcular distância automaticamente após criar pedido
-                self._calculate_distance_if_needed(pedido.id)
-
-                # Enviar push notification para novo pedido Nuvemshop
-                self._send_push_new_order(pedido)
-
-                # Se o pedido está schedule_pending (sem custom fields ainda), agendar retry
-                if schedule_pending:
+            # UPSERT idempotente por (provider, store_id, external_order_id),
+            # serializado por pedido para fechar a corrida created↔paid.
+            order_key = f"{self.store.store_id}:{order.get('id')}"
+            with _get_order_lock(order_key):
+                external_ref = self._get_external_ref(order)
+                if external_ref:
+                    logger.info(
+                        "[NUVEMSHOP] order=%s já existe (pedido_id=%s) — "
+                        "atualizando via event=%s.",
+                        order.get("id"),
+                        external_ref.pedido_id,
+                        delivery.event,
+                    )
+                    self._update_existing_pedido(
+                        external_ref, pedido_data, schedule_pending, agendamento_source
+                    )
+                else:
                     try:
-                        from flask import current_app
+                        pedido = self._create_pedido_with_ref(
+                            order, pedido_data, fonte.id, schedule_pending, agendamento_source
+                        )
+                    except IntegrityError:
+                        # Outro processo/worker criou o ref entre o SELECT e o
+                        # INSERT (corrida entre processos). pedido+ref reverteram
+                        # juntos (sem órfão); reabrimos e tratamos como update.
+                        db.session.rollback()
+                        external_ref = self._get_external_ref(order)
+                        if not external_ref:
+                            raise
+                        logger.warning(
+                            "[NUVEMSHOP] Corrida detectada para order=%s — ref criado "
+                            "por outro evento; atualizando pedido_id=%s (event=%s).",
+                            order.get("id"),
+                            external_ref.pedido_id,
+                            delivery.event,
+                        )
+                        self._update_existing_pedido(
+                            external_ref, pedido_data, schedule_pending, agendamento_source
+                        )
+                    else:
+                        logger.info(
+                            "[NUVEMSHOP] order=%s criado como pedido_id=%s (event=%s).",
+                            order.get("id"),
+                            pedido.id,
+                            delivery.event,
+                        )
+                        # Calcular distância automaticamente após criar pedido
+                        self._calculate_distance_if_needed(pedido.id)
 
-                        app = current_app._get_current_object()
-                        self._schedule_custom_fields_retry(order_id, pedido.id, app)
-                    except Exception as exc:
-                        logger.debug(f"Erro ao agendar retry para custom fields: {exc}")
+                        # Enviar push notification para novo pedido Nuvemshop
+                        self._send_push_new_order(pedido)
+
+                        # Se schedule_pending (sem custom fields ainda), agendar retry
+                        if schedule_pending:
+                            try:
+                                from flask import current_app
+
+                                app = current_app._get_current_object()
+                                self._schedule_custom_fields_retry(order_id, pedido.id, app)
+                            except Exception as exc:
+                                logger.debug(f"Erro ao agendar retry para custom fields: {exc}")
 
             return self._mark_processed(delivery)
         except Exception as exc:
@@ -417,12 +473,29 @@ class NuvemshopOrderImporter:
 
         return _parse_datetime(created_at_str)
 
-    def _create_pedido(self, pedido_data: Dict[str, Any], fonte_id: int) -> Pedido:
+    def _create_pedido_with_ref(
+        self,
+        order: Dict[str, Any],
+        pedido_data: Dict[str, Any],
+        fonte_id: int,
+        schedule_pending: bool,
+        agendamento_source: str = None,
+    ) -> Pedido:
+        """Cria Pedido + PedidoExternalRef na MESMA transação (atômico).
+
+        Por que atômico: a UniqueConstraint
+        (provider, store_id, external_order_id) do PedidoExternalRef é a fonte
+        única de verdade contra duplicação. Commitando pedido e ref juntos, se
+        outro evento/worker já gravou o ref (corrida), o commit levanta
+        IntegrityError e AMBOS revertem — nunca sobra um Pedido órfão duplicado
+        (era a causa do "um pendente + um pago"). O caller trata o IntegrityError
+        como update.
+        """
         from app.services.order_commission_lifecycle import apply_commission_lifecycle
 
         pedido = Pedido(**pedido_data)
         db.session.add(pedido)
-        db.session.flush()  # garante pedido.id antes do lifecycle
+        db.session.flush()  # garante pedido.id antes do lifecycle e do ref
 
         # Se o pedido já chega pago + com vendedor (caso raro mas possível em
         # webhook order/paid com atribuição prévia), gera a comissão.
@@ -439,7 +512,19 @@ class NuvemshopOrderImporter:
                 exc_info=True,
             )
 
-        db.session.commit()
+        ref = PedidoExternalRef(
+            provider="nuvemshop",
+            store_id=str(self.store.store_id),
+            external_order_id=str(order.get("id")),
+            external_order_number=str(order.get("number")) if order.get("number") else None,
+            order_token=str(order.get("token")) if order.get("token") else None,
+            pedido_id=pedido.id,
+            schedule_pending=schedule_pending,
+            agendamento_source=agendamento_source,
+            needs_review=(agendamento_source == "fallback"),
+        )
+        db.session.add(ref)
+        db.session.commit()  # pedido + ref num único commit (atômico)
 
         try:
             PedidoFonte.adicionar_pedido(pedido.id, fonte_id, pedido_data.get("valor"))
@@ -633,27 +718,6 @@ class NuvemshopOrderImporter:
         if incoming in current:
             return current
         return f"{current} | {incoming}"
-
-    def _create_external_ref(
-        self,
-        order: Dict[str, Any],
-        pedido_id: int,
-        schedule_pending: bool,
-        agendamento_source: str = None,
-    ) -> None:
-        ref = PedidoExternalRef(
-            provider="nuvemshop",
-            store_id=str(self.store.store_id),
-            external_order_id=str(order.get("id")),
-            external_order_number=str(order.get("number")) if order.get("number") else None,
-            order_token=str(order.get("token")) if order.get("token") else None,
-            pedido_id=pedido_id,
-            schedule_pending=schedule_pending,
-            agendamento_source=agendamento_source,
-            needs_review=(agendamento_source == "fallback"),
-        )
-        db.session.add(ref)
-        db.session.commit()
 
     def _mark_processed(self, delivery: NuvemshopWebhookDelivery) -> bool:
         delivery.status = "processed"

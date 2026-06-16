@@ -87,14 +87,14 @@ export function getDetalhesEntrega(pedido: Pedido): string[] {
   const lines: string[] = [];
 
   if (tipoLocal === 'predio') {
-    if (pedido.nome_local) lines.push(`PrÃ©dio: ${pedido.nome_local}`);
+    if (pedido.nome_local) lines.push(`Prédio: ${pedido.nome_local}`);
     const predioParts = [
       pedido.apto ? `AP ${pedido.apto}` : null,
       pedido.bloco ? `Bloco ${pedido.bloco}` : null,
       pedido.torre ? `Torre ${pedido.torre}` : null,
-      pedido.andar ? `${pedido.andar}Âº andar` : null,
+      pedido.andar ? `${pedido.andar}º andar` : null,
     ].filter(Boolean);
-    if (predioParts.length) lines.push(predioParts.join(' Â· '));
+    if (predioParts.length) lines.push(predioParts.join(' · '));
   } else if (tipoLocal === 'comercial') {
     if (pedido.nome_local) lines.push(`Comercial: ${pedido.nome_local}`);
   } else {
@@ -102,11 +102,11 @@ export function getDetalhesEntrega(pedido: Pedido): string[] {
       pedido.quadra ? `Qd ${pedido.quadra}` : null,
       pedido.lote ? `Lt ${pedido.lote}` : null,
     ].filter(Boolean);
-    if (casaParts.length) lines.push(casaParts.join(' Â· '));
+    if (casaParts.length) lines.push(casaParts.join(' · '));
   }
 
   if (pedido.complemento) lines.push(`Complemento: ${pedido.complemento}`);
-  if (pedido.obs_entrega) lines.push(`ReferÃªncia: ${pedido.obs_entrega}`);
+  if (pedido.obs_entrega) lines.push(`Referência: ${pedido.obs_entrega}`);
   return lines;
 }
 
@@ -139,6 +139,166 @@ function buildMapsLinkFromAddress(address: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
+/** Formata CEP "74215140" -> "74215-140" (mantém original se não tiver 8 dígitos). */
+function formatCep(cep: string | undefined): string {
+  if (!cep) return '';
+  const digits = cep.replace(/\D/g, '');
+  if (digits.length !== 8) return cep.trim();
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
+/**
+ * Linha 1 do endereço: complemento/local (prédio, comercial ou casa).
+ * Ex.: "Edifício Salinas, AP 208"
+ */
+function buildLocalLine(pedido: Pedido): string {
+  const tipoLocal = pedido.tipo_local || 'casa';
+  let parts: (string | null)[] = [];
+
+  if (tipoLocal === 'predio') {
+    parts = [
+      pedido.nome_local ? `Edifício ${pedido.nome_local}` : 'Edifício',
+      pedido.apto ? `AP ${pedido.apto}` : null,
+      pedido.bloco ? `Bloco ${pedido.bloco}` : null,
+      pedido.torre ? `Torre ${pedido.torre}` : null,
+      pedido.andar ? `${pedido.andar}º andar` : null,
+    ];
+  } else if (tipoLocal === 'comercial') {
+    parts = [pedido.nome_local || null];
+  } else {
+    parts = [
+      pedido.quadra ? `Qd ${pedido.quadra}` : null,
+      pedido.lote ? `Lt ${pedido.lote}` : null,
+    ];
+  }
+
+  if (pedido.complemento) parts.push(pedido.complemento);
+  return parts.filter(Boolean).join(', ');
+}
+
+/**
+ * Linha 2 do endereço: rua, número – bairro, cidade – CEP.
+ * Ex.: "Rua T 33, 350 – Setor Bueno, Goiânia – CEP 74215-140"
+ */
+function buildRuaLine(pedido: Pedido): string {
+  const ruaNumero = [pedido.rua, pedido.numero].filter(Boolean).join(', ');
+  const bairroCidade = [pedido.bairro, pedido.cidade].filter(Boolean).join(', ');
+  const cep = formatCep(pedido.cep);
+  const cepLabel = cep ? `CEP ${cep}` : '';
+  return [ruaNumero, bairroCidade, cepLabel].filter(Boolean).join(' – ');
+}
+
+/** Endereço numa linha só, usado apenas para a query do Google Maps. */
+function buildMapsQuery(pedido: Pedido): string {
+  if (pedido.endereco) return pedido.endereco;
+  return [pedido.rua, pedido.numero, pedido.bairro, pedido.cidade, formatCep(pedido.cep)]
+    .filter(Boolean)
+    .join(', ');
+}
+
+/**
+ * Indica presença do cartão sem revelar o conteúdo.
+ * Mais de 3 caracteres -> tem cartão escrito.
+ */
+function buildCartaoLine(pedido: Pedido): string {
+  const texto = pedido.mensagem?.trim() ?? '';
+  return texto.length > 3 ? '📦 Cartão: escrito incluso' : '📦 Sem cartão';
+}
+
+// Formas de pagamento cobradas no ato da entrega (dinheiro em mãos).
+// Pix/cartão/boleto são pagos remotamente: pendente => aguardar confirmação.
+const FORMAS_COBRANCA_NA_ENTREGA = ['Dinheiro'];
+
+/**
+ * Bloco de pagamento para o entregador (1 ou 2 linhas):
+ *  - Linha de status: "💰 Pagamento: ❌ PENDENTE (Pix)"
+ *  - Linha de instrução (quando aplicável):
+ *      Pendente/Parcial cobrável na entrega -> "💰 Cobrar R$ X na entrega (dinheiro)"
+ *      Pendente/Parcial remoto             -> "⚠️ Entregar somente após confirmação de pagamento."
+ *  - Pago -> só a linha de status, sem instrução.
+ */
+function buildPagamentoBlock(pedido: Pedido): string[] {
+  const status = pedido.status_pagamento || 'Pendente';
+  const forma = pedido.pagamento?.trim();
+  const formaSuffix = forma ? ` (${forma})` : '';
+  const lines: string[] = [];
+
+  if (status === 'Pago') {
+    lines.push(`💰 Pagamento: ✅ PAGO${formaSuffix}`);
+    return lines;
+  }
+
+  const statusLabel = status === 'Parcial' ? '⚠️ PARCIAL' : '❌ PENDENTE';
+  lines.push(`💰 Pagamento: ${statusLabel}${formaSuffix}`);
+
+  const cobrarNaEntrega = !!forma && FORMAS_COBRANCA_NA_ENTREGA.includes(forma);
+  if (cobrarNaEntrega && pedido.valor) {
+    lines.push(`💰 Cobrar ${formatBRL(pedido.valor)} na entrega (dinheiro)`);
+  } else {
+    lines.push('⚠️ Entregar somente após confirmação de pagamento.');
+  }
+
+  return lines;
+}
+
+/**
+ * Monta mensagem operacional para encaminhar ao entregador.
+ * - NÃO é a "mensagem do cartão" (pedido.mensagem) — apenas sinaliza se há cartão.
+ * - Inclui apenas campos relevantes e existentes.
+ */
+export function buildEncaminharMensagem(pedido: Pedido): string {
+  const lines: string[] = [];
+  const isEntrega = pedido.tipo_pedido === 'Entrega';
+
+  // Header
+  addLine(lines, `📦 Pedido #${pedido.id} • ${pedido.tipo_pedido.toUpperCase()}`);
+  const dataHora = `${formatDateBR(pedido.dia_entrega)} ${pedido.horario || ''}`.trim();
+  addLine(lines, `🗓️ ${dataHora}`);
+
+  // Contato (telefone + WhatsApp na mesma linha; clicáveis em apps)
+  addBlankLine(lines);
+  addLine(lines, `👤 Cliente: ${pedido.cliente}`);
+  const telefoneFmt = pedido.telefone_cliente ? formatPhone(pedido.telefone_cliente) : '';
+  const waLink = buildWhatsAppLink(pedido.telefone_cliente);
+  const contatoParts = [
+    telefoneFmt ? `📞 ${telefoneFmt}` : '',
+    waLink ? `WhatsApp: ${waLink}` : '',
+  ].filter(Boolean);
+  if (contatoParts.length) addLine(lines, contatoParts.join(' | '));
+  addLine(lines, `🎁 Para: ${pedido.destinatario}`);
+
+  // Item + presença de cartão (sem revelar o texto)
+  addBlankLine(lines);
+  const qty = pedido.quantidade && pedido.quantidade > 1 ? ` x${pedido.quantidade}` : '';
+  const cor = pedido.flores_cor?.trim() ? ` (${pedido.flores_cor.trim()})` : '';
+  addLine(lines, `🌹 Item: ${pedido.produto}${qty}${cor}`);
+  addLine(lines, buildCartaoLine(pedido));
+
+  // Endereço (2 linhas) + instrução + mapa separado
+  addBlankLine(lines);
+  if (isEntrega) {
+    addLine(lines, '📍 Endereço:');
+    addLine(lines, buildLocalLine(pedido));
+    addLine(lines, buildRuaLine(pedido));
+    if (pedido.obs_entrega?.trim()) {
+      addLine(lines, `🔹 Instrução: ${pedido.obs_entrega.trim()}`);
+    }
+    addLine(lines, `🗺️ Mapa: ${buildMapsLinkFromAddress(buildMapsQuery(pedido))}`);
+  } else {
+    addLine(lines, '🏪 Retirada na loja');
+  }
+
+  // Pagamento (status + instrução)
+  addBlankLine(lines);
+  buildPagamentoBlock(pedido).forEach((line) => addLine(lines, line));
+
+  // Confirmação do entregador
+  addBlankLine(lines);
+  addLine(lines, '✅ Responda com "OK" ao pegar o pedido.');
+
+  return lines.join('\n');
+}
+
 function buildWhatsAppLink(phone: string | undefined): string | undefined {
   if (!phone) return undefined;
   const digits = phone.replace(/\D/g, '');
@@ -149,60 +309,4 @@ function buildWhatsAppLink(phone: string | undefined): string | undefined {
     digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
 
   return `https://wa.me/${withCountry}`;
-}
-
-/**
- * Monta mensagem operacional para encaminhar ao entregador.
- * - NÃO é a "mensagem do cartão" (pedido.mensagem)
- * - Inclui apenas campos relevantes e existentes
- */
-export function buildEncaminharMensagem(pedido: Pedido): string {
-  const lines: string[] = [];
-
-  // Header (curto)
-  addLine(lines, `Pedido #${pedido.id}`);
-  addLine(lines, `${pedido.tipo_pedido} • ${formatDateBR(pedido.dia_entrega)} ${pedido.horario || ''}`.trim());
-
-  // Contato (separado para ficar "clicável" em apps)
-  addBlankLine(lines);
-  addLine(lines, `Cliente: ${pedido.cliente}`);
-  const telefoneFmt = pedido.telefone_cliente ? formatPhone(pedido.telefone_cliente) : '';
-  if (telefoneFmt) addLine(lines, `Tel: ${telefoneFmt}`);
-  const waLink = buildWhatsAppLink(pedido.telefone_cliente);
-  if (waLink) addLine(lines, `WhatsApp: ${waLink}`);
-
-  // Destinatário + item
-  addBlankLine(lines);
-  addLine(lines, `Para: ${pedido.destinatario}`);
-  const qty = pedido.quantidade && pedido.quantidade > 1 ? ` x${pedido.quantidade}` : '';
-  const cor = pedido.flores_cor?.trim() ? ` (${pedido.flores_cor.trim()})` : '';
-  addLine(lines, `Item: ${pedido.produto}${qty}${cor}`);
-
-  // Logística
-  addBlankLine(lines);
-  if (pedido.tipo_pedido === 'Entrega') {
-    const endereco = getEnderecoCompleto(pedido);
-    addLine(lines, 'Endereço:');
-    addLine(lines, endereco);
-    getDetalhesEntrega(pedido).forEach((detail) => addLine(lines, detail));
-    addLine(lines, `Mapa: ${buildMapsLinkFromAddress(endereco)}`);
-  } else {
-    addLine(lines, 'Retirada na loja');
-  }
-
-  // Cobrança (somente se tiver algo a cobrar)
-  const precisaCobrar = pedido.status_pagamento === 'Pendente' || pedido.status_pagamento === 'Parcial';
-  if (precisaCobrar && pedido.valor) {
-    addBlankLine(lines);
-    addLine(lines, `Pagamento: ${pedido.status_pagamento}`);
-    addLine(lines, `Cobrar: ${formatBRL(pedido.valor)}`);
-  }
-
-  // Observações gerais (opcional)
-  if (pedido.observacoes?.trim()) {
-    addBlankLine(lines);
-    addLine(lines, `Obs: ${pedido.observacoes.trim()}`);
-  }
-
-  return lines.join('\n');
 }

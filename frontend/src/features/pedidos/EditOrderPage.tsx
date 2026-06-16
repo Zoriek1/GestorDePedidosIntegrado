@@ -19,9 +19,8 @@ import { usePedido, useUpdatePedido, type CreatePedidoPayload } from '../../api/
 import { useToast } from '../../components/system/useToast';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
-import { CreateOrderWizard } from './CreateOrderWizard';
+import { EditOrderForm } from './EditOrderForm';
 import { orderToForm } from './useCases/orderToForm';
-import { OrderFormProvider } from './contexts/OrderFormContext';
 import { useAuth } from '../auth/authStore';
 import { isAdmin, isVendedor } from '../auth/roleHelpers';
 import {
@@ -125,10 +124,6 @@ export default function EditOrderPage() {
     }
   }, [updatePedido, pedidoId, navigate, success, showError]);
 
-  const handleClearError = useCallback(() => {
-    // noop
-  }, []);
-
   if (isLoading) return <Loading />;
   if (error) return <ErrorState message={error.message || 'Erro ao carregar pedido'} onRetry={() => refetch()} />;
   if (!data?.pedido) return <ErrorState message="Pedido não encontrado" onRetry={() => refetch()} />;
@@ -136,54 +131,50 @@ export default function EditOrderPage() {
   const initialData = orderToForm(data.pedido);
 
   return (
-    <OrderFormProvider>
-      <Container maxWidth={false} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', py: { xs: 3, md: 6 } }}>
-        <Paper
-          elevation={4}
-          sx={{
-            width: '100%',
-            maxWidth: 960,
-            p: { xs: 2.5, md: 3.5 },
-            borderRadius: 2,
-            boxShadow: 6,
-          }}
-        >
-          <Breadcrumbs sx={{ mb: 2 }}>
-            <Link
-              href="/"
-              underline="hover"
-              color="inherit"
-              sx={{ display: 'flex', alignItems: 'center' }}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate('/');
-              }}
-            >
-              <HomeIcon sx={{ mr: 0.5 }} fontSize="small" />
-              Início
-            </Link>
-            <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
-              <EditNoteIcon sx={{ mr: 0.5 }} fontSize="small" />
-              Editar Pedido #{pedidoId}
-            </Typography>
-          </Breadcrumbs>
-
-          <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 3 }}>
+    <Container maxWidth={false} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', py: { xs: 3, md: 6 } }}>
+      <Paper
+        elevation={4}
+        sx={{
+          width: '100%',
+          maxWidth: 960,
+          p: { xs: 2.5, md: 3.5 },
+          borderRadius: 2,
+          boxShadow: 6,
+        }}
+      >
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link
+            href="/"
+            underline="hover"
+            color="inherit"
+            sx={{ display: 'flex', alignItems: 'center' }}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/');
+            }}
+          >
+            <HomeIcon sx={{ mr: 0.5 }} fontSize="small" />
+            Início
+          </Link>
+          <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
+            <EditNoteIcon sx={{ mr: 0.5 }} fontSize="small" />
             Editar Pedido #{pedidoId}
           </Typography>
+        </Breadcrumbs>
 
-          <EntregadorSelector pedido={data.pedido} />
+        <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 3 }}>
+          Editar Pedido #{pedidoId}
+        </Typography>
 
-          <CreateOrderWizard
-            onSubmit={handleSubmit}
-            isSubmitting={updatePedido.isPending}
-            submitError={null}
-            onClearError={handleClearError}
-            initialData={initialData}
-          />
-        </Paper>
-      </Container>
-    </OrderFormProvider>
+        <EntregadorSelector pedido={data.pedido} />
+
+        <EditOrderForm
+          onSubmit={handleSubmit}
+          isSubmitting={updatePedido.isPending}
+          initialData={initialData}
+        />
+      </Paper>
+    </Container>
   );
 }
 

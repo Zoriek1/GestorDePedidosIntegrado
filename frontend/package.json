@@ -39,6 +39,7 @@
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.19",
     "dexie": "^3.2.4",
+    "lucide-react": "^1.18.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.69.0",

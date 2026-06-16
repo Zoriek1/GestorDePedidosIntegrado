@@ -1,17 +1,13 @@
 /**
  * Create Order Page
- * Página de criação de novo pedido com Wizard Inteligente de 4 etapas
- * Features: Autocomplete de cliente, CEP automático, seleção de horário
+ * Página de criação de novo pedido com o Wizard redesenhado (estética de floricultura).
+ * Mantém: seleção de fonte (modal), prefill de Entrada Rápida e persistência de rascunho.
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Typography, Breadcrumbs, Link, Container, Paper, Box, Alert, Collapse, IconButton } from '@mui/material';
-import HomeIcon from '@mui/icons-material/Home';
-import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
-import BoltIcon from '@mui/icons-material/Bolt';
-import CloseIcon from '@mui/icons-material/Close';
-import { CreateOrderWizard } from './CreateOrderWizard';
+import { Leaf, Bolt, X } from 'lucide-react';
+import { CreateOrderWizardNovo } from './wizardNovo/CreateOrderWizardNovo';
 import { OrderFormProvider } from './contexts/OrderFormContext';
 import { useCreatePedido, CreatePedidoPayload } from '../../api/endpoints/pedidos';
 import { useToast } from '../../components/system/useToast';
@@ -26,7 +22,6 @@ function formatWhatsappPhone(raw: string): string {
   return digits;
 }
 
-// Tipo para os dados passados via location.state (Quick Entry)
 interface QuickEntryLocationState {
   prefillData?: Partial<PedidoFormData>;
   quickEntryWarnings?: string[];
@@ -42,21 +37,14 @@ export default function CreateOrderPage() {
   const { success, error: showError } = useToast();
   const confirm = useConfirm();
   const createPedido = useCreatePedido();
-  
-  // Extrair dados de Quick Entry do location.state
+
   const locationState = location.state as QuickEntryLocationState | undefined;
   const prefillData = locationState?.prefillData;
   const quickEntryWarnings = locationState?.quickEntryWarnings || [];
-  
+
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [fonteSelecionada, setFonteSelecionada] = useState<number | undefined>(() => {
-    // Se tem prefillData com fonte, usar direto
-    return prefillData?.fonte_pedido_id;
-  });
-  const [modalOpen, setModalOpen] = useState(() => {
-    // Se tem prefillData, não abrir modal
-    return !prefillData?.fonte_pedido_id;
-  });
+  const [fonteSelecionada, setFonteSelecionada] = useState<number | undefined>(() => prefillData?.fonte_pedido_id);
+  const [modalOpen, setModalOpen] = useState(() => !prefillData?.fonte_pedido_id);
   const [wizardKey, setWizardKey] = useState<number>(() => Date.now());
   const [showQuickEntryWarnings, setShowQuickEntryWarnings] = useState(quickEntryWarnings.length > 0);
   const lastResetRef = useRef<number | null>(null);
@@ -67,9 +55,7 @@ export default function CreateOrderPage() {
     try {
       window.localStorage.removeItem(ORDER_DRAFT_STORAGE_KEY);
       window.localStorage.removeItem(ORDER_STEP_STORAGE_KEY);
-    } catch {
-      // ignorar falhas de limpeza
-    }
+    } catch { /* ignorar falhas de limpeza */ }
   }, []);
 
   const resetFlow = useCallback(() => {
@@ -81,11 +67,9 @@ export default function CreateOrderPage() {
     setShowQuickEntryWarnings(false);
   }, [clearLocalDraft]);
 
-  // Efeito para processar prefillData na montagem (sem setState)
   useEffect(() => {
     if (prefillData && !prefillAppliedRef.current) {
       prefillAppliedRef.current = true;
-      // Limpar draft anterior para não misturar dados do lead com rascunho antigo
       clearLocalDraft();
     }
   }, [prefillData, clearLocalDraft]);
@@ -94,32 +78,25 @@ export default function CreateOrderPage() {
     const resetToken = locationState?.orderReset;
     if (resetToken && resetToken !== lastResetRef.current) {
       lastResetRef.current = resetToken;
-      // Se tem prefillData, não resetar o flow completo
       if (!prefillData) {
-        setTimeout(() => {
-          resetFlow();
-        }, 0);
+        setTimeout(() => { resetFlow(); }, 0);
       }
     }
   }, [locationState?.orderReset, resetFlow, prefillData]);
 
   const handleSubmit = useCallback(async (data: Record<string, unknown>) => {
     setSubmitError(null);
-    
     try {
       const result = await createPedido.mutateAsync(data as unknown as CreatePedidoPayload);
       success('Pedido criado com sucesso!');
 
-      // Oferecer envio do link público de acompanhamento ao remetente via WhatsApp.
       const trackUrl = result?.track_url;
       const telefone = formatWhatsappPhone(String((data as Record<string, unknown>).telefone_cliente || ''));
       if (trackUrl && telefone) {
         const enviar = await confirm({
           title: 'Enviar acompanhamento?',
           description: 'Deseja enviar ao cliente, pelo WhatsApp, o link para acompanhar o status do pedido?',
-          confirmText: 'Enviar no WhatsApp',
-          cancelText: 'Agora não',
-          confirmColor: 'success',
+          confirmText: 'Enviar no WhatsApp', cancelText: 'Agora não', confirmColor: 'success',
         });
         if (enviar) {
           const mensagem =
@@ -132,12 +109,10 @@ export default function CreateOrderPage() {
       navigate('/');
       return true;
     } catch (err) {
-      // Verifica se foi salvo offline
       if (err instanceof Error && err.message === 'OFFLINE_ENQUEUED') {
         navigate('/');
         return true;
       }
-      
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar pedido';
       setSubmitError(errorMessage);
       showError(errorMessage);
@@ -152,100 +127,49 @@ export default function CreateOrderPage() {
 
   const initialData = useMemo(() => {
     if (prefillData) {
-      // Merge prefillData (lead) com fonte selecionada no modal
-      return {
-        ...prefillData,
-        ...(fonteSelecionada ? { fonte_pedido_id: fonteSelecionada } : {}),
-      };
+      return { ...prefillData, ...(fonteSelecionada ? { fonte_pedido_id: fonteSelecionada } : {}) };
     }
     return fonteSelecionada ? { fonte_pedido_id: fonteSelecionada } : undefined;
   }, [fonteSelecionada, prefillData]);
 
-  const handleClearError = useCallback(() => {
-    setSubmitError(null);
-  }, []);
-
-  const handleReset = useCallback(() => {
-    resetFlow();
-  }, [resetFlow]);
+  const handleClearError = useCallback(() => setSubmitError(null), []);
+  const handleReset = useCallback(() => resetFlow(), [resetFlow]);
 
   const wizardReady = !modalOpen && Boolean(fonteSelecionada);
 
   return (
     <OrderFormProvider key={wizardKey}>
       <SourceSelectionModal open={modalOpen} onConfirm={handleFonteConfirm} />
-      <Container maxWidth={false} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', py: { xs: 3, md: 6 } }}>
-        <Paper
-          elevation={4}
-          sx={{
-            width: '100%',
-            maxWidth: 960,
-            p: { xs: 2.5, md: 3.5 },
-            borderRadius: 2,
-            boxShadow: 6,
-          }}
-        >
-          {/* Breadcrumbs */}
-          <Breadcrumbs sx={{ mb: 2 }}>
-            <Link
-              href="/"
-              underline="hover"
-              color="inherit"
-              sx={{ display: 'flex', alignItems: 'center' }}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate('/');
-              }}
-            >
-              <HomeIcon sx={{ mr: 0.5 }} fontSize="small" />
-              Início
-            </Link>
-            <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
-              <AddShoppingCartIcon sx={{ mr: 0.5 }} fontSize="small" />
-              Novo Pedido
-            </Typography>
-          </Breadcrumbs>
+      <div className="pw-root">
+        <main className="pw-shell">
+          <div className="pw-hero">
+            <div className="pw-crumb">
+              <a href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>Início</a>
+              <span>/</span> Novo Pedido
+            </div>
+            <p className="pw-eyebrow">
+              <Leaf size={12} /> {prefillData ? 'Entrada rápida' : 'Novo pedido'}
+              {prefillData && <Bolt size={12} />}
+            </p>
+            <h1 className="pw-title">Novo <em>Pedido</em></h1>
+          </div>
 
-          {/* Título */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-            <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0 }}>
-              Novo Pedido
-            </Typography>
-            {prefillData && (
-              <BoltIcon color="warning" titleAccess="Entrada Rápida" />
-            )}
-          </Box>
+          {showQuickEntryWarnings && quickEntryWarnings.length > 0 && (
+            <div className="pw-warn" style={{ alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <strong>Alguns campos não foram preenchidos automaticamente:</strong>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  {quickEntryWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              </div>
+              <button type="button" className="pw-link-inline" onClick={() => setShowQuickEntryWarnings(false)}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
 
-          {/* Aviso de Quick Entry Warnings */}
-          <Collapse in={showQuickEntryWarnings && quickEntryWarnings.length > 0}>
-            <Alert 
-              severity="warning" 
-              sx={{ mb: 2 }}
-              action={
-                <IconButton
-                  size="small"
-                  onClick={() => setShowQuickEntryWarnings(false)}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              }
-            >
-              <Typography variant="body2" fontWeight="bold" sx={{ mb: 0.5 }}>
-                Alguns campos não foram preenchidos automaticamente:
-              </Typography>
-              <ul style={{ margin: 0, paddingLeft: 20 }}>
-                {quickEntryWarnings.map((warn, idx) => (
-                  <li key={idx}>
-                    <Typography variant="caption">{warn}</Typography>
-                  </li>
-                ))}
-              </ul>
-            </Alert>
-          </Collapse>
-
-          {/* Wizard Inteligente */}
           {wizardReady ? (
-            <CreateOrderWizard
+            <CreateOrderWizardNovo
               key={wizardKey}
               onSubmit={handleSubmit}
               isSubmitting={createPedido.isPending}
@@ -255,25 +179,15 @@ export default function CreateOrderPage() {
               onReset={handleReset}
             />
           ) : (
-            <Box
-              sx={{
-                p: 3,
-                border: '1px dashed',
-                borderColor: 'grey.300',
-                borderRadius: 2,
-                bgcolor: 'grey.50',
-              }}
-            >
-              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                Selecione a fonte do pedido para começar
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
+            <div className="pw-card">
+              <h2 style={{ fontFamily: 'var(--serif)', margin: '0 0 6px' }}>Selecione a fonte do pedido para começar</h2>
+              <p style={{ color: 'var(--muted)', margin: 0, fontSize: 13 }}>
                 Escolha a fonte no modal “Selecione a Fonte do Pedido”. O formulário carregará limpo após sua escolha.
-              </Typography>
-            </Box>
+              </p>
+            </div>
           )}
-        </Paper>
-      </Container>
+        </main>
+      </div>
     </OrderFormProvider>
   );
 }

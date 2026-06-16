@@ -386,7 +386,19 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
       formData.bairro,
       formData.cidade,
     ].filter(Boolean);
-    enderecoCompleto = parts.join(', ');
+    const enderecoBase = parts.join(', ');
+    const nomeLocal = formData.nome_local?.trim();
+    const apto = formData.apto?.trim();
+    let prefixoLocal = '';
+
+    if (tipoLocal === 'predio') {
+      prefixoLocal = [nomeLocal || 'Prédio', apto ? `AP ${apto}` : null].filter(Boolean).join(' ');
+    }
+    if (tipoLocal === 'comercial') {
+      prefixoLocal = nomeLocal || 'Comércio';
+    }
+
+    enderecoCompleto = [prefixoLocal, enderecoBase].filter(Boolean).join(' - ');
   }
 
   return {

@@ -162,6 +162,19 @@ describe('transformFormToApiPayload — quadra e lote', () => {
     expect(payload.andar).toBe('3');
     expect(payload.endereco).not.toContain('Qd 5');
     expect(payload.endereco).not.toContain('Lt 12');
+    expect(payload.endereco).toContain('Edificio Jardim AP 302 -');
+  });
+
+  it('prefixa comercio ao gerar endereco composto automaticamente', () => {
+    const payload = transformFormToApiPayload(
+      makeFormData({
+        tipo_local: 'comercial',
+        nome_local: 'Loja Centro',
+        endereco: '',
+      }),
+    );
+
+    expect(payload.endereco).toContain('Loja Centro -');
   });
 });
 

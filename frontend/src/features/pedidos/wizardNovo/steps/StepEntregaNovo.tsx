@@ -51,12 +51,16 @@ export function StepEntregaNovo() {
   const handleSelectEndereco = (id: number) => {
     const e = enderecosSalvos.find((x) => x.id === id);
     if (!e) return;
+    const enderecoCompleto = e.endereco_completo || [e.rua, e.numero, e.bairro, e.cidade]
+      .filter(Boolean)
+      .join(', ');
     setValue('cep', e.cep, { shouldValidate: true });
     setValue('rua', e.rua, { shouldValidate: true });
     setValue('numero', e.numero, { shouldValidate: true });
     setValue('complemento', e.complemento, { shouldValidate: true });
     setValue('bairro', e.bairro, { shouldValidate: true });
     setValue('cidade', e.cidade, { shouldValidate: true });
+    setValue('endereco', enderecoCompleto, { shouldValidate: true });
   };
 
   const handleTipoLocalChange = (tipo: TipoLocal) => {
@@ -86,7 +90,20 @@ export function StepEntregaNovo() {
     if (v.bairro) partes.push(v.bairro);
     if (v.cidade) partes.push(v.cidade);
     if (v.cep) partes.push(`CEP: ${v.cep}`);
-    setValue('endereco', partes.join(', '), { shouldValidate: true });
+
+    const enderecoBase = partes.join(', ');
+    const nomeLocal = v.nome_local?.trim();
+    const apto = v.apto?.trim();
+    let prefixoLocal = '';
+
+    if (v.tipo_local === 'predio') {
+      prefixoLocal = [nomeLocal || 'Prédio', apto ? `AP ${apto}` : null].filter(Boolean).join(' ');
+    }
+    if (v.tipo_local === 'comercial') {
+      prefixoLocal = nomeLocal || 'Comércio';
+    }
+
+    setValue('endereco', [prefixoLocal, enderecoBase].filter(Boolean).join(' - '), { shouldValidate: true });
   };
 
   return (
@@ -167,6 +184,13 @@ export function StepEntregaNovo() {
         <input className="pw-in" {...register('obs_entrega')} placeholder="Portão azul, ao lado da farmácia…" />
       </Field>
 
+      <Field label="Endereço completo" req hint="Gerado automaticamente ou preencha manualmente" error={errors.endereco?.message}>
+        <textarea className={`pw-in ta sm${errors.endereco ? ' err' : ''}`} {...register('endereco')} />
+      </Field>
+      <button type="button" className="pw-btn ghost" onClick={gerarEndereco} style={{ marginBottom: 14 }}>
+        Gerar endereço automático
+      </button>
+
       <button type="button" className={`pw-disc ${mais ? 'open' : ''}`} onClick={() => setMais((v) => !v)}>
         <ChevronDown size={16} /> Mais opções da entrega
       </button>
@@ -190,12 +214,6 @@ export function StepEntregaNovo() {
               <Field label="Lote"><input className="pw-in" {...register('lote')} placeholder="Ex.: 12" /></Field>
             </div>
           )}
-          <Field label="Endereço completo" hint="Gerado automaticamente ou preencha manualmente" error={errors.endereco?.message}>
-            <textarea className="pw-in ta sm" {...register('endereco')} />
-          </Field>
-          <button type="button" className="pw-btn ghost" onClick={gerarEndereco} style={{ marginBottom: 14 }}>
-            Gerar endereço automático
-          </button>
         </div>
       )}
     </>

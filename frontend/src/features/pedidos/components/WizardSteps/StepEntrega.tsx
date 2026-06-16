@@ -458,6 +458,8 @@ export function StepEntrega() {
                 const rua = watch('rua') || '';
                 const numero = watch('numero') || '';
                 const tipoLocalAtual = watch('tipo_local') || 'casa';
+                const nomeLocal = watch('nome_local')?.trim() || '';
+                const apto = watch('apto')?.trim() || '';
                 const quadra = watch('quadra') || '';
                 const lote = watch('lote') || '';
                 const bairro = watch('bairro') || '';
@@ -478,7 +480,16 @@ export function StepEntrega() {
                 if (cidade) partes.push(cidade);
                 if (cep) partes.push(`CEP: ${cep}`);
 
-                const enderecoCompleto = partes.join(', ');
+                const enderecoBase = partes.join(', ');
+                let prefixoLocal = '';
+                if (tipoLocalAtual === 'predio') {
+                  prefixoLocal = [nomeLocal || 'Prédio', apto ? `AP ${apto}` : null].filter(Boolean).join(' ');
+                }
+                if (tipoLocalAtual === 'comercial') {
+                  prefixoLocal = nomeLocal || 'Comércio';
+                }
+
+                const enderecoCompleto = [prefixoLocal, enderecoBase].filter(Boolean).join(' - ');
                 setValue('endereco', enderecoCompleto, { shouldValidate: true });
               }}
               sx={{ alignSelf: 'flex-start' }}

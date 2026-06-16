@@ -81,4 +81,28 @@ describe('orderToForm', () => {
     const form = orderToForm(pedido);
     expect(form.dia_entrega).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it('mapeia detalhes de entrega para edicao', () => {
+    const pedido = makePedido({
+      tipo_local: 'predio',
+      nome_local: 'Edificio Jardim',
+      apto: '302',
+      bloco: 'B',
+      torre: '2',
+      andar: '3',
+      quadra: '5',
+      lote: '12',
+      complemento: 'Portaria lateral',
+    });
+    const form = orderToForm(pedido);
+    expect(form.tipo_local).toBe('predio');
+    expect(form.nome_local).toBe('Edificio Jardim');
+    expect(form.apto).toBe('302');
+    expect(form.bloco).toBe('B');
+    expect(form.torre).toBe('2');
+    expect(form.andar).toBe('3');
+    expect(form.quadra).toBe('5');
+    expect(form.lote).toBe('12');
+    expect(form.complemento).toBe('Portaria lateral');
+  });
 });

@@ -69,6 +69,15 @@ class Pedido(db.Model):
     cep = db.Column(db.String(10), nullable=True, comment="CEP")
     rua = db.Column(db.String(200), nullable=True, comment="Rua/Logradouro")
     numero = db.Column(db.String(20), nullable=True, comment="Número")
+    tipo_local = db.Column(db.String(20), nullable=True, comment="casa, predio ou comercial")
+    nome_local = db.Column(db.String(120), nullable=True, comment="Predio/condominio/estabelecimento")
+    apto = db.Column(db.String(50), nullable=True, comment="Apartamento")
+    bloco = db.Column(db.String(50), nullable=True, comment="Bloco")
+    torre = db.Column(db.String(50), nullable=True, comment="Torre")
+    andar = db.Column(db.String(50), nullable=True, comment="Andar")
+    quadra = db.Column(db.String(50), nullable=True, comment="Quadra")
+    lote = db.Column(db.String(50), nullable=True, comment="Lote")
+    complemento = db.Column(db.String(100), nullable=True, comment="Complemento")
     bairro = db.Column(db.String(100), nullable=True, comment="Bairro")
     cidade = db.Column(db.String(100), nullable=True, comment="Cidade")
     endereco = db.Column(db.Text, nullable=True, comment="Endereço completo (gerado ou manual)")
@@ -265,6 +274,15 @@ class Pedido(db.Model):
             "cep": self.cep or "",
             "rua": self.rua or "",
             "numero": self.numero or "",
+            "tipo_local": self.tipo_local or "casa",
+            "nome_local": self.nome_local or "",
+            "apto": self.apto or "",
+            "bloco": self.bloco or "",
+            "torre": self.torre or "",
+            "andar": self.andar or "",
+            "quadra": self.quadra or "",
+            "lote": self.lote or "",
+            "complemento": self.complemento or "",
             "bairro": self.bairro or "",
             "cidade": self.cidade or "",
             "endereco": self.endereco or "",

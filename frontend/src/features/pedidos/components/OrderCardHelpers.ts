@@ -68,6 +68,9 @@ export function getEnderecoCompleto(pedido: Pedido): string {
   const parts = [
     pedido.rua,
     pedido.numero,
+    pedido.tipo_local === 'casa' && pedido.quadra ? `Qd ${pedido.quadra}` : null,
+    pedido.tipo_local === 'casa' && pedido.lote ? `Lt ${pedido.lote}` : null,
+    pedido.complemento,
     pedido.bairro,
     pedido.cidade,
   ].filter(Boolean);
@@ -78,6 +81,35 @@ export function getEnderecoCompleto(pedido: Pedido): string {
 /**
  * Format created_at to "DD/MM/YYYY às HH:mm"
  */
+export function getDetalhesEntrega(pedido: Pedido): string[] {
+  if (pedido.tipo_pedido !== 'Entrega') return [];
+  const tipoLocal = pedido.tipo_local || 'casa';
+  const lines: string[] = [];
+
+  if (tipoLocal === 'predio') {
+    if (pedido.nome_local) lines.push(`PrÃ©dio: ${pedido.nome_local}`);
+    const predioParts = [
+      pedido.apto ? `AP ${pedido.apto}` : null,
+      pedido.bloco ? `Bloco ${pedido.bloco}` : null,
+      pedido.torre ? `Torre ${pedido.torre}` : null,
+      pedido.andar ? `${pedido.andar}Âº andar` : null,
+    ].filter(Boolean);
+    if (predioParts.length) lines.push(predioParts.join(' Â· '));
+  } else if (tipoLocal === 'comercial') {
+    if (pedido.nome_local) lines.push(`Comercial: ${pedido.nome_local}`);
+  } else {
+    const casaParts = [
+      pedido.quadra ? `Qd ${pedido.quadra}` : null,
+      pedido.lote ? `Lt ${pedido.lote}` : null,
+    ].filter(Boolean);
+    if (casaParts.length) lines.push(casaParts.join(' Â· '));
+  }
+
+  if (pedido.complemento) lines.push(`Complemento: ${pedido.complemento}`);
+  if (pedido.obs_entrega) lines.push(`ReferÃªncia: ${pedido.obs_entrega}`);
+  return lines;
+}
+
 export function formatCreatedAt(createdAt: string | undefined): string {
   if (!createdAt) return '';
   
@@ -152,9 +184,7 @@ export function buildEncaminharMensagem(pedido: Pedido): string {
     const endereco = getEnderecoCompleto(pedido);
     addLine(lines, 'Endereço:');
     addLine(lines, endereco);
-    if (pedido.obs_entrega?.trim()) {
-      addLine(lines, `Obs entrega: ${pedido.obs_entrega.trim()}`);
-    }
+    getDetalhesEntrega(pedido).forEach((detail) => addLine(lines, detail));
     addLine(lines, `Mapa: ${buildMapsLinkFromAddress(endereco)}`);
   } else {
     addLine(lines, 'Retirada na loja');

@@ -106,6 +106,55 @@ class TestPedidosAPI:
         if horarios:
             assert "10:00" in horarios
 
+    def test_criar_e_editar_detalhes_entrega(self, client):
+        """Detalhes novos de entrega devem persistir e respeitar tipo_local."""
+        payload = {
+            "cliente": "Maria Silva",
+            "telefone_cliente": "62999999999",
+            "destinatario": "Joao",
+            "tipo_pedido": "Entrega",
+            "produto": "Buque",
+            "valor": "150.00",
+            "dia_entrega": "2026-12-31",
+            "horario": "14:00",
+            "rua": "Rua das Flores",
+            "numero": "10",
+            "bairro": "Jardim",
+            "cidade": "Goiania",
+            "endereco": "Rua das Flores, 10, Jardim, Goiania",
+            "tipo_local": "predio",
+            "nome_local": "Edificio Jardim",
+            "apto": "302",
+            "bloco": "B",
+            "torre": "2",
+            "andar": "3",
+            "complemento": "Portaria lateral",
+        }
+
+        response = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
+        assert response.status_code == 200
+        data = response.get_json()
+        pedido_data = data.get("pedido") or data.get("data", {}).get("pedido")
+        assert pedido_data["tipo_local"] == "predio"
+        assert pedido_data["nome_local"] == "Edificio Jardim"
+        assert pedido_data["apto"] == "302"
+        assert pedido_data["complemento"] == "Portaria lateral"
+
+        pedido_id = pedido_data["id"]
+        response = client.put(
+            f"/api/pedidos/{pedido_id}",
+            json={"tipo_local": "casa", "quadra": "5", "lote": "12"},
+            headers=_ADMIN_AUTH,
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        pedido_data = data.get("pedido") or data.get("data", {}).get("pedido")
+        assert pedido_data["tipo_local"] == "casa"
+        assert pedido_data["quadra"] == "5"
+        assert pedido_data["lote"] == "12"
+        assert pedido_data["nome_local"] == ""
+        assert pedido_data["apto"] == ""
+
 
 class TestAuthAPI:
     """Testes para endpoints de autenticação"""

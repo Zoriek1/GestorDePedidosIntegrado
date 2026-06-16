@@ -49,17 +49,22 @@ describe('transformFormToApiPayload — quadra e lote', () => {
   it('inclui quadra no endereco quando preenchida', () => {
     const payload = transformFormToApiPayload(makeFormData({ quadra: '5' }));
     expect(payload.endereco).toContain('Qd 5');
+    expect(payload.quadra).toBe('5');
   });
 
   it('inclui lote no endereco quando preenchido', () => {
     const payload = transformFormToApiPayload(makeFormData({ lote: '12' }));
     expect(payload.endereco).toContain('Lt 12');
+    expect(payload.lote).toBe('12');
   });
 
   it('inclui quadra e lote juntos no endereco', () => {
     const payload = transformFormToApiPayload(makeFormData({ quadra: '5', lote: '12' }));
     expect(payload.endereco).toContain('Qd 5');
     expect(payload.endereco).toContain('Lt 12');
+    expect(payload.tipo_local).toBe('casa');
+    expect(payload.quadra).toBe('5');
+    expect(payload.lote).toBe('12');
   });
 
   it('omite quadra do endereco quando vazia', () => {
@@ -133,6 +138,30 @@ describe('transformFormToApiPayload — quadra e lote', () => {
   it('normaliza codigo_whatsapp para maiúsculo no payload', () => {
     const payload = transformFormToApiPayload(makeFormData({ codigo_whatsapp: ' a3f9b7k20k ' }));
     expect(payload.codigo_whatsapp).toBe('A3F9B7K20K');
+  });
+
+  it('omite quadra e lote para predio e envia detalhes do predio separados', () => {
+    const payload = transformFormToApiPayload(
+      makeFormData({
+        tipo_local: 'predio',
+        nome_local: 'Edificio Jardim',
+        apto: '302',
+        bloco: 'B',
+        torre: '2',
+        andar: '3',
+        quadra: '5',
+        lote: '12',
+      }),
+    );
+    expect(payload.quadra).toBeUndefined();
+    expect(payload.lote).toBeUndefined();
+    expect(payload.nome_local).toBe('Edificio Jardim');
+    expect(payload.apto).toBe('302');
+    expect(payload.bloco).toBe('B');
+    expect(payload.torre).toBe('2');
+    expect(payload.andar).toBe('3');
+    expect(payload.endereco).not.toContain('Qd 5');
+    expect(payload.endereco).not.toContain('Lt 12');
   });
 });
 

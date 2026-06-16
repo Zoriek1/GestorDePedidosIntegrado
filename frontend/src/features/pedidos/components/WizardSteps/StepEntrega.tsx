@@ -5,7 +5,7 @@
  * Seleção de horário via modal
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, type MouseEvent } from 'react';
 import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import {
   Box,
@@ -18,6 +18,8 @@ import {
   Alert,
   Button,
   MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import EditIcon from '@mui/icons-material/Edit';
@@ -42,6 +44,7 @@ export function StepEntrega() {
   // Watch para estados condicionais
   const tipoPedido = useWatch({ control, name: 'tipo_pedido' });
   const isEntrega = tipoPedido === 'Entrega';
+  const tipoLocal = useWatch({ control, name: 'tipo_local' }) || 'casa';
 
   // Estado para controlar edição de endereço
   const [isAddressLocked, setIsAddressLocked] = useState(true);
@@ -85,6 +88,21 @@ export function StepEntrega() {
   // Toggle para editar endereço
   const handleToggleAddressLock = () => {
     setIsAddressLocked((prev) => !prev);
+  };
+
+  const handleTipoLocalChange = (_event: MouseEvent<HTMLElement>, value: PedidoFormData['tipo_local'] | null) => {
+    if (!value) return;
+    setValue('tipo_local', value, { shouldValidate: true });
+    if (value === 'casa') {
+      setValue('nome_local', '');
+      setValue('apto', '');
+      setValue('bloco', '');
+      setValue('torre', '');
+      setValue('andar', '');
+    } else {
+      setValue('quadra', '');
+      setValue('lote', '');
+    }
   };
 
   // Se for Retirada, não mostrar nada
@@ -303,40 +321,117 @@ export function StepEntrega() {
               </Grid>
             </Grid>
 
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 6, sm: 4 }}>
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                Tipo de local
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={tipoLocal}
+                onChange={handleTipoLocalChange}
+                sx={{ flexWrap: 'wrap' }}
+              >
+                <ToggleButton value="casa">Casa</ToggleButton>
+                <ToggleButton value="predio">PrÃ©dio</ToggleButton>
+                <ToggleButton value="comercial">Comercial</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            {tipoLocal === 'predio' && (
+              <>
                 <Controller
-                  name="quadra"
+                  name="nome_local"
                   control={control}
                   render={({ field }) => (
                     <TextField
                       {...field}
-                      label="Quadra"
-                      placeholder="Ex: 5"
+                      label="Nome do prÃ©dio / condomÃ­nio"
+                      placeholder="Ex: EdifÃ­cio Jardim das Flores"
                       fullWidth
-                      error={!!errors.quadra}
-                      helperText={errors.quadra?.message}
+                      error={!!errors.nome_local}
+                      helperText={errors.nome_local?.message}
                     />
                   )}
                 />
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Controller name="apto" control={control} render={({ field }) => (
+                      <TextField {...field} label="Apartamento" fullWidth error={!!errors.apto} helperText={errors.apto?.message} />
+                    )} />
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Controller name="bloco" control={control} render={({ field }) => (
+                      <TextField {...field} label="Bloco" fullWidth error={!!errors.bloco} helperText={errors.bloco?.message} />
+                    )} />
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Controller name="torre" control={control} render={({ field }) => (
+                      <TextField {...field} label="Torre" fullWidth error={!!errors.torre} helperText={errors.torre?.message} />
+                    )} />
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Controller name="andar" control={control} render={({ field }) => (
+                      <TextField {...field} label="Andar" fullWidth error={!!errors.andar} helperText={errors.andar?.message} />
+                    )} />
+                  </Grid>
+                </Grid>
+              </>
+            )}
+
+            {tipoLocal === 'comercial' && (
+              <Controller
+                name="nome_local"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Nome do estabelecimento"
+                    placeholder="Ex: ColÃ©gio Planeta"
+                    fullWidth
+                    error={!!errors.nome_local}
+                    helperText={errors.nome_local?.message}
+                  />
+                )}
+              />
+            )}
+
+            {tipoLocal === 'casa' && (
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <Controller
+                    name="quadra"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        label="Quadra"
+                        placeholder="Ex: 5"
+                        fullWidth
+                        error={!!errors.quadra}
+                        helperText={errors.quadra?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <Controller
+                    name="lote"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        label="Lote"
+                        placeholder="Ex: 12"
+                        fullWidth
+                        error={!!errors.lote}
+                        helperText={errors.lote?.message}
+                      />
+                    )}
+                  />
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 6, sm: 4 }}>
-                <Controller
-                  name="lote"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Lote"
-                      placeholder="Ex: 12"
-                      fullWidth
-                      error={!!errors.lote}
-                      helperText={errors.lote?.message}
-                    />
-                  )}
-                />
-              </Grid>
-            </Grid>
+            )}
 
             {/* Endereço Completo */}
             <Controller
@@ -362,6 +457,7 @@ export function StepEntrega() {
               onClick={() => {
                 const rua = watch('rua') || '';
                 const numero = watch('numero') || '';
+                const tipoLocalAtual = watch('tipo_local') || 'casa';
                 const quadra = watch('quadra') || '';
                 const lote = watch('lote') || '';
                 const bairro = watch('bairro') || '';
@@ -376,8 +472,8 @@ export function StepEntrega() {
                     partes.push(rua);
                   }
                 }
-                if (quadra) partes.push(`Qd ${quadra}`);
-                if (lote) partes.push(`Lt ${lote}`);
+                if (tipoLocalAtual === 'casa' && quadra) partes.push(`Qd ${quadra}`);
+                if (tipoLocalAtual === 'casa' && lote) partes.push(`Lt ${lote}`);
                 if (bairro) partes.push(bairro);
                 if (cidade) partes.push(cidade);
                 if (cep) partes.push(`CEP: ${cep}`);
@@ -405,4 +501,3 @@ export function StepEntrega() {
 }
 
 export default StepEntrega;
-

@@ -167,10 +167,6 @@ class NuvemshopOrderImporter:
 
             pedido_data["endereco"] = self._compose_endereco(pedido_data)
 
-            # 'complemento' foi usado para compor 'endereco' e 'obs_entrega',
-            # mas não existe como coluna no modelo Pedido.
-            pedido_data.pop("complemento", None)
-
             # Fonte sempre "Site" para pedidos importados da Nuvemshop
             # (o campo "canal" já indica a origem real: Site, Mercado Livre, PDV, etc)
             fonte = self._get_or_create_fonte("Site")
@@ -562,6 +558,20 @@ class NuvemshopOrderImporter:
             updates["cidade"] = pedido_data.get("cidade")
             updates["cep"] = pedido_data.get("cep")
 
+        for field in [
+            "tipo_local",
+            "nome_local",
+            "apto",
+            "bloco",
+            "torre",
+            "andar",
+            "quadra",
+            "lote",
+            "complemento",
+        ]:
+            if pedido_data.get(field) and not getattr(pedido, field, None):
+                updates[field] = pedido_data.get(field)
+
         # Adicionar campos de frete/canal se vieram no mapeamento
         for field in [
             "frete_cobrado_cliente",
@@ -779,7 +789,6 @@ class NuvemshopOrderImporter:
                     ) = map_nuvemshop_order_to_pedido_data(order)
 
                     pedido_data["endereco"] = self._compose_endereco(pedido_data)
-                    pedido_data.pop("complemento", None)
 
                     # Atualizar pedido com custom fields
                     self._update_existing_pedido(

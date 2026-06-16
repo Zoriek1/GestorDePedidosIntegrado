@@ -48,6 +48,20 @@ pedido_schema = PedidoSchema()
 pedido_create_schema = PedidoCreateSchema()
 pedido_update_schema = PedidoUpdateSchema()
 
+DELIVERY_DETAIL_FIELDS = (
+    "tipo_local",
+    "nome_local",
+    "apto",
+    "bloco",
+    "torre",
+    "andar",
+    "quadra",
+    "lote",
+    "complemento",
+)
+BUILDING_DETAIL_FIELDS = ("nome_local", "apto", "bloco", "torre", "andar")
+VALID_TIPOS_LOCAL = {"casa", "predio", "comercial"}
+
 
 def _clean_str(value: object) -> str:
     if value is None:
@@ -68,6 +82,37 @@ def _normalize_optional_id(value: object) -> object | None:
 
 def _normalize_whatsapp_code(value: object) -> str | None:
     return normalize_tracking_token(value)
+
+
+def _normalize_tipo_local(value: object) -> str:
+    tipo = _clean_str(value).lower()
+    return tipo if tipo in VALID_TIPOS_LOCAL else "casa"
+
+
+def _collect_delivery_details(data: dict, pedido=None) -> dict:
+    """Normaliza campos extras de entrega e limpa campos nao aplicaveis ao tipo."""
+    current_tipo = getattr(pedido, "tipo_local", None) if pedido is not None else None
+    tipo_local = _normalize_tipo_local(data.get("tipo_local", current_tipo or "casa"))
+
+    details: dict[str, str | None] = {}
+    if "tipo_local" in data or pedido is None:
+        details["tipo_local"] = tipo_local
+
+    for field in DELIVERY_DETAIL_FIELDS:
+        if field == "tipo_local":
+            continue
+        if field in data or pedido is None:
+            value = _clean_str(data.get(field))
+            details[field] = value or None
+
+    if tipo_local != "casa" and ("tipo_local" in data or pedido is None):
+        details["quadra"] = None
+        details["lote"] = None
+    if tipo_local == "casa" and ("tipo_local" in data or pedido is None):
+        for field in BUILDING_DETAIL_FIELDS:
+            details[field] = None
+
+    return details
 
 
 def _extract_whatsapp_token_from_payload(data: dict) -> str | None:
@@ -1075,6 +1120,7 @@ def criar_pedido():
         cidade = _clean_str(data.get("cidade"))
         endereco = _clean_str(data.get("endereco"))
         obs_entrega = _clean_str(data.get("obs_entrega"))
+        delivery_details = _collect_delivery_details(data)
 
         mensagem = _clean_str(data.get("mensagem"))
         pagamento = _clean_str(data.get("pagamento"))
@@ -1265,6 +1311,15 @@ def criar_pedido():
             cep=cep if cep else None,
             rua=rua if rua else None,
             numero=numero if numero else None,
+            tipo_local=delivery_details["tipo_local"],
+            nome_local=delivery_details["nome_local"],
+            apto=delivery_details["apto"],
+            bloco=delivery_details["bloco"],
+            torre=delivery_details["torre"],
+            andar=delivery_details["andar"],
+            quadra=delivery_details["quadra"],
+            lote=delivery_details["lote"],
+            complemento=delivery_details["complemento"],
             bairro=bairro if bairro else None,
             cidade=cidade if cidade else None,
             endereco=endereco if endereco else None,
@@ -1463,6 +1518,12 @@ def atualizar_pedido(pedido_id):
                 track_change(campo, getattr(pedido, campo), data[campo])
                 setattr(pedido, campo, data[campo])
                 endereco_mudou = True
+
+        delivery_details = _collect_delivery_details(data, pedido)
+        for campo, new_value in delivery_details.items():
+            if new_value != getattr(pedido, campo):
+                track_change(campo, getattr(pedido, campo), new_value)
+                setattr(pedido, campo, new_value)
 
         if endereco_mudou:
             pedido.distancia_km = None

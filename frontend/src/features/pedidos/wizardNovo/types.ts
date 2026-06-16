@@ -37,6 +37,20 @@ export const entregaExtrasDefaults: EntregaExtras = {
  * Retorna uma cópia do form pronta para `transformFormToApiPayload`.
  */
 export function mergeEntregaExtras(data: PedidoFormDataExt): PedidoFormData {
+  const tipoLocal = data.tipo_local || 'casa';
+  return {
+    ...data,
+    tipo_local: tipoLocal,
+    nome_local: tipoLocal !== 'casa' ? data.nome_local : '',
+    apto: tipoLocal === 'predio' ? data.apto : '',
+    bloco: tipoLocal === 'predio' ? data.bloco : '',
+    torre: tipoLocal === 'predio' ? data.torre : '',
+    andar: tipoLocal === 'predio' ? data.andar : '',
+    quadra: tipoLocal === 'casa' ? data.quadra : '',
+    lote: tipoLocal === 'casa' ? data.lote : '',
+  } as PedidoFormData;
+
+  /*
   const partes: string[] = [];
   if (data.tipo_local && data.tipo_local !== 'casa' && data.nome_local?.trim()) {
     partes.push(data.nome_local.trim());
@@ -58,4 +72,5 @@ export function mergeEntregaExtras(data: PedidoFormDataExt): PedidoFormData {
   void _t; void _n; void _a; void _b; void _to; void _an;
 
   return { ...base, complemento: complemento || undefined } as PedidoFormData;
+  */
 }

@@ -59,6 +59,20 @@ export function StepEntregaNovo() {
     setValue('cidade', e.cidade, { shouldValidate: true });
   };
 
+  const handleTipoLocalChange = (tipo: TipoLocal) => {
+    setValue('tipo_local', tipo, { shouldValidate: true });
+    if (tipo === 'casa') {
+      setValue('nome_local', '');
+      setValue('apto', '');
+      setValue('bloco', '');
+      setValue('torre', '');
+      setValue('andar', '');
+    } else {
+      setValue('quadra', '');
+      setValue('lote', '');
+    }
+  };
+
   const gerarEndereco = () => {
     const v = getValues();
     const partes: string[] = [];
@@ -67,8 +81,8 @@ export function StepEntregaNovo() {
       if (v.numero && n !== '0' && n !== 'S/N' && n !== 'SN') partes.push(`${v.rua}, ${v.numero}`);
       else partes.push(v.rua);
     }
-    if (v.quadra) partes.push(`Qd ${v.quadra}`);
-    if (v.lote) partes.push(`Lt ${v.lote}`);
+    if (v.tipo_local === 'casa' && v.quadra) partes.push(`Qd ${v.quadra}`);
+    if (v.tipo_local === 'casa' && v.lote) partes.push(`Lt ${v.lote}`);
     if (v.bairro) partes.push(v.bairro);
     if (v.cidade) partes.push(v.cidade);
     if (v.cep) partes.push(`CEP: ${v.cep}`);
@@ -122,7 +136,7 @@ export function StepEntregaNovo() {
           const Ico = t.icon;
           return (
             <button type="button" key={t.k} className={`pw-seg-item ${on ? 'on' : ''}`}
-              onClick={() => setValue('tipo_local', t.k)}>
+              onClick={() => handleTipoLocalChange(t.k)}>
               {on && <span className="pw-seg-check"><Check size={12} /></span>}
               <span className="pw-seg-ic"><Ico size={20} /></span>{t.label}
             </button>
@@ -170,10 +184,12 @@ export function StepEntregaNovo() {
               </select>
             </Field>
           )}
-          <div className="pw-row2">
-            <Field label="Quadra"><input className="pw-in" {...register('quadra')} placeholder="Ex.: 5" /></Field>
-            <Field label="Lote"><input className="pw-in" {...register('lote')} placeholder="Ex.: 12" /></Field>
-          </div>
+          {tipoLocal === 'casa' && (
+            <div className="pw-row2">
+              <Field label="Quadra"><input className="pw-in" {...register('quadra')} placeholder="Ex.: 5" /></Field>
+              <Field label="Lote"><input className="pw-in" {...register('lote')} placeholder="Ex.: 12" /></Field>
+            </div>
+          )}
           <Field label="Endereço completo" hint="Gerado automaticamente ou preencha manualmente" error={errors.endereco?.message}>
             <textarea className="pw-in ta sm" {...register('endereco')} />
           </Field>

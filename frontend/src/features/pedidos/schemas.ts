@@ -31,6 +31,12 @@ export const TIPOS_PEDIDO = [
   'Retirada',
 ] as const;
 
+export const TIPOS_LOCAL = [
+  'casa',
+  'predio',
+  'comercial',
+] as const;
+
 /** Regex para CEP no formato 99999-999 */
 export const CEP_REGEX = /^\d{5}-\d{3}$/;
 
@@ -125,6 +131,12 @@ export const pedidoFormSchema = z.object({
 
   rua: z.string().max(200).optional(),
   numero: z.string().max(20).optional(),
+  tipo_local: z.enum(TIPOS_LOCAL).default('casa'),
+  nome_local: z.string().max(120).optional(),
+  apto: z.string().max(50).optional(),
+  bloco: z.string().max(50).optional(),
+  torre: z.string().max(50).optional(),
+  andar: z.string().max(50).optional(),
   quadra: z.string().max(50).optional(),
   lote: z.string().max(50).optional(),
   complemento: z.string().max(100).optional(), // Novo: será mapeado para observacoes
@@ -260,6 +272,12 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   cep: '',
   rua: '',
   numero: '',
+  tipo_local: 'casa',
+  nome_local: '',
+  apto: '',
+  bloco: '',
+  torre: '',
+  andar: '',
   quadra: '',
   lote: '',
   complemento: '',
@@ -354,32 +372,22 @@ export function parseCepToDigits(cep: string): string {
  * Inclui merge de complemento em observacoes
  */
 export function transformFormToApiPayload(formData: PedidoFormData): Record<string, unknown> {
+  const tipoLocal = formData.tipo_local || 'casa';
+
   // Monta o endereço completo se não estiver preenchido
   let enderecoCompleto = formData.endereco;
   if (!enderecoCompleto && formData.rua) {
     const parts = [
       formData.rua,
       formData.numero ? `nº ${formData.numero}` : null,
-      formData.quadra ? `Qd ${formData.quadra}` : null,
-      formData.lote ? `Lt ${formData.lote}` : null,
+      tipoLocal === 'casa' && formData.quadra ? `Qd ${formData.quadra}` : null,
+      tipoLocal === 'casa' && formData.lote ? `Lt ${formData.lote}` : null,
       formData.complemento ? formData.complemento : null,
       formData.bairro,
       formData.cidade,
     ].filter(Boolean);
     enderecoCompleto = parts.join(', ');
   }
-
-  // Merge complemento em observacoes
-  const observacoesParts: string[] = [];
-  if (formData.observacoes?.trim()) {
-    observacoesParts.push(formData.observacoes.trim());
-  }
-  if (formData.complemento?.trim()) {
-    observacoesParts.push(`Complemento: ${formData.complemento.trim()}`);
-  }
-  const observacoesFinal = observacoesParts.length > 0 
-    ? observacoesParts.join('\n') 
-    : undefined;
 
   return {
     cliente: formData.cliente.trim(),
@@ -392,6 +400,15 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     cep: formData.cep?.trim() || undefined,
     rua: formData.rua?.trim() || undefined,
     numero: formData.numero?.trim() || undefined,
+    tipo_local: tipoLocal,
+    nome_local: tipoLocal !== 'casa' ? formData.nome_local?.trim() || undefined : undefined,
+    apto: tipoLocal === 'predio' ? formData.apto?.trim() || undefined : undefined,
+    bloco: tipoLocal === 'predio' ? formData.bloco?.trim() || undefined : undefined,
+    torre: tipoLocal === 'predio' ? formData.torre?.trim() || undefined : undefined,
+    andar: tipoLocal === 'predio' ? formData.andar?.trim() || undefined : undefined,
+    quadra: tipoLocal === 'casa' ? formData.quadra?.trim() || undefined : undefined,
+    lote: tipoLocal === 'casa' ? formData.lote?.trim() || undefined : undefined,
+    complemento: formData.complemento?.trim() || undefined,
     bairro: formData.bairro?.trim() || undefined,
     cidade: formData.cidade?.trim() || undefined,
     endereco: enderecoCompleto?.trim() || undefined,
@@ -411,7 +428,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
         ? formData.parcelas_cartao
         : null,
     status_pagamento: formData.status_pagamento || 'Pendente',
-    observacoes: observacoesFinal,
+    observacoes: formData.observacoes?.trim() || undefined,
     quantidade: formData.quantidade ?? 1,
     fonte_pedido_id: formData.fonte_pedido_id || undefined,
     vendedor_id: formData.vendedor_id || undefined,
@@ -459,6 +476,12 @@ export const step2Schema = z.object({
   cep: pedidoFormSchema.shape.cep,
   rua: pedidoFormSchema.shape.rua,
   numero: pedidoFormSchema.shape.numero,
+  tipo_local: pedidoFormSchema.shape.tipo_local,
+  nome_local: pedidoFormSchema.shape.nome_local,
+  apto: pedidoFormSchema.shape.apto,
+  bloco: pedidoFormSchema.shape.bloco,
+  torre: pedidoFormSchema.shape.torre,
+  andar: pedidoFormSchema.shape.andar,
   quadra: pedidoFormSchema.shape.quadra,
   lote: pedidoFormSchema.shape.lote,
   complemento: pedidoFormSchema.shape.complemento,

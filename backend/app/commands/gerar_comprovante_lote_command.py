@@ -79,10 +79,16 @@ class GerarComprovanteLoteCommand:
             distancia = f"{ctx['distancia']:.2f} km" if ctx.get("distancia") is not None else ""
             extras = " · ".join(p for p in [cidade, cep, distancia, taxa] if p and p != "-")
             extras_html = f'<div class="slip-sub">{extras}</div>' if extras else ""
+            details = ctx.get("delivery_details") or []
+            details_text = " | ".join(
+                f"{fmt(label)}: {fmt(value)}" for label, value in details if value
+            )
+            details_html = f'<div class="slip-sub">{details_text}</div>' if details_text else ""
             endereco_html = f"""
               <div class="slip-block">
                 <div class="slip-lbl">Endereço</div>
                 <div class="slip-val-md">{fmt(ctx['endereco'])}</div>
+                {details_html}
                 {extras_html}
               </div>
             """

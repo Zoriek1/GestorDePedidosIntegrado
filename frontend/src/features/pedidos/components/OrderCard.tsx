@@ -49,6 +49,7 @@ import {
   isPedidoAtrasado, 
   formatPhone, 
   getEnderecoCompleto,
+  getDetalhesEntrega,
   buildEncaminharMensagem,
 } from './OrderCardHelpers';
 import { useCalcularDistanciaPedido, useCalcularTaxaEntrega, useUpdatePedido, useToggleCartaoImpresso, useTrackLink } from '../../../api/endpoints/pedidos';
@@ -99,6 +100,7 @@ export function OrderCard({
   const statusLabel = getStatusLabel(pedido.status);
   const isAtrasado = isPedidoAtrasado(pedido);
   const enderecoCompleto = getEnderecoCompleto(pedido);
+  const detalhesEntrega = getDetalhesEntrega(pedido);
   const calcDistancia = useCalcularDistanciaPedido();
   const calcTaxa = useCalcularTaxaEntrega();
   const updatePedido = useUpdatePedido();
@@ -565,6 +567,16 @@ export function OrderCard({
               {enderecoCompleto}
             </Typography>
           </Box>
+
+          {detalhesEntrega.length > 0 && (
+            <Stack spacing={0.25} mt={0.75}>
+              {detalhesEntrega.map((detail) => (
+                <Typography key={detail} variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                  {detail}
+                </Typography>
+              ))}
+            </Stack>
+          )}
 
           {/* Produto (destaque para montagem/conferência) */}
           <Typography sx={{ fontWeight: 800, fontSize: '1.35rem', lineHeight: 1.2, mt: 1 }}>

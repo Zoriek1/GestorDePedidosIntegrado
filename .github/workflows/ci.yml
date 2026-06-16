@@ -6,7 +6,7 @@ name: CI
 #   VPS_SSH_KEY      -- chave privada SSH (conteudo de ~/.ssh/id_ed25519)
 #   VPS_PORT         -- porta SSH (ex: 22)
 #   VPS_DEPLOY_PATH  -- caminho do projeto na VPS (ex: /home/deploy/Gestor-de-Pedidos-WEB-PUF)
-# Opcional (recomendado se usar Google Maps no frontend em produção):
+# Opcional (recomendado se usar Google Maps no frontend em producao):
 #   VITE_GOOGLE_MAPS_API_KEY -- mesmo valor que no .env da VPS (build do artefato no CI)
 
 on:
@@ -44,7 +44,7 @@ jobs:
           pip install -r requirements.txt
           pip install tzdata
 
-      # Aplica correções no runner e valida. O branch no GitHub não é alterado;
+      # Aplica correcoes no runner e valida. O branch no GitHub nao e alterado;
       # para persistir estilo no repo, use pre-commit ou rode ruff/black antes do push.
       - name: Lint + format (ruff fix + black)
         working-directory: backend
@@ -121,7 +121,7 @@ jobs:
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: npm run build
 
-      - name: Upload frontend dist (deploy VPS sem 2º Vite)
+      - name: Upload frontend dist (deploy VPS sem 2o Vite)
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
@@ -142,48 +142,113 @@ jobs:
           name: frontend-dist
           path: ci-frontend-dist
 
-      - name: Sincronizar repo com origin/main e limpar prebuilt-dist
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || '22' }}
-          script: |
-            set -e
-            cd "${{ secrets.VPS_DEPLOY_PATH }}"
-            # git pull falha se houver mudança local em arquivos rastreados (ex.: docker-compose.yml).
-            # reset --hard alinha com o GitHub; .env e outros ignorados não são afetados.
-            git fetch origin main
-            git reset --hard origin/main
-            mkdir -p docker/prebuilt-dist
-            find docker/prebuilt-dist -mindepth 1 -delete
+      - name: Deploy VPS via SSH com retry rapido
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
 
-      - name: Copiar dist para VPS (prebuilt)
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || '22' }}
-          # strip_components=1 remove o prefixo "ci-frontend-dist/" para que index.html
-          # caia direto em docker/prebuilt-dist/ (sem isso, o Dockerfile não acha o prebuilt
-          # e roda Vite de novo na VPS).
-          source: "ci-frontend-dist/*"
-          target: "${{ secrets.VPS_DEPLOY_PATH }}/docker/prebuilt-dist"
-          strip_components: 1
+          key_file="$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$VPS_SSH_KEY" > "$key_file"
+          chmod 600 "$key_file"
 
-      - name: Docker compose (USE_PREBUILT_DIST=1)
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || '22' }}
-          command_timeout: 40m
-          script: |
-            set -e
-            cd "${{ secrets.VPS_DEPLOY_PATH }}"
-            export USE_PREBUILT_DIST=1
-            docker compose up -d --build
-            docker image prune -f
+          remote="$VPS_USER@$VPS_HOST"
+          ssh_common_opts=(
+            -i "$key_file"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=accept-new
+            -o ConnectTimeout=8
+            -o ConnectionAttempts=1
+            -o ServerAliveInterval=10
+            -o ServerAliveCountMax=2
+          )
+          ssh_opts=(-p "$VPS_PORT" "${ssh_common_opts[@]}")
+          scp_opts=(-P "$VPS_PORT" "${ssh_common_opts[@]}")
+
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            local delay=3
+
+            until "$@"; do
+              local exit_code="$?"
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Falhou apos $attempt tentativa(s)."
+                return "$exit_code"
+              fi
+              echo "Tentativa $attempt falhou; nova tentativa em ${delay}s..."
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+
+          run_remote_script() {
+            local script_file="$1"
+            local command_timeout="${2:-120s}"
+            local deploy_path_escaped
+            local attempt=1
+            local delay=3
+            local exit_code
+            deploy_path_escaped="$(printf '%q' "$VPS_DEPLOY_PATH")"
+
+            while true; do
+              if timeout "$command_timeout" ssh "${ssh_opts[@]}" "$remote" "DEPLOY_PATH=$deploy_path_escaped GITHUB_SHA=$GITHUB_SHA bash -se" < "$script_file"; then
+                return 0
+              fi
+
+              exit_code="$?"
+              if [ "$attempt" -ge 4 ]; then
+                echo "Falhou apos $attempt tentativa(s)."
+                return "$exit_code"
+              fi
+              echo "Tentativa $attempt falhou; nova tentativa em ${delay}s..."
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+
+          sync_script="$RUNNER_TEMP/deploy-sync.sh"
+          cat > "$sync_script" <<'REMOTE'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          # git pull falha se houver mudanca local em arquivos rastreados (ex.: docker-compose.yml).
+          # reset --hard alinha com o GitHub; .env e outros ignorados nao sao afetados.
+          git fetch origin main
+          git reset --hard origin/main
+          mkdir -p docker/prebuilt-dist
+          find docker/prebuilt-dist -mindepth 1 -delete
+          REMOTE
+          run_remote_script "$sync_script"
+
+          archive="$RUNNER_TEMP/frontend-dist.tar.gz"
+          tar -C ci-frontend-dist -czf "$archive" .
+
+          remote_archive="/tmp/gestor-frontend-dist-${GITHUB_SHA}.tar.gz"
+          retry 4 timeout 120s scp "${scp_opts[@]}" "$archive" "$remote:$remote_archive"
+
+          extract_script="$RUNNER_TEMP/deploy-extract-dist.sh"
+          cat > "$extract_script" <<'REMOTE'
+          set -euo pipefail
+          mkdir -p "$DEPLOY_PATH/docker/prebuilt-dist"
+          tar -xzf "/tmp/gestor-frontend-dist-${GITHUB_SHA}.tar.gz" -C "$DEPLOY_PATH/docker/prebuilt-dist"
+          rm -f "/tmp/gestor-frontend-dist-${GITHUB_SHA}.tar.gz"
+          REMOTE
+          run_remote_script "$extract_script"
+
+          compose_script="$RUNNER_TEMP/deploy-compose.sh"
+          cat > "$compose_script" <<'REMOTE'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          export USE_PREBUILT_DIST=1
+          docker compose up -d --build
+          docker image prune -f
+          REMOTE
+          run_remote_script "$compose_script" 40m

@@ -27,14 +27,18 @@ export function CartaoEntrega() {
   const bloco = useWatch({ control, name: 'bloco' });
   const torre = useWatch({ control, name: 'torre' });
   const andar = useWatch({ control, name: 'andar' });
+  const quadra = useWatch({ control, name: 'quadra' });
+  const lote = useWatch({ control, name: 'lote' });
 
   const meta = META[tipoLocal] ?? META.casa;
   const Ico = meta.icon;
   const det = [
-    apto && `AP ${apto}`,
-    bloco && `Bloco ${bloco}`,
-    torre && `Torre ${torre}`,
-    andar && `${andar}º andar`,
+    tipoLocal === 'casa' && quadra && `Qd ${quadra}`,
+    tipoLocal === 'casa' && lote && `Lt ${lote}`,
+    tipoLocal === 'predio' && apto && `AP ${apto}`,
+    tipoLocal === 'predio' && bloco && `Bloco ${bloco}`,
+    tipoLocal === 'predio' && torre && `Torre ${torre}`,
+    tipoLocal === 'predio' && andar && `${andar}º andar`,
   ].filter(Boolean).join(' · ');
 
   return (

@@ -68,6 +68,43 @@ def fmt_brl(val):
         return str(val)
 
 
+TIPO_LOCAL_LABELS = {
+    "casa": "Casa",
+    "predio": "Predio",
+    "comercial": "Comercial",
+}
+
+
+def build_delivery_detail_lines(pedido) -> list[tuple[str, str]]:
+    tipo_local = (getattr(pedido, "tipo_local", None) or "casa").strip().lower()
+    lines: list[tuple[str, str]] = []
+    label = TIPO_LOCAL_LABELS.get(tipo_local, "Casa")
+    lines.append(("Tipo de local", label))
+
+    if tipo_local in ("predio", "comercial") and getattr(pedido, "nome_local", None):
+        lines.append(("Local", pedido.nome_local))
+    if tipo_local == "predio":
+        for field, label in [
+            ("apto", "Apartamento"),
+            ("bloco", "Bloco"),
+            ("torre", "Torre"),
+            ("andar", "Andar"),
+        ]:
+            value = getattr(pedido, field, None)
+            if value:
+                lines.append((label, value))
+    if tipo_local == "casa":
+        if getattr(pedido, "quadra", None):
+            lines.append(("Quadra", pedido.quadra))
+        if getattr(pedido, "lote", None):
+            lines.append(("Lote", pedido.lote))
+    if getattr(pedido, "complemento", None):
+        lines.append(("Complemento", pedido.complemento))
+    if getattr(pedido, "obs_entrega", None):
+        lines.append(("Referencia", pedido.obs_entrega))
+    return [(label, str(value)) for label, value in lines if value]
+
+
 def build_pedido_context(pedido) -> dict:
     """Constrói o data bag de contexto a partir do model Pedido."""
     cliente_norm = (pedido.cliente or "").strip().lower()
@@ -75,6 +112,7 @@ def build_pedido_context(pedido) -> dict:
     is_mesma_pessoa = cliente_norm == destinatario_norm
 
     is_retirada = (pedido.tipo_pedido or "").lower() == "retirada"
+    delivery_details = [] if is_retirada else build_delivery_detail_lines(pedido)
 
     return {
         "id": pedido.id,
@@ -95,6 +133,16 @@ def build_pedido_context(pedido) -> dict:
         "data_entrega": pedido.dia_entrega.strftime("%d/%m/%Y") if pedido.dia_entrega else "",
         "horario": pedido.horario,
         "endereco": None if is_retirada else pedido.endereco,
+        "tipo_local": None if is_retirada else (pedido.tipo_local or "casa"),
+        "nome_local": None if is_retirada else pedido.nome_local,
+        "apto": None if is_retirada else pedido.apto,
+        "bloco": None if is_retirada else pedido.bloco,
+        "torre": None if is_retirada else pedido.torre,
+        "andar": None if is_retirada else pedido.andar,
+        "quadra": None if is_retirada else pedido.quadra,
+        "lote": None if is_retirada else pedido.lote,
+        "complemento": None if is_retirada else pedido.complemento,
+        "delivery_details": delivery_details,
         "cidade": None if is_retirada else pedido.cidade,
         "cep": None if is_retirada else pedido.cep,
         "distancia": None if is_retirada else pedido.distancia_km,
@@ -135,6 +183,7 @@ COMPROVANTE_CSS = """
     .row { display: flex; flex-direction: column; }
     .label { font-size: 10px; text-transform: uppercase; color: #666; }
     .value { font-weight: 700; font-size: 13px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
 
     .box { border: 2px dashed #999; padding: 10px; background: #fafafa; font-weight: 700; white-space: pre-wrap; }
 
@@ -180,11 +229,19 @@ def render_comprovante_body(ctx: dict) -> str:
             """
 
     html_endereco = ""
-    if ctx["endereco"]:
+    if ctx["endereco"] or ctx.get("delivery_details"):
+        detalhes_html = ""
+        if ctx.get("delivery_details"):
+            detail_items = "".join(
+                f'<div class="row"><div class="label">{fmt(label)}</div><div class="value">{fmt(value)}</div></div>'
+                for label, value in ctx["delivery_details"]
+            )
+            detalhes_html = f'<div class="detail-grid">{detail_items}</div>'
         html_endereco = f"""
              <div class="card full">
                 <div class="h"><span class="dot"></span><span class="h-title">Endereço de Entrega</span></div>
                 <div class="box">{fmt(ctx['endereco'])}</div>
+                {detalhes_html}
                 <div class="rows" style="margin-top:8px">
                     <div class="row"><div class="label">Cidade</div><div class="value">{fmt(ctx['cidade'])}</div></div>
                     <div class="row"><div class="label">CEP</div><div class="value">{fmt(ctx['cep'])}</div></div>

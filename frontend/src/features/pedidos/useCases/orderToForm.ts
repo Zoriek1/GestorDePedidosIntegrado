@@ -69,7 +69,15 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     cep: pedido.cep || '',
     rua: pedido.rua || '',
     numero: pedido.numero || '',
-    complemento: '',
+    tipo_local: pedido.tipo_local || 'casa',
+    nome_local: pedido.nome_local || '',
+    apto: pedido.apto || '',
+    bloco: pedido.bloco || '',
+    torre: pedido.torre || '',
+    andar: pedido.andar || '',
+    quadra: pedido.quadra || '',
+    lote: pedido.lote || '',
+    complemento: pedido.complemento || '',
     bairro: pedido.bairro || '',
     cidade: pedido.cidade || '',
     endereco: pedido.endereco || '',
@@ -93,4 +101,3 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
 
   return formData;
 }
-

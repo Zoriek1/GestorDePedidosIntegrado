@@ -132,7 +132,7 @@ class TestPedidosAPI:
         }
 
         response = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
-        assert response.status_code == 200
+        assert response.status_code == 201
         data = response.get_json()
         pedido_data = data.get("pedido") or data.get("data", {}).get("pedido")
         assert pedido_data["tipo_local"] == "predio"

@@ -333,7 +333,7 @@ export function StepEntrega() {
                 sx={{ flexWrap: 'wrap' }}
               >
                 <ToggleButton value="casa">Casa</ToggleButton>
-                <ToggleButton value="predio">PrÃ©dio</ToggleButton>
+                <ToggleButton value="predio">Predio</ToggleButton>
                 <ToggleButton value="comercial">Comercial</ToggleButton>
               </ToggleButtonGroup>
             </Box>
@@ -346,8 +346,8 @@ export function StepEntrega() {
                   render={({ field }) => (
                     <TextField
                       {...field}
-                      label="Nome do prÃ©dio / condomÃ­nio"
-                      placeholder="Ex: EdifÃ­cio Jardim das Flores"
+                      label="Nome do predio / condominio"
+                      placeholder="Ex: Edificio Jardim das Flores"
                       fullWidth
                       error={!!errors.nome_local}
                       helperText={errors.nome_local?.message}
@@ -387,7 +387,7 @@ export function StepEntrega() {
                   <TextField
                     {...field}
                     label="Nome do estabelecimento"
-                    placeholder="Ex: ColÃ©gio Planeta"
+                    placeholder="Ex: Colegio Planeta"
                     fullWidth
                     error={!!errors.nome_local}
                     helperText={errors.nome_local?.message}

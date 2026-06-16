@@ -450,10 +450,24 @@ class GerarComprovanteLoteCommand:
   <style>{COMPROVANTE_CSS}
     .page-1up {{ page-break-after: always; break-after: page; }}
     .page-1up:last-child {{ page-break-after: auto; break-after: auto; }}
+    .meta-foot {{
+      position: fixed;
+      bottom: 2mm;
+      left: 8mm;
+      right: 8mm;
+      font-size: 8px;
+      color: #888;
+      display: flex;
+      justify-content: space-between;
+    }}
   </style>
 </head>
 <body>
   {pages}
+  <div class="meta-foot no-print-screen">
+    <span>Lote: {ids_str}</span>
+    <span>{contexts[0]['impresso_em']}</span>
+  </div>
   <script>
     window.onload = function() {{
         setTimeout(function() {{ window.print(); }}, 500);

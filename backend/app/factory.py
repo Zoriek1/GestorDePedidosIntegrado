@@ -65,8 +65,10 @@ def create_app(config=None):
 
     # 4. Blueprints e Database (dentro de app_context)
     with app.app_context():
-        # Importar novos models para garantir que as tabelas sejam criadas
-        import app.models  # noqa: F401
+        # Importar todos os models (inclusive Bling) para registrar as tabelas.
+        # IMPORTANTE: usar alias. `import app.models` religaria o nome local `app`
+        # (instancia Flask) para o modulo `app`, quebrando app.register_blueprint.
+        import app.models as _app_models  # noqa: F401
         from app.models.ledger_entry import LedgerEntry  # noqa: F401
         from app.models.user import User  # noqa: F401
         from app.routes.auth import auth_bp

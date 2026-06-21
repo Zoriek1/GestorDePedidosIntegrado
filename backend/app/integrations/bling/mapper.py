@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Mapper Pedido interno -> payload Bling."""
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Dict, List
 
 from flask import current_app

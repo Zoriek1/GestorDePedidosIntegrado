@@ -121,7 +121,7 @@ export function BlingIntegrationCard({ pedidoId }: { pedidoId: number }) {
   const orderNumber = outbox?.bling_order_number || preview?.external_ref?.external_order_number;
 
   const latestError = outbox?.error_message || previewQuery.error?.message;
-  const plan = preview?.financial_plan ?? [];
+  const plan = useMemo(() => preview?.financial_plan ?? [], [preview?.financial_plan]);
   const planTotal = useMemo(
     () => plan.reduce((acc, row) => acc + (Number(row.amount) || 0), 0),
     [plan],

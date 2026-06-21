@@ -69,16 +69,9 @@ export default function BlingPage() {
 
   const mappings = useMemo(() => configQuery.data?.mappings ?? [], [configQuery.data?.mappings]);
 
-  useEffect(() => {
-    if (!mappings.length) return;
-    setDrafts((prev) => {
-      const next = { ...prev };
-      mappings.forEach((mapping) => {
-        if (!next[mapping.id]) next[mapping.id] = draftFromMapping(mapping);
-      });
-      return next;
-    });
-  }, [mappings]);
+  // O draft de cada linha e derivado sob demanda no render/save via
+  // `drafts[id] ?? draftFromMapping(mapping)`, entao nao pre-populamos drafts
+  // num effect (evita setState em effect e renders em cascata).
 
   useEffect(() => {
     if (searchParams.get('bling') !== 'connected') return;

@@ -23,8 +23,8 @@ def bling_app():
     para exercitar o BlingIntegrationService com banco real em memoria."""
     from flask import Flask
 
-    from app import db
     import app.models  # noqa: F401  (registra os models no metadata)
+    from app import db
 
     flask_app = Flask(__name__)
     flask_app.config.update(

@@ -28,7 +28,6 @@ from app.models.bling_payment_method import BlingPaymentMethod
 from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
 
-
 GESTOR_PAYMENT_LABELS = [
     "Pix",
     "Cartao de Credito",
@@ -502,7 +501,7 @@ class BlingIntegrationService:
             raise BlingRetryableError(
                 "Nao foi possivel verificar duplicidade no Bling",
                 details={"error": f"{type(exc).__name__}: {exc}"},
-            )
+            ) from exc
         items = self._extract_list(response)
         if items:
             order_id = str(items[0].get("id"))

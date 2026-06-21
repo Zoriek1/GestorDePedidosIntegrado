@@ -65,6 +65,10 @@ def create_app(config=None):
 
     # 4. Blueprints e Database (dentro de app_context)
     with app.app_context():
+        # Importar novos models para garantir que as tabelas sejam criadas
+        import app.models  # noqa: F401
+        from app.models.ledger_entry import LedgerEntry  # noqa: F401
+        from app.models.user import User  # noqa: F401
         from app.routes.auth import auth_bp
         from app.routes.backup_admin import backup_admin_bp
         from app.routes.bling import bling_bp
@@ -82,12 +86,6 @@ def create_app(config=None):
         from app.routes.rotas import rotas_bp
         from app.routes.storefront import storefront_bp
         from app.routes.user_routes import users_bp
-
-        # Importar novos models para garantir que as tabelas sejam criadas
-        import app.models  # noqa: F401
-
-        from app.models.user import User  # noqa: F401
-        from app.models.ledger_entry import LedgerEntry  # noqa: F401
 
         # Blueprints por domínio
         app.register_blueprint(pedidos_bp)

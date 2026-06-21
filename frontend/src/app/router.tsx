@@ -20,6 +20,7 @@ const RoutePage = lazy(() => import('../features/rotas/RoutePage'));
 const TestOfflinePage = lazy(() => import('../features/pedidos/TestOfflinePage'));
 const OfflineDiagnostics = lazy(() => import('../features/offline/OfflineDiagnostics'));
 const NuvemshopPage = lazy(() => import('../features/integrations/NuvemshopPage'));
+const BlingPage = lazy(() => import('../features/integrations/BlingPage'));
 const SettingsPage = lazy(() => import('../features/config/SettingsPage'));
 const LeadsPage = lazy(() => import('../features/leads/LeadsPage'));
 const LedgerPage = lazy(() => import('../features/ledger/LedgerPage'));
@@ -152,6 +153,16 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: '/integracoes/bling',
+        element: (
+          <RequireAuth>
+            <Suspense fallback={<Loading />}>
+              <BlingPage />
+            </Suspense>
+          </RequireAuth>
+        ),
+      },
+      {
         path: '/configuracoes',
         element: (
           <RequireAuth>
@@ -230,4 +241,3 @@ const router = createBrowserRouter([
 export function AppRouter() {
   return <RouterProvider router={router} />;
 }
-

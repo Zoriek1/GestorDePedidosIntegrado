@@ -24,6 +24,7 @@ import { buildEncaminharMensagem } from './components/OrderCardHelpers';
 import { copyToClipboard } from '../../lib/utils/clipboard';
 import { formatOrderSourceLabel } from './utils/sourceLabel';
 import { useUsers } from '../users/services/userApi';
+import { BlingIntegrationCard } from './components/BlingIntegrationCard';
 
 type StatusPagamentoColor = 'success' | 'warning' | 'default' | 'error';
 
@@ -360,6 +361,14 @@ export default function OrderDetailsPage() {
         {sectionTitle('Pagamento')}
         <Stack spacing={1} mt={1}>
           {inlineRow('Forma', pedido.pagamento)}
+          {pedido.status_pagamento === 'Parcial' && (
+            <>
+              {inlineRow('Entrada', pedido.valor_entrada != null ? formatBRL(pedido.valor_entrada) : null)}
+              {inlineRow('Forma entrada', pedido.forma_pagamento_entrada)}
+              {inlineRow('Saldo', pedido.valor_restante != null ? formatBRL(pedido.valor_restante) : null)}
+              {inlineRow('Forma saldo', pedido.forma_pagamento_restante)}
+            </>
+          )}
           <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
             <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 110 }}>
               Status
@@ -392,6 +401,8 @@ export default function OrderDetailsPage() {
       </Paper>
 
       {/* Metadados — rodapé discreto */}
+      <BlingIntegrationCard pedidoId={pedido.id} />
+
       <Divider sx={{ my: 2 }} />
       <Stack
         direction="row"

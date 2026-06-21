@@ -50,6 +50,16 @@ services:
       NUVEMSHOP_CLIENT_SECRET: ${NUVEMSHOP_CLIENT_SECRET:-}
       NUVEMSHOP_USER_AGENT: ${NUVEMSHOP_USER_AGENT:-}
       NUVEMSHOP_PUBLIC_BASE_URL: ${NUVEMSHOP_PUBLIC_BASE_URL:-}
+      # Bling API v3
+      BLING_ENABLED: ${BLING_ENABLED:-false}
+      BLING_CLIENT_ID: ${BLING_CLIENT_ID:-}
+      BLING_CLIENT_SECRET: ${BLING_CLIENT_SECRET:-}
+      BLING_REDIRECT_URI: ${BLING_REDIRECT_URI:-}
+      BLING_API_BASE_URL: ${BLING_API_BASE_URL:-https://api.bling.com.br/Api/v3}
+      BLING_AUTH_BASE_URL: ${BLING_AUTH_BASE_URL:-https://www.bling.com.br/Api/v3/oauth}
+      BLING_TIMEOUT_SECONDS: ${BLING_TIMEOUT_SECONDS:-20}
+      BLING_DEFAULT_PRODUCT_CODE: ${BLING_DEFAULT_PRODUCT_CODE:-PEDIDO-FLORICULTURA}
+      BLING_STORE_ID: ${BLING_STORE_ID:-default}
       # Meta CAPI (obrigatório para envio de eventos)
       META_PIXEL_ID: ${META_PIXEL_ID:-}
       META_CAPI_ACCESS_TOKEN: ${META_CAPI_ACCESS_TOKEN:-}
@@ -103,6 +113,36 @@ services:
       META_CAPI_WORKER_INTERVAL_SECONDS: ${META_CAPI_WORKER_INTERVAL_SECONDS:-5}
       META_CAPI_RETRY_BACKOFF_SECONDS: ${META_CAPI_RETRY_BACKOFF_SECONDS:-300}
       META_SCHEDULER_HOUR: ${META_SCHEDULER_HOUR:-23}
+    volumes:
+      - ./backend:/app/backend
+
+  bling-worker:
+    build:
+      context: .
+      target: capi-worker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    entrypoint: ["python", "bling_worker_entrypoint.py"]
+    environment:
+      FLASK_ENV: production
+      APP_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gestor}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-gestor_pedidos}
+      SECRET_KEY: ${SECRET_KEY:?Defina SECRET_KEY no .env}
+      BLING_ENABLED: ${BLING_ENABLED:-false}
+      BLING_CLIENT_ID: ${BLING_CLIENT_ID:-}
+      BLING_CLIENT_SECRET: ${BLING_CLIENT_SECRET:-}
+      BLING_REDIRECT_URI: ${BLING_REDIRECT_URI:-}
+      BLING_API_BASE_URL: ${BLING_API_BASE_URL:-https://api.bling.com.br/Api/v3}
+      BLING_AUTH_BASE_URL: ${BLING_AUTH_BASE_URL:-https://www.bling.com.br/Api/v3/oauth}
+      BLING_TIMEOUT_SECONDS: ${BLING_TIMEOUT_SECONDS:-20}
+      BLING_DEFAULT_PRODUCT_CODE: ${BLING_DEFAULT_PRODUCT_CODE:-PEDIDO-FLORICULTURA}
+      BLING_STORE_ID: ${BLING_STORE_ID:-default}
+      BLING_WORKER_INTERVAL_SECONDS: ${BLING_WORKER_INTERVAL_SECONDS:-10}
+      BLING_WORKER_LIMIT: ${BLING_WORKER_LIMIT:-20}
     volumes:
       - ./backend:/app/backend
 

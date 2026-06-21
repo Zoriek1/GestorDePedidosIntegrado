@@ -84,6 +84,79 @@ def _normalize_whatsapp_code(value: object) -> str | None:
     return normalize_tracking_token(value)
 
 
+def _build_payment_snapshot(data: dict, valor, status_pagamento, pagamento, pedido=None) -> dict:
+    """Monta snapshot financeiro para status Parcial sem alterar o status canonico."""
+    from decimal import Decimal, ROUND_HALF_UP
+
+    from app.integrations.bling.mapper import parse_decimal_money
+
+    status = _clean_str(status_pagamento or getattr(pedido, "status_pagamento", None))
+    is_partial = status.lower().startswith("parcial")
+    if not is_partial:
+        return {
+            "regra_pagamento": None,
+            "percentual_entrada": None,
+            "valor_entrada": None,
+            "valor_restante": None,
+            "forma_pagamento_entrada": None,
+            "forma_pagamento_restante": None,
+            "entrada_recebida_at": None,
+            "saldo_recebido_at": getattr(pedido, "saldo_recebido_at", None) if pedido else None,
+        }
+
+    total = parse_decimal_money(valor or getattr(pedido, "valor", None))
+    if total <= Decimal("0.00"):
+        total = Decimal("0.00")
+
+    entrada = parse_decimal_money(data.get("valor_entrada"))
+    if entrada <= Decimal("0.00") and pedido is not None:
+        entrada = parse_decimal_money(getattr(pedido, "valor_entrada", None))
+    if entrada <= Decimal("0.00") and total > Decimal("0.00"):
+        entrada = (total * Decimal("0.50")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    restante = parse_decimal_money(data.get("valor_restante"))
+    if restante <= Decimal("0.00") and total > Decimal("0.00"):
+        restante = (total - entrada).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    percentual_raw = data.get("percentual_entrada")
+    try:
+        percentual = float(percentual_raw) if percentual_raw not in (None, "") else 50.0
+    except (TypeError, ValueError):
+        percentual = 50.0
+
+    forma_entrada = _clean_str(data.get("forma_pagamento_entrada")) or _clean_str(
+        getattr(pedido, "forma_pagamento_entrada", None)
+    )
+    forma_restante = _clean_str(data.get("forma_pagamento_restante")) or _clean_str(
+        getattr(pedido, "forma_pagamento_restante", None)
+    )
+    forma_principal = _clean_str(pagamento or getattr(pedido, "pagamento", None))
+
+    return {
+        "regra_pagamento": _clean_str(data.get("regra_pagamento")) or "parcial_50",
+        "percentual_entrada": percentual,
+        "valor_entrada": entrada if entrada > Decimal("0.00") else None,
+        "valor_restante": restante if restante > Decimal("0.00") else None,
+        "forma_pagamento_entrada": forma_entrada or forma_principal or None,
+        "forma_pagamento_restante": forma_restante or forma_principal or None,
+        "entrada_recebida_at": getattr(pedido, "entrada_recebida_at", None)
+        or datetime_now_brazil(),
+        "saldo_recebido_at": getattr(pedido, "saldo_recebido_at", None) if pedido else None,
+    }
+
+
+def _apply_payment_snapshot(pedido, data: dict) -> None:
+    snapshot = _build_payment_snapshot(
+        data,
+        data.get("valor", pedido.valor),
+        data.get("status_pagamento", pedido.status_pagamento),
+        data.get("pagamento", pedido.pagamento),
+        pedido=pedido,
+    )
+    for field, value in snapshot.items():
+        setattr(pedido, field, value)
+
+
 def _normalize_tipo_local(value: object) -> str:
     tipo = _clean_str(value).lower()
     return tipo if tipo in VALID_TIPOS_LOCAL else "casa"
@@ -1295,6 +1368,7 @@ def criar_pedido():
         slot_inicio_manual = derive_slot_inicio(horario)
 
         # Criar pedido
+        payment_snapshot = _build_payment_snapshot(data, valor, status_pagamento, pagamento)
         pedido = Pedido(
             cliente=cliente if cliente else None,
             telefone_cliente=telefone_cliente,
@@ -1329,6 +1403,7 @@ def criar_pedido():
             parcelas_cartao=parcelas_cartao,
             observacoes=observacoes if observacoes else None,
             status_pagamento=status_pagamento if status_pagamento else None,
+            **payment_snapshot,
             status="agendado",
             quantidade=quantidade,
             cliente_id=cliente_id_int,
@@ -1600,6 +1675,22 @@ def atualizar_pedido(pedido_id):
                 pass
         elif user_role == "vendedor" and pedido.vendedor_id is None:
             pedido.vendedor_id = _get_current_vendedor_id()
+
+        if any(
+            field in data
+            for field in (
+                "status_pagamento",
+                "pagamento",
+                "valor",
+                "valor_entrada",
+                "valor_restante",
+                "forma_pagamento_entrada",
+                "forma_pagamento_restante",
+                "regra_pagamento",
+                "percentual_entrada",
+            )
+        ):
+            _apply_payment_snapshot(pedido, data)
 
         pedido.updated_at = datetime_now_brazil()
 

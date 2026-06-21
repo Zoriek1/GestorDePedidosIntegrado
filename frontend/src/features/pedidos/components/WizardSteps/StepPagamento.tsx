@@ -56,6 +56,8 @@ export function StepPagamento() {
   const cidade = useWatch({ control, name: 'cidade' });
   const statusPagamento = useWatch({ control, name: 'status_pagamento' });
   const formaPagamento = useWatch({ control, name: 'pagamento' });
+  const formaPagamentoEntrada = useWatch({ control, name: 'forma_pagamento_entrada' }) ?? '';
+  const formaPagamentoRestante = useWatch({ control, name: 'forma_pagamento_restante' }) ?? '';
   const parcelasCartao = useWatch({ control, name: 'parcelas_cartao' });
 
   // Carrega config de taxa de cartão (cache 5 min do React Query)
@@ -71,6 +73,9 @@ export function StepPagamento() {
     valorFloat,
   );
   const valorLiquido = Math.max(0, valorFloat - taxaFloat - taxaCartaoFloat);
+  const isParcial = statusPagamento === 'Parcial';
+  const valorEntrada = Number((valorFloat * 0.5).toFixed(2));
+  const valorRestante = Number((valorFloat - valorEntrada).toFixed(2));
 
   const isCredito = formaPagamento === 'Cartão de Crédito';
   const opcoesParcelas = (taxaCartaoConfig?.credito ?? [])
@@ -86,6 +91,22 @@ export function StepPagamento() {
       setValue('parcelas_cartao', opcoesParcelas[0], { shouldDirty: true });
     }
   }, [isCredito, parcelasCartao, opcoesParcelas, setValue]);
+
+  useEffect(() => {
+    if (!isParcial || !formaPagamento) return;
+    if (!formaPagamentoEntrada) {
+      setValue('forma_pagamento_entrada', formaPagamento, { shouldDirty: true });
+    }
+    if (!formaPagamentoRestante) {
+      setValue('forma_pagamento_restante', formaPagamento, { shouldDirty: true });
+    }
+  }, [
+    formaPagamento,
+    formaPagamentoEntrada,
+    formaPagamentoRestante,
+    isParcial,
+    setValue,
+  ]);
 
   // Componente de Resumo
   const ResumoContent = (
@@ -299,7 +320,7 @@ export function StepPagamento() {
                       label="Parcelas"
                       value={field.value ?? ''}
                       onChange={(e) =>
-                        field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+                        field.onChange(String(e.target.value) === '' ? undefined : Number(e.target.value))
                       }
                     >
                       {opcoesParcelas.length === 0 && (
@@ -344,6 +365,88 @@ export function StepPagamento() {
             />
 
             {/* Observações Gerais */}
+            {isParcial && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack spacing={2}>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Parcial 50%
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <Controller
+                        name="forma_pagamento_entrada"
+                        control={control}
+                        render={({ field }) => (
+                          <FormControl fullWidth error={!!errors.forma_pagamento_entrada}>
+                            <InputLabel>Forma da entrada</InputLabel>
+                            <Select {...field} label="Forma da entrada">
+                              <MenuItem value="">
+                                <em>Usar forma principal</em>
+                              </MenuItem>
+                              {FORMAS_PAGAMENTO.map((forma) => (
+                                <MenuItem key={forma} value={forma}>
+                                  {forma}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                            {errors.forma_pagamento_entrada && (
+                              <FormHelperText>
+                                {errors.forma_pagamento_entrada.message}
+                              </FormHelperText>
+                            )}
+                          </FormControl>
+                        )}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <Controller
+                        name="forma_pagamento_restante"
+                        control={control}
+                        render={({ field }) => (
+                          <FormControl fullWidth error={!!errors.forma_pagamento_restante}>
+                            <InputLabel>Forma do saldo</InputLabel>
+                            <Select {...field} label="Forma do saldo">
+                              <MenuItem value="">
+                                <em>Usar forma principal</em>
+                              </MenuItem>
+                              {FORMAS_PAGAMENTO.map((forma) => (
+                                <MenuItem key={forma} value={forma}>
+                                  {forma}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                            {errors.forma_pagamento_restante && (
+                              <FormHelperText>
+                                {errors.forma_pagamento_restante.message}
+                              </FormHelperText>
+                            )}
+                          </FormControl>
+                        )}
+                      />
+                    </Grid>
+                  </Grid>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Entrada agora
+                      </Typography>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {formatCurrency(valorEntrada)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Saldo na entrega
+                      </Typography>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {formatCurrency(valorRestante)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )}
+
             <Controller
               name="observacoes"
               control={control}
@@ -373,4 +476,3 @@ export function StepPagamento() {
 }
 
 export default StepPagamento;
-

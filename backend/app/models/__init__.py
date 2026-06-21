@@ -3,6 +3,13 @@
 Models do sistema
 """
 from app.models.audit_log import AuditLog
+from app.models.bling_category import BlingCategory
+from app.models.bling_credential import BlingCredential
+from app.models.bling_financial_account import BlingFinancialAccount
+from app.models.bling_integration_log import BlingIntegrationLog
+from app.models.bling_outbox import BlingOutbox
+from app.models.bling_payment_mapping import BlingPaymentMapping
+from app.models.bling_payment_method import BlingPaymentMethod
 from app.models.catalogo_arranjo import CatalogoArranjo
 from app.models.cliente import Cliente
 from app.models.endereco_cliente import EnderecoCliente
@@ -32,6 +39,13 @@ __all__ = [
     "LeadTouchpoint",
     "LedgerEntry",
     "AuditLog",
+    "BlingCategory",
+    "BlingCredential",
+    "BlingFinancialAccount",
+    "BlingIntegrationLog",
+    "BlingOutbox",
+    "BlingPaymentMapping",
+    "BlingPaymentMethod",
     "MetaCapiOutbox",
     "MetaCapiLeadOutbox",
     "NuvemshopStore",

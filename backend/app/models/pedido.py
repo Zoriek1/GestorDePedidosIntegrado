@@ -119,6 +119,47 @@ class Pedido(db.Model):
     )
 
     # Plataforma e Canal (para integrações como Nuvemshop)
+    regra_pagamento = db.Column(
+        db.String(30),
+        nullable=True,
+        comment="Regra financeira complementar (ex: parcial_50)",
+    )
+    percentual_entrada = db.Column(
+        db.Float,
+        nullable=True,
+        comment="Percentual de entrada aplicado no snapshot financeiro",
+    )
+    valor_entrada = db.Column(
+        db.Numeric(12, 2),
+        nullable=True,
+        comment="Snapshot do valor de entrada/sinal recebido",
+    )
+    valor_restante = db.Column(
+        db.Numeric(12, 2),
+        nullable=True,
+        comment="Snapshot do saldo restante a receber",
+    )
+    forma_pagamento_entrada = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Forma de pagamento usada na entrada/sinal",
+    )
+    forma_pagamento_restante = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Forma de pagamento prevista para o saldo",
+    )
+    entrada_recebida_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Data/hora em que a entrada/sinal foi recebida",
+    )
+    saldo_recebido_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Data/hora em que o saldo foi recebido",
+    )
+
     plataforma = db.Column(
         db.String(50),
         nullable=True,
@@ -297,6 +338,24 @@ class Pedido(db.Model):
             "fonte_pedido_id": self.fonte_pedido_id,
             "fonte_pedido_nome": self.fonte_pedido_rel.nome if self.fonte_pedido_rel else "",
             "status_pagamento": self.status_pagamento or "",
+            "regra_pagamento": self.regra_pagamento or "",
+            "percentual_entrada": self.percentual_entrada,
+            "valor_entrada": float(self.valor_entrada) if self.valor_entrada is not None else None,
+            "valor_restante": (
+                float(self.valor_restante) if self.valor_restante is not None else None
+            ),
+            "forma_pagamento_entrada": self.forma_pagamento_entrada or "",
+            "forma_pagamento_restante": self.forma_pagamento_restante or "",
+            "entrada_recebida_at": (
+                self.entrada_recebida_at.strftime("%Y-%m-%d %H:%M:%S")
+                if self.entrada_recebida_at
+                else None
+            ),
+            "saldo_recebido_at": (
+                self.saldo_recebido_at.strftime("%Y-%m-%d %H:%M:%S")
+                if self.saldo_recebido_at
+                else None
+            ),
             # Plataforma e Canal (integrações)
             "plataforma": self.plataforma or "",
             "canal": self.canal or "",

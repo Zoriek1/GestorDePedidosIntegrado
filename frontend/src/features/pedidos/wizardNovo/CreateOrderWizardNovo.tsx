@@ -37,7 +37,18 @@ const STEPS: StepDef[] = [
   { key: 'cliente', label: 'Cliente', icon: User, fields: ['cliente', 'telefone_cliente', 'destinatario', 'tipo_pedido'] },
   { key: 'produto', label: 'Produto', icon: Flower2, fields: ['produto', 'valor', 'dia_entrega', 'horario'] },
   { key: 'entrega', label: 'Entrega', icon: MapPin, fields: ['rua', 'numero', 'cidade', 'endereco'] },
-  { key: 'pagamento', label: 'Pagamento', icon: CreditCard, fields: ['pagamento', 'parcelas_cartao', 'status_pagamento'] },
+  {
+    key: 'pagamento',
+    label: 'Pagamento',
+    icon: CreditCard,
+    fields: [
+      'pagamento',
+      'parcelas_cartao',
+      'status_pagamento',
+      'forma_pagamento_entrada',
+      'forma_pagamento_restante',
+    ],
+  },
 ];
 
 function useIsMobile(bp = 860) {

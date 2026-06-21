@@ -51,6 +51,14 @@ export interface Pedido {
   fonte_pedido_id?: number;
   fonte_pedido_nome?: string;
   status_pagamento?: string;
+  regra_pagamento?: string;
+  percentual_entrada?: number | null;
+  valor_entrada?: number | null;
+  valor_restante?: number | null;
+  forma_pagamento_entrada?: string;
+  forma_pagamento_restante?: string;
+  entrada_recebida_at?: string | null;
+  saldo_recebido_at?: string | null;
   status: string;
   quantidade: number;
   oculto: boolean;
@@ -207,6 +215,12 @@ export interface CreatePedidoPayload {
   parcelas_cartao?: number | null;
   observacoes?: string;
   status_pagamento?: string;
+  regra_pagamento?: string;
+  percentual_entrada?: number | null;
+  valor_entrada?: number | null;
+  valor_restante?: number | null;
+  forma_pagamento_entrada?: string;
+  forma_pagamento_restante?: string;
   fonte_pedido?: string;
   fonte_pedido_id?: number;
   codigo_whatsapp?: string;

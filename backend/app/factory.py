@@ -54,6 +54,9 @@ def create_app(config=None):
     # 1.2 Credenciais Google (escreve arquivo a partir de env var se necessário)
     _setup_google_credentials(app)
 
+    # 1.3 Validar credenciais Bling em produção quando a integração está ligada
+    _validate_bling_config(app)
+
     # 2. Extensões (ANTES de importar models)
     init_extensions(app)
 
@@ -64,6 +67,7 @@ def create_app(config=None):
     with app.app_context():
         from app.routes.auth import auth_bp
         from app.routes.backup_admin import backup_admin_bp
+        from app.routes.bling import bling_bp
         from app.routes.catalogo import catalogo_bp
         from app.routes.clientes import clientes_bp
         from app.routes.config import config_bp
@@ -80,6 +84,8 @@ def create_app(config=None):
         from app.routes.user_routes import users_bp
 
         # Importar novos models para garantir que as tabelas sejam criadas
+        import app.models  # noqa: F401
+
         from app.models.user import User  # noqa: F401
         from app.models.ledger_entry import LedgerEntry  # noqa: F401
 
@@ -94,6 +100,7 @@ def create_app(config=None):
         app.register_blueprint(config_bp)
         app.register_blueprint(backup_admin_bp)
         app.register_blueprint(nuvemshop_bp)
+        app.register_blueprint(bling_bp)
         app.register_blueprint(notifications_bp)
         app.register_blueprint(leads_bp)
 
@@ -151,6 +158,28 @@ def create_app(config=None):
         print(f"[AVISO] Fila de taxa de entrega não iniciada: {e}")
 
     return app
+
+
+def _validate_bling_config(app):
+    """Falha rápida no boot se a integração Bling estiver habilitada em produção
+    sem as credenciais obrigatórias (em vez de só quebrar tarde, em runtime)."""
+    env = (
+        os.environ.get("APP_ENV")
+        or os.environ.get("FLASK_ENV")
+        or ""
+    ).lower()
+    if env != "production":
+        return
+    if not app.config.get("BLING_ENABLED"):
+        return
+    required = ["BLING_CLIENT_ID", "BLING_CLIENT_SECRET", "BLING_REDIRECT_URI"]
+    missing = [key for key in required if not app.config.get(key)]
+    if missing:
+        raise RuntimeError(
+            "BLING_ENABLED=true em produção, mas faltam credenciais obrigatórias: "
+            f"{', '.join(missing)}.\n"
+            "Defina-as no .env/secret manager ou desligue com BLING_ENABLED=false."
+        )
 
 
 def _setup_google_credentials(app):

@@ -9,7 +9,7 @@ import { CreditCard, AlertTriangle } from 'lucide-react';
 import { Field, SectionHead } from '../components/atoms';
 import { ResumoVivo } from '../components/ResumoVivo';
 import { useValorLiquido } from '../components/useValorLiquido';
-import { FORMAS_PAGAMENTO, STATUS_PAGAMENTO, formatCurrency } from '../../schemas';
+import { FORMAS_PAGAMENTO, STATUS_PAGAMENTO, formatCurrency, parseCurrencyToFloat } from '../../schemas';
 import { useTaxaCartaoConfig } from '../../../config/hooks/useConfig';
 import type { PedidoFormDataExt } from '../types';
 
@@ -20,6 +20,9 @@ export function StepPagamentoNovo({ isMobile }: { isMobile: boolean }) {
   const pagamento = useWatch({ control, name: 'pagamento' }) ?? '';
   const statusPagamento = useWatch({ control, name: 'status_pagamento' });
   const parcelas = useWatch({ control, name: 'parcelas_cartao' });
+  const valor = useWatch({ control, name: 'valor' });
+  const formaEntrada = useWatch({ control, name: 'forma_pagamento_entrada' }) ?? '';
+  const formaRestante = useWatch({ control, name: 'forma_pagamento_restante' }) ?? '';
 
   const { config } = useTaxaCartaoConfig();
   const isCredito = pagamento === 'Cartão de Crédito';
@@ -33,7 +36,17 @@ export function StepPagamentoNovo({ isMobile }: { isMobile: boolean }) {
     else if (isCredito && !parcelas && opcoesParcelas.length > 0) setValue('parcelas_cartao', opcoesParcelas[0], { shouldDirty: true });
   }, [isCredito, parcelas, opcoesParcelas, setValue]);
 
+  useEffect(() => {
+    if (statusPagamento !== 'Parcial' || !pagamento) return;
+    if (!formaEntrada) setValue('forma_pagamento_entrada', pagamento, { shouldDirty: true });
+    if (!formaRestante) setValue('forma_pagamento_restante', pagamento, { shouldDirty: true });
+  }, [formaEntrada, formaRestante, pagamento, setValue, statusPagamento]);
+
   const invalido = statusPagamento === 'Pago' && !pagamento;
+  const isParcial = statusPagamento === 'Parcial';
+  const valorTotal = parseCurrencyToFloat(valor) || 0;
+  const valorEntrada = Number((valorTotal * 0.5).toFixed(2));
+  const valorRestante = Number((valorTotal - valorEntrada).toFixed(2));
   const { liquido } = useValorLiquido();
 
   return (
@@ -68,6 +81,31 @@ export function StepPagamentoNovo({ isMobile }: { isMobile: boolean }) {
             {opcoesParcelas.map((n) => <option key={n} value={n}>{n}x</option>)}
           </select>
         </Field>
+      )}
+
+      {isParcial && (
+        <>
+          <div className="pw-row2">
+            <Field label="Forma da entrada" error={errors.forma_pagamento_entrada?.message}>
+              <select className="pw-in" value={formaEntrada}
+                onChange={(e) => setValue('forma_pagamento_entrada', e.target.value, { shouldValidate: true, shouldDirty: true })}>
+                <option value="">Usar forma principal</option>
+                {FORMAS_PAGAMENTO.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </Field>
+            <Field label="Forma do saldo" error={errors.forma_pagamento_restante?.message}>
+              <select className="pw-in" value={formaRestante}
+                onChange={(e) => setValue('forma_pagamento_restante', e.target.value, { shouldValidate: true, shouldDirty: true })}>
+                <option value="">Usar forma principal</option>
+                {FORMAS_PAGAMENTO.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="pw-totalbar">
+            <span>Parcial 50%</span>
+            <strong>{formatCurrency(valorEntrada)} agora / {formatCurrency(valorRestante)} na entrega</strong>
+          </div>
+        </>
       )}
 
       {invalido && (

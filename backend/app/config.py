@@ -115,6 +115,27 @@ class BaseConfig:
     NUVEMSHOP_USER_AGENT = os.environ.get("NUVEMSHOP_USER_AGENT") or ""
     NUVEMSHOP_PUBLIC_BASE_URL = os.environ.get("NUVEMSHOP_PUBLIC_BASE_URL") or ""
 
+    # Bling API v3 (OAuth + pedidos/financeiro)
+    BLING_ENABLED = os.environ.get("BLING_ENABLED", "false").lower() == "true"
+    BLING_CLIENT_ID = os.environ.get("BLING_CLIENT_ID") or ""
+    BLING_CLIENT_SECRET = os.environ.get("BLING_CLIENT_SECRET") or ""
+    BLING_REDIRECT_URI = os.environ.get("BLING_REDIRECT_URI") or ""
+    BLING_API_BASE_URL = os.environ.get(
+        "BLING_API_BASE_URL", "https://api.bling.com.br/Api/v3"
+    ).rstrip("/")
+    BLING_AUTH_BASE_URL = os.environ.get(
+        "BLING_AUTH_BASE_URL", "https://www.bling.com.br/Api/v3/oauth"
+    ).rstrip("/")
+    BLING_TIMEOUT_SECONDS = int(os.environ.get("BLING_TIMEOUT_SECONDS") or 20)
+    BLING_DEFAULT_PRODUCT_CODE = os.environ.get(
+        "BLING_DEFAULT_PRODUCT_CODE", "PEDIDO-FLORICULTURA"
+    )
+    BLING_STORE_ID = os.environ.get("BLING_STORE_ID", "default")
+    # Teto de paginas ao varrer /contas/receber procurando as contas do pedido.
+    BLING_RECEIVABLE_SEARCH_PAGES = int(
+        os.environ.get("BLING_RECEIVABLE_SEARCH_PAGES") or 10
+    )
+
     # UTMify API (vendas WhatsApp / manual — Integrações > Credenciais de API)
     UTMIFY_ENABLED = os.environ.get("UTMIFY_ENABLED", "false").lower() == "true"
     UTMIFY_API_TOKEN = os.environ.get("UTMIFY_API_TOKEN", "").strip()

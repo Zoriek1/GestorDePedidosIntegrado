@@ -243,21 +243,56 @@ def _ensure_runtime_columns():
     """
     runtime_columns = [
         ("pedidos", "cartao_impresso", "boolean_false"),
+        ("pedidos", "regra_pagamento", "string_30"),
+        ("pedidos", "percentual_entrada", "float"),
+        ("pedidos", "valor_entrada", "numeric_12_2"),
+        ("pedidos", "valor_restante", "numeric_12_2"),
+        ("pedidos", "forma_pagamento_entrada", "string_50"),
+        ("pedidos", "forma_pagamento_restante", "string_50"),
+        ("pedidos", "entrada_recebida_at", "datetime"),
+        ("pedidos", "saldo_recebido_at", "datetime"),
     ]
     try:
         from sqlalchemy import inspect
 
         dialect = db.engine.dialect.name  # 'sqlite' | 'postgresql' | ...
         is_postgres = dialect == "postgresql"
+        inspector = inspect(db.engine)
+
+        bling_table_names = {
+            "bling_credentials",
+            "bling_payment_methods",
+            "bling_financial_accounts",
+            "bling_categories",
+            "bling_payment_mapping",
+            "bling_outbox",
+            "bling_integration_logs",
+        }
+        existing_tables = set(inspector.get_table_names())
+        missing_bling_tables = bling_table_names - existing_tables
+        if missing_bling_tables:
+            print(f"[DB] Criando tabelas Bling ausentes: {sorted(missing_bling_tables)}")
+            db.create_all()
+            inspector = inspect(db.engine)
+            print("[OK] Tabelas Bling verificadas/criadas")
 
         def _column_def(kind: str) -> str:
             if kind == "boolean_false":
                 if is_postgres:
                     return "BOOLEAN NOT NULL DEFAULT FALSE"
                 return "BOOLEAN NOT NULL DEFAULT 0"
+            if kind == "string_30":
+                return "VARCHAR(30)"
+            if kind == "string_50":
+                return "VARCHAR(50)"
+            if kind == "float":
+                return "FLOAT"
+            if kind == "numeric_12_2":
+                return "NUMERIC(12, 2)"
+            if kind == "datetime":
+                return "TIMESTAMP" if is_postgres else "DATETIME"
             raise ValueError(f"Tipo desconhecido: {kind}")
 
-        inspector = inspect(db.engine)
         for table, column, kind in runtime_columns:
             if table not in inspector.get_table_names():
                 continue

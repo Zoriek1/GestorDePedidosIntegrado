@@ -12,6 +12,7 @@ import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
 import CustomersPage from '../customers/CustomersPage';
 import NuvemshopPage from '../integrations/NuvemshopPage';
+import BlingPage from '../integrations/BlingPage';
 import FontesPage from '../fontes/FontesPage';
 import UserListPage from '../users/components/UserListPage';
 
@@ -152,6 +153,7 @@ export default function SettingsPage() {
           {!isEntregador && <Tab icon={<Build />} label="Fontes" iconPosition="start" />}
           {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
           {isAdmin && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
+          {isAdmin && <Tab icon={<Payment />} label="Bling" iconPosition="start" />}
           {isAdmin && <Tab icon={<People />} label="Funcionários" iconPosition="start" />}
         </Tabs>
       </Paper>
@@ -164,7 +166,8 @@ export default function SettingsPage() {
           {!isEntregador && tabValue === (isAdmin ? 3 : 2) && <FontesPage />}
           {!isEntregador && tabValue === (isAdmin ? 4 : 3) && <CustomersPage />}
           {isAdmin && tabValue === 5 && <NuvemshopPage />}
-          {isAdmin && tabValue === 6 && <UserListPage />}
+          {isAdmin && tabValue === 6 && <BlingPage />}
+          {isAdmin && tabValue === 7 && <UserListPage />}
         </Suspense>
       </Box>
     </Box>

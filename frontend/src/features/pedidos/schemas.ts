@@ -185,6 +185,12 @@ export const pedidoFormSchema = z.object({
     .optional(),
 
   status_pagamento: z.enum(STATUS_PAGAMENTO).default('Pendente'),
+  regra_pagamento: z.string().max(30).optional(),
+  percentual_entrada: z.number().optional(),
+  valor_entrada: z.number().optional(),
+  valor_restante: z.number().optional(),
+  forma_pagamento_entrada: z.string().max(50).optional(),
+  forma_pagamento_restante: z.string().max(50).optional(),
 
   observacoes: z.string().max(1000).optional(),
 
@@ -294,6 +300,12 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   pagamento: '',
   parcelas_cartao: undefined,
   status_pagamento: 'Pendente',
+  regra_pagamento: undefined,
+  percentual_entrada: undefined,
+  valor_entrada: undefined,
+  valor_restante: undefined,
+  forma_pagamento_entrada: '',
+  forma_pagamento_restante: '',
   observacoes: '',
   origem_anuncio: false,
   fbclid: '',
@@ -373,6 +385,14 @@ export function parseCepToDigits(cep: string): string {
  */
 export function transformFormToApiPayload(formData: PedidoFormData): Record<string, unknown> {
   const tipoLocal = formData.tipo_local || 'casa';
+  const valorTotal = parseCurrencyToFloat(formData.valor);
+  const isParcial = formData.status_pagamento === 'Parcial';
+  const valorEntrada = isParcial && valorTotal !== undefined
+    ? Number((valorTotal * 0.5).toFixed(2))
+    : undefined;
+  const valorRestante = isParcial && valorTotal !== undefined
+    ? Number((valorTotal - (valorEntrada || 0)).toFixed(2))
+    : undefined;
 
   // Monta o endereço completo se não estiver preenchido
   let enderecoCompleto = formData.endereco;
@@ -430,8 +450,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     mensagem: formData.mensagem?.trim() || undefined,
     // enviar valor como string numérica (ex: "90.00") ou undefined
     valor: (() => {
-      const parsed = parseCurrencyToFloat(formData.valor);
-      return parsed !== undefined ? parsed.toFixed(2) : undefined;
+      return valorTotal !== undefined ? valorTotal.toFixed(2) : undefined;
     })(),
     taxa_entrega: parseCurrencyToFloat(formData.taxa_entrega),
     pagamento: formData.pagamento?.trim() || undefined,
@@ -440,6 +459,16 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
         ? formData.parcelas_cartao
         : null,
     status_pagamento: formData.status_pagamento || 'Pendente',
+    regra_pagamento: isParcial ? 'parcial_50' : undefined,
+    percentual_entrada: isParcial ? 50 : undefined,
+    valor_entrada: valorEntrada,
+    valor_restante: valorRestante,
+    forma_pagamento_entrada: isParcial
+      ? (formData.forma_pagamento_entrada?.trim() || formData.pagamento?.trim() || undefined)
+      : undefined,
+    forma_pagamento_restante: isParcial
+      ? (formData.forma_pagamento_restante?.trim() || formData.pagamento?.trim() || undefined)
+      : undefined,
     observacoes: formData.observacoes?.trim() || undefined,
     quantidade: formData.quantidade ?? 1,
     fonte_pedido_id: formData.fonte_pedido_id || undefined,
@@ -536,5 +565,11 @@ export const step4Schema = pedidoFormSchema.pick({
   pagamento: true,
   parcelas_cartao: true,
   status_pagamento: true,
+  regra_pagamento: true,
+  percentual_entrada: true,
+  valor_entrada: true,
+  valor_restante: true,
+  forma_pagamento_entrada: true,
+  forma_pagamento_restante: true,
   observacoes: true,
 });

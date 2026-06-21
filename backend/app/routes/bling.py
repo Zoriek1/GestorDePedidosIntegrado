@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Rotas da integracao Bling API v3."""
 
+import logging
+
 from flask import Blueprint, redirect, request
 
 from app.integrations.bling.errors import BlingIntegrationError
@@ -11,6 +13,7 @@ from app.models.bling_integration_log import BlingIntegrationLog
 from app.schemas.common import error_response, success_response
 
 bling_bp = Blueprint("bling", __name__, url_prefix="/api/integrations/bling")
+logger = logging.getLogger(__name__)
 
 
 def _front_url(path: str) -> str:
@@ -27,6 +30,7 @@ def _front_url(path: str) -> str:
 def _handle_error(exc: Exception):
     if isinstance(exc, BlingIntegrationError):
         return error_response(str(exc), 400, details=exc.details)
+    logger.exception("Erro inesperado na integracao Bling")
     return error_response(f"Erro na integracao Bling: {type(exc).__name__}", 500)
 
 

@@ -197,9 +197,18 @@ class BlingTokenService:
         return credential
 
     @staticmethod
+    def _is_expired(expires_at) -> bool:
+        if not expires_at:
+            return False
+        now = datetime_now_brazil()
+        if expires_at.tzinfo is None or expires_at.tzinfo.utcoffset(expires_at) is None:
+            expires_at = expires_at.replace(tzinfo=now.tzinfo)
+        return expires_at <= now
+
+    @staticmethod
     def get_valid_access_token() -> str:
         credential = BlingTokenService.get_credential()
-        if credential.expires_at and credential.expires_at <= datetime_now_brazil():
+        if BlingTokenService._is_expired(credential.expires_at):
             credential = BlingTokenService.refresh_access_token(credential)
         token = BlingTokenService.decrypt(credential.access_token_encrypted)
         if not token:

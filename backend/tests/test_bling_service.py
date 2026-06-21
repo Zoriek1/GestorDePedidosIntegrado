@@ -7,6 +7,7 @@ importar ``app`` no topo do modulo interfere com a fixture ``app`` do conftest
 """
 
 import json
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -222,6 +223,25 @@ def test_client_does_not_loop_on_persistent_401(monkeypatch):
     # Apos 1 refresh, o segundo 401 vira erro (sem loop infinito).
     with pytest.raises(BlingApiError):
         client.get("/x")
+
+
+def test_token_expiration_accepts_naive_database_datetime(bling_app):
+    from app import db
+    from app.integrations.bling.token_service import BlingTokenService
+    from app.models.bling_credential import BlingCredential
+    from app.models.pedido import datetime_now_brazil
+
+    credential = BlingCredential(
+        store_id="default",
+        access_token_encrypted=BlingTokenService.encrypt("token-valido"),
+        refresh_token_encrypted=BlingTokenService.encrypt("refresh-token"),
+        active=True,
+        expires_at=(datetime_now_brazil() + timedelta(hours=1)).replace(tzinfo=None),
+    )
+    db.session.add(credential)
+    db.session.commit()
+
+    assert BlingTokenService.get_valid_access_token() == "token-valido"
 
 
 # --- Produto generico auto-criado -------------------------------------------

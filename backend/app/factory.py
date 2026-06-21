@@ -37,12 +37,12 @@ def create_app(config=None):
     app = Flask(__name__)
 
     # 1. Configuração (PRIMEIRO)
+    # WSGI/main passam overrides parciais; a base ainda precisa trazer env vars.
+    from app.config import BaseConfig
+
+    app.config.from_object(BaseConfig)
     if config:
         app.config.update(config)
-    else:
-        from app.config import BaseConfig
-
-        app.config.from_object(BaseConfig)
 
     # 1.1 Validar SECRET_KEY obrigatória (falha rápida antes de qualquer inicialização)
     if not app.config.get("SECRET_KEY"):

@@ -15,7 +15,7 @@ import pytest
 
 
 @pytest.fixture
-def bling_app():
+def bling_app(monkeypatch):
     """App Flask minimo com ``db`` proprio e as tabelas Bling.
 
     Independe do ``create_app`` do projeto (cujo fixture do conftest esbarra num
@@ -25,6 +25,8 @@ def bling_app():
 
     import app.models  # noqa: F401  (registra os models no metadata)
     from app import db
+
+    monkeypatch.setenv("SQLITE_FOREIGN_KEYS", "OFF")
 
     flask_app = Flask(__name__)
     flask_app.config.update(

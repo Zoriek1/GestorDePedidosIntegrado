@@ -335,6 +335,44 @@ def test_sync_financial_accounts_marks_inactive_statuses(bling_app):
     assert by_id == {"1": True, "2": False, "3": False, "4": False}
 
 
+def test_enqueue_bling_for_new_order_requires_connection(bling_app):
+    from app.models.bling_outbox import BlingOutbox
+    from app.utils.bling_helper import enqueue_bling_for_new_order
+
+    pedido = SimpleNamespace(id=77)
+
+    assert enqueue_bling_for_new_order(pedido) is False
+    assert BlingOutbox.query.count() == 0
+
+
+def test_enqueue_bling_for_new_order_creates_pending_once(bling_app):
+    from app import db
+    from app.integrations.bling.token_service import BlingTokenService
+    from app.models.bling_credential import BlingCredential
+    from app.models.bling_outbox import BlingOutbox
+    from app.utils.bling_helper import enqueue_bling_for_new_order
+
+    credential = BlingCredential(
+        store_id="default",
+        access_token_encrypted=BlingTokenService.encrypt("access-token"),
+        refresh_token_encrypted=BlingTokenService.encrypt("refresh-token"),
+        active=True,
+    )
+    db.session.add(credential)
+    db.session.commit()
+
+    pedido = SimpleNamespace(id=88)
+
+    assert enqueue_bling_for_new_order(pedido) is True
+    assert enqueue_bling_for_new_order(pedido) is False
+
+    outboxes = BlingOutbox.query.all()
+    assert len(outboxes) == 1
+    assert outboxes[0].pedido_id == 88
+    assert outboxes[0].status == "pending"
+    assert outboxes[0].step == "pending"
+
+
 # --- Fase 1.4: migration portavel -------------------------------------------
 
 def test_migration_uses_portable_timestamp_type():

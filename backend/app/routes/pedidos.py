@@ -1432,6 +1432,13 @@ def criar_pedido():
             print(f"[AVISO] Erro ao criar outbox para pedido #{pedido.id}: {e}")
 
         try:
+            from app.utils.bling_helper import enqueue_bling_for_new_order
+
+            enqueue_bling_for_new_order(pedido)
+        except Exception as e:
+            print(f"[AVISO] Erro ao criar outbox Bling para pedido #{pedido.id}: {e}")
+
+        try:
             from app.utils.utmify_helper import send_utmify_if_purchase
 
             send_utmify_if_purchase(pedido, status_anterior=None, status_pagamento_anterior=None)

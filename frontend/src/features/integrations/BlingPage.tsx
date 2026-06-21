@@ -9,6 +9,7 @@ import {
   Chip,
   FormControl,
   InputLabel,
+  ListSubheader,
   MenuItem,
   Select,
   Stack,
@@ -27,7 +28,7 @@ import {
   useSaveBlingMapping,
   useSyncBlingConfig,
 } from '../../api/endpoints/bling';
-import type { BlingPaymentMapping } from '../../api/endpoints/bling';
+import type { BlingOption, BlingPaymentMapping } from '../../api/endpoints/bling';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useToast } from '../../components/system/useToast';
@@ -55,6 +56,55 @@ function toApiValue(value: number | '') {
 function parseSelectValue(value: unknown): number | '' {
   const text = String(value);
   return text === '' ? '' : Number(text);
+}
+
+function sortByName(options: BlingOption[]) {
+  return [...options].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+function findOption(options: BlingOption[] | undefined, id: number | '') {
+  if (id === '') return null;
+  return (options ?? []).find((option) => option.id === id) ?? null;
+}
+
+function optionLabel(option: BlingOption) {
+  return option.ativo ? option.nome : `${option.nome} (inativo)`;
+}
+
+function groupedOptionItems(options: BlingOption[] | undefined, emptyLabel: string) {
+  const activeOptions = sortByName((options ?? []).filter((option) => option.ativo));
+  const inactiveOptions = sortByName((options ?? []).filter((option) => !option.ativo));
+  const hasBothStatuses = activeOptions.length > 0 && inactiveOptions.length > 0;
+
+  return [
+    <MenuItem key="empty" value="">
+      {emptyLabel}
+    </MenuItem>,
+    ...(hasBothStatuses
+      ? [
+          <ListSubheader key="active-header" disableSticky>
+            Ativos
+          </ListSubheader>,
+        ]
+      : []),
+    ...activeOptions.map((option) => (
+      <MenuItem key={option.id} value={option.id}>
+        {option.nome}
+      </MenuItem>
+    )),
+    ...(inactiveOptions.length
+      ? [
+          <ListSubheader key="inactive-header" disableSticky>
+            Inativos
+          </ListSubheader>,
+          ...inactiveOptions.map((option) => (
+            <MenuItem key={option.id} value={option.id} sx={{ color: 'text.secondary' }}>
+              {optionLabel(option)}
+            </MenuItem>
+          )),
+        ]
+      : []),
+  ];
 }
 
 export default function BlingPage() {
@@ -230,6 +280,15 @@ export default function BlingPage() {
                 <TableBody>
                   {mappings.map((mapping) => {
                     const draft = drafts[mapping.id] ?? draftFromMapping(mapping);
+                    const selectedPaymentMethod = findOption(
+                      config?.payment_methods,
+                      draft.bling_payment_method_id,
+                    );
+                    const selectedFinancialAccount = findOption(
+                      config?.financial_accounts,
+                      draft.bling_financial_account_id,
+                    );
+                    const selectedCategory = findOption(config?.categories, draft.bling_category_id);
                     return (
                       <TableRow key={mapping.id}>
                         <TableCell sx={{ fontWeight: 700 }}>{mapping.gestor_payment_label}</TableCell>
@@ -247,14 +306,12 @@ export default function BlingPage() {
                                 )
                               }
                             >
-                              <MenuItem value="">Nao mapeado</MenuItem>
-                              {(config?.payment_methods ?? []).map((option) => (
-                                <MenuItem key={option.id} value={option.id}>
-                                  {option.nome}
-                                </MenuItem>
-                              ))}
+                              {groupedOptionItems(config?.payment_methods, 'Nao mapeado')}
                             </Select>
                           </FormControl>
+                          {selectedPaymentMethod && !selectedPaymentMethod.ativo && (
+                            <Chip label="Forma inativa" size="small" sx={{ mt: 1 }} />
+                          )}
                         </TableCell>
                         <TableCell sx={{ minWidth: 220 }}>
                           <FormControl fullWidth size="small">
@@ -270,14 +327,12 @@ export default function BlingPage() {
                                 )
                               }
                             >
-                              <MenuItem value="">Nao mapeado</MenuItem>
-                              {(config?.financial_accounts ?? []).map((option) => (
-                                <MenuItem key={option.id} value={option.id}>
-                                  {option.nome}
-                                </MenuItem>
-                              ))}
+                              {groupedOptionItems(config?.financial_accounts, 'Nao mapeado')}
                             </Select>
                           </FormControl>
+                          {selectedFinancialAccount && !selectedFinancialAccount.ativo && (
+                            <Chip label="Portador inativo" size="small" sx={{ mt: 1 }} />
+                          )}
                         </TableCell>
                         <TableCell sx={{ minWidth: 220 }}>
                           <FormControl fullWidth size="small">
@@ -293,14 +348,12 @@ export default function BlingPage() {
                                 )
                               }
                             >
-                              <MenuItem value="">Nao mapeado</MenuItem>
-                              {(config?.categories ?? []).map((option) => (
-                                <MenuItem key={option.id} value={option.id}>
-                                  {option.nome}
-                                </MenuItem>
-                              ))}
+                              {groupedOptionItems(config?.categories, 'Nao mapeado')}
                             </Select>
                           </FormControl>
+                          {selectedCategory && !selectedCategory.ativo && (
+                            <Chip label="Categoria inativa" size="small" sx={{ mt: 1 }} />
+                          )}
                         </TableCell>
                         <TableCell align="right">
                           <Button

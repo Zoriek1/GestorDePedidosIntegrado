@@ -34,6 +34,12 @@ __pycache__/
 venv/
 env/
 .env
+.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+frontend_v2/.env
+frontend_v2/.env.*
 .venv
 frontend/.venv
 frontend/node_modules

@@ -11,6 +11,7 @@ from flask import current_app
 from app import db
 from app.integrations.bling.client import BlingClient
 from app.integrations.bling.errors import (
+    BlingApiError,
     BlingConfigError,
     BlingIntegrationError,
     BlingRetryableError,
@@ -109,9 +110,59 @@ class BlingIntegrationService:
         except Exception as exc:
             warnings.append(f"Falha ao sincronizar categorias: {type(exc).__name__}")
 
+        product = None
+        try:
+            product = self.ensure_default_product(client)
+        except Exception as exc:
+            warnings.append(f"Falha ao garantir produto generico no Bling: {type(exc).__name__}")
+
         created_mappings = self.ensure_default_mapping_rows()
         db.session.commit()
-        return {"counts": counts, "created_mappings": created_mappings, "warnings": warnings}
+        return {
+            "counts": counts,
+            "created_mappings": created_mappings,
+            "product": product,
+            "warnings": warnings,
+        }
+
+    def ensure_default_product(self, client: Optional[BlingClient] = None) -> Dict[str, Any]:
+        """Garante que o produto generico (BLING_DEFAULT_PRODUCT_CODE) exista no
+        Bling. Idempotente: procura pelo codigo e cria so se faltar. O mapper
+        referencia o item do pedido por esse codigo, entao ele precisa existir."""
+        client = client or self.client()
+        code = current_app.config.get("BLING_DEFAULT_PRODUCT_CODE") or "PEDIDO-FLORICULTURA"
+
+        if self._product_exists(client, code):
+            return {"code": code, "created": False}
+
+        payload = {
+            "nome": current_app.config.get("BLING_DEFAULT_PRODUCT_NAME") or "Pedido Floricultura",
+            "codigo": code,
+            "tipo": "P",
+            "formato": "S",
+            "unidade": "UN",
+            "situacao": "Ativo",
+            "preco": 0,
+        }
+        try:
+            response = client.create_product(payload)
+        except BlingApiError:
+            # Bling exige codigo unico. Se a criacao falhou, pode ser porque o
+            # produto ja existe mas a busca por codigo nao o trouxe; reconfirma.
+            if self._product_exists(client, code):
+                return {"code": code, "created": False}
+            raise
+        data = response.get("data") if isinstance(response, dict) else None
+        new_id = str(data.get("id")) if isinstance(data, dict) and data.get("id") else None
+        return {"code": code, "created": True, "id": new_id}
+
+    def _product_exists(self, client: BlingClient, code: str) -> bool:
+        items = self._extract_list(client.search_products({"codigo": code, "limite": 100}))
+        return any(
+            str(item.get("codigo") or "") == str(code)
+            for item in items
+            if isinstance(item, dict)
+        )
 
     def ensure_default_mapping_rows(self) -> int:
         created = 0

@@ -222,6 +222,71 @@ def test_client_does_not_loop_on_persistent_401(monkeypatch):
         client.get("/x")
 
 
+# --- Produto generico auto-criado -------------------------------------------
+
+class _FakeProductClient:
+    def __init__(self, existing_codes=(), fail_create=False):
+        self.existing = list(existing_codes)
+        self.created = []
+        self.fail_create = fail_create
+
+    def search_products(self, params):
+        code = params.get("codigo")
+        return {"data": [{"id": 1, "codigo": c} for c in self.existing if c == code]}
+
+    def create_product(self, payload):
+        if self.fail_create:
+            from app.integrations.bling.errors import BlingApiError
+
+            raise BlingApiError("ja existe produto com este codigo", status_code=400)
+        self.created.append(payload)
+        self.existing.append(payload["codigo"])
+        return {"data": {"id": 99}}
+
+
+def test_ensure_default_product_creates_when_missing(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    client = _FakeProductClient(existing_codes=())
+    result = BlingIntegrationService().ensure_default_product(client=client)
+
+    assert result["created"] is True
+    assert len(client.created) == 1
+    assert client.created[0]["codigo"] == "PEDIDO-FLORICULTURA"
+
+
+def test_ensure_default_product_skips_when_exists(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    client = _FakeProductClient(existing_codes=("PEDIDO-FLORICULTURA",))
+    result = BlingIntegrationService().ensure_default_product(client=client)
+
+    assert result["created"] is False
+    assert client.created == []
+
+
+def test_ensure_default_product_treats_duplicate_create_as_existing(bling_app):
+    from app.integrations.bling.errors import BlingApiError
+    from app.integrations.bling.service import BlingIntegrationService
+
+    class _Client:
+        def __init__(self):
+            self.searches = 0
+
+        def search_products(self, params):
+            # 1a busca nao acha (filtro falhou); recheck pos-create acha.
+            self.searches += 1
+            if self.searches == 1:
+                return {"data": []}
+            return {"data": [{"id": 7, "codigo": params.get("codigo")}]}
+
+        def create_product(self, _payload):
+            raise BlingApiError("ja existe", status_code=400)
+
+    result = BlingIntegrationService().ensure_default_product(client=_Client())
+    assert result["created"] is False
+
+
 # --- Fase 1.4: migration portavel -------------------------------------------
 
 def test_migration_uses_portable_timestamp_type():

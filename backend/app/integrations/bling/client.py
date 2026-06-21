@@ -107,6 +107,12 @@ class BlingClient:
     def settle_receivable(self, receivable_id: str, payload: Dict[str, Any]) -> Any:
         return self.post(f"/contas/receber/{receivable_id}/baixar", payload)
 
+    def search_products(self, params: Optional[Dict[str, Any]] = None) -> Any:
+        return self.get("/produtos", params=params or {})
+
+    def create_product(self, payload: Dict[str, Any]) -> Any:
+        return self.post("/produtos", payload)
+
     def list_payment_methods(self) -> Any:
         return self.get("/formas-pagamentos", params={"situacao": 1})
 

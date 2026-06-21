@@ -130,6 +130,9 @@ class BaseConfig:
     BLING_DEFAULT_PRODUCT_CODE = os.environ.get(
         "BLING_DEFAULT_PRODUCT_CODE", "PEDIDO-FLORICULTURA"
     )
+    BLING_DEFAULT_PRODUCT_NAME = os.environ.get(
+        "BLING_DEFAULT_PRODUCT_NAME", "Pedido Floricultura"
+    )
     BLING_STORE_ID = os.environ.get("BLING_STORE_ID", "default")
     # Teto de paginas ao varrer /contas/receber procurando as contas do pedido.
     BLING_RECEIVABLE_SEARCH_PAGES = int(

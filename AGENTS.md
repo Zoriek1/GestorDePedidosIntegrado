@@ -1,110 +1,103 @@
 # AGENTS.md
 
-Referência rápida para agentes IA trabalhando neste repositório.
+Referência única para agentes IA (Claude Code, Codex, etc.) neste repositório.
+Doc canônico — `CLAUDE.md` apenas aponta pra cá.
 
 ---
 
-## Stack real
+## Stack
 
-- **Banco**: PostgreSQL 16 Alpine (Docker, service `db`). SQLite só como fallback em testes/dev local sem Docker (ver [docs/database.md](docs/database.md)).
-- **Backend**: Flask 3 + SQLAlchemy 2, JWT seletivo via `@require_auth`.
+- **Banco**: PostgreSQL 16 Alpine (service `db`). SQLite só como fallback em testes/dev sem Docker (ver [docs/database.md](docs/database.md)).
+- **Backend**: Flask 3 + SQLAlchemy 2, JWT seletivo via `@require_auth`. Prod roda em Waitress.
 - **Frontend**: React 19 + Vite + MUI + React Query + Zustand (auth) + Dexie (PWA offline).
-- **Deploy**: Docker Compose. Comandos backend rodam via `docker compose exec backend ...`.
+- **Deploy**: Docker Compose.
 
-## Comandos canônicos
+## Comandos
+
+### Dev (Docker com hot-reload — recomendado)
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.dev.yml up        # app em http://localhost:5173
+docker compose -f docker-compose.dev.yml exec backend flask create-admin
+docker compose -f docker-compose.dev.yml exec backend pytest
+```
+
+Vite (`:5173`) faz proxy de `/api` → `backend:5000`. Editar `./backend` ou `./frontend` recarrega sozinho (bind mount).
+
+### Prod / operação
+
+```bash
+docker compose up -d                                       # usa docker-compose.yml (Waitress + SPA buildado)
 docker compose exec backend pytest
 docker compose exec backend ruff check . --fix
 docker compose exec backend black .
 docker compose exec backend python scripts/migrations/<arquivo>.py
-docker compose exec backend flask create-admin       # primeiro admin
-docker compose exec backend python scripts/dump_routes.py
-
-cd frontend && npm run dev      # Vite :5173 (dev sem Docker)
-cd frontend && npm run build && npm run lint
+docker compose exec backend flask create-admin
 ```
+
+Sem Docker (Windows): `cd frontend && npm run dev` (Vite :5173) + `./venv/Scripts/pytest.exe`.
 
 ---
 
 ## Backend — arquitetura
 
-Camadas: `routes/` → `services/` → `repositories/` → `models/`. Routes validam input e chamam service; service contém lógica de negócio; repository faz queries; model é SQLAlchemy.
+Camadas: `routes/` → `services/` → `repositories/` → `models/`. Routes validam input e chamam service; service tem a lógica; repository faz queries; model é SQLAlchemy.
 
-### Blueprints registrados ([backend/app/factory.py](backend/app/factory.py))
+### Blueprints ([backend/app/factory.py](backend/app/factory.py))
 
-- `pedidos_bp` — `/api/pedidos/*`
-- `rotas_bp` — `/api/pedidos/rota-otimizada` (otimização)
-- `clientes_bp` — `/api/clientes/*`
-- `fontes_bp` — `/api/fontes-pedido/*` e `/api/pedidos/fonte/<id>/*`
-- `core_bp` — `/api/health`, `/api/cep/<cep>`, `/api/stats`, `/api/backup/status`, `/api/cleanup`, `/api/pedidos/overdue`, `/api/pedidos/<id>/distancia`, `/api/pedidos/calcular-distancias`, `/api/pedidos/<id>/calcular-taxa`, `/api/exportar-planilha-leads`
-- `auth_bp` — `/api/auth/*` (JWT)
-- `config_bp` — `/api/config/*` (taxa entrega, taxa cartão, meta faturamento)
-- `backup_admin_bp` — `/api/admin/backup/*`
-- `nuvemshop_bp` — `/api/integrations/nuvemshop/*`
-- `notifications_bp` — `/api/notifications/*` (VAPID push)
-- `leads_bp` — `/api/leads/*`
-- `users_bp` — `/api/users/*` (CRUD + payroll + commission configs)
-- `ledger_bp` — `/api/ledger/*` (recebíveis)
-- `meta_gateway_bp` — `/capig/*` e `/meta-gateway/<pixel_id>/events`
-- `storefront_bp` — `/storefront/*` (público, scripts Nuvemshop)
-- `debug_bp` — `/api/debug/*` — **só registrado se `ENABLE_DEBUG_ENDPOINTS=true`**
-
-Não existe mais `api_bp` legado (foi quebrado em `fontes_bp` + `core_bp` + `debug_bp`).
+`pedidos_bp` `/api/pedidos/*` · `rotas_bp` `/api/pedidos/rota-otimizada` · `clientes_bp` `/api/clientes/*` · `fontes_bp` `/api/fontes-pedido/*` · `core_bp` (`/api/health`, `/api/cep/<cep>`, `/api/stats`, `/api/cleanup`, distâncias/taxas, export leads) · `auth_bp` `/api/auth/*` · `config_bp` `/api/config/*` · `backup_admin_bp` `/api/admin/backup/*` · `nuvemshop_bp` `/api/integrations/nuvemshop/*` · `notifications_bp` `/api/notifications/*` (VAPID) · `leads_bp` `/api/leads/*` · `users_bp` `/api/users/*` (CRUD + payroll + comissão) · `ledger_bp` `/api/ledger/*` · `meta_gateway_bp` `/capig/*` · `storefront_bp` `/storefront/*` · `debug_bp` `/api/debug/*` (só se `ENABLE_DEBUG_ENDPOINTS=true`).
 
 ### Roles
 
-`admin | vendedor | atendente | entregador | viewer` — definido em [backend/app/models/user.py:35](backend/app/models/user.py#L35). Auth global está OFF; só rotas decoradas com `@require_auth` exigem JWT.
+`admin | vendedor | atendente | entregador | viewer` ([user.py:35](backend/app/models/user.py#L35)). Auth global OFF; só rotas com `@require_auth` exigem JWT.
 
 ### Money & timestamps
 
-- `Pedido.valor` é `String` no formato BR. Use `parse_brl_money()` em [backend/app/utils/money.py](backend/app/utils/money.py).
-- `LedgerEntry.amount` é `Numeric(12,2)` positivo. Sempre `float(entry.amount)` ao serializar.
-- Timestamps usam `datetime_now_brazil()` (TZ `America/Sao_Paulo`). Existe duplicado em [models/pedido.py](backend/app/models/pedido.py), [models/ledger_entry.py](backend/app/models/ledger_entry.py), [models/user.py](backend/app/models/user.py).
+- `Pedido.valor` é `String` BR → use `parse_brl_money()` ([money.py](backend/app/utils/money.py)).
+- `LedgerEntry.amount` é `Numeric(12,2)` positivo → `float(entry.amount)` ao serializar.
+- Timestamps via `datetime_now_brazil()` (TZ `America/Sao_Paulo`).
 
 ### Migrations
 
-Scripts Python idempotentes em [backend/scripts/migrations/](backend/scripts/migrations/) — **não** Alembic/Flask-Migrate. Template em [docs/database.md](docs/database.md). [backend/entrypoint.sh](backend/entrypoint.sh) roda os essenciais no boot do container.
+Scripts Python idempotentes em [backend/scripts/migrations/](backend/scripts/migrations/) — **não** Alembic. [entrypoint.sh](backend/entrypoint.sh) roda os essenciais no boot. Template em [docs/database.md](docs/database.md).
+
+### SPA servido pelo backend
+
+Em runtime o Flask serve a SPA de `frontend/dist` (ou `FRONTEND_DIST_PATH`) via [static.py](backend/app/static.py). `backend/static/` **não** é usado e é gitignored.
 
 ## Frontend — arquitetura
 
 Feature-based em [frontend/src/features/](frontend/src/features/). Cada feature: `components/`, `services/<feature>Api.ts`, `useCases/`, `schemas.ts`.
 
-- `pedidos/` — wizard de criação, edição, lista, mapa do entregador
-- `ledger/` — recebíveis (admin vê todos, vendedor vê próprio, entregador vê `Recebíveis Hoje`)
-- `customers`, `leads`, `sales`, `rotas`, `entregas`, `fontes`, `integrations` (Nuvemshop), `notifications`, `offline`, `auth`, `config`
+Features: `pedidos` (wizard criação, edição, lista, mapa entregador) · `ledger` (recebíveis) · `customers` · `leads` · `sales` · `rotas` · `entregas` · `fontes` · `integrations` (Nuvemshop) · `notifications` · `offline` · `auth` · `config`.
 
-API client em [frontend/src/api/http.ts](frontend/src/api/http.ts) injeta JWT do Zustand auth store. Router em [frontend/src/app/router.tsx](frontend/src/app/router.tsx) com `<RequireAuth>` wrapper.
+API client em [http.ts](frontend/src/api/http.ts) injeta JWT do Zustand. Router em [router.tsx](frontend/src/app/router.tsx) com `<RequireAuth>`.
 
 ## Convenções
 
-- Routes retornam via `success_response()` / `error_response()` de [backend/app/schemas/common.py](backend/app/schemas/common.py).
-- Auth: `@require_auth(roles=["admin"])` injeta `request.current_user = {user_id, role, name, email}`.
-- Frontend: validação de form com Zod, formulários do wizard em [frontend/src/features/pedidos/schemas.ts](frontend/src/features/pedidos/schemas.ts), transformações form↔API em [frontend/src/features/pedidos/useCases/](frontend/src/features/pedidos/useCases/).
+- Respostas via `success_response()` / `error_response()` ([common.py](backend/app/schemas/common.py)).
+- `@require_auth(roles=["admin"])` injeta `request.current_user`.
+- Forms: Zod + react-hook-form ([schemas.ts](frontend/src/features/pedidos/schemas.ts)); transformações form↔API em [useCases/](frontend/src/features/pedidos/useCases/).
 
-## Recebíveis (resumo)
+## Recebíveis (ver [docs/recebiveis.md](docs/recebiveis.md))
 
-Ver detalhes em [docs/recebiveis.md](docs/recebiveis.md). Pontos chave:
+- `status_pagamento → Pago` gera CREDIT `comissao_<source>` (taxa de cartão desconta da base).
+- `POST /api/ledger/generate-weekly` → CREDITs `fixo_semanal`/`almoco`/`transporte` (idempotente por `(user_id, week_ref, category)`).
+- `POST /api/ledger/settle` → DEBIT `pagamento` quita CREDITs ativos.
+- Regressão de status: CREDIT antigo vira `voided=true` + novo ([order_commission_lifecycle.py](backend/app/services/order_commission_lifecycle.py)).
+- Entregador ganha CREDIT `taxa_entrega` ao finalizar ([delivery_credit_service.py](backend/app/services/delivery_credit_service.py)).
 
-- Transição `status_pagamento → Pago` chama `commission_service.generate_commission()` → CREDIT `comissao_<source>` com `pedido_id`. Taxa de cartão desconta da base.
-- `POST /api/ledger/generate-weekly` cria CREDITs `fixo_semanal`, `almoco`, `transporte` para todos os vendedores ativos (idempotente por `(user_id, week_ref, category)`).
-- `POST /api/ledger/settle` cria um DEBIT `pagamento` que quita todos os CREDITs ativos do usuário.
-- Edição de pedido com regressão de status: CREDIT antigo vira `voided=true`, novo CREDIT criado ([order_commission_lifecycle.py](backend/app/services/order_commission_lifecycle.py)).
-- Entregador ganha CREDIT `taxa_entrega` ao finalizar entrega ([delivery_credit_service.py](backend/app/services/delivery_credit_service.py)).
+## Integrações (ver [docs/integrations.md](docs/integrations.md))
 
-## Integrações (resumo)
-
-Ver [docs/integrations.md](docs/integrations.md). Padrão **outbox assíncrono** para Meta CAPI: o request enfileira em `MetaCapiOutbox` / `MetaCapiLeadOutbox` e retorna; o serviço `capi-worker` ([backend/meta_capi_worker_entrypoint.py](backend/meta_capi_worker_entrypoint.py)) faz polling e envia em segundo plano (também roda safety-net diário + payroll).
-
-Nuvemshop: webhook ACK-first; processamento em background; pedido importado fica pendente de agendamento manual.
+Padrão **outbox assíncrono** p/ Meta CAPI: request enfileira em `MetaCapiOutbox`/`MetaCapiLeadOutbox` e o `capi-worker` ([meta_capi_worker_entrypoint.py](backend/meta_capi_worker_entrypoint.py)) faz polling e envia (+ safety-net diário + payroll). Nuvemshop: webhook ACK-first, processamento em background.
 
 ## Testes
 
 ```bash
-docker compose exec backend pytest                                   # tudo
-docker compose exec backend pytest tests/test_recebiveis.py          # arquivo
-docker compose exec backend pytest tests/test_recebiveis.py::test_X  # caso
+docker compose -f docker-compose.dev.yml exec backend pytest                     # tudo (502 testes)
+docker compose -f docker-compose.dev.yml exec backend pytest tests/test_recebiveis.py::test_X
 ```
 
-502 testes na suite. Em dev local pode usar `./venv/Scripts/pytest.exe` direto no Windows.
+## Segredos
+
+Nunca commitar `.env`, credenciais ou chaves. O `.env` real fica fora do git (ver `.env.example`). Em dev, o `docker-compose.dev.yml` já traz credenciais descartáveis — não coloque segredo real nele.

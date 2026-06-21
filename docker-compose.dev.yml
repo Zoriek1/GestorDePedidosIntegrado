@@ -1,0 +1,83 @@
+# Plante Uma Flor — Ambiente de DESENVOLVIMENTO
+#
+# Diferente do docker-compose.yml (produção), aqui o Docker faz o que faz de melhor:
+#   - hot-reload do backend (Flask debug + bind mount ./backend)
+#   - hot-reload do frontend (Vite dev server + bind mount ./frontend)
+#   - Postgres descartável com credenciais de dev (nada de segredo real)
+#
+# Uso:
+#   docker compose -f docker-compose.dev.yml up
+#   (primeiro admin)  docker compose -f docker-compose.dev.yml exec backend flask create-admin
+#   (testes)          docker compose -f docker-compose.dev.yml exec backend pytest
+#
+# Acesse o app em  http://localhost:5173  (Vite faz proxy de /api -> backend:5000).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gestor
+      POSTGRES_PASSWORD: gestor_dev          # dev-only, não é segredo
+      POSTGRES_DB: gestor_pedidos
+    ports:
+      - "5432:5432"                          # exposto p/ DBeaver/psql local
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gestor -d gestor_pedidos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      target: backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLASK_ENV: development
+      APP_ENV: development
+      FLASK_DEBUG: "1"
+      PYTHONUNBUFFERED: "1"
+      DATABASE_URL: postgresql://gestor:gestor_dev@db:5432/gestor_pedidos
+      SECRET_KEY: dev-secret-troque-em-prod   # dev-only
+      ADMIN_PASSWORD: admin
+      HOST: 0.0.0.0
+      PORT: "5000"
+      ENABLE_DEBUG_ENDPOINTS: "true"
+    volumes:
+      - ./backend:/app/backend                # código quente: edita e recarrega
+    ports:
+      - "5000:5000"
+    # Roda as migrations idempotentes e sobe o Flask com reloader (em vez do waitress de prod).
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cd /app/backend
+        for m in scripts/migrations/*.py; do python "$m" || true; done
+        exec flask --app wsgi:app run --host=0.0.0.0 --port=5000 --debug
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app/frontend
+    depends_on:
+      - backend
+    environment:
+      # Vite roda dentro do container; o proxy /api precisa achar o serviço "backend".
+      VITE_API_TARGET: http://backend:5000
+      VITE_API_BASE_URL: /api
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules   # node_modules do container (Linux)
+    ports:
+      - "5173:5173"
+    command: sh -c "npm ci || npm install; npm run dev"
+
+volumes:
+  pgdata_dev:
+  frontend_node_modules:

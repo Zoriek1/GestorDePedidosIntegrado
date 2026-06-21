@@ -94,6 +94,13 @@ yarn-error.log*
 docker/prebuilt-dist/*
 !docker/prebuilt-dist/.gitkeep
 
+# Build morto do frontend dentro do backend (runtime serve de frontend/dist)
+backend/static/
+
+# Binários de ferramentas (baixe localmente, não versione)
+*.exe
+backend/scripts/ssl/mkcert.exe
+
 # Backups e arquivos temporários de deploy
 *.sql
 *.deb

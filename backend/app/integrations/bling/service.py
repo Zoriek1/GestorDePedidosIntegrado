@@ -561,6 +561,29 @@ class BlingIntegrationService:
             if marker not in found and marker in item_text:
                 found[marker] = item
 
+    def _is_bling_active(self, raw: Dict[str, Any]) -> bool:
+        situacao = raw.get("situacao", raw.get("ativo", True))
+        if isinstance(situacao, dict):
+            labels = [
+                situacao.get("valor"),
+                situacao.get("nome"),
+                situacao.get("descricao"),
+            ]
+            if any(
+                str(label).strip().lower()
+                in {"0", "false", "falso", "inativo", "inactive", "desativado", "disabled"}
+                for label in labels
+                if label is not None
+            ):
+                return False
+            situacao = situacao.get("id") if situacao.get("id") is not None else True
+        if isinstance(situacao, bool):
+            return situacao
+        text = str(situacao).strip().lower()
+        if text in {"0", "false", "falso", "inativo", "inactive", "desativado", "disabled"}:
+            return False
+        return True
+
     def _sync_payment_methods(self, items: Iterable[Dict[str, Any]]) -> int:
         count = 0
         for raw in items:
@@ -576,7 +599,7 @@ class BlingIntegrationService:
             item.tipo = str(raw.get("tipoPagamento") or raw.get("tipo") or "") or None
             item.finalidade = str(raw.get("finalidade") or "") or None
             item.destino = str(raw.get("destino") or "") or None
-            item.ativo = str(raw.get("situacao", "1")) not in {"0", "False", "false"}
+            item.ativo = self._is_bling_active(raw)
             item.raw_json = self._json_dumps(raw)
             item.synced_at = datetime_now_brazil()
             count += 1
@@ -595,7 +618,7 @@ class BlingIntegrationService:
                 db.session.add(item)
             item.nome = str(name)
             item.tipo = str(raw.get("tipo") or raw.get("aliasIntegracao") or "") or None
-            item.ativo = str(raw.get("situacao", "1")) not in {"0", "False", "false"}
+            item.ativo = self._is_bling_active(raw)
             item.raw_json = self._json_dumps(raw)
             item.synced_at = datetime_now_brazil()
             count += 1
@@ -614,7 +637,7 @@ class BlingIntegrationService:
                 db.session.add(item)
             item.nome = str(name)
             item.tipo = str(raw.get("tipo") or "") or None
-            item.ativo = str(raw.get("situacao", "1")) not in {"0", "False", "false"}
+            item.ativo = self._is_bling_active(raw)
             item.raw_json = self._json_dumps(raw)
             item.synced_at = datetime_now_brazil()
             count += 1

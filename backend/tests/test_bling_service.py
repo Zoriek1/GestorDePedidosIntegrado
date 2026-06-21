@@ -309,6 +309,32 @@ def test_ensure_default_product_treats_duplicate_create_as_existing(bling_app):
     assert result["created"] is False
 
 
+def test_sync_financial_accounts_marks_inactive_statuses(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+    from app.models.bling_financial_account import BlingFinancialAccount
+
+    service = BlingIntegrationService()
+    count = service._sync_financial_accounts(
+        [
+            {"id": "1", "descricao": "Conta ativa", "situacao": "Ativo"},
+            {"id": "2", "descricao": "Conta inativa texto", "situacao": "Inativo"},
+            {
+                "id": "3",
+                "descricao": "Conta inativa objeto",
+                "situacao": {"id": 2, "nome": "Inativo"},
+            },
+            {"id": "4", "descricao": "Conta inativa bool", "ativo": False},
+        ]
+    )
+
+    assert count == 4
+    by_id = {
+        account.bling_id: account.ativo
+        for account in BlingFinancialAccount.query.order_by(BlingFinancialAccount.bling_id)
+    }
+    assert by_id == {"1": True, "2": False, "3": False, "4": False}
+
+
 # --- Fase 1.4: migration portavel -------------------------------------------
 
 def test_migration_uses_portable_timestamp_type():

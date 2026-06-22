@@ -566,23 +566,18 @@ class BlingIntegrationService:
             client = self.client()
             outbox.bling_order_id = str(order_id)
 
-            # Resolve as contas ANTES de estornar -- o estorno pode remove-las, e
-            # depois a busca nao acharia mais nada.
-            receivable_ids = self._resolve_receivables_for_cancel(
-                client, outbox.pedido_id, send_outbox
-            )
-
-            # 1) Estornar o lancamento de contas (inverso do lancar-contas; reverte
-            #    tambem a baixa, se houver).
+            # 1) Estornar o lancamento. O estorno NAO remove as contas: apenas
+            #    desfaz a baixa, deixando-as "pendentes" -- e so assim elas podem
+            #    ser apagadas (conta baixada nao pode ser excluida).
             outbox.step = "reversing_accounts"
             db.session.commit()
             self._log(outbox, "info", "reversing_accounts", "Estornando lancamento de contas")
             self._reverse_accounts_idempotent(client, str(order_id))
 
-            # 2) Apagar as contas a receber (sobras do estorno).
+            # 2) Apagar as contas a receber (agora pendentes apos o estorno).
             outbox.step = "deleting_receivables"
             db.session.commit()
-            for rid in receivable_ids:
+            for rid in self._resolve_receivables_for_cancel(client, outbox.pedido_id, send_outbox):
                 self._log(outbox, "info", "deleting_receivables", f"Apagando conta a receber {rid}")
                 self._delete_receivable_idempotent(client, rid)
 

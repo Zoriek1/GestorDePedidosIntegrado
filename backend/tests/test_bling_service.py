@@ -533,7 +533,7 @@ def test_cancel_does_nothing_without_order(bling_app, monkeypatch):
     assert cancel.status == "completed"
 
 
-def test_cancel_deletes_then_reverses_then_deletes_order(bling_app, monkeypatch):
+def test_cancel_reverses_then_deletes_receivable_then_order(bling_app, monkeypatch):
     from app import db
     from app.integrations.bling.service import BlingIntegrationService
     from app.models.bling_outbox import BlingOutbox
@@ -555,7 +555,8 @@ def test_cancel_deletes_then_reverses_then_deletes_order(bling_app, monkeypatch)
     monkeypatch.setattr(svc, "client", lambda: client)
     svc.process_cancel(cancel.id)
 
-    assert client.calls == [("del_recv", "111"), ("reverse", "900"), ("del_order", "900")]
+    # Ordem: estornar -> apagar conta -> apagar venda.
+    assert client.calls == [("reverse", "900"), ("del_recv", "111"), ("del_order", "900")]
     db.session.refresh(cancel)
     assert cancel.status == "completed"
 

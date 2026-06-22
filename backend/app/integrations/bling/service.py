@@ -115,19 +115,12 @@ class BlingIntegrationService:
         except Exception as exc:
             warnings.append(f"Falha ao garantir produto generico no Bling: {type(exc).__name__}")
 
-        contact_id = None
-        try:
-            contact_id = self.ensure_default_contact(client)
-        except Exception as exc:
-            warnings.append(f"Falha ao garantir contato generico no Bling: {type(exc).__name__}")
-
         created_mappings = self.ensure_default_mapping_rows()
         db.session.commit()
         return {
             "counts": counts,
             "created_mappings": created_mappings,
             "product": product,
-            "contact_id": contact_id,
             "warnings": warnings,
         }
 
@@ -170,29 +163,34 @@ class BlingIntegrationService:
             if isinstance(item, dict)
         )
 
-    def ensure_default_contact(self, client: Optional[BlingClient] = None) -> str:
-        """Resolve o contato.id obrigatorio da venda. Se BLING_DEFAULT_CONTACT_ID
-        estiver definido, usa-o; senao procura/cria um contato generico
-        ("Consumidor Final"). O cliente real vai nas observacoes e na etiqueta."""
+    def ensure_contact_for_pedido(self, pedido: Pedido, client: Optional[BlingClient] = None) -> str:
+        """Resolve o contato.id obrigatorio da venda usando o CLIENTE do pedido:
+        procura no Bling pelo nome exato e reaproveita; senao cria um contato com
+        o nome (e telefone) do cliente. Assim o Bling fica com os clientes reais.
+        BLING_DEFAULT_CONTACT_ID, se definido, sobrepoe (usa um contato fixo)."""
         configured = str(current_app.config.get("BLING_DEFAULT_CONTACT_ID") or "").strip()
         if configured:
             return configured
 
         client = client or self.client()
-        name = current_app.config.get("BLING_DEFAULT_CONTACT_NAME") or "Consumidor Final"
+        nome = (getattr(pedido, "cliente", None) or "").strip() or "Cliente Gestor"
+        telefone = (getattr(pedido, "telefone_cliente", None) or "").strip()
 
-        items = self._extract_list(client.search_contacts({"pesquisa": name, "limite": 100}))
+        items = self._extract_list(client.search_contacts({"pesquisa": nome, "limite": 100}))
         for item in items:
-            if isinstance(item, dict) and str(item.get("nome") or "").strip().lower() == name.lower():
+            if isinstance(item, dict) and str(item.get("nome") or "").strip().lower() == nome.lower():
                 return str(item.get("id"))
 
-        response = client.create_contact({"nome": name, "tipo": "F"})
+        payload: Dict[str, Any] = {"nome": nome, "tipo": "F"}
+        if telefone:
+            payload["telefone"] = telefone
+        response = client.create_contact(payload)
         data = response.get("data") if isinstance(response, dict) else None
         new_id = str(data.get("id")) if isinstance(data, dict) and data.get("id") else None
         if not new_id:
             raise BlingRetryableError(
-                "Nao foi possivel obter o contato padrao do Bling",
-                details={"response": response},
+                "Nao foi possivel criar/obter o contato do cliente no Bling",
+                details={"response": response, "cliente": nome},
             )
         return new_id
 
@@ -378,9 +376,9 @@ class BlingIntegrationService:
             order_id = outbox.bling_order_id or self._resolve_existing_order_id(client, pedido)
 
             if not order_id:
-                # Bling v3 exige contato.id na venda: resolve/cria o contato
-                # generico e injeta no payload antes de criar.
-                contact_id = self.ensure_default_contact(client)
+                # Bling v3 exige contato.id na venda: resolve/cria o contato do
+                # cliente do pedido e injeta no payload antes de criar.
+                contact_id = self.ensure_contact_for_pedido(pedido, client)
                 payload.setdefault("contato", {})["id"] = self._as_bling_id(contact_id)
                 outbox.payload_json = self._json_dumps(payload)
                 outbox.step = "creating_order"

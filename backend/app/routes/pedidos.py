@@ -62,7 +62,7 @@ DELIVERY_DETAIL_FIELDS = (
 )
 BUILDING_DETAIL_FIELDS = ("nome_local", "apto", "bloco", "torre", "andar")
 VALID_TIPOS_LOCAL = {"casa", "predio", "comercial"}
-REQUIRED_DELIVERY_ADDRESS_FIELDS = ("cep", "rua", "numero", "bairro", "cidade", "uf")
+REQUIRED_DELIVERY_ADDRESS_FIELDS = ("cep", "rua", "bairro", "cidade")
 
 
 def _clean_str(value: object) -> str:
@@ -1204,7 +1204,7 @@ def criar_pedido():
         telefone_cliente = re.sub(r"[^\d]", "", telefone_cliente_raw)
         cpf_cnpj = normalize_cpf_cnpj(data.get("cpf_cnpj"))
         destinatario = _clean_str(data.get("destinatario"))
-        tipo_pedido = data.get("tipo_pedido", "Entrega")
+        tipo_pedido = _clean_str(data.get("tipo_pedido", "Entrega")) or "Entrega"
         fonte_pedido_id = data.get("fonte_pedido_id")
         fonte_pedido = _clean_str(data.get("fonte_pedido"))
 
@@ -1244,9 +1244,12 @@ def criar_pedido():
             return error_response("CPF/CNPJ inválido", 400)
         if uf_raw and not uf:
             return error_response("UF inválida", 400, details={"uf": uf_raw})
+        if tipo_pedido.lower() == "entrega" and not numero:
+            numero = "S/N"
 
         normalized_address_data = dict(data)
         normalized_address_data["uf"] = uf or ""
+        normalized_address_data["numero"] = numero
         missing_address = _missing_delivery_address_fields(normalized_address_data)
         if missing_address:
             return error_response(
@@ -1593,6 +1596,16 @@ def atualizar_pedido(pedido_id):
             if uf_raw and not normalized_uf:
                 return error_response("UF inválida", 400, details={"uf": uf_raw})
             data["uf"] = normalized_uf
+        tipo_pedido_data = (
+            _clean_str(data.get("tipo_pedido", getattr(pedido, "tipo_pedido", "Entrega")))
+            or "Entrega"
+        )
+        if (
+            "numero" in data
+            and tipo_pedido_data.lower() == "entrega"
+            and not _clean_str(data.get("numero"))
+        ):
+            data["numero"] = "S/N"
 
         validates_address = "tipo_pedido" in data or any(
             field in data for field in REQUIRED_DELIVERY_ADDRESS_FIELDS

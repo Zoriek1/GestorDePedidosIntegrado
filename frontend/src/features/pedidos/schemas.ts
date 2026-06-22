@@ -291,10 +291,8 @@ export const pedidoFormSchema = z.object({
     const requiredAddressFields: Array<[keyof typeof data, string]> = [
       ['cep', 'CEP é obrigatório para entregas'],
       ['rua', 'Rua é obrigatória para entregas'],
-      ['numero', 'Número é obrigatório para entregas'],
       ['bairro', 'Bairro é obrigatório para entregas'],
       ['cidade', 'Cidade é obrigatória para entregas'],
-      ['uf', 'UF é obrigatória para entregas'],
     ];
     requiredAddressFields.forEach(([field, message]) => {
       const value = data[field];
@@ -441,6 +439,10 @@ export function parseCepToDigits(cep: string): string {
  */
 export function transformFormToApiPayload(formData: PedidoFormData): Record<string, unknown> {
   const tipoLocal = formData.tipo_local || 'casa';
+  const numeroLimpo = formData.numero?.trim();
+  const numeroPayload = formData.tipo_pedido === 'Entrega'
+    ? (numeroLimpo || 'S/N')
+    : (numeroLimpo || undefined);
   const valorTotal = parseCurrencyToFloat(formData.valor);
   const isParcial = formData.status_pagamento === 'Parcial';
   const valorEntrada = isParcial && valorTotal !== undefined
@@ -455,7 +457,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
   if (!enderecoCompleto && formData.rua) {
     const parts = [
       formData.rua,
-      formData.numero ? `nº ${formData.numero}` : null,
+      numeroPayload ? `nº ${numeroPayload}` : null,
       tipoLocal === 'casa' && formData.quadra ? `Qd ${formData.quadra}` : null,
       tipoLocal === 'casa' && formData.lote ? `Lt ${formData.lote}` : null,
       formData.complemento ? formData.complemento : null,
@@ -488,7 +490,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     horario: formData.horario.trim(),
     cep: formData.cep?.trim() || undefined,
     rua: formData.rua?.trim() || undefined,
-    numero: formData.numero?.trim() || undefined,
+    numero: numeroPayload,
     tipo_local: tipoLocal,
     nome_local: tipoLocal !== 'casa' ? formData.nome_local?.trim() || undefined : undefined,
     apto: tipoLocal === 'predio' ? formData.apto?.trim() || undefined : undefined,
@@ -595,10 +597,8 @@ export const step2Schema = z.object({
     const requiredAddressFields: Array<[keyof typeof data, string]> = [
       ['cep', 'CEP é obrigatório para entregas'],
       ['rua', 'Rua é obrigatória para entregas'],
-      ['numero', 'Número é obrigatório para entregas'],
       ['bairro', 'Bairro é obrigatório para entregas'],
       ['cidade', 'Cidade é obrigatória para entregas'],
-      ['uf', 'UF é obrigatória para entregas'],
     ];
     requiredAddressFields.forEach(([field, message]) => {
       const value = data[field];

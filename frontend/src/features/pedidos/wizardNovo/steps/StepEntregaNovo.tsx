@@ -12,7 +12,6 @@ import { BuscaCepPorEndereco } from '../components/BuscaCepPorEndereco';
 import { applyCepMask } from '../../schemas';
 import { useCepLookup } from '../../useCases/cepLookup';
 import { useClienteEnderecos } from '../../../../api/endpoints/customers';
-import { UFS_BRASIL } from '../../schemas';
 import type { PedidoFormDataExt, TipoLocal } from '../types';
 
 const TIPOS: { k: TipoLocal; label: string; icon: typeof Home }[] = [
@@ -116,6 +115,7 @@ export function StepEntregaNovo() {
       <div className="pw-row2">
         <Field label="CEP" req error={errors.cep?.message}>
           <input className={`pw-in${errors.cep ? ' err' : ''}`} value={cep} inputMode="numeric" maxLength={9}
+            required
             placeholder="00000-000" onChange={(e) => handleCepChange(e.target.value)} />
         </Field>
         <Field label="Rua / logradouro" req error={errors.rua?.message}>
@@ -133,10 +133,11 @@ export function StepEntregaNovo() {
           if (item.uf) setValue('uf', item.uf, { shouldValidate: true });
         }}
       />
+      <input type="hidden" {...register('uf')} />
 
       <div className="pw-row3">
-        <Field label="Número" req error={errors.numero?.message}>
-          <input className="pw-in" {...register('numero')} />
+        <Field label="Número" error={errors.numero?.message}>
+          <input className="pw-in" {...register('numero')} placeholder="S/N se vazio" />
         </Field>
         <Field label="Complemento" error={errors.complemento?.message}>
           <input className="pw-in" {...register('complemento')} placeholder="Apto, bloco…" />
@@ -149,12 +150,6 @@ export function StepEntregaNovo() {
       <div className="pw-row2">
         <Field label="Cidade" req error={errors.cidade?.message}>
           <input className="pw-in" {...register('cidade')} />
-        </Field>
-        <Field label="UF" req error={errors.uf?.message}>
-          <select className={`pw-in${errors.uf ? ' err' : ''}`} {...register('uf')}>
-            <option value="">Selecione</option>
-            {UFS_BRASIL.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
-          </select>
         </Field>
       </div>
 

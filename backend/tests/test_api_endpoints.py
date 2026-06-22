@@ -165,7 +165,7 @@ class TestPedidosAPI:
         assert pedido_data["nome_local"] == ""
         assert pedido_data["apto"] == ""
 
-    def test_entrega_exige_endereco_estruturado_e_uf(self, client):
+    def test_entrega_exige_endereco_estruturado_basico(self, client):
         response = client.post(
             "/api/pedidos",
             json={
@@ -181,6 +181,33 @@ class TestPedidosAPI:
         )
         assert response.status_code == 400
         assert "campos_faltantes" in response.get_json().get("details", {})
+
+    def test_entrega_sem_numero_e_uf_salva_numero_sn(self, client):
+        response = client.post(
+            "/api/pedidos",
+            json={
+                "cliente": "Maria Silva",
+                "telefone_cliente": "62999999999",
+                "destinatario": "Joao",
+                "tipo_pedido": "Entrega",
+                "produto": "Buque",
+                "valor": "150.00",
+                "dia_entrega": "2026-12-31",
+                "horario": "14:00",
+                "cep": "74810-170",
+                "rua": "Rua das Flores",
+                "numero": "",
+                "bairro": "Jardim",
+                "cidade": "Goiania",
+                "uf": "",
+            },
+            headers=_ADMIN_AUTH,
+        )
+        assert response.status_code == 201
+        data = response.get_json()
+        pedido_data = data.get("pedido") or data.get("data", {}).get("pedido")
+        assert pedido_data["numero"] == "S/N"
+        assert pedido_data["uf"] in ("", None)
 
     def test_rejeita_documento_invalido(self, client):
         response = client.post(

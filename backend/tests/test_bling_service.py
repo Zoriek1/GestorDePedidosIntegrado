@@ -462,6 +462,30 @@ def test_ensure_contact_creates_with_document_and_delivery_address(bling_app):
     }
 
 
+def test_contact_address_accepts_missing_numero_and_uf(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    pedido = SimpleNamespace(
+        tipo_pedido="Entrega",
+        rua="Rua 13",
+        numero="",
+        complemento="",
+        bairro="Jardim Goiás",
+        cidade="Goiânia",
+        uf="",
+        cep="74810-170",
+    )
+
+    address = BlingIntegrationService._contact_address_from_pedido(pedido)
+    assert address == {
+        "endereco": "Rua 13",
+        "cep": "74810-170",
+        "bairro": "Jardim Goiás",
+        "municipio": "Goiânia",
+        "numero": "S/N",
+    }
+
+
 def test_ensure_contact_reuses_existing_by_document_without_update(bling_app):
     from app.integrations.bling.service import BlingIntegrationService
 

@@ -256,15 +256,15 @@ class BlingIntegrationService:
             "bairro": str(getattr(pedido, "bairro", None) or "").strip(),
             "municipio": str(getattr(pedido, "cidade", None) or "").strip(),
             "uf": normalize_uf(getattr(pedido, "uf", None)) or "",
-            "numero": str(getattr(pedido, "numero", None) or "").strip(),
+            "numero": str(getattr(pedido, "numero", None) or "").strip() or "S/N",
             "complemento": str(
                 getattr(pedido, "complemento", None) or getattr(pedido, "apto", None) or ""
             ).strip(),
         }
-        required = ("endereco", "cep", "bairro", "municipio", "uf", "numero")
+        required = ("endereco", "cep", "bairro", "municipio")
         if any(not values[field] for field in required):
             return None
-        return values
+        return {key: value for key, value in values.items() if value}
 
     def _cliente_contact_type_id(self, client: BlingClient) -> Optional[str]:
         """Resolve o id do tipo de contato "Cliente". Usa BLING_CONTACT_TYPE_ID

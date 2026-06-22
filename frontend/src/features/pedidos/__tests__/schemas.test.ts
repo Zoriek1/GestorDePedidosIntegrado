@@ -316,7 +316,7 @@ describe('dados fiscais e UF', () => {
     expect(payload.uf).toBe('GO');
   });
 
-  it.each(['cep', 'rua', 'numero', 'bairro', 'cidade', 'uf'] as const)(
+  it.each(['cep', 'rua', 'bairro', 'cidade'] as const)(
     'rejeita entrega sem %s',
     (field) => {
       const result = pedidoFormSchema.safeParse(makeFormData({ [field]: '' }));
@@ -326,6 +326,17 @@ describe('dados fiscais e UF', () => {
       }
     },
   );
+
+  it('aceita entrega sem número e UF porque número vira S/N e UF vem do CEP quando disponível', () => {
+    const result = pedidoFormSchema.safeParse(makeFormData({ numero: '', uf: '' }));
+    expect(result.success).toBe(true);
+  });
+
+  it('salva número vazio como S/N no payload de entrega', () => {
+    const payload = transformFormToApiPayload(makeFormData({ numero: '', endereco: '' }));
+    expect(payload.numero).toBe('S/N');
+    expect(payload.endereco).toContain('nº S/N');
+  });
 
   it('aceita retirada sem endereço estruturado', () => {
     const result = pedidoFormSchema.safeParse(makeFormData({

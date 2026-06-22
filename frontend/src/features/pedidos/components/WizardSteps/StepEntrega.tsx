@@ -229,9 +229,8 @@ export function StepEntrega() {
                     <TextField
                       {...field}
                       label="Número"
-                      placeholder="123"
+                      placeholder="S/N se vazio"
                       fullWidth
-                      required={isEntrega}
                       error={!!errors.numero}
                       helperText={errors.numero?.message}
                     />
@@ -317,7 +316,6 @@ export function StepEntrega() {
                       select
                       label="UF"
                       fullWidth
-                      required={isEntrega}
                       disabled={isAddressLocked}
                       error={!!errors.uf}
                       helperText={errors.uf?.message}

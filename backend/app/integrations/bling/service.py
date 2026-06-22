@@ -389,13 +389,25 @@ class BlingIntegrationService:
         )
         processed = 0
         failed = 0
+        results: List[Dict[str, Any]] = []
         for outbox in outboxes:
             self._dispatch(outbox.id, outbox.operation)
             refreshed = BlingOutbox.query.get(outbox.id)
             processed += 1
             if refreshed.status.startswith("failed"):
                 failed += 1
-        return {"processed": processed, "failed": failed}
+            results.append(
+                {
+                    "outbox_id": refreshed.id,
+                    "pedido_id": refreshed.pedido_id,
+                    "operation": refreshed.operation,
+                    "status": refreshed.status,
+                    "step": refreshed.step,
+                    "error_code": refreshed.error_code,
+                    "error_message": refreshed.error_message,
+                }
+            )
+        return {"processed": processed, "failed": failed, "results": results}
 
     def _dispatch(self, outbox_id: int, operation: str) -> None:
         if operation == "cancel_order":
@@ -1148,6 +1160,26 @@ class BlingIntegrationService:
             outbox.step = step or outbox.step
             outbox.updated_at = datetime_now_brazil()
         db.session.commit()
+        self._console(outbox, level, step, message, error_code=error_code)
+
+    @staticmethod
+    def _console(
+        outbox: Optional[BlingOutbox],
+        level: str,
+        step: str,
+        message: str,
+        *,
+        error_code: Optional[str] = None,
+    ) -> None:
+        """Espelha o evento no stdout para acompanhar a integracao pelo log do
+        container (worker e web), em linguagem clara."""
+        pid = f"#{outbox.pedido_id}" if outbox else "-"
+        op = outbox.operation if outbox else "-"
+        tag = {"error": "ERRO", "warning": "AVISO", "critical": "CRITICO"}.get(level, "info")
+        line = f"[BLING] {pid} {op} [{tag}] {step}: {message}"
+        if error_code:
+            line += f" (code={error_code})"
+        print(line, flush=True)
 
     def _extract_order_id(self, response: Any) -> str:
         data = response.get("data") if isinstance(response, dict) else None

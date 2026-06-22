@@ -69,16 +69,35 @@ class BlingClient:
             )
 
         if response.status_code >= 400:
-            message = "Erro na API Bling"
-            if isinstance(payload, dict):
-                message = (
-                    payload.get("error", {}).get("message")
-                    if isinstance(payload.get("error"), dict)
-                    else payload.get("message") or payload.get("error") or message
-                )
-            raise BlingApiError(message, status_code=response.status_code, payload=payload)
+            raise BlingApiError(
+                self._error_message(payload),
+                status_code=response.status_code,
+                payload=payload,
+            )
 
         return payload if payload is not None else {"status_code": response.status_code}
+
+    @staticmethod
+    def _error_message(payload: Any) -> str:
+        """Monta uma mensagem util a partir do erro do Bling, incluindo os
+        campos de validacao (error.fields) que dizem exatamente o que falhou."""
+        default = "Erro na API Bling"
+        if not isinstance(payload, dict):
+            return default
+        error = payload.get("error")
+        if not isinstance(error, dict):
+            return payload.get("message") or payload.get("error") or default
+        parts = [error.get("message") or default]
+        if error.get("description"):
+            parts.append(str(error["description"]))
+        fields = error.get("fields")
+        if isinstance(fields, list):
+            for field in fields:
+                if isinstance(field, dict):
+                    element = field.get("element") or field.get("name") or "?"
+                    msg = field.get("msg") or field.get("message") or ""
+                    parts.append(f"{element}: {msg}".strip())
+        return " | ".join(p for p in parts if p)
 
     def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         return self._request("GET", path, params=params)

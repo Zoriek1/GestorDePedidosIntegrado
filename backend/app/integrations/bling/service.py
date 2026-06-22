@@ -401,7 +401,14 @@ class BlingIntegrationService:
         except BlingIntegrationError as exc:
             db.session.rollback()
             outbox = BlingOutbox.query.get(outbox_id)
-            self._mark_failed(outbox, exc.code, str(exc), retryable=exc.retryable, details=exc.details)
+            details = dict(exc.details or {})
+            # Para erros da API, anexa a resposta crua do Bling (com error.fields)
+            # ao log -- e ai que aparece o campo exato que o Bling recusou.
+            if isinstance(exc, BlingApiError):
+                details["status_code"] = exc.status_code
+                if exc.payload is not None:
+                    details["bling_response"] = exc.payload
+            self._mark_failed(outbox, exc.code, str(exc), retryable=exc.retryable, details=details)
         except Exception as exc:
             db.session.rollback()
             outbox = BlingOutbox.query.get(outbox_id)

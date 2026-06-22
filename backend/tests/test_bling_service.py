@@ -373,6 +373,27 @@ def test_enqueue_bling_for_new_order_creates_pending_once(bling_app):
     assert outboxes[0].step == "pending"
 
 
+# --- Mensagem de erro do Bling (campos de validacao) ------------------------
+
+def test_error_message_inclui_fields_de_validacao():
+    from app.integrations.bling.client import BlingClient
+
+    payload = {
+        "error": {
+            "type": "VALIDATION_ERROR",
+            "message": "Nao foi possivel salvar a venda",
+            "description": "Dados invalidos",
+            "fields": [
+                {"element": "contato.numeroDocumento", "msg": "e obrigatorio"},
+            ],
+        }
+    }
+    msg = BlingClient._error_message(payload)
+    assert "Nao foi possivel salvar a venda" in msg
+    assert "contato.numeroDocumento" in msg
+    assert "obrigatorio" in msg
+
+
 # --- Fase 1.4: migration portavel -------------------------------------------
 
 def test_migration_uses_portable_timestamp_type():

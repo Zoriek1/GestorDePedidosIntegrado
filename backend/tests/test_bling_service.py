@@ -452,6 +452,43 @@ def test_ensure_contact_reuses_existing_by_name(bling_app):
     assert BlingIntegrationService().ensure_contact_for_pedido(pedido, _Client()) == "42"
 
 
+def test_contact_marked_as_cliente_type(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = ""
+
+    class _Client:
+        def __init__(self):
+            self.created = []
+
+        def search_contacts(self, _p):
+            return {"data": []}
+
+        def list_contact_types(self):
+            return {"data": [{"id": 5, "descricao": "Fornecedor"}, {"id": 9, "descricao": "Cliente"}]}
+
+        def create_contact(self, payload):
+            self.created.append(payload)
+            return {"data": {"id": 1}}
+
+    client = _Client()
+    pedido = SimpleNamespace(cliente="Joao", telefone_cliente="")
+    BlingIntegrationService().ensure_contact_for_pedido(pedido, client)
+    assert client.created[0]["tiposContato"] == [{"id": 9}]
+
+
+def test_cliente_contact_type_uses_config_override(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_CONTACT_TYPE_ID"] = "77"
+
+    class _NoList:
+        def list_contact_types(self):
+            raise AssertionError("nao deveria consultar tipos com override configurado")
+
+    assert BlingIntegrationService()._cliente_contact_type_id(_NoList()) == "77"
+
+
 # --- Mensagem de erro do Bling (campos de validacao) ------------------------
 
 def test_error_message_inclui_fields_de_validacao():

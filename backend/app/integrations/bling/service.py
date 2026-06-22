@@ -188,6 +188,10 @@ class BlingIntegrationService:
         phone = self._contact_phone(telefone)
         if phone:
             payload["telefone"] = phone
+        # Marca o contato como "Cliente" (papel) para nao dar BO em NF/relatorios.
+        type_id = self._cliente_contact_type_id(client)
+        if type_id:
+            payload["tiposContato"] = [{"id": self._as_bling_id(type_id)}]
         response = client.create_contact(payload)
         data = response.get("data") if isinstance(response, dict) else None
         new_id = str(data.get("id")) if isinstance(data, dict) and data.get("id") else None
@@ -197,6 +201,25 @@ class BlingIntegrationService:
                 details={"response": response, "cliente": nome},
             )
         return new_id
+
+    def _cliente_contact_type_id(self, client: BlingClient) -> Optional[str]:
+        """Resolve o id do tipo de contato "Cliente". Usa BLING_CONTACT_TYPE_ID
+        se definido; senao consulta /contatos/tipos. Best-effort: retorna None se
+        nao conseguir, para nao impedir a criacao do contato."""
+        configured = str(current_app.config.get("BLING_CONTACT_TYPE_ID") or "").strip()
+        if configured:
+            return configured
+        try:
+            items = self._extract_list(client.list_contact_types())
+        except Exception:
+            return None
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            desc = str(item.get("descricao") or item.get("nome") or "").strip().lower()
+            if desc == "cliente" or desc.startswith("cliente"):
+                return str(item.get("id"))
+        return None
 
     @staticmethod
     def _contact_phone(raw: Any) -> Optional[str]:
@@ -418,6 +441,9 @@ class BlingIntegrationService:
                 db.session.commit()
                 self._log(outbox, "info", "launching_order_accounts", "Lancando contas do pedido")
                 launch_response = client.launch_order_accounts(str(outbox.bling_order_id))
+                # Loga a resposta crua do lancar-contas: e a fonte mais confiavel
+                # das contas geradas para este pedido.
+                self._log(outbox, "info", "launching_order_accounts", "Contas lancadas", response=launch_response)
                 outbox.response_json = self._json_dumps(launch_response)
                 outbox.step = "finding_receivables"
                 db.session.commit()
@@ -578,29 +604,52 @@ class BlingIntegrationService:
         markers = [row["marker"] for row in plan]
         found: Dict[str, Dict[str, Any]] = {}
 
-        # 1) Caminho rapido: tentar extrair as contas direto da resposta de
-        #    lancar-contas, sem varrer a base inteira de contas a receber.
-        for item in self._extract_list(launch_response):
+        # 1) Contas vindas da resposta de lancar-contas: sao DESTE pedido. Casa
+        #    por marcador (se o Bling propagar) e, senao, por valor+vencimento.
+        launch_items = [it for it in self._extract_list(launch_response) if isinstance(it, dict)]
+        for item in launch_items:
             self._match_markers(item, markers, found)
+        if len(found) < len(markers) and launch_items:
+            self._match_by_amount_due(launch_items, plan, found)
 
-        # 2) Fallback: varredura paginada das contas a receber. Teto de paginas
-        #    configuravel (lojas com volume podem ter as contas alem da pag. 5).
-        max_pages = int(current_app.config.get("BLING_RECEIVABLE_SEARCH_PAGES") or 10)
-        page = 1
-        while len(found) < len(markers) and page <= max_pages:
-            response = client.list_receivables({"pagina": page, "limite": 100})
-            items = self._extract_list(response)
-            if not items:
-                break
-            for item in items:
-                self._match_markers(item, markers, found)
-            page += 1
+        # 2) Fallback: varredura paginada. O Bling nao copia a observacao da
+        #    parcela para a conta, entao casamos por vinculo com o pedido e por
+        #    valor+vencimento (alem do marcador, por garantia).
+        sample: List[Dict[str, Any]] = []
+        if len(found) < len(markers):
+            max_pages = int(current_app.config.get("BLING_RECEIVABLE_SEARCH_PAGES") or 10)
+            linked: List[Dict[str, Any]] = []
+            page = 1
+            while len(found) < len(markers) and page <= max_pages:
+                items = [
+                    it
+                    for it in self._extract_list(
+                        client.list_receivables({"pagina": page, "limite": 100})
+                    )
+                    if isinstance(it, dict)
+                ]
+                if not items:
+                    break
+                if not sample:
+                    sample = items[:2]
+                for item in items:
+                    self._match_markers(item, markers, found)
+                    if self._receivable_links_order(item, order_id):
+                        linked.append(item)
+                page += 1
+            if len(found) < len(markers) and linked:
+                self._match_by_amount_due(linked, plan, found)
 
         missing = [marker for marker in markers if marker not in found]
         if missing:
             raise BlingRetryableError(
                 "Contas a receber ainda nao localizadas no Bling",
-                details={"missing_markers": missing, "order_id": order_id},
+                details={
+                    "missing_markers": missing,
+                    "order_id": order_id,
+                    "launch_sample": launch_items[:3],
+                    "scanned_sample": sample,
+                },
             )
         return found
 
@@ -618,6 +667,67 @@ class BlingIntegrationService:
         for marker in markers:
             if marker not in found and marker in item_text:
                 found[marker] = item
+
+    def _match_by_amount_due(
+        self,
+        items: List[Dict[str, Any]],
+        plan: List[Dict[str, Any]],
+        found: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """Casa parcela do plano -> conta a receber por valor (e vencimento).
+        Usado quando as contas sao sabidamente do pedido (resposta do lancar-contas
+        ou contas vinculadas ao pedido), mas nao carregam o marcador."""
+        used = {id(v) for v in found.values()}
+        for row in plan:
+            if row["marker"] in found:
+                continue
+            target_value = money_float(row["amount"])
+            target_due = row.get("due_date")
+            for item in items:
+                if id(item) in used:
+                    continue
+                value = self._receivable_value(item)
+                if value is None or abs(value - target_value) >= 0.005:
+                    continue
+                due = self._receivable_due(item)
+                if target_due and due and due != target_due:
+                    continue
+                found[row["marker"]] = item
+                used.add(id(item))
+                break
+
+    @staticmethod
+    def _receivable_value(item: Dict[str, Any]) -> Optional[float]:
+        for key in ("valor", "valorDocumento", "valorTotal", "saldo"):
+            value = item.get(key)
+            if value is not None:
+                try:
+                    return round(float(value), 2)
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    @staticmethod
+    def _receivable_due(item: Dict[str, Any]) -> Optional[str]:
+        for key in ("vencimento", "dataVencimento", "dataVencimentoOriginal", "data"):
+            value = item.get(key)
+            if value:
+                return str(value)[:10]
+        return None
+
+    def _receivable_links_order(self, item: Dict[str, Any], order_id: str) -> bool:
+        """Detecta se a conta a receber esta vinculada ao pedido de venda."""
+        if not isinstance(item, dict):
+            return False
+        oid = str(order_id)
+        for key in ("origem", "vinculo", "venda", "pedidoVenda", "pedido"):
+            sub = item.get(key)
+            if isinstance(sub, dict) and str(sub.get("id")) == oid:
+                return True
+        for key in ("idVendaOrigem", "idOrigem", "idPedidoVenda", "idPedido"):
+            if str(item.get(key)) == oid:
+                return True
+        return False
 
     def _is_bling_active(self, raw: Dict[str, Any]) -> bool:
         situacao = raw.get("situacao", raw.get("ativo", True))

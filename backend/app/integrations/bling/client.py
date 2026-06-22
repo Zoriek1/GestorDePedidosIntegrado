@@ -138,6 +138,9 @@ class BlingClient:
     def create_contact(self, payload: Dict[str, Any]) -> Any:
         return self.post("/contatos", payload)
 
+    def list_contact_types(self) -> Any:
+        return self.get("/contatos/tipos")
+
     def list_payment_methods(self) -> Any:
         return self.get("/formas-pagamentos", params={"situacao": 1})
 

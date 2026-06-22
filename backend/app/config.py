@@ -136,6 +136,9 @@ class BaseConfig:
     # Bling v3 exige contato.id na venda. Por padrao o app cria/usa um contato
     # com o nome do cliente do pedido; defina aqui para forcar um contato fixo.
     BLING_DEFAULT_CONTACT_ID = os.environ.get("BLING_DEFAULT_CONTACT_ID") or ""
+    # Tipo de contato "Cliente" (papel) marcado ao criar contatos. Vazio = o app
+    # resolve automaticamente via /contatos/tipos procurando "Cliente".
+    BLING_CONTACT_TYPE_ID = os.environ.get("BLING_CONTACT_TYPE_ID") or ""
     BLING_STORE_ID = os.environ.get("BLING_STORE_ID", "default")
     # Teto de paginas ao varrer /contas/receber procurando as contas do pedido.
     BLING_RECEIVABLE_SEARCH_PAGES = int(

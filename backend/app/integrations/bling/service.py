@@ -342,7 +342,37 @@ class BlingIntegrationService:
         outbox.error_message = None
         outbox.next_retry_at = None
         db.session.commit()
-        self.process_outbox(outbox.id)
+        self._dispatch(outbox.id, outbox.operation)
+        return {"outbox": BlingOutbox.query.get(outbox.id).to_dict()}
+
+    def cancel_order(self, pedido_id: int) -> Dict[str, Any]:
+        """Enfileira e processa o cancelamento da venda no Bling. So faz algo se o
+        pedido foi enviado (tem venda no Bling)."""
+        self._ensure_enabled()
+        outbox = (
+            BlingOutbox.query.filter_by(pedido_id=pedido_id, operation="cancel_order")
+            .order_by(BlingOutbox.id.desc())
+            .first()
+        )
+        if outbox and outbox.status == "completed":
+            return {"outbox": outbox.to_dict(), "already_completed": True}
+        if not outbox:
+            outbox = BlingOutbox(
+                pedido_id=pedido_id,
+                operation="cancel_order",
+                status="pending",
+                step="pending",
+            )
+            db.session.add(outbox)
+            db.session.commit()
+        else:
+            outbox.status = "pending"
+            outbox.error_code = None
+            outbox.error_message = None
+            outbox.next_retry_at = None
+            outbox.updated_at = datetime_now_brazil()
+            db.session.commit()
+        self.process_cancel(outbox.id)
         return {"outbox": BlingOutbox.query.get(outbox.id).to_dict()}
 
     def process_pending(self, limit: int = 20) -> Dict[str, int]:
@@ -360,23 +390,27 @@ class BlingIntegrationService:
         processed = 0
         failed = 0
         for outbox in outboxes:
-            self.process_outbox(outbox.id)
+            self._dispatch(outbox.id, outbox.operation)
             refreshed = BlingOutbox.query.get(outbox.id)
             processed += 1
             if refreshed.status.startswith("failed"):
                 failed += 1
         return {"processed": processed, "failed": failed}
 
-    def process_outbox(self, outbox_id: int) -> None:
-        self._ensure_enabled()
+    def _dispatch(self, outbox_id: int, operation: str) -> None:
+        if operation == "cancel_order":
+            self.process_cancel(outbox_id)
+        else:
+            self.process_outbox(outbox_id)
+
+    def _claim_outbox(self, outbox_id: int) -> Optional[BlingOutbox]:
+        """Claim atomico: assume o outbox apenas se ele ainda estiver disponivel.
+        Um unico UPDATE condicional e atomico em Postgres e SQLite, impedindo que
+        envio manual (container web) e bling-worker processem o mesmo outbox em
+        paralelo. Retorna o outbox atualizado, ou None se outro ja assumiu."""
         outbox = BlingOutbox.query.get(outbox_id)
         if not outbox:
             raise BlingValidationError("Outbox Bling nao encontrada")
-
-        # Claim atomico: assume o outbox apenas se ele ainda estiver disponivel.
-        # Um unico UPDATE condicional e atomico em Postgres e SQLite, impedindo
-        # que o envio manual (container web) e o bling-worker processem o mesmo
-        # outbox em paralelo -- corrida que duplicaria o pedido no Bling.
         claimed = (
             db.session.query(BlingOutbox)
             .filter(
@@ -394,10 +428,16 @@ class BlingIntegrationService:
         )
         db.session.commit()
         if not claimed:
+            return None
+        db.session.refresh(outbox)
+        return outbox
+
+    def process_outbox(self, outbox_id: int) -> None:
+        self._ensure_enabled()
+        outbox = self._claim_outbox(outbox_id)
+        if outbox is None:
             # Outro processo ja assumiu (processing/completed/failed_final).
             return
-
-        db.session.refresh(outbox)
 
         try:
             # Dentro do try para que falhas aqui (pedido removido, token ausente)
@@ -505,6 +545,136 @@ class BlingIntegrationService:
                 f"{type(exc).__name__}: {exc}",
                 retryable=True,
             )
+
+    def process_cancel(self, outbox_id: int) -> None:
+        """Cancela a venda no Bling, na ordem: apagar contas a receber -> estornar
+        lancamento da venda -> apagar a venda. Cada passo e idempotente (404/ja
+        feito = ok), para o cancelamento poder ser retentado com seguranca."""
+        self._ensure_enabled()
+        outbox = self._claim_outbox(outbox_id)
+        if outbox is None:
+            return
+
+        try:
+            # Resolve o order_id so pelo banco (sem chamar o Bling); se nao houver
+            # venda, conclui sem nem abrir client.
+            order_id, send_outbox = self._resolve_order_id_for_cancel(outbox.pedido_id)
+            if not order_id:
+                self._finish_outbox(outbox, "Pedido sem venda no Bling; nada a cancelar")
+                return
+
+            client = self.client()
+            outbox.bling_order_id = str(order_id)
+
+            # 1) Apagar as contas a receber do pedido.
+            outbox.step = "deleting_receivables"
+            db.session.commit()
+            for rid in self._resolve_receivables_for_cancel(client, outbox.pedido_id, send_outbox):
+                self._log(outbox, "info", "deleting_receivables", f"Apagando conta a receber {rid}")
+                self._delete_receivable_idempotent(client, rid)
+
+            # 2) Estornar o lancamento de contas da venda.
+            outbox.step = "reversing_accounts"
+            db.session.commit()
+            self._log(outbox, "info", "reversing_accounts", "Estornando lancamento de contas")
+            self._reverse_accounts_idempotent(client, str(order_id))
+
+            # 3) Apagar a venda.
+            outbox.step = "deleting_order"
+            db.session.commit()
+            self._log(outbox, "info", "deleting_order", "Apagando venda no Bling")
+            self._delete_order_idempotent(client, str(order_id))
+
+            self._finish_outbox(outbox, "Venda cancelada no Bling")
+        except BlingIntegrationError as exc:
+            db.session.rollback()
+            outbox = BlingOutbox.query.get(outbox_id)
+            details = dict(exc.details or {})
+            if isinstance(exc, BlingApiError):
+                details["status_code"] = exc.status_code
+                if exc.payload is not None:
+                    details["bling_response"] = exc.payload
+            self._mark_failed(outbox, exc.code, str(exc), retryable=exc.retryable, details=details)
+        except Exception as exc:
+            db.session.rollback()
+            outbox = BlingOutbox.query.get(outbox_id)
+            self._mark_failed(
+                outbox, "unexpected_error", f"{type(exc).__name__}: {exc}", retryable=True
+            )
+
+    def _finish_outbox(self, outbox: BlingOutbox, message: str) -> None:
+        outbox.status = "completed"
+        outbox.step = "completed"
+        outbox.error_code = None
+        outbox.error_message = None
+        outbox.finished_at = datetime_now_brazil()
+        outbox.updated_at = datetime_now_brazil()
+        self._log(outbox, "info", "completed", message)
+        db.session.commit()
+
+    def _resolve_order_id_for_cancel(self, pedido_id: int):
+        send = (
+            BlingOutbox.query.filter_by(pedido_id=pedido_id, operation="send_order")
+            .order_by(BlingOutbox.id.desc())
+            .first()
+        )
+        if send and send.bling_order_id:
+            return str(send.bling_order_id), send
+        ref = self._get_order_ref(pedido_id)
+        if ref:
+            return str(ref.external_order_id), send
+        return None, send
+
+    def _resolve_receivables_for_cancel(
+        self, client: BlingClient, pedido_id: int, send_outbox: Optional[BlingOutbox]
+    ) -> List[str]:
+        ids: List[str] = []
+        for item in (self._stored_receivable_ids(send_outbox) if send_outbox else []):
+            if isinstance(item, dict) and item.get("id"):
+                ids.append(str(item["id"]))
+        if ids:
+            return ids
+        # best-effort: busca por marcador do pedido (o historico contem GESTOR-{id}-)
+        prefix = f"GESTOR-{pedido_id}-"
+        try:
+            hits = self._extract_list(
+                client.list_receivables({"pesquisa": f"GESTOR-{pedido_id}", "limite": 100})
+            )
+        except Exception:
+            hits = []
+        for item in hits:
+            if (
+                isinstance(item, dict)
+                and item.get("id")
+                and prefix in json.dumps(item, ensure_ascii=False, default=str)
+            ):
+                ids.append(str(item["id"]))
+        return ids
+
+    def _delete_receivable_idempotent(self, client: BlingClient, receivable_id: str) -> None:
+        try:
+            client.delete_receivable(receivable_id)
+        except BlingApiError as exc:
+            if not self._is_not_found(exc):
+                raise
+
+    def _reverse_accounts_idempotent(self, client: BlingClient, order_id: str) -> None:
+        try:
+            client.reverse_order_accounts(order_id)
+        except BlingApiError as exc:
+            if not self._is_not_found(exc):
+                raise
+
+    def _delete_order_idempotent(self, client: BlingClient, order_id: str) -> None:
+        try:
+            client.delete_order(order_id)
+        except BlingApiError as exc:
+            if not self._is_not_found(exc):
+                raise
+
+    @staticmethod
+    def _is_not_found(exc: BlingApiError) -> bool:
+        return getattr(exc, "status_code", None) == 404
 
     def _settle_receivables_if_needed(
         self,

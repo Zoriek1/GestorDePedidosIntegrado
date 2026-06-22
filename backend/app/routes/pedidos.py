@@ -86,7 +86,7 @@ def _normalize_whatsapp_code(value: object) -> str | None:
 
 def _build_payment_snapshot(data: dict, valor, status_pagamento, pagamento, pedido=None) -> dict:
     """Monta snapshot financeiro para status Parcial sem alterar o status canonico."""
-    from decimal import Decimal, ROUND_HALF_UP
+    from decimal import ROUND_HALF_UP, Decimal
 
     from app.integrations.bling.mapper import parse_decimal_money
 
@@ -873,6 +873,15 @@ def deletar_pedido(pedido_id):
 
         void_active_commission(pedido, reason="soft_delete")
         void_delivery_credit(pedido, reason="soft_delete")
+
+        # Cancelar a venda + lançamento no Bling (assíncrono via bling-worker).
+        # Só enfileira se o pedido foi enviado; não bloqueia o delete em caso de erro.
+        try:
+            from app.utils.bling_helper import enqueue_bling_cancel_for_order
+
+            enqueue_bling_cancel_for_order(pedido)
+        except Exception as e:
+            print(f"[AVISO] Erro ao enfileirar cancelamento Bling do pedido #{pedido_id}: {e}")
 
         # Executar soft delete via repository (já registra auditoria)
         print(f"[DELETE_PEDIDO] Chamando soft_delete_pedido para pedido #{pedido_id}")

@@ -489,6 +489,98 @@ def test_cliente_contact_type_uses_config_override(bling_app):
     assert BlingIntegrationService()._cliente_contact_type_id(_NoList()) == "77"
 
 
+# --- Cancelamento (apagar contas -> estornar -> apagar venda) ---------------
+
+class _CancelClient:
+    def __init__(self, fail_delete_order_404=False):
+        self.calls = []
+        self.fail_delete_order_404 = fail_delete_order_404
+
+    def list_receivables(self, _params):
+        return {"data": []}
+
+    def delete_receivable(self, rid):
+        self.calls.append(("del_recv", str(rid)))
+        return {}
+
+    def reverse_order_accounts(self, oid):
+        self.calls.append(("reverse", str(oid)))
+        return {}
+
+    def delete_order(self, oid):
+        self.calls.append(("del_order", str(oid)))
+        if self.fail_delete_order_404:
+            from app.integrations.bling.errors import BlingApiError
+
+            raise BlingApiError("nao encontrado", status_code=404)
+        return {}
+
+
+def test_cancel_does_nothing_without_order(bling_app, monkeypatch):
+    from app import db
+    from app.integrations.bling.service import BlingIntegrationService
+    from app.models.bling_outbox import BlingOutbox
+
+    cancel = BlingOutbox(pedido_id=500, operation="cancel_order", status="pending", step="pending")
+    db.session.add(cancel)
+    db.session.commit()
+
+    svc = BlingIntegrationService()
+    monkeypatch.setattr(svc, "client", lambda: (_ for _ in ()).throw(AssertionError("nao deveria abrir client")))
+    svc.process_cancel(cancel.id)
+
+    db.session.refresh(cancel)
+    assert cancel.status == "completed"
+
+
+def test_cancel_deletes_then_reverses_then_deletes_order(bling_app, monkeypatch):
+    from app import db
+    from app.integrations.bling.service import BlingIntegrationService
+    from app.models.bling_outbox import BlingOutbox
+
+    send = BlingOutbox(
+        pedido_id=501,
+        operation="send_order",
+        status="completed",
+        step="completed",
+        bling_order_id="900",
+        bling_receivable_ids_json=json.dumps([{"marker": "GESTOR-501-PAGO", "id": "111"}]),
+    )
+    cancel = BlingOutbox(pedido_id=501, operation="cancel_order", status="pending", step="pending")
+    db.session.add_all([send, cancel])
+    db.session.commit()
+
+    svc = BlingIntegrationService()
+    client = _CancelClient()
+    monkeypatch.setattr(svc, "client", lambda: client)
+    svc.process_cancel(cancel.id)
+
+    assert client.calls == [("del_recv", "111"), ("reverse", "900"), ("del_order", "900")]
+    db.session.refresh(cancel)
+    assert cancel.status == "completed"
+
+
+def test_cancel_is_idempotent_on_404(bling_app, monkeypatch):
+    from app import db
+    from app.integrations.bling.service import BlingIntegrationService
+    from app.models.bling_outbox import BlingOutbox
+
+    send = BlingOutbox(
+        pedido_id=502, operation="send_order", status="completed", step="completed",
+        bling_order_id="901",
+    )
+    cancel = BlingOutbox(pedido_id=502, operation="cancel_order", status="pending", step="pending")
+    db.session.add_all([send, cancel])
+    db.session.commit()
+
+    svc = BlingIntegrationService()
+    monkeypatch.setattr(svc, "client", lambda: _CancelClient(fail_delete_order_404=True))
+    svc.process_cancel(cancel.id)
+
+    db.session.refresh(cancel)
+    assert cancel.status == "completed"  # 404 ao apagar venda = tratado como ja feito
+
+
 # --- Mensagem de erro do Bling (campos de validacao) ------------------------
 
 def test_error_message_inclui_fields_de_validacao():

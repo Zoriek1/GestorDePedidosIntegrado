@@ -126,6 +126,15 @@ class BlingClient:
     def settle_receivable(self, receivable_id: str, payload: Dict[str, Any]) -> Any:
         return self.post(f"/contas/receber/{receivable_id}/baixar", payload)
 
+    def delete_receivable(self, receivable_id: str) -> Any:
+        return self.delete(f"/contas/receber/{receivable_id}")
+
+    def reverse_order_accounts(self, order_id: str) -> Any:
+        return self.post(f"/pedidos/vendas/{order_id}/estornar-contas")
+
+    def delete_order(self, order_id: str) -> Any:
+        return self.delete(f"/pedidos/vendas/{order_id}")
+
     def search_products(self, params: Optional[Dict[str, Any]] = None) -> Any:
         return self.get("/produtos", params=params or {})
 

@@ -2,9 +2,10 @@
 """Servicos de orquestracao da integracao Bling."""
 
 import json
+import time
 from datetime import timedelta
 from decimal import Decimal
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from flask import current_app
 
@@ -513,7 +514,12 @@ class BlingIntegrationService:
             if not receivable_ids:
                 self._log(outbox, "info", "finding_receivables", "Localizando contas geradas")
                 receivables_by_marker = self._find_receivables(
-                    client, plan, str(outbox.bling_order_id), launch_response=launch_response
+                    client,
+                    plan,
+                    str(outbox.bling_order_id),
+                    store_number=f"GESTOR-{outbox.pedido_id}",
+                    launch_response=launch_response,
+                    contact_id=(payload.get("contato") or {}).get("id"),
                 )
                 receivable_ids = [
                     {
@@ -816,80 +822,87 @@ class BlingIntegrationService:
         client: BlingClient,
         plan: List[Dict[str, Any]],
         order_id: str,
+        store_number: str,
         launch_response: Any = None,
+        contact_id: Any = None,
     ) -> Dict[str, Dict[str, Any]]:
+        # As contas a receber demoram a aparecer depois do lancar-contas (o Bling
+        # responde 204 e gera de forma assincrona). Tentamos algumas vezes com uma
+        # pausa curta antes de desistir, em vez de falhar e esperar o backoff.
         markers = [row["marker"] for row in plan]
+        attempts = int(current_app.config.get("BLING_RECEIVABLE_FIND_ATTEMPTS") or 4)
+        delay = float(current_app.config.get("BLING_RECEIVABLE_FIND_DELAY_SECONDS") or 2.0)
+
         found: Dict[str, Dict[str, Any]] = {}
-
-        # 1) Contas vindas da resposta de lancar-contas: sao DESTE pedido. Casa
-        #    por marcador (se o Bling propagar) e, senao, por valor+vencimento.
-        launch_items = [it for it in self._extract_list(launch_response) if isinstance(it, dict)]
-        for item in launch_items:
-            self._match_markers(item, markers, found)
-        if len(found) < len(markers) and launch_items:
-            self._match_by_amount_due(launch_items, plan, found)
-
-        # 2) Busca por historico: o Bling indexa o historico da conta na busca, e
-        #    o historico inclui o marcador GESTOR-{id}-{kind}. Filtra direto a
-        #    conta do pedido sem depender de paginacao.
-        for row in plan:
-            if row["marker"] in found:
-                continue
-            try:
-                hits = [
-                    it
-                    for it in self._extract_list(
-                        client.list_receivables({"pesquisa": row["marker"], "limite": 100})
-                    )
-                    if isinstance(it, dict)
-                ]
-            except Exception:
-                hits = []
-            for item in hits:
-                self._match_markers(item, [row["marker"]], found)
-            if row["marker"] not in found and hits:
-                self._match_by_amount_due(hits, [row], found)
-
-        # 3) Fallback: varredura paginada. O Bling nao copia a observacao da
-        #    parcela para a conta, entao casamos por vinculo com o pedido e por
-        #    valor+vencimento (alem do marcador, por garantia).
         sample: List[Dict[str, Any]] = []
-        if len(found) < len(markers):
-            max_pages = int(current_app.config.get("BLING_RECEIVABLE_SEARCH_PAGES") or 10)
-            linked: List[Dict[str, Any]] = []
-            page = 1
-            while len(found) < len(markers) and page <= max_pages:
-                items = [
-                    it
-                    for it in self._extract_list(
-                        client.list_receivables({"pagina": page, "limite": 100})
-                    )
-                    if isinstance(it, dict)
-                ]
-                if not items:
-                    break
-                if not sample:
-                    sample = items[:2]
-                for item in items:
-                    self._match_markers(item, markers, found)
-                    if self._receivable_links_order(item, order_id):
-                        linked.append(item)
-                page += 1
-            if len(found) < len(markers) and linked:
-                self._match_by_amount_due(linked, plan, found)
+        for attempt in range(1, attempts + 1):
+            found, sample = self._collect_receivables(
+                client,
+                plan,
+                markers,
+                order_id,
+                store_number,
+                contact_id,
+                launch_response if attempt == 1 else None,
+            )
+            if len(found) == len(markers):
+                return found
+            if attempt < attempts:
+                time.sleep(delay)
 
         missing = [marker for marker in markers if marker not in found]
-        if missing:
-            raise BlingRetryableError(
-                "Contas a receber ainda nao localizadas no Bling",
-                details={
-                    "missing_markers": missing,
-                    "order_id": order_id,
-                    "launch_sample": launch_items[:3],
-                    "scanned_sample": sample,
-                },
-            )
-        return found
+        raise BlingRetryableError(
+            "Contas a receber ainda nao localizadas no Bling",
+            details={"missing_markers": missing, "order_id": order_id, "scanned_sample": sample},
+        )
+
+    def _collect_receivables(
+        self,
+        client: BlingClient,
+        plan: List[Dict[str, Any]],
+        markers: List[str],
+        order_id: str,
+        store_number: str,
+        contact_id: Any,
+        launch_response: Any,
+    ) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+        """Uma passada de localizacao: junta candidatos e casa cada parcela por
+        marcador (GESTOR-{id}-{kind}, presente no historico da conta), por vinculo
+        com a venda (origem.id) e por valor+vencimento."""
+        found: Dict[str, Dict[str, Any]] = {}
+        order_items: List[Dict[str, Any]] = []
+
+        def consider(items: Any) -> None:
+            for item in self._extract_list(items):
+                if not isinstance(item, dict):
+                    continue
+                self._match_markers(item, markers, found)
+                if self._receivable_links_order(item, order_id):
+                    order_items.append(item)
+
+        # a) Resposta do lancar-contas (contas DESTE pedido, quando vier corpo).
+        consider(launch_response)
+
+        # b) Busca por numeroLoja (GESTOR-{id}): aparece no historico de TODAS as
+        #    parcelas do pedido, entao uma busca traz todas de uma vez.
+        if len(found) < len(markers):
+            try:
+                consider(client.list_receivables({"pesquisa": store_number, "limite": 100}))
+            except Exception:
+                pass
+
+        # c) Contas do contato do pedido (conjunto pequeno) -> casa por origem.id.
+        if contact_id and len(found) < len(markers):
+            try:
+                consider(client.list_receivables({"idContato": contact_id, "limite": 100}))
+            except Exception:
+                pass
+
+        # d) Casa as contas vinculadas a venda por valor+vencimento.
+        if len(found) < len(markers) and order_items:
+            self._match_by_amount_due(order_items, plan, found)
+
+        return found, order_items[:3]
 
     def _match_markers(
         self,
@@ -1160,7 +1173,9 @@ class BlingIntegrationService:
             outbox.step = step or outbox.step
             outbox.updated_at = datetime_now_brazil()
         db.session.commit()
-        self._console(outbox, level, step, message, error_code=error_code)
+        self._console(
+            outbox, level, step, message, response=response, status_code=status_code, error_code=error_code
+        )
 
     @staticmethod
     def _console(
@@ -1169,6 +1184,8 @@ class BlingIntegrationService:
         step: str,
         message: str,
         *,
+        response: Any = None,
+        status_code: Optional[int] = None,
         error_code: Optional[str] = None,
     ) -> None:
         """Espelha o evento no stdout para acompanhar a integracao pelo log do
@@ -1180,6 +1197,14 @@ class BlingIntegrationService:
         if error_code:
             line += f" (code={error_code})"
         print(line, flush=True)
+        # Em erro, imprime a resposta crua do Bling (status + corpo) para
+        # diagnostico direto no console, sem precisar consultar o banco.
+        if level in ("error", "critical") and response is not None:
+            try:
+                snippet = json.dumps(response, ensure_ascii=False, default=str)
+            except Exception:
+                snippet = str(response)
+            print(f"        resposta Bling: {snippet[:2000]}", flush=True)
 
     def _extract_order_id(self, response: Any) -> str:
         data = response.get("data") if isinstance(response, dict) else None

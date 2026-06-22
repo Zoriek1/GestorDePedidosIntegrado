@@ -440,11 +440,21 @@ class BlingIntegrationService:
                 outbox.step = "launching_order_accounts"
                 db.session.commit()
                 self._log(outbox, "info", "launching_order_accounts", "Lancando contas do pedido")
-                launch_response = client.launch_order_accounts(str(outbox.bling_order_id))
-                # Loga a resposta crua do lancar-contas: e a fonte mais confiavel
-                # das contas geradas para este pedido.
-                self._log(outbox, "info", "launching_order_accounts", "Contas lancadas", response=launch_response)
-                outbox.response_json = self._json_dumps(launch_response)
+                try:
+                    launch_response = client.launch_order_accounts(str(outbox.bling_order_id))
+                    # Loga a resposta crua: e a fonte mais confiavel das contas
+                    # geradas para este pedido.
+                    self._log(outbox, "info", "launching_order_accounts", "Contas lancadas", response=launch_response)
+                    outbox.response_json = self._json_dumps(launch_response)
+                except BlingApiError as exc:
+                    # lancar-contas nao e idempotente: se as contas ja foram
+                    # lancadas (retry), o Bling recusa -- tratamos como sucesso e
+                    # seguimos para localizar/baixar.
+                    if self._accounts_already_launched(exc):
+                        self._log(outbox, "info", "launching_order_accounts", "Contas ja estavam lancadas; seguindo")
+                        launch_response = None
+                    else:
+                        raise
                 outbox.step = "finding_receivables"
                 db.session.commit()
 
@@ -612,7 +622,28 @@ class BlingIntegrationService:
         if len(found) < len(markers) and launch_items:
             self._match_by_amount_due(launch_items, plan, found)
 
-        # 2) Fallback: varredura paginada. O Bling nao copia a observacao da
+        # 2) Busca por historico: o Bling indexa o historico da conta na busca, e
+        #    o historico inclui o marcador GESTOR-{id}-{kind}. Filtra direto a
+        #    conta do pedido sem depender de paginacao.
+        for row in plan:
+            if row["marker"] in found:
+                continue
+            try:
+                hits = [
+                    it
+                    for it in self._extract_list(
+                        client.list_receivables({"pesquisa": row["marker"], "limite": 100})
+                    )
+                    if isinstance(it, dict)
+                ]
+            except Exception:
+                hits = []
+            for item in hits:
+                self._match_markers(item, [row["marker"]], found)
+            if row["marker"] not in found and hits:
+                self._match_by_amount_due(hits, [row], found)
+
+        # 3) Fallback: varredura paginada. O Bling nao copia a observacao da
         #    parcela para a conta, entao casamos por vinculo com o pedido e por
         #    valor+vencimento (alem do marcador, por garantia).
         sample: List[Dict[str, Any]] = []
@@ -728,6 +759,19 @@ class BlingIntegrationService:
             if str(item.get(key)) == oid:
                 return True
         return False
+
+    @staticmethod
+    def _accounts_already_launched(exc: BlingApiError) -> bool:
+        """Detecta o erro do Bling "contas ja lancadas / NF gerada" (code 62) ao
+        tentar lancar contas de novo num retry -- e benigno: as contas existem."""
+        payload = getattr(exc, "payload", None)
+        if isinstance(payload, dict):
+            error = payload.get("error") or {}
+            for field in error.get("fields") or []:
+                if isinstance(field, dict) and str(field.get("code")) == "62":
+                    return True
+        text = str(exc).lower()
+        return "lançadas" in text or "lancadas" in text or "foi gerada a nota" in text
 
     def _is_bling_active(self, raw: Dict[str, Any]) -> bool:
         situacao = raw.get("situacao", raw.get("ativo", True))

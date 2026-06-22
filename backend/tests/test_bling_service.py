@@ -510,6 +510,22 @@ def test_error_message_inclui_fields_de_validacao():
     assert "obrigatorio" in msg
 
 
+def test_accounts_already_launched_detects_code_62():
+    from app.integrations.bling.errors import BlingApiError
+    from app.integrations.bling.service import BlingIntegrationService
+
+    dup = BlingApiError(
+        "Nao foi possivel lancar conta",
+        status_code=400,
+        payload={"error": {"fields": [{"code": 62, "msg": "contas ja foram lancadas"}]}},
+    )
+    other = BlingApiError(
+        "outro erro", status_code=400, payload={"error": {"fields": [{"code": 10}]}}
+    )
+    assert BlingIntegrationService._accounts_already_launched(dup) is True
+    assert BlingIntegrationService._accounts_already_launched(other) is False
+
+
 # --- Fase 1.4: migration portavel -------------------------------------------
 
 def test_migration_uses_portable_timestamp_type():

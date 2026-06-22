@@ -373,6 +373,56 @@ def test_enqueue_bling_for_new_order_creates_pending_once(bling_app):
     assert outboxes[0].step == "pending"
 
 
+# --- Contato generico (Bling exige contato.id na venda) ---------------------
+
+def test_ensure_default_contact_uses_configured_id(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = "12345"
+
+    class _NoClient:
+        def search_contacts(self, *a, **k):
+            raise AssertionError("nao deveria chamar a API com id fixo")
+
+    assert BlingIntegrationService().ensure_default_contact(_NoClient()) == "12345"
+
+
+def test_ensure_default_contact_creates_when_missing(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = ""
+
+    class _Client:
+        def __init__(self):
+            self.created = []
+
+        def search_contacts(self, _params):
+            return {"data": []}
+
+        def create_contact(self, payload):
+            self.created.append(payload)
+            return {"data": {"id": 777}}
+
+    client = _Client()
+    assert BlingIntegrationService().ensure_default_contact(client) == "777"
+    assert client.created and client.created[0]["nome"] == "Consumidor Final"
+
+
+def test_ensure_default_contact_reuses_existing(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = ""
+
+    class _Client:
+        def search_contacts(self, _params):
+            return {"data": [{"id": 42, "nome": "Consumidor Final"}]}
+
+        def create_contact(self, _payload):
+            raise AssertionError("nao deveria criar se ja existe")
+
+    assert BlingIntegrationService().ensure_default_contact(_Client()) == "42"
+
+
 # --- Mensagem de erro do Bling (campos de validacao) ------------------------
 
 def test_error_message_inclui_fields_de_validacao():

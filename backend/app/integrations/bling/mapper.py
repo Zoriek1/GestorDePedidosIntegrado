@@ -214,15 +214,23 @@ class BlingOrderMapper:
                 }
             )
 
+        contato: Dict[str, Any] = {
+            "nome": _clean(getattr(pedido, "cliente", None)) or "Cliente Gestor",
+            "telefone": _clean(getattr(pedido, "telefone_cliente", None)),
+        }
+        # O Bling exige contato.id na venda. Se um id fixo estiver configurado,
+        # ja vai no payload (e reflete no preview); senao o service resolve/cria
+        # o contato generico antes de criar a venda.
+        default_contact = _clean(current_app.config.get("BLING_DEFAULT_CONTACT_ID"))
+        if default_contact:
+            contato["id"] = _bling_id(default_contact)
+
         payload: Dict[str, Any] = {
             "numeroLoja": f"GESTOR-{pedido.id}",
             "data": data_pedido,
             "dataSaida": entrega,
             "dataPrevista": entrega,
-            "contato": {
-                "nome": _clean(getattr(pedido, "cliente", None)) or "Cliente Gestor",
-                "telefone": _clean(getattr(pedido, "telefone_cliente", None)),
-            },
+            "contato": contato,
             "itens": [
                 {
                     "codigo": current_app.config.get("BLING_DEFAULT_PRODUCT_CODE")

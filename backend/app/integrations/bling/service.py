@@ -566,22 +566,22 @@ class BlingIntegrationService:
             client = self.client()
             outbox.bling_order_id = str(order_id)
 
-            # 1) Estornar o lancamento. O estorno NAO remove as contas: apenas
-            #    desfaz a baixa, deixando-as "pendentes" -- e so assim elas podem
-            #    ser apagadas (conta baixada nao pode ser excluida).
-            outbox.step = "reversing_accounts"
+            # 1) Apagar os recebimentos (lancamentos de caixa) do pedido -- e o
+            #    que desfaz a baixa. Conta paga so pode ser excluida depois disso;
+            #    o estornar-contas da venda nao serve aqui (recusa conta paga).
+            outbox.step = "reversing_receipts"
             db.session.commit()
-            self._log(outbox, "info", "reversing_accounts", "Estornando lancamento de contas")
-            self._reverse_accounts_idempotent(client, str(order_id))
+            self._log(outbox, "info", "reversing_receipts", "Apagando recebimentos (baixas) do pedido")
+            self._delete_order_cash_entries(client, outbox)
 
-            # 2) Apagar as contas a receber (agora pendentes apos o estorno).
+            # 2) Apagar as contas a receber (agora sem baixa, pendentes).
             outbox.step = "deleting_receivables"
             db.session.commit()
             for rid in self._resolve_receivables_for_cancel(client, outbox.pedido_id, send_outbox):
                 self._log(outbox, "info", "deleting_receivables", f"Apagando conta a receber {rid}")
                 self._delete_receivable_idempotent(client, rid)
 
-            # 3) Apagar a venda.
+            # 3) Apagar a venda (sem contas, agora pode ser apagada).
             outbox.step = "deleting_order"
             db.session.commit()
             self._log(outbox, "info", "deleting_order", "Apagando venda no Bling")
@@ -652,6 +652,29 @@ class BlingIntegrationService:
             ):
                 ids.append(str(item["id"]))
         return ids
+
+    def _delete_order_cash_entries(self, client: BlingClient, outbox: BlingOutbox) -> None:
+        """Apaga os lancamentos de caixa (recebimentos/baixas) do pedido -- e o
+        que desfaz a baixa. Localiza por historico (contem GESTOR-{pedido_id})."""
+        prefix = f"GESTOR-{outbox.pedido_id}"
+        try:
+            items = self._extract_list(client.list_cash_entries({"pesquisa": prefix, "limite": 100}))
+        except Exception:
+            items = []
+        for item in items:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            if prefix not in json.dumps(item, ensure_ascii=False, default=str):
+                continue
+            self._log(outbox, "info", "reversing_receipts", f"Apagando recebimento (caixa) {item['id']}")
+            self._delete_cash_entry_idempotent(client, str(item["id"]))
+
+    def _delete_cash_entry_idempotent(self, client: BlingClient, cash_id: str) -> None:
+        try:
+            client.delete_cash_entry(cash_id)
+        except BlingApiError as exc:
+            if not self._is_not_found(exc):
+                raise
 
     def _delete_receivable_idempotent(self, client: BlingClient, receivable_id: str) -> None:
         try:

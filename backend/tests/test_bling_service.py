@@ -489,22 +489,26 @@ def test_cliente_contact_type_uses_config_override(bling_app):
     assert BlingIntegrationService()._cliente_contact_type_id(_NoList()) == "77"
 
 
-# --- Cancelamento (apagar contas -> estornar -> apagar venda) ---------------
+# --- Cancelamento (apagar recebimento -> apagar conta -> apagar venda) -------
 
 class _CancelClient:
     def __init__(self, fail_delete_order_404=False):
         self.calls = []
         self.fail_delete_order_404 = fail_delete_order_404
 
+    def list_cash_entries(self, params):
+        pesquisa = params.get("pesquisa", "")
+        return {"data": [{"id": "C1", "historico": f"{pesquisa}-PAGO - baixa Gestor"}]}
+
+    def delete_cash_entry(self, cid):
+        self.calls.append(("del_caixa", str(cid)))
+        return {}
+
     def list_receivables(self, _params):
         return {"data": []}
 
     def delete_receivable(self, rid):
         self.calls.append(("del_recv", str(rid)))
-        return {}
-
-    def reverse_order_accounts(self, oid):
-        self.calls.append(("reverse", str(oid)))
         return {}
 
     def delete_order(self, oid):
@@ -533,7 +537,7 @@ def test_cancel_does_nothing_without_order(bling_app, monkeypatch):
     assert cancel.status == "completed"
 
 
-def test_cancel_reverses_then_deletes_receivable_then_order(bling_app, monkeypatch):
+def test_cancel_deletes_receipt_then_receivable_then_order(bling_app, monkeypatch):
     from app import db
     from app.integrations.bling.service import BlingIntegrationService
     from app.models.bling_outbox import BlingOutbox
@@ -555,8 +559,8 @@ def test_cancel_reverses_then_deletes_receivable_then_order(bling_app, monkeypat
     monkeypatch.setattr(svc, "client", lambda: client)
     svc.process_cancel(cancel.id)
 
-    # Ordem: estornar -> apagar conta -> apagar venda.
-    assert client.calls == [("reverse", "900"), ("del_recv", "111"), ("del_order", "900")]
+    # Ordem: apagar recebimento (caixa) -> apagar conta -> apagar venda.
+    assert client.calls == [("del_caixa", "C1"), ("del_recv", "111"), ("del_order", "900")]
     db.session.refresh(cancel)
     assert cancel.status == "completed"
 

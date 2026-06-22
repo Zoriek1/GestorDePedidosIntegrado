@@ -135,6 +135,12 @@ class BlingClient:
     def delete_order(self, order_id: str) -> Any:
         return self.delete(f"/pedidos/vendas/{order_id}")
 
+    def list_cash_entries(self, params: Optional[Dict[str, Any]] = None) -> Any:
+        return self.get("/caixas", params=params or {})
+
+    def delete_cash_entry(self, cash_id: str) -> Any:
+        return self.delete(f"/caixas/{cash_id}")
+
     def search_products(self, params: Optional[Dict[str, Any]] = None) -> Any:
         return self.get("/produtos", params=params or {})
 

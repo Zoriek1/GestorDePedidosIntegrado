@@ -20,6 +20,7 @@ class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False, index=True)
     telefone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    cpf_cnpj = db.Column(db.String(14), nullable=True, index=True)
     email = db.Column(db.String(100), nullable=True)
     observacoes = db.Column(db.Text, nullable=True)
 
@@ -129,6 +130,7 @@ class Cliente(db.Model):
             "id": self.id,
             "nome": self.nome,
             "telefone": self.telefone,
+            "cpf_cnpj": self.cpf_cnpj or "",
             "email": self.email or "",
             "observacoes": self.observacoes or "",
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -160,6 +162,7 @@ class Cliente(db.Model):
             "id": self.id,
             "nome": self.nome,
             "telefone": self.telefone,
+            "cpf_cnpj": self.cpf_cnpj or "",
             "total_pedidos": self.get_total_pedidos(),
         }
 

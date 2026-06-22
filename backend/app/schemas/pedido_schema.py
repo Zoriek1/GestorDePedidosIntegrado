@@ -15,6 +15,7 @@ class PedidoSchema(Schema):
     # Step 1 - Dados do Cliente
     cliente = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     telefone_cliente = fields.Str(required=True, validate=validate.Length(min=1, max=20))
+    cpf_cnpj = fields.Str(allow_none=True, validate=validate.Length(max=14))
     destinatario = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     tipo_pedido = fields.Str(
         validate=validate.OneOf(["Entrega", "Retirada"]), load_default="Entrega"
@@ -44,6 +45,7 @@ class PedidoSchema(Schema):
     complemento = fields.Str(allow_none=True, validate=validate.Length(max=100))
     bairro = fields.Str(allow_none=True, validate=validate.Length(max=100))
     cidade = fields.Str(allow_none=True, validate=validate.Length(max=100))
+    uf = fields.Str(allow_none=True, validate=validate.Length(equal=2))
     endereco = fields.Str(allow_none=True)
     obs_entrega = fields.Str(allow_none=True)
 
@@ -145,6 +147,7 @@ class PedidoUpdateSchema(Schema):
 
     cliente = fields.Str(validate=validate.Length(max=100))
     telefone_cliente = fields.Str(validate=validate.Length(max=20))
+    cpf_cnpj = fields.Str(allow_none=True, validate=validate.Length(max=14))
     destinatario = fields.Str(validate=validate.Length(max=100))
     tipo_pedido = fields.Str(validate=validate.OneOf(["Entrega", "Retirada"]))
     produto = fields.Str()
@@ -166,6 +169,7 @@ class PedidoUpdateSchema(Schema):
     complemento = fields.Str(allow_none=True, validate=validate.Length(max=100))
     bairro = fields.Str(allow_none=True)
     cidade = fields.Str(allow_none=True)
+    uf = fields.Str(allow_none=True, validate=validate.Length(equal=2))
     endereco = fields.Str(allow_none=True)
     obs_entrega = fields.Str(allow_none=True)
     mensagem = fields.Str(allow_none=True)

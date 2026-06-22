@@ -37,11 +37,62 @@ export const TIPOS_LOCAL = [
   'comercial',
 ] as const;
 
+export const UFS_BRASIL = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+] as const;
+
 /** Regex para CEP no formato 99999-999 */
 export const CEP_REGEX = /^\d{5}-\d{3}$/;
 
 /** Regex para CEP com ou sem hífen */
 export const CEP_DIGITS_REGEX = /^\d{8}$/;
+
+export function parseCpfCnpjToDigits(value: string | undefined): string {
+  return (value || '').replace(/\D/g, '');
+}
+
+export function formatCpfCnpj(value: string | undefined): string {
+  const digits = parseCpfCnpjToDigits(value).slice(0, 14);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/^(\d{3})(\d)/, '$1.$2')
+      .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1-$2');
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
+function validCheckDigits(digits: string, firstWeights: number[], secondWeights: number[]): boolean {
+  const calculate = (weights: number[]) => {
+    const total = weights.reduce((sum, weight, index) => sum + Number(digits[index]) * weight, 0);
+    const result = 11 - (total % 11);
+    return result >= 10 ? 0 : result;
+  };
+  return calculate(firstWeights) === Number(digits.at(-2))
+    && calculate(secondWeights) === Number(digits.at(-1));
+}
+
+export function isValidCpfCnpj(value: string | undefined): boolean {
+  const digits = parseCpfCnpjToDigits(value);
+  if (![11, 14].includes(digits.length) || /^(\d)\1+$/.test(digits)) return false;
+  if (digits.length === 11) {
+    return validCheckDigits(
+      digits,
+      [10, 9, 8, 7, 6, 5, 4, 3, 2],
+      [11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+    );
+  }
+  return validCheckDigits(
+    digits,
+    [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2],
+    [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2],
+  );
+}
 
 // ============================================================================
 // Schema Base do Pedido (Formulário)
@@ -71,6 +122,11 @@ export const pedidoFormSchema = z.object({
       },
       'Formato de telefone inválido'
     ),
+
+  cpf_cnpj: z.string()
+    .max(18, 'CPF/CNPJ inválido')
+    .optional()
+    .refine((value) => !value?.trim() || isValidCpfCnpj(value), 'CPF/CNPJ inválido'),
 
   /** ID do cliente selecionado no autocomplete (opcional) */
   cliente_id: z.number().optional(),
@@ -142,6 +198,10 @@ export const pedidoFormSchema = z.object({
   complemento: z.string().max(100).optional(), // Novo: será mapeado para observacoes
   bairro: z.string().max(100).optional(),
   cidade: z.string().max(100).optional(),
+  uf: z.string().max(2).optional().refine(
+    (value) => !value?.trim() || UFS_BRASIL.includes(value.trim().toUpperCase() as typeof UFS_BRASIL[number]),
+    'UF inválida',
+  ),
   endereco: z.string().max(500).optional(),
   obs_entrega: z.string().max(500).optional(),
 
@@ -228,30 +288,24 @@ export const pedidoFormSchema = z.object({
 
   // Validação condicional: endereço obrigatório se for entrega
   if (data.tipo_pedido === 'Entrega') {
-    // CEP é recomendado para entregas
-    if (!data.cep || data.cep.trim() === '') {
-      // Não bloqueia, mas recomenda
-    }
-
-    // Pelo menos rua + número OU endereço completo deve estar preenchido
-    const hasAddress = (data.rua && data.numero) || data.endereco;
-    
-    if (!hasAddress) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Endereço é obrigatório para entregas',
-        path: ['endereco'],
-      });
-    }
-
-    // Cidade é obrigatória para entrega
-    if (!data.cidade && !data.endereco?.includes(',')) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Cidade é obrigatória para entregas',
-        path: ['cidade'],
-      });
-    }
+    const requiredAddressFields: Array<[keyof typeof data, string]> = [
+      ['cep', 'CEP é obrigatório para entregas'],
+      ['rua', 'Rua é obrigatória para entregas'],
+      ['numero', 'Número é obrigatório para entregas'],
+      ['bairro', 'Bairro é obrigatório para entregas'],
+      ['cidade', 'Cidade é obrigatória para entregas'],
+      ['uf', 'UF é obrigatória para entregas'],
+    ];
+    requiredAddressFields.forEach(([field, message]) => {
+      const value = data[field];
+      if (typeof value !== 'string' || !value.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message,
+          path: [field],
+        });
+      }
+    });
   }
 });
 
@@ -267,6 +321,7 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   cliente: '',
   cliente_modo: 'novo',
   telefone_cliente: '',
+  cpf_cnpj: '',
   cliente_id: undefined,
   fonte_pedido_id: undefined,
   vendedor_id: undefined,
@@ -289,6 +344,7 @@ export const pedidoFormDefaultValues: PedidoFormData = {
   complemento: '',
   bairro: '',
   cidade: '',
+  uf: 'GO',
   endereco: '',
   obs_entrega: '',
   produto: '',
@@ -424,6 +480,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
   return {
     cliente: formData.cliente.trim(),
     telefone_cliente: parsePhoneToDigits(formData.telefone_cliente.trim()),
+    cpf_cnpj: parseCpfCnpjToDigits(formData.cpf_cnpj) || undefined,
     cliente_id: formData.cliente_id || undefined,
     tipo_pedido: formData.tipo_pedido,
     destinatario: formData.destinatario.trim(),
@@ -443,6 +500,7 @@ export function transformFormToApiPayload(formData: PedidoFormData): Record<stri
     complemento: formData.complemento?.trim() || undefined,
     bairro: formData.bairro?.trim() || undefined,
     cidade: formData.cidade?.trim() || undefined,
+    uf: formData.uf?.trim().toUpperCase() || undefined,
     endereco: enderecoCompleto?.trim() || undefined,
     obs_entrega: formData.obs_entrega?.trim() || undefined,
     produto: formData.produto.trim(),
@@ -492,6 +550,7 @@ export const step1Schema = z.object({
   cliente: pedidoFormSchema.shape.cliente,
   cliente_modo: pedidoFormSchema.shape.cliente_modo,
   telefone_cliente: pedidoFormSchema.shape.telefone_cliente,
+  cpf_cnpj: pedidoFormSchema.shape.cpf_cnpj,
   cliente_id: pedidoFormSchema.shape.cliente_id,
   fonte_pedido_id: pedidoFormSchema.shape.fonte_pedido_id,
   vendedor_id: pedidoFormSchema.shape.vendedor_id,
@@ -528,25 +587,25 @@ export const step2Schema = z.object({
   complemento: pedidoFormSchema.shape.complemento,
   bairro: pedidoFormSchema.shape.bairro,
   cidade: pedidoFormSchema.shape.cidade,
+  uf: pedidoFormSchema.shape.uf,
   endereco: pedidoFormSchema.shape.endereco,
   obs_entrega: pedidoFormSchema.shape.obs_entrega,
 }).superRefine((data, ctx) => {
   if (data.tipo_pedido === 'Entrega') {
-    const hasAddress = (data.rua && data.numero) || data.endereco;
-    if (!hasAddress) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Endereço é obrigatório para entregas',
-        path: ['endereco'],
-      });
-    }
-    if (!data.cidade && !data.endereco?.includes(',')) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Cidade é obrigatória para entregas',
-        path: ['cidade'],
-      });
-    }
+    const requiredAddressFields: Array<[keyof typeof data, string]> = [
+      ['cep', 'CEP é obrigatório para entregas'],
+      ['rua', 'Rua é obrigatória para entregas'],
+      ['numero', 'Número é obrigatório para entregas'],
+      ['bairro', 'Bairro é obrigatório para entregas'],
+      ['cidade', 'Cidade é obrigatória para entregas'],
+      ['uf', 'UF é obrigatória para entregas'],
+    ];
+    requiredAddressFields.forEach(([field, message]) => {
+      const value = data[field];
+      if (typeof value !== 'string' || !value.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: [field] });
+      }
+    });
   }
 });
 

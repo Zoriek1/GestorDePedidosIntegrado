@@ -10,6 +10,7 @@ from flask import Blueprint, jsonify, request
 from app import db
 from app.middleware import requires_any_role, requires_role
 from app.models import Cliente, EnderecoCliente, Pedido
+from app.utils.fiscal import is_valid_cpf_cnpj, normalize_cpf_cnpj
 
 clientes_bp = Blueprint("clientes", __name__, url_prefix="/api/clientes")
 
@@ -40,11 +41,14 @@ def criar_cliente():
         # Validar campos obrigatórios
         nome = data.get("nome", "").strip()
         telefone = data.get("telefone", "").strip()
+        cpf_cnpj = normalize_cpf_cnpj(data.get("cpf_cnpj"))
 
         if not nome:
             return jsonify({"error": "Nome é obrigatório"}), 400
         if not telefone:
             return jsonify({"error": "Telefone é obrigatório"}), 400
+        if cpf_cnpj and not is_valid_cpf_cnpj(cpf_cnpj):
+            return jsonify({"error": "CPF/CNPJ inválido"}), 400
 
         # Verificar se telefone já existe
         cliente_existente = Cliente.buscar_por_telefone(telefone)
@@ -64,6 +68,7 @@ def criar_cliente():
         cliente = Cliente(
             nome=nome,
             telefone=telefone,
+            cpf_cnpj=cpf_cnpj,
             email=data.get("email", "").strip() or None,
             observacoes=data.get("observacoes", "").strip() or None,
         )
@@ -265,6 +270,12 @@ def atualizar_cliente(cliente_id):
 
         data = request.get_json()
 
+        cpf_cnpj = None
+        if "cpf_cnpj" in data:
+            cpf_cnpj = normalize_cpf_cnpj(data.get("cpf_cnpj"))
+            if cpf_cnpj and not is_valid_cpf_cnpj(cpf_cnpj):
+                return jsonify({"error": "CPF/CNPJ inválido"}), 400
+
         # Atualizar campos fornecidos
         if "nome" in data:
             nome = data["nome"].strip()
@@ -292,6 +303,9 @@ def atualizar_cliente(cliente_id):
                 )
 
             cliente.telefone = telefone
+
+        if "cpf_cnpj" in data:
+            cliente.cpf_cnpj = cpf_cnpj
 
         if "email" in data:
             cliente.email = data["email"].strip() or None

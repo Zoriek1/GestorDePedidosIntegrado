@@ -15,6 +15,7 @@ import {
   pedidoFormDefaultValues,
   pedidoFormSchema,
   step2Schema,
+  isValidCpfCnpj,
   type PedidoFormData,
 } from '../schemas';
 
@@ -34,6 +35,8 @@ function makeFormData(overrides: Partial<PedidoFormData> = {}): PedidoFormData {
     horario: '14:00',
     rua: 'Rua das Flores',
     numero: '10',
+    cep: '74810-170',
+    bairro: 'Jardim Goiás',
     cidade: 'Goiânia',
     produto: 'Buquê de rosas',
     valor: 'R$ 150,00',
@@ -251,9 +254,12 @@ describe('step2Schema — aceita quadra e lote', () => {
     destinatario: 'João',
     dia_entrega: dayjs().format('YYYY-MM-DD'),
     horario: '14:00',
+    cep: '74810-170',
     rua: 'Rua das Flores',
     numero: '10',
+    bairro: 'Jardim Goiás',
     cidade: 'Goiânia',
+    uf: 'GO',
   };
 
   it('valida step 2 com quadra e lote preenchidos', () => {
@@ -285,6 +291,47 @@ describe('step2Schema — aceita quadra e lote', () => {
       quadra: '99',
       lote: '88',
     });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('dados fiscais e UF', () => {
+  it('aceita CPF, CNPJ e documento vazio', () => {
+    expect(pedidoFormSchema.safeParse(makeFormData({ cpf_cnpj: '529.982.247-25' })).success).toBe(true);
+    expect(pedidoFormSchema.safeParse(makeFormData({ cpf_cnpj: '04.252.011/0001-10' })).success).toBe(true);
+    expect(pedidoFormSchema.safeParse(makeFormData({ cpf_cnpj: '' })).success).toBe(true);
+    expect(isValidCpfCnpj('52998224725')).toBe(true);
+  });
+
+  it('rejeita CPF/CNPJ inválido quando preenchido', () => {
+    const result = pedidoFormSchema.safeParse(makeFormData({ cpf_cnpj: '111.111.111-11' }));
+    expect(result.success).toBe(false);
+  });
+
+  it('normaliza documento e UF no payload', () => {
+    const payload = transformFormToApiPayload(
+      makeFormData({ cpf_cnpj: '04.252.011/0001-10', uf: 'go' }),
+    );
+    expect(payload.cpf_cnpj).toBe('04252011000110');
+    expect(payload.uf).toBe('GO');
+  });
+
+  it.each(['cep', 'rua', 'numero', 'bairro', 'cidade', 'uf'] as const)(
+    'rejeita entrega sem %s',
+    (field) => {
+      const result = pedidoFormSchema.safeParse(makeFormData({ [field]: '' }));
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map((issue) => issue.path[0])).toContain(field);
+      }
+    },
+  );
+
+  it('aceita retirada sem endereço estruturado', () => {
+    const result = pedidoFormSchema.safeParse(makeFormData({
+      tipo_pedido: 'Retirada',
+      cep: '', rua: '', numero: '', bairro: '', cidade: '', uf: '',
+    }));
     expect(result.success).toBe(true);
   });
 });

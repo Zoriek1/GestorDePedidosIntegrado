@@ -412,6 +412,108 @@ def test_ensure_contact_creates_with_customer_name(bling_app):
     assert client.created[0]["telefone"] == "62988887777"
 
 
+def test_ensure_contact_creates_with_document_and_delivery_address(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = ""
+
+    class _Client:
+        def __init__(self):
+            self.searches = []
+            self.created = []
+
+        def search_contacts(self, params):
+            self.searches.append(params)
+            return {"data": []}
+
+        def create_contact(self, payload):
+            self.created.append(payload)
+            return {"data": {"id": 778}}
+
+    pedido = SimpleNamespace(
+        cliente="Maria Souza",
+        telefone_cliente="62988887777",
+        cpf_cnpj="529.982.247-25",
+        cliente_rel=None,
+        tipo_pedido="Entrega",
+        rua="Rua 13",
+        numero="145",
+        complemento="2701",
+        bairro="Jardim Goiás",
+        cidade="Goiânia",
+        uf="go",
+        cep="74810-170",
+    )
+    client = _Client()
+
+    assert BlingIntegrationService().ensure_contact_for_pedido(pedido, client) == "778"
+    assert client.searches[0]["numeroDocumento"] == "52998224725"
+    assert client.created[0]["numeroDocumento"] == "52998224725"
+    assert client.created[0]["tipo"] == "F"
+    assert client.created[0]["pais"] == {"nome": "BRASIL"}
+    assert client.created[0]["endereco"]["geral"] == {
+        "endereco": "Rua 13",
+        "cep": "74810-170",
+        "bairro": "Jardim Goiás",
+        "municipio": "Goiânia",
+        "uf": "GO",
+        "numero": "145",
+        "complemento": "2701",
+    }
+
+
+def test_ensure_contact_reuses_existing_by_document_without_update(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = ""
+
+    class _Client:
+        def search_contacts(self, params):
+            assert params["numeroDocumento"] == "04252011000110"
+            return {"data": [{"id": 99, "numeroDocumento": "04.252.011/0001-10"}]}
+
+        def create_contact(self, _payload):
+            raise AssertionError("contato existente nao deve ser alterado nem recriado")
+
+    pedido = SimpleNamespace(
+        cliente="Empresa",
+        telefone_cliente="",
+        cpf_cnpj="04.252.011/0001-10",
+        cliente_rel=None,
+    )
+    assert BlingIntegrationService().ensure_contact_for_pedido(pedido, _Client()) == "99"
+
+
+def test_ensure_contact_creates_company_for_cnpj(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = ""
+
+    class _Client:
+        def __init__(self):
+            self.created = []
+
+        def search_contacts(self, _params):
+            return {"data": []}
+
+        def create_contact(self, payload):
+            self.created.append(payload)
+            return {"data": {"id": 100}}
+
+    client = _Client()
+    pedido = SimpleNamespace(
+        cliente="Empresa Floral",
+        telefone_cliente="",
+        cpf_cnpj="04.252.011/0001-10",
+        cliente_rel=None,
+        tipo_pedido="Retirada",
+    )
+    assert BlingIntegrationService().ensure_contact_for_pedido(pedido, client) == "100"
+    assert client.created[0]["tipo"] == "J"
+    assert client.created[0]["numeroDocumento"] == "04252011000110"
+    assert "endereco" not in client.created[0]
+
+
 def test_ensure_contact_omits_invalid_phone(bling_app):
     from app.integrations.bling.service import BlingIntegrationService
 

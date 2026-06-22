@@ -28,6 +28,7 @@ from app.models.bling_payment_mapping import BlingPaymentMapping
 from app.models.bling_payment_method import BlingPaymentMethod
 from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
+from app.utils.fiscal import is_valid_cpf_cnpj, normalize_cpf_cnpj, normalize_uf
 
 GESTOR_PAYMENT_LABELS = [
     "Pix",
@@ -176,19 +177,59 @@ class BlingIntegrationService:
         client = client or self.client()
         nome = (getattr(pedido, "cliente", None) or "").strip() or "Cliente Gestor"
         telefone = (getattr(pedido, "telefone_cliente", None) or "").strip()
+        cliente_rel = getattr(pedido, "cliente_rel", None)
+        documento = normalize_cpf_cnpj(
+            getattr(pedido, "cpf_cnpj", None) or getattr(cliente_rel, "cpf_cnpj", None)
+        )
+        if documento and not is_valid_cpf_cnpj(documento):
+            documento = None
+        phone = self._contact_phone(telefone)
+
+        if documento:
+            items = self._extract_list(
+                client.search_contacts({"numeroDocumento": documento, "limite": 100})
+            )
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                item_document = normalize_cpf_cnpj(item.get("numeroDocumento"))
+                if item_document == documento and item.get("id"):
+                    return str(item["id"])
+
+        if phone:
+            items = self._extract_list(client.search_contacts({"telefone": phone, "limite": 100}))
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                item_phone = self._contact_phone(item.get("telefone") or item.get("celular"))
+                if item_phone == phone and item.get("id"):
+                    return str(item["id"])
 
         items = self._extract_list(client.search_contacts({"pesquisa": nome, "limite": 100}))
         for item in items:
-            if isinstance(item, dict) and str(item.get("nome") or "").strip().lower() == nome.lower():
-                return str(item.get("id"))
+            if (
+                isinstance(item, dict)
+                and str(item.get("nome") or "").strip().lower() == nome.lower()
+                and item.get("id")
+            ):
+                return str(item["id"])
 
         # situacao "A" (ativo) e obrigatorio no Bling. Telefone so vai se for um
         # numero BR plausivel -- um telefone invalido faz o Bling recusar o
         # contato inteiro (o telefone real tambem fica nas observacoes da venda).
-        payload: Dict[str, Any] = {"nome": nome, "tipo": "F", "situacao": "A"}
-        phone = self._contact_phone(telefone)
+        payload: Dict[str, Any] = {
+            "nome": nome,
+            "tipo": "J" if documento and len(documento) == 14 else "F",
+            "situacao": "A",
+        }
+        if documento:
+            payload["numeroDocumento"] = documento
         if phone:
             payload["telefone"] = phone
+        address = self._contact_address_from_pedido(pedido)
+        if address:
+            payload["endereco"] = {"geral": address}
+            payload["pais"] = {"nome": "BRASIL"}
         # Marca o contato como "Cliente" (papel) para nao dar BO em NF/relatorios.
         type_id = self._cliente_contact_type_id(client)
         if type_id:
@@ -202,6 +243,28 @@ class BlingIntegrationService:
                 details={"response": response, "cliente": nome},
             )
         return new_id
+
+    @staticmethod
+    def _contact_address_from_pedido(pedido: Pedido) -> Optional[Dict[str, str]]:
+        """Monta o endereco geral do contato usando o endereco de entrega."""
+        if str(getattr(pedido, "tipo_pedido", "Entrega") or "").strip().lower() != "entrega":
+            return None
+
+        values = {
+            "endereco": str(getattr(pedido, "rua", None) or "").strip(),
+            "cep": str(getattr(pedido, "cep", None) or "").strip(),
+            "bairro": str(getattr(pedido, "bairro", None) or "").strip(),
+            "municipio": str(getattr(pedido, "cidade", None) or "").strip(),
+            "uf": normalize_uf(getattr(pedido, "uf", None)) or "",
+            "numero": str(getattr(pedido, "numero", None) or "").strip(),
+            "complemento": str(
+                getattr(pedido, "complemento", None) or getattr(pedido, "apto", None) or ""
+            ).strip(),
+        }
+        required = ("endereco", "cep", "bairro", "municipio", "uf", "numero")
+        if any(not values[field] for field in required):
+            return None
+        return values
 
     def _cliente_contact_type_id(self, client: BlingClient) -> Optional[str]:
         """Resolve o id do tipo de contato "Cliente". Usa BLING_CONTACT_TYPE_ID

@@ -25,7 +25,7 @@ import { useCustomerSearch } from '../../../../api/endpoints/customers';
 import { useFontesPedido } from '../../../../api/endpoints/fontes';
 import { useLeads } from '../../../../api/endpoints/leads';
 import type { Customer } from '../../../../api/endpoints/customers';
-import type { PedidoFormData } from '../../schemas';
+import { formatCpfCnpj, type PedidoFormData } from '../../schemas';
 import { useAuth } from '../../../auth/authStore';
 import { useUsers } from '../../../users/services/userApi';
 import {
@@ -129,6 +129,7 @@ export function StepCliente() {
       if (customer) {
         setValue('cliente', customer.nome, { shouldValidate: true });
         setValue('telefone_cliente', customer.telefone || '', { shouldValidate: true });
+        setValue('cpf_cnpj', formatCpfCnpj(customer.cpf_cnpj || ''), { shouldValidate: true });
         setValue('cliente_id', customer.id);
         setValue('cliente_modo', 'busca', { shouldValidate: true });
       } else {
@@ -157,6 +158,7 @@ export function StepCliente() {
   const handleNovoClienteManual = useCallback(() => {
     setValue('cliente', '', { shouldValidate: true });
     setValue('telefone_cliente', '', { shouldValidate: true });
+    setValue('cpf_cnpj', '', { shouldValidate: true });
     setValue('cliente_id', undefined);
     setValue('cliente_modo', 'novo', { shouldValidate: true });
     setInputValue('');
@@ -322,6 +324,26 @@ export function StepCliente() {
                       ? 'Telefone do cliente selecionado'
                       : errors.telefone_cliente?.message || 'Formato: (00) 00000-0000'
                   }
+                />
+              )}
+            />
+          </Grid>
+
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Controller
+              name="cpf_cnpj"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  value={field.value ?? ''}
+                  onChange={(event) => field.onChange(formatCpfCnpj(event.target.value))}
+                  label="CPF/CNPJ (Opcional)"
+                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                  fullWidth
+                  error={!!errors.cpf_cnpj}
+                  helperText={errors.cpf_cnpj?.message || 'Necessário para emissão fiscal sem pendência no Bling'}
+                  slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 18 } }}
                 />
               )}
             />

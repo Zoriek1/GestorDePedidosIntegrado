@@ -9,6 +9,14 @@ from app.models.pedido import Pedido
 _ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').decode()}"}
 _VALID_TOKEN = "A3F9B7K20K"
 _SECOND_VALID_TOKEN = "B7K2L9M1S0"
+_DELIVERY_ADDRESS = {
+    "cep": "74810-170",
+    "rua": "Rua 13",
+    "numero": "145",
+    "bairro": "Jardim Goiás",
+    "cidade": "Goiânia",
+    "uf": "GO",
+}
 
 
 def test_criar_pedido_vincula_lead_por_codigo_whatsapp(client, session):
@@ -32,6 +40,7 @@ def test_criar_pedido_vincula_lead_por_codigo_whatsapp(client, session):
         "dia_entrega": date.today().isoformat(),
         "horario": "10:00",
         "codigo_whatsapp": _VALID_TOKEN.lower(),
+        **_DELIVERY_ADDRESS,
     }
 
     r = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
@@ -97,6 +106,7 @@ def test_pedido_fecha_lead_confirmado_independente_da_situacao(client, session):
         "dia_entrega": date.today().isoformat(),
         "horario": "10:00",
         "codigo_whatsapp": _VALID_TOKEN.lower(),
+        **_DELIVERY_ADDRESS,
     }
 
     r = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
@@ -118,6 +128,7 @@ def test_codigo_whatsapp_inexistente_nao_bloqueia_criacao_pedido(client, session
         "dia_entrega": date.today().isoformat(),
         "horario": "14:00",
         "codigo_whatsapp": "INEXISTENTE",
+        **_DELIVERY_ADDRESS,
     }
 
     r = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
@@ -139,6 +150,7 @@ def test_criar_pedido_aceita_cliente_id_numerico(client, session):
         "produto": "Buquê",
         "dia_entrega": date.today().isoformat(),
         "horario": "15:00",
+        **_DELIVERY_ADDRESS,
     }
 
     r = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)

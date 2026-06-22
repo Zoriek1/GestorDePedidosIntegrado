@@ -16,6 +16,7 @@ export interface Pedido {
   id: number;
   cliente: string;
   telefone_cliente: string;
+  cpf_cnpj?: string;
   destinatario: string;
   tipo_pedido: 'Entrega' | 'Retirada';
   produto: string;
@@ -40,6 +41,7 @@ export interface Pedido {
   complemento?: string;
   bairro?: string;
   cidade?: string;
+  uf?: string;
   endereco?: string;
   obs_entrega?: string;
   mensagem?: string;
@@ -187,6 +189,7 @@ export function usePedido(id: number) {
 export interface CreatePedidoPayload {
   cliente: string;
   telefone_cliente: string;
+  cpf_cnpj?: string;
   destinatario: string;
   tipo_pedido: 'Entrega' | 'Retirada';
   produto: string;
@@ -208,6 +211,7 @@ export interface CreatePedidoPayload {
   complemento?: string;
   bairro?: string;
   cidade?: string;
+  uf?: string;
   endereco?: string;
   obs_entrega?: string;
   mensagem?: string;

@@ -260,9 +260,10 @@ class BlingOrderMapper:
             "numero": _clean(getattr(pedido, "numero", None)),
             "complemento": _clean(getattr(pedido, "complemento", None)) or _clean(getattr(pedido, "apto", None)),
             "municipio": _clean(getattr(pedido, "cidade", None)),
-            # Pedido nao guarda estado/UF; enviamos vazio em vez de adivinhar pela
-            # cidade. Se o Bling exigir UF no transporte, adicionar o campo no Pedido.
-            "uf": _clean(getattr(pedido, "estado", None)) or _clean(getattr(pedido, "uf", None)),
+            "uf": (
+                _clean(getattr(pedido, "uf", None))
+                or _clean(getattr(pedido, "estado", None))
+            ).upper(),
             "cep": _clean(getattr(pedido, "cep", None)),
             "bairro": _clean(getattr(pedido, "bairro", None)),
             "nomePais": "Brasil",

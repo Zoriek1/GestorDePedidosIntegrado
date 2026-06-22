@@ -12,6 +12,7 @@ export interface Customer {
   id: number;
   nome: string;
   telefone: string;
+  cpf_cnpj?: string;
   email?: string;
   observacoes?: string;
   created_at?: string;
@@ -215,4 +216,3 @@ export function useCustomerOrders(id?: number, limit = 50) {
     staleTime: 10000,
   });
 }
-

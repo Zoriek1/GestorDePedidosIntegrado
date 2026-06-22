@@ -35,6 +35,7 @@ from app.services.track_token import build_track_url, parse_track_token
 from app.utils.destructive_action_guard import (
     ensure_backup_before_destructive_action,
 )
+from app.utils.fiscal import is_valid_cpf_cnpj, normalize_cpf_cnpj, normalize_uf
 from app.utils.tracking_token import (
     extract_tracking_token_from_text,
     is_tracking_token_valid,
@@ -61,6 +62,7 @@ DELIVERY_DETAIL_FIELDS = (
 )
 BUILDING_DETAIL_FIELDS = ("nome_local", "apto", "bloco", "torre", "andar")
 VALID_TIPOS_LOCAL = {"casa", "predio", "comercial"}
+REQUIRED_DELIVERY_ADDRESS_FIELDS = ("cep", "rua", "numero", "bairro", "cidade", "uf")
 
 
 def _clean_str(value: object) -> str:
@@ -78,6 +80,20 @@ def _normalize_optional_id(value: object) -> object | None:
         cleaned = value.strip()
         return cleaned or None
     return value
+
+
+def _missing_delivery_address_fields(data: dict, pedido=None) -> list[str]:
+    """Valida os campos estruturados necessarios para entrega e integracao fiscal."""
+    tipo_pedido = _clean_str(data.get("tipo_pedido", getattr(pedido, "tipo_pedido", "Entrega")))
+    if tipo_pedido.lower() != "entrega":
+        return []
+
+    missing = []
+    for field in REQUIRED_DELIVERY_ADDRESS_FIELDS:
+        value = data[field] if field in data else getattr(pedido, field, None)
+        if not _clean_str(value):
+            missing.append(field)
+    return missing
 
 
 def _normalize_whatsapp_code(value: object) -> str | None:
@@ -285,8 +301,10 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
             cep=pedido.cep,
             rua=pedido.rua,
             numero=pedido.numero,
+            complemento=pedido.complemento or pedido.apto,
             bairro=pedido.bairro,
             cidade=pedido.cidade,
+            estado=pedido.uf,
         )
         address_hash = candidate.compute_address_hash()
 
@@ -1184,6 +1202,7 @@ def criar_pedido():
         telefone_cliente_raw = _clean_str(data.get("telefone_cliente", data.get("telefone", "")))
         # Remover formatação do telefone (máscara deve existir apenas no frontend)
         telefone_cliente = re.sub(r"[^\d]", "", telefone_cliente_raw)
+        cpf_cnpj = normalize_cpf_cnpj(data.get("cpf_cnpj"))
         destinatario = _clean_str(data.get("destinatario"))
         tipo_pedido = data.get("tipo_pedido", "Entrega")
         fonte_pedido_id = data.get("fonte_pedido_id")
@@ -1200,6 +1219,8 @@ def criar_pedido():
         numero = _clean_str(data.get("numero"))
         bairro = _clean_str(data.get("bairro"))
         cidade = _clean_str(data.get("cidade"))
+        uf_raw = _clean_str(data.get("uf"))
+        uf = normalize_uf(uf_raw)
         endereco = _clean_str(data.get("endereco"))
         obs_entrega = _clean_str(data.get("obs_entrega"))
         delivery_details = _collect_delivery_details(data)
@@ -1218,6 +1239,21 @@ def criar_pedido():
         codigo_whatsapp = _extract_whatsapp_token_from_payload(data)
 
         quantidade_raw = data.get("quantidade", 1)
+
+        if cpf_cnpj and not is_valid_cpf_cnpj(cpf_cnpj):
+            return error_response("CPF/CNPJ inválido", 400)
+        if uf_raw and not uf:
+            return error_response("UF inválida", 400, details={"uf": uf_raw})
+
+        normalized_address_data = dict(data)
+        normalized_address_data["uf"] = uf or ""
+        missing_address = _missing_delivery_address_fields(normalized_address_data)
+        if missing_address:
+            return error_response(
+                f'Campos de endereço obrigatórios ausentes: {", ".join(missing_address)}',
+                400,
+                details={"campos_faltantes": missing_address},
+            )
 
         # Meta Pixel parameters (fbc vem já no formato fb.1.{ts}.{fbclid})
         fbc_raw = _clean_str(data.get("fbc"))
@@ -1313,11 +1349,14 @@ def criar_pedido():
             cliente_existente = Cliente.buscar_por_telefone(telefone_cliente)
             if cliente_existente:
                 cliente_id = cliente_existente.id
+                if cpf_cnpj and not cliente_existente.cpf_cnpj:
+                    cliente_existente.cpf_cnpj = cpf_cnpj
             else:
                 try:
                     novo_cliente = Cliente(
                         nome=cliente,
                         telefone=telefone_cliente,
+                        cpf_cnpj=cpf_cnpj,
                         email=None,
                         observacoes=None,
                     )
@@ -1331,6 +1370,11 @@ def criar_pedido():
             cliente_id_int = int(cliente_id) if cliente_id is not None else None
         except (ValueError, TypeError):
             cliente_id_int = None
+
+        if cliente_id_int and cpf_cnpj:
+            cliente_selecionado = Cliente.query.get(cliente_id_int)
+            if cliente_selecionado and not cliente_selecionado.cpf_cnpj:
+                cliente_selecionado.cpf_cnpj = cpf_cnpj
 
         # Processar fonte_pedido_id
         fonte_pedido_id_int = None
@@ -1381,6 +1425,7 @@ def criar_pedido():
         pedido = Pedido(
             cliente=cliente if cliente else None,
             telefone_cliente=telefone_cliente,
+            cpf_cnpj=cpf_cnpj,
             destinatario=destinatario,
             tipo_pedido=tipo_pedido,
             fonte_pedido=fonte_pedido if fonte_pedido else None,
@@ -1405,6 +1450,7 @@ def criar_pedido():
             complemento=delivery_details["complemento"],
             bairro=bairro if bairro else None,
             cidade=cidade if cidade else None,
+            uf=uf,
             endereco=endereco if endereco else None,
             obs_entrega=obs_entrega if obs_entrega else None,
             mensagem=mensagem if mensagem else None,
@@ -1525,7 +1571,7 @@ def atualizar_pedido(pedido_id):
         from datetime import datetime
 
         from app import db
-        from app.models import FontePedido
+        from app.models import Cliente, FontePedido
 
         pedido = pedido_repo.get_by_id(pedido_id)
         if not pedido:
@@ -1534,6 +1580,30 @@ def atualizar_pedido(pedido_id):
         previous_commission_snapshot = snapshot_commission_fields(pedido)
         data = request.get_json() or {}
         codigo_whatsapp = _extract_whatsapp_token_from_payload(data)
+
+        if "cpf_cnpj" in data:
+            normalized_document = normalize_cpf_cnpj(data.get("cpf_cnpj"))
+            if normalized_document and not is_valid_cpf_cnpj(normalized_document):
+                return error_response("CPF/CNPJ inválido", 400)
+            data["cpf_cnpj"] = normalized_document
+
+        if "uf" in data:
+            uf_raw = _clean_str(data.get("uf"))
+            normalized_uf = normalize_uf(uf_raw)
+            if uf_raw and not normalized_uf:
+                return error_response("UF inválida", 400, details={"uf": uf_raw})
+            data["uf"] = normalized_uf
+
+        validates_address = "tipo_pedido" in data or any(
+            field in data for field in REQUIRED_DELIVERY_ADDRESS_FIELDS
+        )
+        missing_address = _missing_delivery_address_fields(data, pedido) if validates_address else []
+        if missing_address:
+            return error_response(
+                f'Campos de endereço obrigatórios ausentes: {", ".join(missing_address)}',
+                400,
+                details={"campos_faltantes": missing_address},
+            )
 
         # Verificar se pedido tem external_ref (importado de plataforma externa)
         external_ref = PedidoExternalRef.query.filter_by(pedido_id=pedido_id).first()
@@ -1556,6 +1626,13 @@ def atualizar_pedido(pedido_id):
             new_telefone = re.sub(r"[^\d]", "", telefone_raw)
             track_change("telefone_cliente", pedido.telefone_cliente, new_telefone)
             pedido.telefone_cliente = new_telefone
+        if "cpf_cnpj" in data:
+            track_change("cpf_cnpj", pedido.cpf_cnpj, data["cpf_cnpj"])
+            pedido.cpf_cnpj = data["cpf_cnpj"]
+            if pedido.cliente_id and data["cpf_cnpj"]:
+                cliente_selecionado = Cliente.query.get(pedido.cliente_id)
+                if cliente_selecionado and not cliente_selecionado.cpf_cnpj:
+                    cliente_selecionado.cpf_cnpj = data["cpf_cnpj"]
         if "destinatario" in data:
             track_change("destinatario", pedido.destinatario, data["destinatario"])
             pedido.destinatario = data["destinatario"]
@@ -1603,7 +1680,7 @@ def atualizar_pedido(pedido_id):
 
         # Verificar se endereço mudou (resetar distância)
         endereco_mudou = False
-        campos_endereco = ["cep", "rua", "numero", "bairro", "cidade", "endereco"]
+        campos_endereco = ["cep", "rua", "numero", "bairro", "cidade", "uf", "endereco"]
         for campo in campos_endereco:
             if campo in data and data[campo] != getattr(pedido, campo):
                 track_change(campo, getattr(pedido, campo), data[campo])

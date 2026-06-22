@@ -5,7 +5,7 @@ Testes de API - Endpoints HTTP
 import base64
 from datetime import date
 
-from app.models import Pedido
+from app.models import Cliente, Pedido
 
 # GETs de pedidos passaram a exigir auth (não vazam PII publicamente).
 _ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').decode()}"}
@@ -106,21 +106,24 @@ class TestPedidosAPI:
         if horarios:
             assert "10:00" in horarios
 
-    def test_criar_e_editar_detalhes_entrega(self, client):
+    def test_criar_e_editar_detalhes_entrega(self, client, session):
         """Detalhes novos de entrega devem persistir e respeitar tipo_local."""
         payload = {
             "cliente": "Maria Silva",
             "telefone_cliente": "62999999999",
+            "cpf_cnpj": "529.982.247-25",
             "destinatario": "Joao",
             "tipo_pedido": "Entrega",
             "produto": "Buque",
             "valor": "150.00",
             "dia_entrega": "2026-12-31",
             "horario": "14:00",
+            "cep": "74810-170",
             "rua": "Rua das Flores",
             "numero": "10",
             "bairro": "Jardim",
             "cidade": "Goiania",
+            "uf": "GO",
             "endereco": "Rua das Flores, 10, Jardim, Goiania",
             "tipo_local": "predio",
             "nome_local": "Edificio Jardim",
@@ -139,6 +142,13 @@ class TestPedidosAPI:
         assert pedido_data["nome_local"] == "Edificio Jardim"
         assert pedido_data["apto"] == "302"
         assert pedido_data["complemento"] == "Portaria lateral"
+        assert pedido_data["cpf_cnpj"] == "52998224725"
+        assert pedido_data["uf"] == "GO"
+        cliente = Cliente.query.get(pedido_data["cliente_id"])
+        assert cliente.cpf_cnpj == "52998224725"
+        endereco_salvo = cliente.get_endereco_principal()
+        assert endereco_salvo.estado == "GO"
+        assert endereco_salvo.complemento == "Portaria lateral"
 
         pedido_id = pedido_data["id"]
         response = client.put(
@@ -154,6 +164,41 @@ class TestPedidosAPI:
         assert pedido_data["lote"] == "12"
         assert pedido_data["nome_local"] == ""
         assert pedido_data["apto"] == ""
+
+    def test_entrega_exige_endereco_estruturado_e_uf(self, client):
+        response = client.post(
+            "/api/pedidos",
+            json={
+                "cliente": "Maria Silva",
+                "telefone_cliente": "62999999999",
+                "destinatario": "Joao",
+                "tipo_pedido": "Entrega",
+                "produto": "Buque",
+                "dia_entrega": "2026-12-31",
+                "horario": "14:00",
+            },
+            headers=_ADMIN_AUTH,
+        )
+        assert response.status_code == 400
+        assert "campos_faltantes" in response.get_json().get("details", {})
+
+    def test_rejeita_documento_invalido(self, client):
+        response = client.post(
+            "/api/pedidos",
+            json={
+                "cliente": "Maria Silva",
+                "telefone_cliente": "62999999999",
+                "cpf_cnpj": "111.111.111-11",
+                "destinatario": "Maria Silva",
+                "tipo_pedido": "Retirada",
+                "produto": "Buque",
+                "dia_entrega": "2026-12-31",
+                "horario": "14:00",
+            },
+            headers=_ADMIN_AUTH,
+        )
+        assert response.status_code == 400
+        assert "CPF/CNPJ" in response.get_json().get("error", "")
 
 
 class TestAuthAPI:
@@ -192,6 +237,33 @@ class TestAuthAPI:
         data = response.get_json()
         # Verificar authenticated (pode estar diretamente ou em 'data')
         assert "authenticated" in data or "authenticated" in data.get("data", {})
+
+
+class TestClientesAPI:
+    def test_cliente_persiste_documento_normalizado(self, client):
+        response = client.post(
+            "/api/clientes",
+            json={
+                "nome": "Cliente Fiscal",
+                "telefone": "62988887777",
+                "cpf_cnpj": "04.252.011/0001-10",
+            },
+            headers=_ADMIN_AUTH,
+        )
+        assert response.status_code == 201
+        assert response.get_json()["cliente"]["cpf_cnpj"] == "04252011000110"
+
+    def test_cliente_rejeita_documento_invalido(self, client):
+        response = client.post(
+            "/api/clientes",
+            json={
+                "nome": "Cliente Fiscal",
+                "telefone": "62988887778",
+                "cpf_cnpj": "111.111.111-11",
+            },
+            headers=_ADMIN_AUTH,
+        )
+        assert response.status_code == 400
 
 
 class TestHealthAPI:

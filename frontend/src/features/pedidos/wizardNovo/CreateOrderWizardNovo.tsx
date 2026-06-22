@@ -34,9 +34,9 @@ type StepKey = 'cliente' | 'produto' | 'entrega' | 'pagamento';
 interface StepDef { key: StepKey; label: string; icon: LucideIcon; fields: FieldPath<PedidoFormData>[]; }
 
 const STEPS: StepDef[] = [
-  { key: 'cliente', label: 'Cliente', icon: User, fields: ['cliente', 'telefone_cliente', 'destinatario', 'tipo_pedido'] },
+  { key: 'cliente', label: 'Cliente', icon: User, fields: ['cliente', 'telefone_cliente', 'cpf_cnpj', 'destinatario', 'tipo_pedido'] },
   { key: 'produto', label: 'Produto', icon: Flower2, fields: ['produto', 'valor', 'dia_entrega', 'horario'] },
-  { key: 'entrega', label: 'Entrega', icon: MapPin, fields: ['rua', 'numero', 'cidade', 'endereco'] },
+  { key: 'entrega', label: 'Entrega', icon: MapPin, fields: ['cep', 'rua', 'numero', 'bairro', 'cidade', 'uf'] },
   {
     key: 'pagamento',
     label: 'Pagamento',
@@ -64,8 +64,8 @@ function useIsMobile(bp = 860) {
 function isDraftMeaningful(draft: Partial<PedidoFormDataExt> | null, initialData?: Partial<PedidoFormData>): boolean {
   if (!draft) return false;
   const fields: (keyof PedidoFormData)[] = [
-    'cliente', 'telefone_cliente', 'destinatario', 'produto', 'valor', 'mensagem',
-    'rua', 'numero', 'endereco', 'flores_cor', 'obs_entrega', 'observacoes', 'cep', 'bairro', 'cidade',
+    'cliente', 'telefone_cliente', 'cpf_cnpj', 'destinatario', 'produto', 'valor', 'mensagem',
+    'rua', 'numero', 'endereco', 'flores_cor', 'obs_entrega', 'observacoes', 'cep', 'bairro', 'cidade', 'uf',
   ];
   return fields.some((k) => {
     const v = draft[k];

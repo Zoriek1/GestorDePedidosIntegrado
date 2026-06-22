@@ -22,6 +22,24 @@ def test_parse_decimal_money(raw, expected):
     assert parse_decimal_money(raw) == expected
 
 
+def test_delivery_label_includes_normalized_uf():
+    pedido = SimpleNamespace(
+        tipo_pedido="Entrega",
+        destinatario="Gabriela",
+        cliente="Maria",
+        rua="Rua 13",
+        numero="145",
+        complemento="2701",
+        apto=None,
+        cidade="Goiânia",
+        uf="GO",
+        cep="74810-170",
+        bairro="Jardim Goiás",
+    )
+    etiqueta = BlingOrderMapper()._etiqueta_entrega(pedido)
+    assert etiqueta["uf"] == "GO"
+
+
 def make_pedido(**overrides):
     data = {
         "id": 42,

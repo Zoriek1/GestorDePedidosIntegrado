@@ -14,6 +14,7 @@ import { useFontesPedido } from '../../../../api/endpoints/fontes';
 import { useLeads } from '../../../../api/endpoints/leads';
 import { useUsers } from '../../../users/services/userApi';
 import { useAuth } from '../../../auth/authStore';
+import { formatCpfCnpj } from '../../schemas';
 import type { PedidoFormDataExt } from '../types';
 
 export function StepClienteNovo() {
@@ -26,6 +27,7 @@ export function StepClienteNovo() {
 
   const cliente = useWatch({ control, name: 'cliente' }) ?? '';
   const clienteId = useWatch({ control, name: 'cliente_id' });
+  const cpfCnpj = useWatch({ control, name: 'cpf_cnpj' }) ?? '';
   const tipoPedido = useWatch({ control, name: 'tipo_pedido' });
   const fonteId = useWatch({ control, name: 'fonte_pedido_id' });
   const codigoWhatsapp = useWatch({ control, name: 'codigo_whatsapp' }) ?? '';
@@ -53,6 +55,7 @@ export function StepClienteNovo() {
   const handleSelectCustomer = (c: Customer) => {
     setValue('cliente', c.nome, { shouldValidate: true });
     setValue('telefone_cliente', c.telefone || '', { shouldValidate: true });
+    setValue('cpf_cnpj', formatCpfCnpj(c.cpf_cnpj || ''), { shouldValidate: true });
     setValue('cliente_id', c.id);
     setValue('cliente_modo', 'busca', { shouldValidate: true });
     setShowList(false);
@@ -61,6 +64,7 @@ export function StepClienteNovo() {
   const handleCadastrarNovo = () => {
     setValue('cliente', '', { shouldValidate: true });
     setValue('telefone_cliente', '', { shouldValidate: true });
+    setValue('cpf_cnpj', '', { shouldValidate: true });
     setValue('cliente_id', undefined);
     setValue('cliente_modo', 'novo', { shouldValidate: true });
     setMesmo(false);
@@ -137,6 +141,18 @@ export function StepClienteNovo() {
         hint={hasSelectedCustomer ? 'Telefone do cliente selecionado' : 'Formato: (00) 00000-0000'}
         error={errors.telefone_cliente?.message}>
         <PwPhoneInputController disabled={hasSelectedCustomer} />
+      </Field>
+
+      <Field label="CPF/CNPJ" hint="Opcional; necessário para remover a pendência fiscal no Bling"
+        error={errors.cpf_cnpj?.message}>
+        <input
+          className={`pw-in${errors.cpf_cnpj ? ' err' : ''}`}
+          value={cpfCnpj}
+          inputMode="numeric"
+          maxLength={18}
+          placeholder="000.000.000-00 ou 00.000.000/0000-00"
+          onChange={(e) => setValue('cpf_cnpj', formatCpfCnpj(e.target.value), { shouldValidate: true })}
+        />
       </Field>
 
       <label className="pw-check">

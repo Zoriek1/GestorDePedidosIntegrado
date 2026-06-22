@@ -27,7 +27,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import { CepInput } from '../../../../components/form';
 import { useCepLookup } from '../../useCases/cepLookup';
 import { useClienteEnderecos } from '../../../../api/endpoints/customers';
-import type { PedidoFormData } from '../../schemas';
+import { UFS_BRASIL, type PedidoFormData } from '../../schemas';
 
 // ============================================================================
 // Componente
@@ -66,6 +66,7 @@ export function StepEntrega() {
     setValue('complemento', e.complemento, { shouldValidate: true });
     setValue('bairro', e.bairro, { shouldValidate: true });
     setValue('cidade', e.cidade, { shouldValidate: true });
+    setValue('uf', e.estado, { shouldValidate: true });
   };
 
   // CEP Lookup
@@ -80,6 +81,7 @@ export function StepEntrega() {
       setValue('rua', result.rua, { shouldValidate: true });
       setValue('bairro', result.bairro, { shouldValidate: true });
       setValue('cidade', result.cidade, { shouldValidate: true });
+      setValue('uf', result.uf, { shouldValidate: true });
       // Bloquear edição após auto-preenchimento
       setIsAddressLocked(true);
     }
@@ -181,6 +183,7 @@ export function StepEntrega() {
                       {...field}
                       label="CEP"
                       fullWidth
+                      required={isEntrega}
                       isLoading={isCepLoading}
                       onComplete={handleCepComplete}
                       error={!!errors.cep || !!cepError}
@@ -260,6 +263,7 @@ export function StepEntrega() {
                       {...field}
                       label="Bairro"
                       fullWidth
+                      required={isEntrega}
                       disabled={isAddressLocked}
                       error={!!errors.bairro}
                       helperText={errors.bairro?.message}
@@ -278,7 +282,7 @@ export function StepEntrega() {
             </Grid>
 
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
+              <Grid size={{ xs: 12, sm: 5 }}>
                 <Controller
                   name="cidade"
                   control={control}
@@ -303,7 +307,27 @@ export function StepEntrega() {
                   )}
                 />
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
+              <Grid size={{ xs: 12, sm: 2 }}>
+                <Controller
+                  name="uf"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      select
+                      label="UF"
+                      fullWidth
+                      required={isEntrega}
+                      disabled={isAddressLocked}
+                      error={!!errors.uf}
+                      helperText={errors.uf?.message}
+                    >
+                      {UFS_BRASIL.map((uf) => <MenuItem key={uf} value={uf}>{uf}</MenuItem>)}
+                    </TextField>
+                  )}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 5 }}>
                 <Controller
                   name="obs_entrega"
                   control={control}

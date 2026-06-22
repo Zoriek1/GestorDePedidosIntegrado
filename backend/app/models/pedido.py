@@ -34,6 +34,9 @@ class Pedido(db.Model):
     # Step 1 - Dados do Cliente
     cliente = db.Column(db.String(100), nullable=False, comment="Quem enviou (remetente)")
     telefone_cliente = db.Column(db.String(20), nullable=False, comment="Telefone do cliente")
+    cpf_cnpj = db.Column(
+        db.String(14), nullable=True, comment="CPF/CNPJ do cliente, somente digitos"
+    )
     destinatario = db.Column(db.String(100), nullable=False, comment="Para quem (destinatário)")
     tipo_pedido = db.Column(db.String(20), default="Entrega", comment="Entrega ou Retirada")
 
@@ -80,6 +83,7 @@ class Pedido(db.Model):
     complemento = db.Column(db.String(100), nullable=True, comment="Complemento")
     bairro = db.Column(db.String(100), nullable=True, comment="Bairro")
     cidade = db.Column(db.String(100), nullable=True, comment="Cidade")
+    uf = db.Column(db.String(2), nullable=True, comment="UF do endereco de entrega")
     endereco = db.Column(db.Text, nullable=True, comment="Endereço completo (gerado ou manual)")
     obs_entrega = db.Column(db.Text, nullable=True, comment="Como entregar/Observações de entrega")
 
@@ -300,6 +304,7 @@ class Pedido(db.Model):
             # Step 1
             "cliente": self.cliente or "",
             "telefone_cliente": self.telefone_cliente or "",
+            "cpf_cnpj": self.cpf_cnpj or "",
             "destinatario": self.destinatario or "",
             "tipo_pedido": self.tipo_pedido or "Entrega",
             # Step 2
@@ -326,6 +331,7 @@ class Pedido(db.Model):
             "complemento": self.complemento or "",
             "bairro": self.bairro or "",
             "cidade": self.cidade or "",
+            "uf": self.uf or "",
             "endereco": self.endereco or "",
             "obs_entrega": self.obs_entrega or "",
             # Step 4

@@ -12,6 +12,7 @@ import { BuscaCepPorEndereco } from '../components/BuscaCepPorEndereco';
 import { applyCepMask } from '../../schemas';
 import { useCepLookup } from '../../useCases/cepLookup';
 import { useClienteEnderecos } from '../../../../api/endpoints/customers';
+import { UFS_BRASIL } from '../../schemas';
 import type { PedidoFormDataExt, TipoLocal } from '../types';
 
 const TIPOS: { k: TipoLocal; label: string; icon: typeof Home }[] = [
@@ -44,6 +45,7 @@ export function StepEntregaNovo() {
         if (r.rua) setValue('rua', r.rua, { shouldValidate: true });
         if (r.bairro) setValue('bairro', r.bairro, { shouldValidate: true });
         if (r.cidade) setValue('cidade', r.cidade, { shouldValidate: true });
+        if (r.uf) setValue('uf', r.uf, { shouldValidate: true });
       }
     }
   };
@@ -60,6 +62,7 @@ export function StepEntregaNovo() {
     setValue('complemento', e.complemento, { shouldValidate: true });
     setValue('bairro', e.bairro, { shouldValidate: true });
     setValue('cidade', e.cidade, { shouldValidate: true });
+    setValue('uf', e.estado, { shouldValidate: true });
     setValue('endereco', enderecoCompleto, { shouldValidate: true });
   };
 
@@ -88,7 +91,7 @@ export function StepEntregaNovo() {
     if (v.tipo_local === 'casa' && v.quadra) partes.push(`Qd ${v.quadra}`);
     if (v.tipo_local === 'casa' && v.lote) partes.push(`Lt ${v.lote}`);
     if (v.bairro) partes.push(v.bairro);
-    if (v.cidade) partes.push(v.cidade);
+    if (v.cidade) partes.push(v.uf ? `${v.cidade}/${v.uf}` : v.cidade);
     if (v.cep) partes.push(`CEP: ${v.cep}`);
 
     const enderecoBase = partes.join(', ');
@@ -111,7 +114,7 @@ export function StepEntregaNovo() {
       <SectionHead icon={MapPin} title="Logística de entrega" sub="Onde entregar e como encontrar o local." />
 
       <div className="pw-row2">
-        <Field label="CEP" error={errors.cep?.message}>
+        <Field label="CEP" req error={errors.cep?.message}>
           <input className={`pw-in${errors.cep ? ' err' : ''}`} value={cep} inputMode="numeric" maxLength={9}
             placeholder="00000-000" onChange={(e) => handleCepChange(e.target.value)} />
         </Field>
@@ -127,6 +130,7 @@ export function StepEntregaNovo() {
           if (item.logradouro) setValue('rua', item.logradouro, { shouldValidate: true });
           if (item.bairro) setValue('bairro', item.bairro, { shouldValidate: true });
           if (item.localidade) setValue('cidade', item.localidade, { shouldValidate: true });
+          if (item.uf) setValue('uf', item.uf, { shouldValidate: true });
         }}
       />
 
@@ -137,14 +141,22 @@ export function StepEntregaNovo() {
         <Field label="Complemento" error={errors.complemento?.message}>
           <input className="pw-in" {...register('complemento')} placeholder="Apto, bloco…" />
         </Field>
-        <Field label="Bairro" error={errors.bairro?.message}>
+        <Field label="Bairro" req error={errors.bairro?.message}>
           <input className="pw-in" {...register('bairro')} />
         </Field>
       </div>
 
-      <Field label="Cidade" req error={errors.cidade?.message}>
-        <input className="pw-in" {...register('cidade')} />
-      </Field>
+      <div className="pw-row2">
+        <Field label="Cidade" req error={errors.cidade?.message}>
+          <input className="pw-in" {...register('cidade')} />
+        </Field>
+        <Field label="UF" req error={errors.uf?.message}>
+          <select className={`pw-in${errors.uf ? ' err' : ''}`} {...register('uf')}>
+            <option value="">Selecione</option>
+            {UFS_BRASIL.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+          </select>
+        </Field>
+      </div>
 
       <Divider label="Tipo de local" />
       <div className="pw-seg">

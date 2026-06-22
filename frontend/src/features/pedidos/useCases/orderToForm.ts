@@ -1,6 +1,6 @@
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import type { PedidoFormData } from '../schemas';
-import { formatCurrency, STATUS_PAGAMENTO, TIPOS_PEDIDO } from '../schemas';
+import { formatCpfCnpj, formatCurrency, STATUS_PAGAMENTO, TIPOS_PEDIDO } from '../schemas';
 
 export function orderToForm(pedido: Pedido): PedidoFormData {
   // Converter valor de string para number se necessário
@@ -60,6 +60,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     cliente: pedido.cliente || '',
     cliente_modo: pedido.cliente_id ? 'busca' : 'novo',
     telefone_cliente: pedido.telefone_cliente || '',
+    cpf_cnpj: formatCpfCnpj(pedido.cpf_cnpj || ''),
     cliente_id: pedido.cliente_id,
     fonte_pedido_id: fontePedidoId,
     tipo_pedido: tipoPedido,
@@ -80,6 +81,7 @@ export function orderToForm(pedido: Pedido): PedidoFormData {
     complemento: pedido.complemento || '',
     bairro: pedido.bairro || '',
     cidade: pedido.cidade || '',
+    uf: pedido.uf || 'GO',
     endereco: pedido.endereco || '',
     obs_entrega: pedido.obs_entrega || '',
     produto: pedido.produto || '',

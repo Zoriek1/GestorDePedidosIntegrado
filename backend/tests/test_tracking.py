@@ -168,6 +168,12 @@ def test_criar_pedido_retorna_track_url(client):
         "produto": "Buquê",
         "dia_entrega": date.today().isoformat(),
         "horario": "10:00",
+        "cep": "74810-170",
+        "rua": "Rua 13",
+        "numero": "145",
+        "bairro": "Jardim Goiás",
+        "cidade": "Goiânia",
+        "uf": "GO",
     }
     res = client.post("/api/pedidos", json=payload, headers=_ADMIN_AUTH)
     assert res.status_code == 201

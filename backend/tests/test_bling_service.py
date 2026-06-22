@@ -408,7 +408,32 @@ def test_ensure_contact_creates_with_customer_name(bling_app):
     pedido = SimpleNamespace(cliente="Maria Souza", telefone_cliente="62988887777")
     assert BlingIntegrationService().ensure_contact_for_pedido(pedido, client) == "777"
     assert client.created[0]["nome"] == "Maria Souza"
+    assert client.created[0]["situacao"] == "A"
     assert client.created[0]["telefone"] == "62988887777"
+
+
+def test_ensure_contact_omits_invalid_phone(bling_app):
+    from app.integrations.bling.service import BlingIntegrationService
+
+    bling_app.config["BLING_DEFAULT_CONTACT_ID"] = ""
+
+    class _Client:
+        def __init__(self):
+            self.created = []
+
+        def search_contacts(self, _params):
+            return {"data": []}
+
+        def create_contact(self, payload):
+            self.created.append(payload)
+            return {"data": {"id": 777}}
+
+    client = _Client()
+    # Telefone invalido (celular nao comeca com 9): contato e criado sem telefone.
+    pedido = SimpleNamespace(cliente="TESTE", telefone_cliente="62099999999")
+    assert BlingIntegrationService().ensure_contact_for_pedido(pedido, client) == "777"
+    assert "telefone" not in client.created[0]
+    assert client.created[0]["situacao"] == "A"
 
 
 def test_ensure_contact_reuses_existing_by_name(bling_app):

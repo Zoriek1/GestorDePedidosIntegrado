@@ -181,9 +181,13 @@ class BlingIntegrationService:
             if isinstance(item, dict) and str(item.get("nome") or "").strip().lower() == nome.lower():
                 return str(item.get("id"))
 
-        payload: Dict[str, Any] = {"nome": nome, "tipo": "F"}
-        if telefone:
-            payload["telefone"] = telefone
+        # situacao "A" (ativo) e obrigatorio no Bling. Telefone so vai se for um
+        # numero BR plausivel -- um telefone invalido faz o Bling recusar o
+        # contato inteiro (o telefone real tambem fica nas observacoes da venda).
+        payload: Dict[str, Any] = {"nome": nome, "tipo": "F", "situacao": "A"}
+        phone = self._contact_phone(telefone)
+        if phone:
+            payload["telefone"] = phone
         response = client.create_contact(payload)
         data = response.get("data") if isinstance(response, dict) else None
         new_id = str(data.get("id")) if isinstance(data, dict) and data.get("id") else None
@@ -193,6 +197,17 @@ class BlingIntegrationService:
                 details={"response": response, "cliente": nome},
             )
         return new_id
+
+    @staticmethod
+    def _contact_phone(raw: Any) -> Optional[str]:
+        """Retorna o telefone so se parecer um numero BR valido: 10 digitos
+        (fixo, DDD+8) ou 11 digitos (celular, DDD + 9XXXXXXXX). Senao None."""
+        digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+        if len(digits) == 11 and digits[2] == "9":
+            return digits
+        if len(digits) == 10:
+            return digits
+        return None
 
     def ensure_default_mapping_rows(self) -> int:
         created = 0

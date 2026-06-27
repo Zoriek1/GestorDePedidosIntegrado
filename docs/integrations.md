@@ -78,7 +78,7 @@ A Evolution API roda como serviço próprio no [docker-compose.yml](../docker-co
 Variáveis principais:
 
 ```env
-EVOLUTION_IMAGE=atendai/evolution-api:latest
+EVOLUTION_IMAGE=evoapicloud/evolution-api:latest
 EVOLUTION_PORT=8080
 EVOLUTION_SERVER_URL=https://evolution.planteumaflor.online
 EVOLUTION_AUTHENTICATION_API_KEY=

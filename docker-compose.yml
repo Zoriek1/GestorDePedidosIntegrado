@@ -49,7 +49,7 @@ services:
       retries: 5
 
   evolution-api:
-    image: ${EVOLUTION_IMAGE:-atendai/evolution-api:latest}
+    image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api:latest}
     restart: unless-stopped
     depends_on:
       evolution-db:

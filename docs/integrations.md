@@ -81,11 +81,15 @@ Variáveis principais:
 EVOLUTION_IMAGE=evoapicloud/evolution-api:latest
 EVOLUTION_PORT=8080
 EVOLUTION_SERVER_URL=https://evolution.planteumaflor.online
-EVOLUTION_AUTHENTICATION_API_KEY=
+EVOLUTION_API_KEY=                         # alias aceito para AUTHENTICATION_API_KEY
 EVOLUTION_INSTANCE_NAME=plante-uma-flor
-EVOLUTION_POSTGRES_PASSWORD=
+EVOLUTION_DB_PASSWORD=                     # alias aceito para senha do Postgres da Evolution
 EVOLUTION_WEBHOOK_GLOBAL_URL=http://backend:5000/api/leads/whatsapp-start
 ```
+
+O compose também aceita os nomes explícitos `EVOLUTION_AUTHENTICATION_API_KEY` e
+`EVOLUTION_POSTGRES_PASSWORD`. Se os dois existirem, os nomes explícitos têm
+precedência.
 
 Fluxo operacional:
 
@@ -95,7 +99,7 @@ Fluxo operacional:
 ```bash
 curl -X POST http://localhost:8080/instance/create \
   -H "Content-Type: application/json" \
-  -H "apikey: $EVOLUTION_AUTHENTICATION_API_KEY" \
+  -H "apikey: $EVOLUTION_API_KEY" \
   -d '{
     "instanceName": "plante-uma-flor",
     "integration": "WHATSAPP-BAILEYS",
@@ -107,7 +111,7 @@ curl -X POST http://localhost:8080/instance/create \
 
 ```bash
 curl http://localhost:8080/instance/connect/plante-uma-flor \
-  -H "apikey: $EVOLUTION_AUTHENTICATION_API_KEY"
+  -H "apikey: $EVOLUTION_API_KEY"
 ```
 
 4. Se preferir webhook por instância em vez de global:
@@ -115,7 +119,7 @@ curl http://localhost:8080/instance/connect/plante-uma-flor \
 ```bash
 curl -X POST http://localhost:8080/webhook/instance/plante-uma-flor \
   -H "Content-Type: application/json" \
-  -H "apikey: $EVOLUTION_AUTHENTICATION_API_KEY" \
+  -H "apikey: $EVOLUTION_API_KEY" \
   -d '{
     "enabled": true,
     "url": "https://gestaopedidos.planteumaflor.online/api/leads/whatsapp-start",

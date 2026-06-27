@@ -20,6 +20,94 @@ services:
       timeout: 7s
       retries: 5
 
+  evolution-db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=1000"]
+    environment:
+      POSTGRES_USER: ${EVOLUTION_POSTGRES_USER:-evolution}
+      POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD:?Defina EVOLUTION_POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${EVOLUTION_POSTGRES_DB:-evolution}
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${EVOLUTION_POSTGRES_USER:-evolution} -d ${EVOLUTION_POSTGRES_DB:-evolution}"]
+      interval: 5s
+      timeout: 7s
+      retries: 5
+
+  evolution-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - evolution_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  evolution-api:
+    image: ${EVOLUTION_IMAGE:-atendai/evolution-api:latest}
+    restart: unless-stopped
+    depends_on:
+      evolution-db:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      SERVER_NAME: evolution
+      SERVER_TYPE: http
+      SERVER_PORT: 8080
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
+      CORS_ORIGIN: ${EVOLUTION_CORS_ORIGIN:-*}
+      CORS_METHODS: GET,POST,PUT,DELETE
+      CORS_CREDENTIALS: "true"
+      LOG_LEVEL: ${EVOLUTION_LOG_LEVEL:-ERROR,WARN,INFO,LOG,WEBHOOKS}
+      LOG_COLOR: "true"
+      LOG_BAILEYS: ${EVOLUTION_LOG_BAILEYS:-error}
+      DEL_INSTANCE: ${EVOLUTION_DEL_INSTANCE:-false}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${EVOLUTION_POSTGRES_USER:-evolution}:${EVOLUTION_POSTGRES_PASSWORD}@evolution-db:5432/${EVOLUTION_POSTGRES_DB:-evolution}?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: ${EVOLUTION_DATABASE_CLIENT_NAME:-gestor_pedidos_evolution}
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_LABELS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: ${EVOLUTION_REDIS_PREFIX_KEY:-gestor_pedidos_evolution}
+      CACHE_REDIS_SAVE_INSTANCES: ${EVOLUTION_REDIS_SAVE_INSTANCES:-false}
+      WEBHOOK_GLOBAL_ENABLED: ${EVOLUTION_WEBHOOK_GLOBAL_ENABLED:-true}
+      WEBHOOK_GLOBAL_URL: ${EVOLUTION_WEBHOOK_GLOBAL_URL:-http://backend:5000/api/leads/whatsapp-start}
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_EVENTS_MESSAGES_SET: "false"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "false"
+      WEBHOOK_EVENTS_MESSAGES_DELETE: "false"
+      WEBHOOK_EVENTS_SEND_MESSAGE: "false"
+      WEBHOOK_EVENTS_ERRORS: "true"
+      CONFIG_SESSION_PHONE_CLIENT: ${EVOLUTION_SESSION_PHONE_CLIENT:-Plante uma Flor}
+      CONFIG_SESSION_PHONE_NAME: ${EVOLUTION_SESSION_PHONE_NAME:-Chrome}
+      QRCODE_LIMIT: ${EVOLUTION_QRCODE_LIMIT:-30}
+      QRCODE_COLOR: ${EVOLUTION_QRCODE_COLOR:-#175197}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_AUTHENTICATION_API_KEY:?Defina EVOLUTION_AUTHENTICATION_API_KEY no .env}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: ${EVOLUTION_AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES:-true}
+      LANGUAGE: ${EVOLUTION_LANGUAGE:-pt-BR}
+    ports:
+      - "${EVOLUTION_PORT:-8080}:8080"
+
   backend:
     build:
       context: .
@@ -148,3 +236,5 @@ services:
 
 volumes:
   postgres_data:
+  evolution_postgres_data:
+  evolution_redis_data:

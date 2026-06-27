@@ -5,6 +5,7 @@ import json
 from app.models.lead import Lead
 from app.models.user import User
 from app.services.auth_service import generate_token, hash_password
+from app.utils.tracking_token import calculate_checksum
 
 _ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').decode()}"}
 _VALID_TOKEN = "A3F9B7K20K"
@@ -13,6 +14,10 @@ _INVALID_TOKEN = "A3F9B7K2ZZ"
 # Quando META_CAPI_LEAD_FUNNEL_ENABLED está ligado em prod, todo POST whatsapp_click
 # precisa de meta_event_id_contact. Os testes refletem isso enviando o campo abaixo.
 _META_EVT_CONTACT = "evt_test_contact"
+
+
+def _valid_token(base: str) -> str:
+    return f"{base}{calculate_checksum(base)}"
 
 
 def _bearer_for_role(session, role: str) -> dict:
@@ -437,7 +442,13 @@ def test_whatsapp_start_atualiza_status_sem_sobrescrever_compra_realizada(client
     session.add_all([lead, lead_compra])
     session.commit()
 
-    r1 = client.post("/api/leads/whatsapp-start", json={"message": f"Olá [Cod: {_SECOND_VALID_TOKEN}]"})
+    r1 = client.post(
+        "/api/leads/whatsapp-start",
+        json={
+            "message": f"Olá [Cod: {_SECOND_VALID_TOKEN}]",
+            "data": {"key": {"remoteJid": "5562777770000@s.whatsapp.net"}},
+        },
+    )
     assert r1.status_code == 200
     data1 = r1.get_json()
     assert data1["ok"] is True
@@ -449,6 +460,7 @@ def test_whatsapp_start_atualiza_status_sem_sobrescrever_compra_realizada(client
 
     session.refresh(lead)
     assert lead.status == "lead_pendente"
+    assert lead.phone == "5562777770000"
 
     r2 = client.post("/api/leads/whatsapp-start", json={"token_rastreio": _VALID_TOKEN})
     assert r2.status_code == 200
@@ -459,6 +471,128 @@ def test_whatsapp_start_atualiza_status_sem_sobrescrever_compra_realizada(client
 
     session.refresh(lead_compra)
     assert lead_compra.status == "compra_realizada"
+
+
+def test_whatsapp_start_sem_telefone_nao_promove_lead_pendente(client, session):
+    lead = Lead(
+        dedup_key="lead-whatsapp-start-missing-phone",
+        token_rastreio=_VALID_TOKEN,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post("/api/leads/whatsapp-start", json={"message": f"Olá [Cod: {_VALID_TOKEN}]"})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    assert data["found"] is True
+    assert data["missing_phone"] is True
+
+    session.refresh(lead)
+    assert lead.phone is None
+    assert lead.status == "pendente_whatsapp"
+
+
+def test_whatsapp_start_match_token_recente_salva_telefone_e_promove_pendente(client, session):
+    old_token = _valid_token("AAAAAAA1")
+    recent_tokens = [_valid_token(f"BBBBBBB{i}") for i in range(5)]
+
+    old_lead = Lead(
+        dedup_key="lead-whatsapp-start-old-window",
+        token_rastreio=old_token,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(old_lead)
+    session.flush()
+    for idx, token in enumerate(recent_tokens):
+        session.add(
+            Lead(
+                dedup_key=f"lead-whatsapp-start-recent-window-{idx}",
+                token_rastreio=token,
+                token_valido=True,
+                status="pendente_whatsapp",
+            )
+        )
+    session.commit()
+
+    target_token = recent_tokens[-1]
+    r = client.post(
+        "/api/leads/whatsapp-start",
+        json={
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "5562999990000@s.whatsapp.net"},
+                "message": {"conversation": f"Oi, quero atendimento {target_token}"},
+            },
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    assert data["found"] is True
+    assert data["token"] == target_token
+    assert data["status"] == "lead_pendente"
+    assert data["phone"] == "5562999990000"
+
+    target = session.query(Lead).filter(Lead.token_rastreio == target_token).first()
+    assert target.phone == "5562999990000"
+    assert target.status == "lead_pendente"
+
+    r_old = client.post(
+        "/api/leads/whatsapp-start",
+        json={
+            "data": {
+                "key": {"remoteJid": "5562888880000@s.whatsapp.net"},
+                "message": {"conversation": f"Token antigo {old_token}"},
+            },
+        },
+    )
+    assert r_old.status_code == 200
+    assert r_old.get_json()["found"] is False
+
+    session.refresh(old_lead)
+    assert old_lead.phone is None
+    assert old_lead.status == "pendente_whatsapp"
+
+
+def test_whatsapp_start_remote_jid_lid_usa_telefone_alternativo(client, session):
+    token = _valid_token("CCCCCCC1")
+    lead = Lead(
+        dedup_key="lead-whatsapp-start-lid-alt-phone",
+        token_rastreio=token,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-start",
+        json={
+            "event": "messages.upsert",
+            "data": {
+                "key": {
+                    "remoteJid": "123456789012345@lid",
+                    "remoteJidAlt": "556211112222@s.whatsapp.net",
+                    "senderPn": "556233334444@s.whatsapp.net",
+                },
+                "message": {"conversation": f"Atendimento {token}"},
+            },
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    assert data["found"] is True
+    assert data["status"] == "lead_pendente"
+    assert data["phone"] == "556211112222"
+
+    session.refresh(lead)
+    assert lead.phone == "556211112222"
+    assert lead.status == "lead_pendente"
 
 
 def test_patch_phone_atualiza_lead_pendente_whatsapp(client, session):

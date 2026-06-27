@@ -67,9 +67,69 @@ UTMIFY_PLATFORM=WhatsAppManual
 UTMIFY_IS_TEST=false
 ```
 
+## Evolution API (WhatsApp → lead pendente)
+
+A Evolution API roda como serviço próprio no [docker-compose.yml](../docker-compose.yml), separado do Gestor:
+
+- `evolution-api`: API REST/WhatsApp.
+- `evolution-db`: Postgres próprio da Evolution.
+- `evolution-redis`: Redis próprio para cache/sessão.
+
+Variáveis principais:
+
+```env
+EVOLUTION_IMAGE=atendai/evolution-api:latest
+EVOLUTION_PORT=8080
+EVOLUTION_SERVER_URL=https://evolution.planteumaflor.online
+EVOLUTION_AUTHENTICATION_API_KEY=
+EVOLUTION_INSTANCE_NAME=plante-uma-flor
+EVOLUTION_POSTGRES_PASSWORD=
+EVOLUTION_WEBHOOK_GLOBAL_URL=http://backend:5000/api/leads/whatsapp-start
+```
+
+Fluxo operacional:
+
+1. Subir a stack: `docker compose up -d evolution-db evolution-redis evolution-api`.
+2. Criar a instância WhatsApp:
+
+```bash
+curl -X POST http://localhost:8080/instance/create \
+  -H "Content-Type: application/json" \
+  -H "apikey: $EVOLUTION_AUTHENTICATION_API_KEY" \
+  -d '{
+    "instanceName": "plante-uma-flor",
+    "integration": "WHATSAPP-BAILEYS",
+    "qrcode": true
+  }'
+```
+
+3. Obter o QR Code:
+
+```bash
+curl http://localhost:8080/instance/connect/plante-uma-flor \
+  -H "apikey: $EVOLUTION_AUTHENTICATION_API_KEY"
+```
+
+4. Se preferir webhook por instância em vez de global:
+
+```bash
+curl -X POST http://localhost:8080/webhook/instance/plante-uma-flor \
+  -H "Content-Type: application/json" \
+  -H "apikey: $EVOLUTION_AUTHENTICATION_API_KEY" \
+  -d '{
+    "enabled": true,
+    "url": "https://gestaopedidos.planteumaflor.online/api/leads/whatsapp-start",
+    "webhook_by_events": false,
+    "webhook_base64": false,
+    "events": ["MESSAGES_UPSERT"]
+  }'
+```
+
+O endpoint do Gestor lê `data.message.conversation`, compara com os últimos 5 `token_rastreio` válidos e salva o telefone vindo de `data.key.remoteJid`; quando `remoteJid` vier com `@lid`, tenta `remoteJidAlt` e `senderPn`. Só então muda o lead para `lead_pendente`.
+
 ## Google (Maps + Drive + Sheets)
 
-**Geocoding**: [services/google_geocoding.py](../backend/app/services/google_geocoding.py) usa Google Maps Geocoding API. Fallback: ViaCEP (`GET /api/cep/<cep>`).
+**Geocoding**: [services/google_geocoding.py](../backend/app/services/google_geocoding.py) usa Google Maps Geocoding API. Fallback: ViaCEP (`GET /api/cep/<cep>`). 
 
 **Roteamento**: [services/google_routes.py](../backend/app/services/google_routes.py) usa Routes API para cálculo de distância. Em produção, [services/graphhopper.py](../backend/app/services/graphhopper.py) é o principal (mais barato); Google é fallback.
 
@@ -120,11 +180,13 @@ T0  POST /api/leads (event=whatsapp_click)
     │  meta_event_id_contact obrigatório no payload (vem do Pixel)
     └→ [META] Contact event — sem value/currency, user_data sem phone (lead ainda não mandou msg)
 
-T1  POST /api/leads/whatsapp-start (bot detecta "[Cod: XXX]" na mensagem)
-    │  status muda para "whatsapp_iniciado"
-    └→ [META] nada (Lead requer phone, ainda não temos)
+T1  POST /api/leads/whatsapp-start (Evolution recebe mensagem com um token recente)
+    │  salva phone a partir de remoteJid/remoteJidAlt/senderPn
+    │  status muda para "lead_pendente"
+    └→ [META] nada (operador ainda precisa confirmar o lead)
 
 T1.5 PATCH /api/leads/<id>/phone (operador registra telefone)
+    │  ou PATCH /api/leads/<id>/status com "whatsapp_iniciado" após triagem
     │  status confirmado em "whatsapp_iniciado"
     │  meta_event_id_lead gerado
     └→ [META] Lead event — sem value/currency, user_data.ph com hash do telefone
@@ -146,6 +208,7 @@ Disparos em T0/T1.5/T2 **enfileiram** no outbox (`MetaCapiLeadOutbox`) e o reque
 | Chave no DB (`leads.status`) | Label na UI | Evento Meta disparado |
 |---|---|---|
 | `pendente_whatsapp` | P. Whatsapp (Contact) | `Contact` (em T0) |
+| `lead_pendente` | Lead (Pendente) | — (aguardando confirmação do operador) |
 | `whatsapp_iniciado` | Lead Confirmado | `Lead` (em T1.5, ao adicionar phone) |
 | `nao_entrou_em_contato` | Não entrou em contato | — (nenhum) |
 | `descarte` | **Lead Desqualificado** | `LeadDisqualified` (em T2) |

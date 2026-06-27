@@ -6,6 +6,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import unquote
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import case, func
@@ -74,6 +75,7 @@ DEFAULT_SITUACAO = "aguardando_resposta"
 # (descarte explícito ou ausência de retorno do cliente). Filtrados por padrão na
 # listagem (`hidden=exclude`) para não inflar a paginação. Ver Change 1 do plano.
 HIDDEN_STATUSES = ("descarte", "nao_entrou_em_contato")
+RECENT_WHATSAPP_TOKEN_MATCH_LIMIT = 5
 
 ALLOWED_FIELDS = (
     "event",
@@ -294,6 +296,108 @@ def _parse_request_payload() -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _iter_payload_pairs(value: object):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield str(key), child
+            yield from _iter_payload_pairs(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_payload_pairs(child)
+
+
+def _extract_whatsapp_message_text(data: dict) -> str:
+    text_keys = {
+        "message",
+        "message_text",
+        "text",
+        "raw_message",
+        "body",
+        "content",
+        "conversation",
+        "caption",
+    }
+    parts: list[str] = []
+    for key, value in _iter_payload_pairs(data):
+        if key.lower() in text_keys and isinstance(value, (str, int, float)):
+            text = str(value).strip()
+            if text:
+                parts.append(text)
+    return "\n".join(parts)
+
+
+def _phone_from_whatsapp_jid(value: object) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if raw.lower().endswith("@lid"):
+        return None
+    phone = _normalize_phone(raw)
+    return phone if phone and len(phone) >= 10 else None
+
+
+def _extract_whatsapp_phone(data: dict) -> str | None:
+    key_data = (
+        data.get("data", {}).get("key", {})
+        if isinstance(data.get("data"), dict)
+        else {}
+    )
+    remote_jid = key_data.get("remoteJid") if isinstance(key_data, dict) else None
+    alternate_jids = []
+    if isinstance(key_data, dict):
+        alternate_jids = [key_data.get("remoteJidAlt"), key_data.get("senderPn")]
+    jid_candidates = (
+        alternate_jids
+        if str(remote_jid or "").lower().endswith("@lid")
+        else [remote_jid, *alternate_jids]
+    )
+    for candidate in jid_candidates:
+        phone = _phone_from_whatsapp_jid(candidate)
+        if phone:
+            return phone
+
+    phone_keys = {
+        "phone",
+        "telefone",
+        "telefone_cliente",
+        "number",
+        "remotejid",
+        "remotejidalt",
+        "senderpn",
+        "participant",
+        "sender",
+        "from",
+    }
+    for key, value in _iter_payload_pairs(data):
+        if key.lower() not in phone_keys:
+            continue
+        phone = _phone_from_whatsapp_jid(value)
+        if phone:
+            return phone
+    return None
+
+
+def _find_recent_valid_token_in_text(text: str) -> str | None:
+    normalized_text = unquote(text or "").upper()
+    if not normalized_text:
+        return None
+
+    recent_tokens = (
+        Lead.query.filter(
+            Lead.token_valido.is_(True),
+            Lead.token_rastreio.isnot(None),
+        )
+        .order_by(Lead.created_at.desc(), Lead.id.desc())
+        .limit(RECENT_WHATSAPP_TOKEN_MATCH_LIMIT)
+        .all()
+    )
+    for lead in recent_tokens:
+        token = normalize_tracking_token(lead.token_rastreio)
+        if token and token in normalized_text:
+            return token
+    return None
+
+
 @leads_bp.route("", methods=["POST"])
 @leads_bp.route("/", methods=["POST"])
 def criar_lead():
@@ -437,16 +541,20 @@ def criar_lead():
 @leads_bp.route("/whatsapp-start", methods=["POST"])
 def marcar_whatsapp_iniciado():
     """
-    Marca lead como whatsapp_iniciado quando recebemos mensagem com código [Cod: XXXXXXX...].
+    Promove lead para lead_pendente quando uma nova conversa do WhatsApp contém
+    um dos tokens válidos recentes. O webhook nunca confirma o Lead sozinho.
     """
     data = _parse_request_payload()
 
+    phone = _extract_whatsapp_phone(data)
     token = normalize_tracking_token(data.get("token_rastreio"))
     if not token:
         for key in ("message", "message_text", "text", "raw_message", "destination_url", "url"):
             token = extract_tracking_token_from_text(data.get(key))
             if token:
                 break
+    if not token:
+        token = _find_recent_valid_token_in_text(_extract_whatsapp_message_text(data))
 
     token_valido = is_tracking_token_valid(token)
     if not token:
@@ -464,9 +572,26 @@ def marcar_whatsapp_iniciado():
 
     # Tabela = lei: whatsapp_iniciado só é alcançável via 1-clique do operador
     # (que dispara CAPI Lead on-event). O webhook nunca confirma sozinho —
-    # promove no máximo pra `lead_pendente` (a fila de decisão). Com ou sem
-    # telefone, o operador é o ponto único de disparo do positivo.
+    # promove no máximo pra `lead_pendente` (a fila de decisão) e só com telefone.
     if lead.status not in {"compra_realizada", "whatsapp_iniciado", "descarte"}:
+        if not phone and not lead.phone:
+            return (
+                jsonify(
+                    {
+                        "ok": True,
+                        "found": True,
+                        "token": token,
+                        "token_valido": True,
+                        "lead_id": lead.id,
+                        "status": lead.status,
+                        "phone": lead.phone,
+                        "missing_phone": True,
+                    }
+                ),
+                200,
+            )
+        if phone:
+            lead.phone = phone
         lead.status = "lead_pendente"
         db.session.commit()
 
@@ -479,6 +604,7 @@ def marcar_whatsapp_iniciado():
                 "token_valido": True,
                 "lead_id": lead.id,
                 "status": lead.status,
+                "phone": lead.phone,
             }
         ),
         200,

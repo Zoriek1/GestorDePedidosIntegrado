@@ -125,8 +125,8 @@ const DEFAULT_FILTERS: LeadsFilters = {
   hidden: 'exclude',
 };
 
-/** Valor do ToggleButtonGroup de período (inclui o modo UI-only "day"). */
-type PeriodUiValue = LeadsPeriod | 'day';
+/** Valor do ToggleButtonGroup de período (inclui os modos UI-only "day" e "yesterday"). */
+type PeriodUiValue = LeadsPeriod | 'day' | 'yesterday';
 
 type AgeBucket = 'fresh' | 'warm' | 'cold';
 
@@ -906,9 +906,14 @@ export default function LeadsPage() {
     period === 'custom' &&
     !!filters.date_from &&
     filters.date_from === filters.date_to;
-  const periodUiValue: PeriodUiValue = isDayMode ? 'day' : period;
+  // "Ontem" é o modo Dia apontando pro dia anterior — destaca o botão dedicado.
+  const yesterdayIso = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+  const isYesterdayMode = isDayMode && filters.date_from === yesterdayIso;
+  const periodUiValue: PeriodUiValue = isYesterdayMode ? 'yesterday' : isDayMode ? 'day' : period;
   const selectedDayLabel =
-    isDayMode && filters.date_from ? dayjs(filters.date_from).format('DD/MM') : null;
+    isDayMode && !isYesterdayMode && filters.date_from
+      ? dayjs(filters.date_from).format('DD/MM')
+      : null;
 
   // KPIs do funil. As 3 situações + Compras vêm de `groupedLeads` (reflete a janela/
   // filtro carregado, não um total global). A conversão usa a janela fixa de hoje do
@@ -992,10 +997,21 @@ export default function LeadsPage() {
                   setDayPickerOpen(true);
                   return;
                 }
+                if (v === 'yesterday') {
+                  setFilters((f) => ({
+                    ...f,
+                    period: 'custom',
+                    date_from: yesterdayIso,
+                    date_to: yesterdayIso,
+                    page: 1,
+                  }));
+                  return;
+                }
                 setPeriod(v);
               }}
             >
               <ToggleButton value="today">Hoje</ToggleButton>
+              <ToggleButton value="yesterday">Ontem</ToggleButton>
               <ToggleButton value="14d">14 dias</ToggleButton>
               <ToggleButton value="all">Tudo</ToggleButton>
               <ToggleButton value="day">

@@ -595,6 +595,70 @@ def test_whatsapp_start_remote_jid_lid_usa_telefone_alternativo(client, session)
     assert lead.status == "lead_pendente"
 
 
+def test_whatsapp_start_remote_jid_ddd55_extrai_telefone(client, session):
+    """JID com código do país + DDD 55 (5555 9XXXX-XXXX) parseia o telefone completo."""
+    token = _valid_token("DDDDDDD1")
+    lead = Lead(
+        dedup_key="lead-whatsapp-start-ddd55-jid",
+        token_rastreio=token,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-start",
+        json={
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "5555999887766@s.whatsapp.net"},
+                "message": {"conversation": f"Atendimento {token}"},
+            },
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["found"] is True
+    assert data["phone"] == "5555999887766"
+
+    session.refresh(lead)
+    assert lead.phone == "5555999887766"
+    assert lead.status == "lead_pendente"
+
+
+def test_whatsapp_start_phone_559_sem_codigo_pais(client, session):
+    """Payload com phone '559XXXXXXXX' (11 dígitos, DDD 55 local) é aceito no parse do JSON."""
+    token = _valid_token("EEEEEEE1")
+    lead = Lead(
+        dedup_key="lead-whatsapp-start-ddd55-phone",
+        token_rastreio=token,
+        token_valido=True,
+        status="pendente_whatsapp",
+    )
+    session.add(lead)
+    session.commit()
+
+    r = client.post(
+        "/api/leads/whatsapp-start",
+        json={
+            "event": "messages.upsert",
+            "phone": "55999887766",
+            "data": {
+                "message": {"conversation": f"Atendimento {token}"},
+            },
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["found"] is True
+    assert data["phone"] == "55999887766"
+
+    session.refresh(lead)
+    assert lead.phone == "55999887766"
+    assert lead.status == "lead_pendente"
+
+
 def test_patch_phone_atualiza_lead_pendente_whatsapp(client, session):
     lead = Lead(
         dedup_key="lead-phone-manual",

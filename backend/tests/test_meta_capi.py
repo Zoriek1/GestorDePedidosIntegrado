@@ -58,6 +58,21 @@ class TestMetaCapiServiceNormalization:
         result = service.normalize_phone_br_e164("+55 62 99988-7766")
         assert result == "+5562999887766"
 
+    def test_normalize_phone_br_e164_ddd55_mobile(self, service):
+        """559XXXXXXXX (11 dígitos) é celular do DDD 55, não código do país"""
+        result = service.normalize_phone_br_e164("55999887766")
+        assert result == "+5555999887766"
+
+    def test_normalize_phone_br_e164_ddd55_landline(self, service):
+        """55XXXXXXXX (10 dígitos) é fixo do DDD 55, ganha código do país"""
+        result = service.normalize_phone_br_e164("5599887766")
+        assert result == "+555599887766"
+
+    def test_normalize_phone_br_e164_ddd55_com_codigo_pais(self, service):
+        """5555 9XXXX-XXXX (13 dígitos) já tem código do país e DDD 55"""
+        result = service.normalize_phone_br_e164("5555999887766")
+        assert result == "+5555999887766"
+
     def test_normalize_phone_br_e164_invalid_short(self, service):
         """Rejeita telefone muito curto"""
         with pytest.raises(ValueError, match="muito curto"):

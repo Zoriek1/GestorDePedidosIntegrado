@@ -7,7 +7,15 @@
       "Bash(python -m pytest tests/test_google_credentials_setup.py -v)",
       "Bash(npm run test -- src/features/pedidos/__tests__/schemas.test.ts)",
       "Bash(python -m pytest tests/test_export_sheets.py -v)",
-      "Bash(xargs grep -l \"goomer\\\\|Goomer\")"
+      "Bash(xargs grep -l \"goomer\\\\|Goomer\")",
+      "Bash(python -m venv testenv)",
+      "Bash(testenv/Scripts/python -m pip install -q -r \"C:/Users/Queiroz CHO/Documents/Repositorios/GestorDePedidosIntegrado/backend/requirements.txt\" -r \"C:/Users/Queiroz CHO/Documents/Repositorios/GestorDePedidosIntegrado/backend/requirements-dev.txt\")",
+      "Bash(\"C:/Users/QUEIRO~1/AppData/Local/Temp/claude/C--Users-Queiroz-CHO-Documents-Repositorios-GestorDePedidosIntegrado/c157c69e-aff0-4f8a-8008-5bcb9175eb25/scratchpad/testenv/Scripts/python\" -m pytest tests/test_meta_capi.py -k \"normalize_phone\" -q)",
+      "Bash(\"C:/Users/QUEIRO~1/AppData/Local/Temp/claude/C--Users-Queiroz-CHO-Documents-Repositorios-GestorDePedidosIntegrado/c157c69e-aff0-4f8a-8008-5bcb9175eb25/scratchpad/testenv/Scripts/python\" -m pip install -q tzdata)",
+      "Bash(\"C:/Users/QUEIRO~1/AppData/Local/Temp/claude/C--Users-Queiroz-CHO-Documents-Repositorios-GestorDePedidosIntegrado/c157c69e-aff0-4f8a-8008-5bcb9175eb25/scratchpad/testenv/Scripts/python\" -m pip install -q --retries 8 tzdata)",
+      "Bash(\"C:/Users/QUEIRO~1/AppData/Local/Temp/claude/C--Users-Queiroz-CHO-Documents-Repositorios-GestorDePedidosIntegrado/c157c69e-aff0-4f8a-8008-5bcb9175eb25/scratchpad/testenv/Scripts/python\" -m pytest tests/test_leads.py -k \"whatsapp_start\" -q)",
+      "Bash(\"C:/Users/QUEIRO~1/AppData/Local/Temp/claude/C--Users-Queiroz-CHO-Documents-Repositorios-GestorDePedidosIntegrado/c157c69e-aff0-4f8a-8008-5bcb9175eb25/scratchpad/testenv/Scripts/python\" -m pytest tests/test_leads.py tests/test_meta_capi.py -q)",
+      "Bash(npm ci *)"
     ]
   }
 }

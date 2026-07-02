@@ -109,8 +109,11 @@ class MetaConversionsApiService:
         if digits.startswith("00"):
             digits = digits[2:]
 
-        # Se não começa com 55, prefixar
-        if not digits.startswith("55"):
+        # 10-11 dígitos = número nacional (DDD + número), mesmo começando com 55:
+        # "559XXXXXXXX" é celular do DDD 55 (Santa Maria/RS), não código do país.
+        if len(digits) in (10, 11):
+            digits = "55" + digits
+        elif not digits.startswith("55"):
             digits = "55" + digits
 
         # Validar tamanho mínimo (55 + DDD + número = mínimo 12 dígitos)

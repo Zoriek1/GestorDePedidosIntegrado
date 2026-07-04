@@ -9,11 +9,14 @@ from app.models.pedido import Pedido
 _ADMIN_AUTH = {"Authorization": f"Basic {base64.b64encode(b'admin:testpass').decode()}"}
 
 # Campos que NUNCA podem aparecer no payload público.
+# NOTA: endereço, destinatário (completo) e telefone de contato passaram a ser expostos
+# por decisão de produto (ajudam o destinatário a acompanhar/corrigir a entrega). O
+# remetente (``cliente``) continua proibido — preserva a surpresa. O telefone aparece
+# sob a chave ``telefone`` (nunca a chave crua ``telefone_cliente``).
 _PII_PROIBIDA = (
     "id",
     "telefone_cliente",
     "cliente",
-    "endereco",
     "cep",
     "bairro",
     "mensagem",
@@ -107,11 +110,24 @@ def test_track_endpoint_so_campos_publicos(client, session, app):
     assert data["status"] == "Em preparação"  # status interno em_producao
     assert data["status_key"] == "em_producao"
     assert data["produto"] == "Buquê Premium"
-    assert data["destinatario"] == "Maria"  # só o 1º nome
+    assert data["destinatario"] == "Maria Aparecida Souza"  # nome completo do destinatário
     assert data["tipo_pedido"] == "Entrega"
-    # Nenhuma PII vaza
+    # Novos campos de logística expostos por design
+    assert data["endereco"] == "Rua das Flores, 123"
+    assert data["telefone"] == "62999990000"
+    # Nenhuma PII proibida vaza (remetente incluso)
     for campo in _PII_PROIBIDA:
         assert campo not in data, f"Campo sensível '{campo}' não pode aparecer no payload público"
+
+
+def test_track_endpoint_retirada_nao_expoe_endereco(client, session, app):
+    """Em Retirada não há entrega — o endereço não deve ser exposto."""
+    pedido = _novo_pedido(session, tipo_pedido="Retirada")
+    with app.app_context():
+        token = tt.make_track_token(pedido.id)
+
+    data = client.get(f"/api/pedidos/track/{token}").get_json()["pedido"]
+    assert data["endereco"] == ""
 
 
 def test_track_endpoint_token_invalido_404(client):
@@ -157,6 +173,134 @@ def test_track_link_endpoint_exige_auth(client, session):
 
 def test_track_link_endpoint_pedido_inexistente_404(client):
     assert client.get("/api/pedidos/999999/track-link", headers=_ADMIN_AUTH).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PARTE 4 — sugestão de correção de endereço (público grava; painel resolve)
+# ---------------------------------------------------------------------------
+def test_sugerir_endereco_grava_pendente(client, session, app):
+    pedido = _novo_pedido(session)
+    with app.app_context():
+        token = tt.make_track_token(pedido.id)
+
+    # Rota pública, sem auth.
+    res = client.post(
+        f"/api/pedidos/track/{token}/sugestao-endereco",
+        json={"texto": "Rua Nova, 456 - Apto 10"},
+    )
+    assert res.status_code == 201
+
+    # Não altera o pedido — apenas cria a pendente.
+    listagem = client.get(
+        f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH
+    )
+    assert listagem.status_code == 200
+    sugestoes = listagem.get_json()["sugestoes"]
+    assert len(sugestoes) == 1
+    assert sugestoes[0]["status"] == "pendente"
+    assert sugestoes[0]["texto"] == "Rua Nova, 456 - Apto 10"
+    assert client.get(f"/api/pedidos/{pedido.id}", headers=_ADMIN_AUTH).get_json()[
+        "pedido"
+    ]["endereco"] == "Rua das Flores, 123"
+
+
+def test_sugerir_endereco_valida_texto(client, session, app):
+    pedido = _novo_pedido(session)
+    with app.app_context():
+        token = tt.make_track_token(pedido.id)
+
+    assert (
+        client.post(f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": ""}).status_code
+        == 400
+    )
+    longo = "x" * 501
+    assert (
+        client.post(
+            f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": longo}
+        ).status_code
+        == 400
+    )
+
+
+def test_sugerir_endereco_token_invalido_404(client):
+    assert (
+        client.post(
+            "/api/pedidos/track/token-invalido/sugestao-endereco", json={"texto": "abc"}
+        ).status_code
+        == 404
+    )
+
+
+def test_sugerir_endereco_reaproveita_pendente(client, session, app):
+    """Duas sugestões seguidas não acumulam — a pendente é atualizada no lugar."""
+    pedido = _novo_pedido(session)
+    with app.app_context():
+        token = tt.make_track_token(pedido.id)
+
+    client.post(f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": "primeira"})
+    client.post(f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": "segunda"})
+
+    sugestoes = client.get(
+        f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH
+    ).get_json()["sugestoes"]
+    assert len(sugestoes) == 1
+    assert sugestoes[0]["texto"] == "segunda"
+
+
+def test_aplicar_sugestao_atualiza_endereco(client, session, app):
+    pedido = _novo_pedido(session)
+    with app.app_context():
+        token = tt.make_track_token(pedido.id)
+    client.post(
+        f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": "Rua Nova, 456"}
+    )
+    sugestao_id = client.get(
+        f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH
+    ).get_json()["sugestoes"][0]["id"]
+
+    res = client.post(
+        f"/api/pedidos/sugestoes-endereco/{sugestao_id}/resolver",
+        json={"acao": "aplicar"},
+        headers=_ADMIN_AUTH,
+    )
+    assert res.status_code == 200
+    assert res.get_json()["sugestao"]["status"] == "aplicada"
+    # Agora o pedido reflete o endereço aplicado.
+    assert client.get(f"/api/pedidos/{pedido.id}", headers=_ADMIN_AUTH).get_json()[
+        "pedido"
+    ]["endereco"] == "Rua Nova, 456"
+
+
+def test_resolver_sugestao_exige_auth(client, session, app):
+    pedido = _novo_pedido(session)
+    with app.app_context():
+        token = tt.make_track_token(pedido.id)
+    client.post(f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": "abc"})
+    sugestao_id = client.get(
+        f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH
+    ).get_json()["sugestoes"][0]["id"]
+
+    assert (
+        client.post(
+            f"/api/pedidos/sugestoes-endereco/{sugestao_id}/resolver", json={"acao": "aplicar"}
+        ).status_code
+        == 401
+    )
+
+
+def test_resolver_sugestao_ja_resolvida_409(client, session, app):
+    pedido = _novo_pedido(session)
+    with app.app_context():
+        token = tt.make_track_token(pedido.id)
+    client.post(f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": "abc"})
+    sugestao_id = client.get(
+        f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH
+    ).get_json()["sugestoes"][0]["id"]
+
+    url = f"/api/pedidos/sugestoes-endereco/{sugestao_id}/resolver"
+    assert client.post(url, json={"acao": "ignorar"}, headers=_ADMIN_AUTH).status_code == 200
+    # Segunda vez já não está pendente.
+    assert client.post(url, json={"acao": "aplicar"}, headers=_ADMIN_AUTH).status_code == 409
 
 
 def test_criar_pedido_retorna_track_url(client):

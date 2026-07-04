@@ -261,6 +261,69 @@ export function useCreatePedido() {
   });
 }
 
+// Sugestões de correção de endereço feitas pelo cliente na página pública de rastreio.
+export interface SugestaoEndereco {
+  id: number;
+  pedido_id: number;
+  texto: string;
+  status: 'pendente' | 'aplicada' | 'ignorada';
+  endereco_anterior?: string | null;
+  created_at?: string | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+}
+
+/** Lista as sugestões de endereço de um pedido (para revisão no painel). */
+export function useSugestoesEndereco(pedidoId: number) {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+
+  return useQuery<{ success: boolean; sugestoes: SugestaoEndereco[] }>({
+    queryKey: ['sugestoes-endereco', pedidoId],
+    queryFn: async () => {
+      const response = await apiRequest<{ success: boolean; sugestoes: SugestaoEndereco[] }>(
+        `/pedidos/${pedidoId}/sugestoes-endereco`,
+      );
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    enabled: !!pedidoId,
+  });
+}
+
+/** Aplica ou ignora uma sugestão de endereço. */
+export function useResolverSugestaoEndereco() {
+  const { getAuthHeader } = useAuth();
+  const apiRequest = createApiRequest(getAuthHeader);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      sugestaoId,
+      acao,
+    }: {
+      sugestaoId: number;
+      pedidoId: number;
+      acao: 'aplicar' | 'ignorar';
+    }) => {
+      const response = await apiRequest<{ success: boolean; sugestao: SugestaoEndereco }>(
+        `/pedidos/sugestoes-endereco/${sugestaoId}/resolver`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ acao }),
+        },
+      );
+      if (!response.ok) throw new Error(response.message);
+      return response.data;
+    },
+    onSuccess: (_data, { pedidoId }) => {
+      queryClient.invalidateQueries({ queryKey: ['sugestoes-endereco', pedidoId] });
+      queryClient.invalidateQueries({ queryKey: ['pedido', pedidoId] });
+    },
+  });
+}
+
 /** Busca o link público de acompanhamento de um pedido já existente (token assinado server-side). */
 export function useTrackLink() {
   const { getAuthHeader } = useAuth();

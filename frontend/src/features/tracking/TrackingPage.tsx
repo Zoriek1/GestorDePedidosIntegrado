@@ -4,10 +4,12 @@
  * que devolve apenas campos públicos (whitelist) — nenhum dado sensível.
  */
 
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Box,
+  Button,
   Container,
   Paper,
   Typography,
@@ -21,10 +23,18 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { LocalFlorist, CalendarMonth, Schedule } from '@mui/icons-material';
+import {
+  LocalFlorist,
+  CalendarMonth,
+  Schedule,
+  LocationOn,
+  Phone,
+  EditLocationAlt,
+} from '@mui/icons-material';
 import { getApiBaseUrl } from '../../api/http';
 import { BrandLogo } from '../../layout/BrandLogo';
 import { PushOptIn } from './PushOptIn';
+import { SuggestAddressDialog } from './SuggestAddressDialog';
 
 interface PublicPedido {
   status: string;
@@ -34,6 +44,8 @@ interface PublicPedido {
   produto: string;
   dia_entrega: string;
   janela: string;
+  endereco: string;
+  telefone: string;
 }
 
 type Estado = 'carregando' | 'ok' | 'nao_encontrado' | 'erro';
@@ -93,6 +105,7 @@ export default function TrackingPage() {
   const { token } = useParams<{ token: string }>();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [sugestaoAberta, setSugestaoAberta] = useState(false);
 
   const { data, isPending, isError } = useQuery<TrackResult>({
     queryKey: ['track', token],
@@ -231,7 +244,36 @@ export default function TrackingPage() {
                     </Typography>
                   </Stack>
                 )}
+                {!isRetirada && pedido.endereco && (
+                  <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <LocationOn sx={{ fontSize: 20, color: 'secondary.dark', mt: 0.2 }} />
+                    <Typography variant="body2">
+                      Endereço: <strong>{pedido.endereco}</strong>
+                    </Typography>
+                  </Stack>
+                )}
+                {pedido.telefone && (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Phone sx={{ fontSize: 20, color: 'secondary.dark' }} />
+                    <Typography variant="body2">
+                      Contato: <strong>{pedido.telefone}</strong>
+                    </Typography>
+                  </Stack>
+                )}
               </Stack>
+
+              {!isRetirada && token && (
+                <Button
+                  onClick={() => setSugestaoAberta(true)}
+                  variant="outlined"
+                  color="secondary"
+                  size="small"
+                  startIcon={<EditLocationAlt />}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  Sugerir correção do endereço
+                </Button>
+              )}
 
               <Stepper
                 activeStep={passo}
@@ -266,6 +308,15 @@ export default function TrackingPage() {
           Plante uma Flor 🌹 Floricultura
         </Typography>
       </Container>
+
+      {token && (
+        <SuggestAddressDialog
+          open={sugestaoAberta}
+          onClose={() => setSugestaoAberta(false)}
+          token={token}
+          enderecoAtual={pedido?.endereco}
+        />
+      )}
     </Box>
   );
 }

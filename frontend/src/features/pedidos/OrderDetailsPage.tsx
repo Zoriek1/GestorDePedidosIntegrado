@@ -25,6 +25,7 @@ import { copyToClipboard } from '../../lib/utils/clipboard';
 import { formatOrderSourceLabel } from './utils/sourceLabel';
 import { useUsers } from '../users/services/userApi';
 import { BlingIntegrationCard } from './components/BlingIntegrationCard';
+import { AddressSuggestionsCard } from './components/AddressSuggestionsCard';
 
 type StatusPagamentoColor = 'success' | 'warning' | 'default' | 'error';
 
@@ -304,6 +305,9 @@ export default function OrderDetailsPage() {
           {inlineRow('Quantidade', pedido.quantidade)}
         </Stack>
       </Paper>
+
+      {/* Sugestões de correção de endereço do cliente (pendentes) */}
+      {!isRetirada && <AddressSuggestionsCard pedidoId={pedido.id} />}
 
       {/* Logística */}
       <Paper sx={{ p: 2.5, mb: 2 }}>

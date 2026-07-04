@@ -24,6 +24,7 @@ from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
 from app.models.pedido import Pedido
 from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
+from app.models.pedido_sugestao_endereco import PedidoSugestaoEndereco
 from app.models.push_subscription import PushSubscription
 from app.models.rota_otimizada import RotaOtimizada
 from app.models.user import CommissionConfig, PayrollConfig, User
@@ -52,6 +53,7 @@ __all__ = [
     "NuvemshopWebhookDelivery",
     "PedidoExternalRef",
     "PedidoManualOverride",
+    "PedidoSugestaoEndereco",
     "PushSubscription",
     "User",
     "PayrollConfig",

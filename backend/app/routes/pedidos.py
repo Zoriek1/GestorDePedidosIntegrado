@@ -20,6 +20,12 @@ from app.models.lead import Lead
 from app.models.pedido import datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
+from app.models.pedido_sugestao_endereco import (
+    STATUS_APLICADA,
+    STATUS_IGNORADA,
+    STATUS_PENDENTE,
+    PedidoSugestaoEndereco,
+)
 from app.repositories.pedido_repository import PedidoRepository
 from app.schemas.common import error_response, success_response
 from app.schemas.pedido_schema import (
@@ -445,6 +451,125 @@ def obter_track_link(pedido_id):
     if not pedido:
         return error_response("Pedido não encontrado", 404)
     return success_response({"track_url": build_track_url(pedido.id)})
+
+
+# Tamanho máximo da sugestão do cliente (rota pública — evita abuso/spam).
+_SUGESTAO_MAX_LEN = 500
+
+
+@pedidos_bp.route("/track/<token>/sugestao-endereco", methods=["POST"])
+def sugerir_endereco(token):
+    """Cliente SUGERE uma correção de endereço pela página pública de acompanhamento.
+
+    Sem auth (o token assinado é a credencial, igual às rotas de notificação). NUNCA
+    altera o pedido — apenas grava a sugestão como ``pendente`` para a equipe revisar
+    e dispara um aviso (push) para o painel. Rate-limit simples: uma sugestão pendente
+    por pedido de cada vez.
+    """
+    from flask import current_app
+
+    from app import db
+    from app.services.notification_service import send_push_to_all_async
+
+    pedido_id = parse_track_token(token)
+    if pedido_id is None:
+        return error_response("Pedido não encontrado", 404)
+    pedido = pedido_repo.get_by_id(pedido_id)
+    if not pedido or pedido.oculto or pedido.deleted_at:
+        return error_response("Pedido não encontrado", 404)
+
+    data = request.get_json() or {}
+    texto = _clean_str(data.get("texto"))
+    if not texto:
+        return error_response("Descreva a correção do endereço", 400)
+    if len(texto) > _SUGESTAO_MAX_LEN:
+        return error_response(
+            f"Texto muito longo (máx. {_SUGESTAO_MAX_LEN} caracteres)", 400
+        )
+
+    # Rate-limit: se já existe uma pendente, atualiza no lugar de acumular.
+    pendente = PedidoSugestaoEndereco.query.filter_by(
+        pedido_id=pedido_id, status=STATUS_PENDENTE
+    ).first()
+    if pendente:
+        pendente.texto = texto
+        pendente.endereco_anterior = pedido.endereco
+        pendente.created_at = datetime_now_brazil()
+    else:
+        pendente = PedidoSugestaoEndereco(
+            pedido_id=pedido_id,
+            texto=texto,
+            endereco_anterior=pedido.endereco,
+        )
+        db.session.add(pendente)
+    db.session.commit()
+
+    # Avisa a equipe (broadcast). Best-effort, assíncrono — não bloqueia a resposta.
+    try:
+        send_push_to_all_async(
+            current_app._get_current_object(),
+            title="Sugestão de endereço",
+            body=f"Pedido #{pedido_id}: o cliente sugeriu uma correção de endereço.",
+            url=f"/pedidos/{pedido_id}",
+        )
+    except Exception:  # pragma: no cover - push é best-effort
+        pass
+
+    return success_response({"status": "recebida"}, status_code=201)
+
+
+@pedidos_bp.route("/<int:pedido_id>/sugestoes-endereco", methods=["GET"])
+@requires_any_role("admin", "atendente", "vendedor")
+def listar_sugestoes_endereco(pedido_id):
+    """Lista as sugestões de endereço de um pedido (mais recentes primeiro)."""
+    pedido = pedido_repo.get_by_id(pedido_id)
+    if not pedido:
+        return error_response("Pedido não encontrado", 404)
+    sugestoes = (
+        PedidoSugestaoEndereco.query.filter_by(pedido_id=pedido_id)
+        .order_by(PedidoSugestaoEndereco.created_at.desc())
+        .all()
+    )
+    return success_response({"sugestoes": [s.to_dict() for s in sugestoes]})
+
+
+@pedidos_bp.route(
+    "/sugestoes-endereco/<int:sugestao_id>/resolver", methods=["POST"]
+)
+@requires_any_role("admin", "atendente")
+def resolver_sugestao_endereco(sugestao_id):
+    """Aplica ou ignora uma sugestão de endereço.
+
+    Body: ``{"acao": "aplicar" | "ignorar"}``. Aplicar copia o texto sugerido para
+    ``pedido.endereco`` (o cliente nunca escreve direto no pedido). Só resolve
+    sugestões ainda pendentes.
+    """
+    from app import db
+
+    sugestao = PedidoSugestaoEndereco.query.get(sugestao_id)
+    if not sugestao:
+        return error_response("Sugestão não encontrada", 404)
+    if sugestao.status != STATUS_PENDENTE:
+        return error_response("Sugestão já foi resolvida", 409)
+
+    data = request.get_json() or {}
+    acao = _clean_str(data.get("acao")).lower()
+    if acao not in ("aplicar", "ignorar"):
+        return error_response("Ação inválida (use 'aplicar' ou 'ignorar')", 400)
+
+    if acao == "aplicar":
+        pedido = pedido_repo.get_by_id(sugestao.pedido_id)
+        if not pedido:
+            return error_response("Pedido não encontrado", 404)
+        pedido.endereco = sugestao.texto
+        sugestao.status = STATUS_APLICADA
+    else:
+        sugestao.status = STATUS_IGNORADA
+
+    sugestao.resolved_at = datetime_now_brazil()
+    sugestao.resolved_by = getattr(request, "authenticated_user", None)
+    db.session.commit()
+    return success_response({"sugestao": sugestao.to_dict()})
 
 
 @pedidos_bp.route("/<int:pedido_id>/status", methods=["PUT", "POST"])

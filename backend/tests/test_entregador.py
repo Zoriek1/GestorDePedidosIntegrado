@@ -28,8 +28,9 @@ from app.services.auth_service import generate_token, hash_password  # noqa: E40
 # ---------------------------------------------------------------------------
 
 
-def make_user(session, email, password="pass1234", role="entregador", name="Teste"):
-    user = User(name=name, email=email, password_hash=hash_password(password), role=role)
+def make_user(session, email, password="pass1234", role="entregador", name=None):
+    # Nome único por padrão (derivado do email) — respeita o índice único users.name.
+    user = User(name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role)
     session.add(user)
     session.commit()
     return user

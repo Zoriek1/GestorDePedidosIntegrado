@@ -34,9 +34,10 @@ from app.utils.date_utils import get_monday  # noqa: E402
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_user(session, email, password="pass1234", role="vendedor", name="Teste"):
+def make_user(session, email, password="pass1234", role="vendedor", name=None):
     """Cria e persiste um User com hash bcrypt."""
-    user = User(name=name, email=email, password_hash=hash_password(password), role=role)
+    # Nome único por padrão (derivado do email) — respeita o índice único users.name.
+    user = User(name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role)
     session.add(user)
     session.commit()
     return user

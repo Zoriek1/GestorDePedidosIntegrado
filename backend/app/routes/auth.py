@@ -4,11 +4,14 @@ Rotas de Autenticação
 Suporta HTTP Basic Auth (legado) e JWT (módulo Recebíveis)
 """
 import base64
+import logging
 
 from flask import Blueprint, request
 
-from app.middleware import check_auth, log_debug
+from app.middleware import check_auth, log_debug, rate_limit
 from app.schemas.common import error_response, success_response
+
+logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -18,6 +21,7 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 # Aceita {username, password} (Basic/legado) ou {email, password} (JWT/DB)
 # ---------------------------------------------------------------------------
 @auth_bp.route("/login", methods=["POST"])
+@rate_limit(max_per_minute=10, max_per_hour=100)
 def login():
     """Login — retorna JWT para usuários DB, ou confirmação para usuários env-var."""
     try:
@@ -38,13 +42,24 @@ def login():
             from app.models.user import User
             from app.services.auth_service import generate_token, verify_password
 
-            # Aceita email ou nome (case-insensitive)
+            # Aceita email (único) ou nome (case-insensitive). O nome é único entre
+            # usuários ativos, mas caso existam duplicados legados não adivinhamos:
+            # pedimos o e-mail em vez de logar na conta errada.
             db_user = User.query.filter_by(email=email, is_active=True).first()
             if not db_user:
-                db_user = User.query.filter(
+                name_matches = User.query.filter(
                     _db.func.lower(User.name) == email.lower(),
                     User.is_active == True,  # noqa: E712
-                ).first()
+                ).all()
+                if len(name_matches) == 1:
+                    db_user = name_matches[0]
+                elif len(name_matches) > 1:
+                    log_debug("Login por nome ambíguo", {"name": email})
+                    return error_response(
+                        "Não foi possível identificar o usuário por esse nome. "
+                        "Entre com o seu e-mail.",
+                        401,
+                    )
 
             if db_user and verify_password(password, db_user.password_hash):
                 token = generate_token(db_user)
@@ -72,9 +87,9 @@ def login():
         log_debug("Login failed", {"email": email})
         return error_response("Credenciais inválidas", 401)
 
-    except Exception as e:
-        log_debug("Login exception", {"error": str(e)})
-        return error_response(f"Erro ao processar login: {str(e)}", 500)
+    except Exception:
+        logger.exception("Falha inesperada ao processar login")
+        return error_response("Erro ao processar login", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +127,9 @@ def me():
 
         return success_response({"user": user.to_dict()})
 
-    except Exception as e:
-        return error_response(f"Erro: {str(e)}", 500)
+    except Exception:
+        logger.exception("Falha em GET /auth/me")
+        return error_response("Erro ao obter dados do usuário", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -158,8 +174,9 @@ def change_password():
 
         return success_response({}, message="Senha alterada com sucesso")
 
-    except Exception as e:
-        return error_response(f"Erro: {str(e)}", 500)
+    except Exception:
+        logger.exception("Falha ao alterar senha")
+        return error_response("Erro ao alterar senha", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +215,6 @@ def check_auth_status():
 
         return success_response({"authenticated": False}, message="Não autenticado")
 
-    except Exception as e:
-        log_debug("Auth check exception", {"error": str(e)})
-        return error_response(f"Erro ao verificar autenticação: {str(e)}", 500)
+    except Exception:
+        logger.exception("Falha ao verificar autenticação")
+        return error_response("Erro ao verificar autenticação", 500)

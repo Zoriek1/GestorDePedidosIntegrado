@@ -31,6 +31,7 @@ from app.utils.backup_helper import (
 
 core_bp = Blueprint("core", __name__, url_prefix="/api")
 @core_bp.route("/stats", methods=["GET"])
+@requires_edit_auth
 def obter_estatisticas():
     """Retorna estatísticas dos pedidos"""
     try:
@@ -123,6 +124,7 @@ def limpar_pedidos_antigos():
 
 
 @core_bp.route("/pedidos/<int:pedido_id>/distancia", methods=["GET"])
+@requires_edit_auth
 def calcular_distancia_pedido_endpoint(pedido_id):
     """Calcula e retorna a distância da floricultura até o endereço do pedido"""
     try:
@@ -235,6 +237,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
 
 
 @core_bp.route("/pedidos/calcular-distancias", methods=["POST"])
+@requires_edit_auth
 def calcular_distancias_lote():
     """Calcula distâncias para múltiplos pedidos em lote"""
     try:
@@ -402,6 +405,7 @@ def calcular_distancias_lote():
 
 
 @core_bp.route("/pedidos/<int:pedido_id>/calcular-taxa", methods=["POST"])
+@requires_edit_auth
 def calcular_taxa_pedido(pedido_id):
     """Calcula e retorna a taxa de entrega para um pedido"""
     try:

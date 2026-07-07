@@ -524,6 +524,7 @@ def listar_enderecos_cliente(cliente_id):
 
 
 @clientes_bp.route("/<int:cliente_id>/enderecos", methods=["POST"])
+@requires_any_role("admin", "atendente", "vendedor")
 def adicionar_endereco_cliente(cliente_id):
     """
     Adiciona novo endereço ao cliente
@@ -589,6 +590,7 @@ def adicionar_endereco_cliente(cliente_id):
 
 
 @clientes_bp.route("/enderecos/<int:endereco_id>", methods=["PUT"])
+@requires_any_role("admin", "atendente", "vendedor")
 def atualizar_endereco(endereco_id):
     """
     Atualiza endereço existente
@@ -649,6 +651,7 @@ def atualizar_endereco(endereco_id):
 
 
 @clientes_bp.route("/enderecos/<int:endereco_id>", methods=["DELETE"])
+@requires_any_role("admin", "atendente", "vendedor")
 def deletar_endereco(endereco_id):
     """
     Deleta endereço
@@ -700,6 +703,7 @@ def deletar_endereco(endereco_id):
 
 
 @clientes_bp.route("/enderecos/<int:endereco_id>/principal", methods=["POST"])
+@requires_any_role("admin", "atendente", "vendedor")
 def marcar_endereco_principal(endereco_id):
     """
     Marca endereço como principal

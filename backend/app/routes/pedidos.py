@@ -2087,6 +2087,7 @@ def toggle_cartao_impresso(pedido_id):
 
 
 @pedidos_bp.route("/<int:pedido_id>/comprovante", methods=["GET"])
+@requires_edit_auth
 def obter_comprovante(pedido_id):
     """Gera comprovante de pedido (HTML)"""
     try:
@@ -2106,6 +2107,7 @@ def obter_comprovante(pedido_id):
 
 
 @pedidos_bp.route("/comprovante-lote", methods=["POST"])
+@requires_edit_auth
 def obter_comprovante_lote():
     """Gera comprovante em lote (HTML A4). Moldura `layout` = 1, 2 ou 4 por folha."""
     try:

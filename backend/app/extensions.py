@@ -233,6 +233,8 @@ def init_database(app):
 
         # Garante colunas adicionadas em versões posteriores sem migration manual.
         _ensure_runtime_columns()
+        # Garante unicidade de nome de usuário (índice único parcial, case-insensitive).
+        _ensure_user_name_unique_index()
 
 
 def _ensure_runtime_columns():
@@ -308,6 +310,70 @@ def _ensure_runtime_columns():
             print(f"[OK] Coluna {table}.{column} adicionada")
     except Exception as e:
         print(f"[DB] AVISO: ensure_runtime_columns falhou: {e}")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+
+def _ensure_user_name_unique_index():
+    """Cria índice ÚNICO PARCIAL (só usuários ativos), case-insensitive, em users.name.
+
+    Motivação: o login aceita e-mail OU nome; sem unicidade, dois usuários com o
+    mesmo nome tornam o login por nome ambíguo (poderia entrar na conta errada).
+
+    Decisões:
+      - Parcial (WHERE is_active): soft-deletes/anonimizados (is_active=0) não colidem
+        e nomes podem ser reusados após desativação (igual ao comportamento de e-mail).
+      - Case-insensitive: casa com o login que compara lower(name).
+      - Fail-safe: se já houver nomes duplicados entre ativos, apenas AVISA e NÃO cria
+        o índice (não quebra o boot). Resolva os duplicados e reinicie para aplicar.
+    """
+    index_name = "ux_users_name_active_ci"
+    try:
+        from sqlalchemy import inspect
+
+        inspector = inspect(db.engine)
+        if "users" not in inspector.get_table_names():
+            return
+        existing_indexes = {ix.get("name") for ix in inspector.get_indexes("users")}
+        if index_name in existing_indexes:
+            return
+
+        is_postgres = db.engine.dialect.name == "postgresql"
+        # Predicado booleano portável (Postgres não aceita `is_active = 1`).
+        active_pred = "is_active" if is_postgres else "is_active = 1"
+
+        # Pré-checagem: existem nomes duplicados entre usuários ativos?
+        dups = db.session.execute(
+            text(
+                "SELECT LOWER(name) AS n, COUNT(*) AS c FROM users "
+                f"WHERE {active_pred} GROUP BY LOWER(name) HAVING COUNT(*) > 1"
+            )
+        ).fetchall()
+        if dups:
+            nomes = ", ".join(str(row[0]) for row in dups)
+            print(
+                "[DB] AVISO: índice único de nome NÃO criado — há nomes duplicados "
+                f"entre usuários ativos: {nomes}. Resolva e reinicie para aplicar."
+            )
+            return
+
+        if is_postgres:
+            stmt = (
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                f"ON users (LOWER(name)) WHERE {active_pred}"
+            )
+        else:
+            stmt = (
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                f"ON users (name COLLATE NOCASE) WHERE {active_pred}"
+            )
+        db.session.execute(text(stmt))
+        db.session.commit()
+        print(f"[OK] Índice único de nome criado: {index_name}")
+    except Exception as e:
+        print(f"[DB] AVISO: _ensure_user_name_unique_index falhou: {e}")
         try:
             db.session.rollback()
         except Exception:

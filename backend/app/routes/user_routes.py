@@ -78,6 +78,10 @@ def create_user():
 
         if user_repo.get_by_email(email):
             return error_response(f"Email '{email}' já cadastrado", 409)
+        if user_repo.get_active_by_name(name):
+            return error_response(
+                f"Nome '{name}' já está em uso por outro usuário. Escolha outro.", 409
+            )
 
         user = user_repo.create(
             name=name,
@@ -106,7 +110,15 @@ def update_user(user_id):
         updates = {}
 
         if "name" in data:
-            updates["name"] = data["name"].strip()
+            new_name = data["name"].strip()
+            if not new_name:
+                return error_response("Nome não pode ser vazio", 400)
+            conflict = [u for u in user_repo.get_active_by_name(new_name) if u.id != user_id]
+            if conflict:
+                return error_response(
+                    f"Nome '{new_name}' já está em uso por outro usuário. Escolha outro.", 409
+                )
+            updates["name"] = new_name
         if "role" in data:
             if data["role"] not in ("admin", "vendedor", "atendente", "entregador", "viewer"):
                 return error_response(

@@ -496,8 +496,19 @@ request_counts = {}
 def _get_client_ip() -> str:
     """
     Retorna o IP real do cliente de forma segura.
-    Só aceita X-Real-IP / X-Forwarded-For se o proxy (remote_addr) é uma rede privada
-    (Docker bridge, localhost, LAN). Previne spoofing de clientes externos.
+
+    Só confia em headers de proxy quando o proxy imediato (remote_addr) é uma rede
+    privada (Docker bridge, localhost, LAN) — previne spoofing de clientes externos.
+
+    Ordem de preferência dentro do proxy confiável:
+      1. CF-Connecting-IP — a Cloudflare define este header com o IP real de quem
+         conectou e sobrescreve qualquer valor forjado pelo cliente. É o único
+         confiável quando estamos atrás do Cloudflare Tunnel.
+      2. X-Real-IP — definido por proxies reversos (nginx) confiáveis.
+      NÃO usamos o primeiro elemento de X-Forwarded-For como fonte primária: o cliente
+      pode prepender um valor falso (a Cloudflare apenas *anexa* o IP real depois),
+      o que permitiria rodar o bucket do rate limit e furar o limite. Mantido apenas
+      como último fallback quando não há CF-Connecting-IP nem X-Real-IP.
     """
     import ipaddress
 
@@ -508,10 +519,13 @@ def _get_client_ip() -> str:
         is_trusted_proxy = False
 
     if is_trusted_proxy:
-        forwarded = (
-            request.headers.get("X-Real-IP")
-            or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        )
+        cf_ip = (request.headers.get("CF-Connecting-IP") or "").strip()
+        if cf_ip:
+            return cf_ip
+        real_ip = (request.headers.get("X-Real-IP") or "").strip()
+        if real_ip:
+            return real_ip
+        forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
         if forwarded:
             return forwarded
 

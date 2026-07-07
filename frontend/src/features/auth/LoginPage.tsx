@@ -19,7 +19,7 @@ import {
   Visibility,
   VisibilityOff,
   LockOutlined,
-  AlternateEmail,
+  PersonOutline,
 } from '@mui/icons-material';
 import { useAuth } from './authStore';
 import { AppButton } from '../../components/common/AppButton';
@@ -60,7 +60,7 @@ export default function LoginPage() {
     if (!passwordValue) { setPasswordError(true); hasError = true; }
 
     if (hasError) {
-      setLoginError('Preencha e-mail e senha para continuar.');
+      setLoginError('Preencha e-mail (ou nome) e senha para continuar.');
       setLoading(false);
       return;
     }
@@ -68,7 +68,7 @@ export default function LoginPage() {
     const sanitizedUsername = usernameValue.replace(/[<>'"]/g, '');
     if (sanitizedUsername !== usernameValue) {
       setUsernameError(true);
-      setLoginError('E-mail contém caracteres inválidos (< > \' ").');
+      setLoginError('O usuário contém caracteres inválidos (< > \' ").');
       setLoading(false);
       return;
     }
@@ -88,7 +88,7 @@ export default function LoginPage() {
         ) {
           setLoginError('Usuário ou senha incorretos. Verifique e tente novamente.');
         } else if (msg.toLowerCase().includes('não encontrado') || msg.toLowerCase().includes('not found')) {
-          setLoginError('Usuário não encontrado. Confira o e-mail digitado.');
+          setLoginError('Usuário não encontrado. Confira o e-mail ou nome digitado.');
         } else if (
           msg.toLowerCase().includes('servidor') ||
           msg.toLowerCase().includes('conexão') ||
@@ -238,16 +238,16 @@ export default function LoginPage() {
             Bem-vindo de volta
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 4 }}>
-            Acesse com o e-mail cadastrado no painel
+            Entre com seu e-mail ou nome de usuário
           </Typography>
 
           <form onSubmit={handleSubmit} noValidate>
             <TextField
               fullWidth
               name="email"
-              label="E-mail"
-              type="email"
-              placeholder="seu@email.com"
+              label="E-mail ou nome"
+              type="text"
+              placeholder="seu@email.com ou seu nome"
               variant="outlined"
               value={username}
               onChange={(e) => {
@@ -257,16 +257,16 @@ export default function LoginPage() {
               }}
               onBlur={() => { if (!username.trim()) setUsernameError(true); else setUsernameError(false); }}
               disabled={loading}
-              autoComplete="email"
+              autoComplete="username"
               error={usernameError}
-              helperText={usernameError ? 'Informe o e-mail do cadastro' : ''}
+              helperText={usernameError ? 'Informe seu e-mail ou nome' : ''}
               inputProps={{ name: 'email' }}
               autoFocus
               slotProps={{
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
-                      <AlternateEmail sx={{ color: usernameError ? 'error.main' : 'text.disabled', fontSize: 20 }} />
+                      <PersonOutline sx={{ color: usernameError ? 'error.main' : 'text.disabled', fontSize: 20 }} />
                     </InputAdornment>
                   ),
                 },

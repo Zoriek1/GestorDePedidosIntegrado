@@ -21,6 +21,14 @@ class UserRepository(BaseRepository[User]):
     def get_by_email(self, email: str) -> Optional[User]:
         return User.query.filter_by(email=email).first()
 
+    def get_active_by_name(self, name: str) -> List[User]:
+        """Usuários ativos cujo nome bate (case-insensitive). Usado para checar
+        unicidade de nome ao criar/editar e para o login por nome."""
+        return User.query.filter(
+            db.func.lower(User.name) == (name or "").strip().lower(),
+            User.is_active == True,  # noqa: E712
+        ).all()
+
     def get_active_by_role(self, role: str) -> List[User]:
         return User.query.filter_by(role=role, is_active=True).all()
 

@@ -8,7 +8,12 @@ import os
 
 from flask import Blueprint, jsonify, request
 
+from app.middleware import rate_limit
+
 logger = logging.getLogger(__name__)
+
+# Teto de eventos por request no gateway (mitiga abuso/injeção em massa — V-06).
+MAX_GATEWAY_EVENTS = 100
 
 meta_gateway_bp = Blueprint("meta_gateway", __name__)
 
@@ -365,6 +370,7 @@ def capig_autoconfig():
 
 
 @meta_gateway_bp.route("/meta-gateway/<pixel_id>/events", methods=["POST"])
+@rate_limit(max_per_minute=120, max_per_hour=2000)
 def meta_gateway_events(pixel_id):
     """
     Endpoint do Gateway para receber eventos
@@ -383,6 +389,22 @@ def meta_gateway_events(pixel_id):
                 "Host nao corresponde ao dominio esperado: host=%s expected=%s",
                 request_host, gateway_domain,
             )
+
+        # Mitigação de injeção (V-06): se a requisição vier de um navegador (tem
+        # Origin/Referer), o domínio precisa bater com o gateway configurado. Isso
+        # bloqueia JS de sites terceiros disparando eventos com o nosso pixel/token.
+        # Chamadas server-to-server (sem Origin/Referer) seguem permitidas.
+        if gateway_domain:
+            browser_origin = (
+                request.headers.get("Origin") or request.headers.get("Referer") or ""
+            )
+            if browser_origin and gateway_domain not in browser_origin:
+                logger.warning(
+                    "Origin/Referer nao autorizado no gateway: %s", browser_origin
+                )
+                response = jsonify({"error": "Origem não autorizada"})
+                response.headers["Content-Type"] = "application/json; charset=utf-8"
+                return _add_cors_headers_events(response), 403
 
         logger.debug(
             "Evento recebido: method=%s path=%s host=%s content_length=%s",
@@ -419,6 +441,24 @@ def meta_gateway_events(pixel_id):
 
         # Extrair eventos do payload
         events = payload.get("data", [])
+        if not isinstance(events, list) or not events:
+            response = jsonify(
+                {
+                    "error": "Payload inválido",
+                    "message": "'data' deve ser uma lista não vazia de eventos",
+                }
+            )
+            response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return _add_cors_headers_events(response), 400
+        if len(events) > MAX_GATEWAY_EVENTS:
+            response = jsonify(
+                {
+                    "error": "Muitos eventos",
+                    "message": f"Máximo de {MAX_GATEWAY_EVENTS} eventos por requisição",
+                }
+            )
+            response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return _add_cors_headers_events(response), 400
         logger.debug(
             "Payload recebido: events_count=%d has_test_event_code=%s",
             len(events), "test_event_code" in payload,

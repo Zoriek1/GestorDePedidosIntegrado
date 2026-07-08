@@ -401,6 +401,189 @@ def get_pedidos_atribuidos():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/ledger/commissions — comissões agregadas POR VENDEDOR num período
+# Pensado para consumo externo (BI / dashboard próprio). Só comissões (comissao_*).
+# ---------------------------------------------------------------------------
+@ledger_bp.route("/commissions", methods=["GET"])
+@require_auth(roles=["admin"])
+def get_commissions():
+    """
+    Retorna comissões agregadas por vendedor num período, em JSON.
+
+    Query params:
+      from, to      YYYY-MM-DD (inclusive) — intervalo do período. Opcionais.
+      date_basis    entrega (default) | vencimento | competencia
+                      - entrega:    filtra por pedido.dia_entrega
+                      - vencimento: filtra por ledger_entry.due_date
+                      - competencia: filtra por ledger_entry.week_ref (segunda da semana)
+      user_id       int — restringe a um único vendedor (opcional).
+      detail        true|false (default false) — inclui a lista de pedidos por vendedor.
+    """
+    try:
+        from app.models.ledger_entry import LedgerEntry
+        from app.models.pedido import Pedido
+        from app.models.user import User
+
+        from_date = _parse_date(request.args.get("from"))
+        to_date = _parse_date(request.args.get("to"))
+        date_basis = (request.args.get("date_basis") or "entrega").strip().lower()
+        if date_basis not in {"entrega", "vencimento", "competencia"}:
+            return error_response(
+                "date_basis deve ser entrega, vencimento ou competencia", 400
+            )
+        want_detail = _parse_bool(request.args.get("detail"), default=False)
+
+        filter_user_id = None
+        if request.args.get("user_id"):
+            try:
+                filter_user_id = int(request.args.get("user_id"))
+            except (ValueError, TypeError):
+                return error_response("user_id inválido", 400)
+
+        q = LedgerEntry.query.filter(
+            LedgerEntry.type == "CREDIT",
+            LedgerEntry.voided.is_(False),
+            LedgerEntry.category.like("comissao_%"),
+        )
+        if filter_user_id is not None:
+            q = q.filter(LedgerEntry.user_id == filter_user_id)
+
+        # Filtro por data direto na entry (vencimento/competência)
+        if date_basis == "vencimento":
+            if from_date:
+                q = q.filter(LedgerEntry.due_date.isnot(None), LedgerEntry.due_date >= from_date)
+            if to_date:
+                q = q.filter(LedgerEntry.due_date.isnot(None), LedgerEntry.due_date <= to_date)
+        elif date_basis == "competencia":
+            if from_date:
+                q = q.filter(LedgerEntry.week_ref >= from_date)
+            if to_date:
+                q = q.filter(LedgerEntry.week_ref <= to_date)
+
+        entries = q.all()
+
+        pedido_ids = [e.pedido_id for e in entries if e.pedido_id]
+        pedidos_by_id = (
+            {p.id: p for p in Pedido.query.filter(Pedido.id.in_(pedido_ids)).all()}
+            if pedido_ids
+            else {}
+        )
+        user_ids = {e.user_id for e in entries}
+        users_by_id = (
+            {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()}
+            if user_ids
+            else {}
+        )
+
+        agg: dict[int, dict] = {}
+        for e in entries:
+            pedido = pedidos_by_id.get(e.pedido_id) if e.pedido_id else None
+
+            # Filtro por data de entrega (basis=entrega): exige o pedido no intervalo.
+            if date_basis == "entrega":
+                de = pedido.dia_entrega if pedido else None
+                if from_date and (de is None or de < from_date):
+                    continue
+                if to_date and (de is None or de > to_date):
+                    continue
+
+            user = users_by_id.get(e.user_id)
+            bucket = agg.setdefault(
+                e.user_id,
+                {
+                    "user_id": e.user_id,
+                    "name": user.name if user else None,
+                    "email": user.email if user else None,
+                    "total_commission": 0.0,
+                    "paid_commission": 0.0,
+                    "pending_commission": 0.0,
+                    "orders_count": 0,
+                    "_by_source": {},
+                    "items": [],
+                },
+            )
+
+            amt = float(e.amount)
+            bucket["total_commission"] += amt
+            if e.status == "settled":
+                bucket["paid_commission"] += amt
+            else:
+                bucket["pending_commission"] += amt
+            bucket["orders_count"] += 1
+
+            source = e.commission_source or (
+                e.category[len("comissao_"):]
+                if e.category.startswith("comissao_")
+                else e.category
+            )
+            src = bucket["_by_source"].setdefault(
+                source, {"source": source, "total": 0.0, "orders_count": 0}
+            )
+            src["total"] += amt
+            src["orders_count"] += 1
+
+            if want_detail:
+                bucket["items"].append(
+                    {
+                        "entry_id": e.id,
+                        "pedido_id": e.pedido_id,
+                        "cliente": pedido.cliente if pedido else None,
+                        "dia_entrega": pedido.dia_entrega.isoformat()
+                        if pedido and pedido.dia_entrega
+                        else None,
+                        "week_ref": e.week_ref.isoformat() if e.week_ref else None,
+                        "due_date": e.due_date.isoformat() if e.due_date else None,
+                        "commission_amount": round(amt, 2),
+                        "commission_rate_pct": round(float(e.commission_rate) * 100, 2)
+                        if e.commission_rate is not None
+                        else None,
+                        "source": source,
+                        "category": e.category,
+                        "status": e.status,
+                        "settled_at": e.settled_at.strftime("%Y-%m-%d %H:%M:%S")
+                        if e.settled_at
+                        else None,
+                    }
+                )
+
+        vendedores = []
+        for b in agg.values():
+            b["total_commission"] = round(b["total_commission"], 2)
+            b["paid_commission"] = round(b["paid_commission"], 2)
+            b["pending_commission"] = round(b["pending_commission"], 2)
+            by_source = sorted(
+                b.pop("_by_source").values(), key=lambda s: s["total"], reverse=True
+            )
+            for s in by_source:
+                s["total"] = round(s["total"], 2)
+            b["by_source"] = by_source
+            if not want_detail:
+                b.pop("items", None)
+            vendedores.append(b)
+        vendedores.sort(key=lambda v: v["total_commission"], reverse=True)
+
+        totals = {
+            "total_commission": round(sum(v["total_commission"] for v in vendedores), 2),
+            "paid_commission": round(sum(v["paid_commission"] for v in vendedores), 2),
+            "pending_commission": round(sum(v["pending_commission"] for v in vendedores), 2),
+            "orders_count": sum(v["orders_count"] for v in vendedores),
+            "vendedores_count": len(vendedores),
+        }
+
+        return success_response(
+            {
+                "from": from_date.isoformat() if from_date else None,
+                "to": to_date.isoformat() if to_date else None,
+                "date_basis": date_basis,
+                "totals": totals,
+                "vendedores": vendedores,
+            }
+        )
+    except Exception:
+        return error_response("Erro ao gerar relatório de comissões", 500)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/ledger/summary — saldo de todos os vendedores (admin)
 # ---------------------------------------------------------------------------
 @ledger_bp.route("/summary", methods=["GET"])

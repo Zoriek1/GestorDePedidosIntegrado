@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comissões · Plante Uma Flor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --verde-900:#1e3a2f;
+    --verde-700:#2e5744;
+    --verde-100:#e4efe8;
+    --rosa:#c96f85;
+    --rosa-claro:#f6e7eb;
+    --papel:#fbfaf7;
+    --tinta:#22261f;
+    --cinza:#7a8177;
+    --linha:#dfe4dc;
+    --ambar:#b98a2e;
+    --ambar-claro:#f7efdc;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Jost',sans-serif;background:var(--papel);color:var(--tinta);min-height:100vh}
+  h1,h2,h3{font-family:'Fraunces',serif;font-variation-settings:'opsz' 60}
+
+  header{background:var(--verde-900);color:#fff;padding:20px 28px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:1.5rem;font-weight:600}
+  header .sub{color:#a9c3b3;font-size:.9rem}
+  header .spacer{flex:1}
+  #btn-sair{background:none;border:1px solid #4d6f5d;color:#cfe0d5;border-radius:6px;padding:6px 14px;cursor:pointer;font-family:inherit;font-size:.85rem;display:none}
+  #btn-sair:hover{border-color:#fff;color:#fff}
+
+  main{max-width:1080px;margin:0 auto;padding:28px 20px 64px}
+
+  /* ---------- login ---------- */
+  #tela-login{max-width:420px;margin:48px auto}
+  .card{background:#fff;border:1px solid var(--linha);border-radius:12px;padding:24px}
+  #tela-login h2{font-size:1.35rem;margin-bottom:6px}
+  #tela-login p{color:var(--cinza);font-size:.9rem;margin-bottom:18px}
+  label{display:block;font-size:.8rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--verde-700);margin:12px 0 4px}
+  input,select{width:100%;padding:10px 12px;border:1px solid var(--linha);border-radius:8px;font-family:inherit;font-size:.95rem;background:#fff;color:var(--tinta)}
+  input:focus,select:focus{outline:2px solid var(--verde-700);outline-offset:1px;border-color:var(--verde-700)}
+  button.primario{width:100%;margin-top:18px;background:var(--verde-700);color:#fff;border:none;border-radius:8px;padding:12px;font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer}
+  button.primario:hover{background:var(--verde-900)}
+  button.primario:disabled{opacity:.55;cursor:wait}
+  .campo-base{margin-top:14px}
+  .aviso-erro{margin-top:14px;background:var(--rosa-claro);color:#8c3a50;border:1px solid #e8c4cf;border-radius:8px;padding:10px 12px;font-size:.88rem;display:none}
+
+  /* ---------- filtros ---------- */
+  #tela-dash{display:none}
+  .filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end;background:#fff;border:1px solid var(--linha);border-radius:12px;padding:16px 18px;margin-bottom:22px}
+  .filtros button{margin-top:0;width:auto;padding:10px 22px}
+  .atalhos{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+  .atalhos button{background:var(--verde-100);border:none;border-radius:999px;padding:5px 14px;font-family:inherit;font-size:.82rem;color:var(--verde-900);cursor:pointer}
+  .atalhos button:hover{background:#d3e4da}
+
+  /* ---------- totais ---------- */
+  .totais{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:26px}
+  .total-card{background:#fff;border:1px solid var(--linha);border-radius:12px;padding:16px 18px}
+  .total-card .rotulo{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--cinza)}
+  .total-card .valor{font-family:'Fraunces',serif;font-size:1.7rem;font-weight:600;margin-top:4px}
+  .total-card.pago .valor{color:var(--verde-700)}
+  .total-card.pendente .valor{color:var(--ambar)}
+
+  /* ---------- vendedores ---------- */
+  .vendedor{background:#fff;border:1px solid var(--linha);border-radius:12px;padding:20px;margin-bottom:16px}
+  .vendedor .topo{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .vendedor h3{font-size:1.15rem}
+  .vendedor .email{color:var(--cinza);font-size:.85rem}
+  .vendedor .topo .spacer{flex:1}
+  .vendedor .total{font-family:'Fraunces',serif;font-size:1.35rem;font-weight:700}
+  .barra{height:10px;border-radius:999px;background:var(--ambar-claro);overflow:hidden;margin:14px 0 8px;display:flex}
+  .barra .pago{background:var(--verde-700);height:100%}
+  .legenda{display:flex;gap:18px;font-size:.83rem;color:var(--cinza);flex-wrap:wrap}
+  .legenda .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+  .fontes{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .fonte-chip{background:var(--verde-100);border-radius:999px;padding:4px 12px;font-size:.8rem;color:var(--verde-900)}
+  .fonte-chip.site{background:var(--rosa-claro);color:#8c3a50}
+  .fonte-chip.catalogo{background:var(--ambar-claro);color:#7a5a17}
+
+  details{margin-top:14px}
+  summary{cursor:pointer;font-size:.87rem;color:var(--verde-700);font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:.86rem}
+  th{text-align:left;color:var(--cinza);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--linha)}
+  td{padding:7px 8px;border-bottom:1px solid #eef1ec}
+  td.num,th.num{text-align:right}
+  .tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:.75rem}
+  .tag.settled{background:var(--verde-100);color:var(--verde-900)}
+  .tag.active{background:var(--ambar-claro);color:#7a5a17}
+
+  #estado{color:var(--cinza);text-align:center;padding:32px;font-size:.95rem}
+  @media (max-width:600px){
+    header{padding:16px}
+    .vendedor .total{font-size:1.15rem}
+    table{font-size:.78rem}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Comissões por vendedor</h1>
+  <span class="sub">Plante Uma Flor</span>
+  <span class="spacer"></span>
+  <button id="btn-sair">Sair</button>
+</header>
+
+<main>
+
+  <!-- LOGIN -->
+  <section id="tela-login" class="card">
+    <h2>Entrar</h2>
+    <p>Use seu e-mail e senha de admin do gestão de pedidos.</p>
+    <label for="in-email">E-mail</label>
+    <input id="in-email" type="email" autocomplete="username">
+    <label for="in-senha">Senha</label>
+    <input id="in-senha" type="password" autocomplete="current-password">
+    <div class="campo-base">
+      <label for="in-base">Endereço da API</label>
+      <input id="in-base" type="url" value="https://gestaopedidos.planteumaflor.online">
+    </div>
+    <div id="erro-login" class="aviso-erro"></div>
+    <button id="btn-entrar" class="primario">Entrar</button>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="tela-dash">
+    <div class="filtros">
+      <div class="atalhos">
+        <button data-atalho="mes">Este mês</button>
+        <button data-atalho="mes-passado">Mês passado</button>
+        <button data-atalho="semana">Esta semana</button>
+        <button data-atalho="30d">Últimos 30 dias</button>
+      </div>
+      <div>
+        <label for="f-de">De</label>
+        <input id="f-de" type="date">
+      </div>
+      <div>
+        <label for="f-ate">Até</label>
+        <input id="f-ate" type="date">
+      </div>
+      <div>
+        <label for="f-base">Base de data</label>
+        <select id="f-base">
+          <option value="entrega">Entrega</option>
+          <option value="vencimento">Vencimento</option>
+          <option value="competencia">Competência (semana)</option>
+        </select>
+      </div>
+      <div>
+        <button id="btn-buscar" class="primario">Buscar</button>
+      </div>
+      <div id="erro-dash" class="aviso-erro" style="grid-column:1/-1"></div>
+    </div>
+
+    <div id="totais" class="totais"></div>
+    <div id="lista"></div>
+    <div id="estado"></div>
+  </section>
+
+</main>
+
+<script>
+let TOKEN = null;
+let BASE = 'https://gestaopedidos.planteumaflor.online';
+
+const $ = id => document.getElementById(id);
+const fmt = v => (v ?? 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const fmtData = s => { if(!s) return '—'; const [a,m,d] = s.split('-'); return `${d}/${m}/${a.slice(2)}`; };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function isoLocal(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ---------- login ----------
+$('btn-entrar').addEventListener('click', entrar);
+$('in-senha').addEventListener('keydown', e => { if(e.key === 'Enter') entrar(); });
+
+async function entrar(){
+  const email = $('in-email').value.trim();
+  const senha = $('in-senha').value;
+  BASE = $('in-base').value.trim().replace(/\/+$/,'');
+  const erro = $('erro-login');
+  erro.style.display = 'none';
+  if(!email || !senha){ erro.textContent = 'Preencha e-mail e senha.'; erro.style.display='block'; return; }
+  $('btn-entrar').disabled = true;
+  try{
+    const r = await fetch(`${BASE}/api/auth/login`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email, password: senha})
+    });
+    if(!r.ok){
+      erro.textContent = r.status === 401 ? 'E-mail ou senha incorretos.' : `Erro no login (HTTP ${r.status}).`;
+      erro.style.display = 'block';
+      return;
+    }
+    const data = await r.json();
+    TOKEN = data.access_token;
+    if(!TOKEN){ erro.textContent = 'Login não retornou token.'; erro.style.display='block'; return; }
+    $('tela-login').style.display = 'none';
+    $('tela-dash').style.display = 'block';
+    $('btn-sair').style.display = 'inline-block';
+    aplicarAtalho('mes');
+    buscar();
+  }catch(e){
+    erro.innerHTML = 'Não consegui falar com a API. Se você está abrindo este arquivo fora do servidor, provavelmente é bloqueio de <b>CORS</b> — hospede este HTML no mesmo domínio da API ou libere CORS no backend.';
+    erro.style.display = 'block';
+  }finally{
+    $('btn-entrar').disabled = false;
+  }
+}
+
+$('btn-sair').addEventListener('click', () => {
+  TOKEN = null;
+  $('tela-dash').style.display = 'none';
+  $('tela-login').style.display = 'block';
+  $('btn-sair').style.display = 'none';
+  $('in-senha').value = '';
+});
+
+// ---------- atalhos ----------
+document.querySelectorAll('[data-atalho]').forEach(b =>
+  b.addEventListener('click', () => { aplicarAtalho(b.dataset.atalho); buscar(); })
+);
+
+function aplicarAtalho(tipo){
+  const hoje = new Date();
+  let de, ate;
+  if(tipo === 'mes'){
+    de = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    ate = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  }else if(tipo === 'mes-passado'){
+    de = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
+    ate = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+  }else if(tipo === 'semana'){
+    const dow = (hoje.getDay() + 6) % 7; // segunda = 0
+    de = new Date(hoje); de.setDate(hoje.getDate() - dow);
+    ate = new Date(de); ate.setDate(de.getDate() + 6);
+  }else{ // 30d
+    ate = hoje;
+    de = new Date(hoje); de.setDate(hoje.getDate() - 29);
+  }
+  $('f-de').value = isoLocal(de);
+  $('f-ate').value = isoLocal(ate);
+}
+
+// ---------- busca ----------
+$('btn-buscar').addEventListener('click', buscar);
+
+async function buscar(){
+  const erro = $('erro-dash');
+  erro.style.display = 'none';
+  $('estado').textContent = 'Carregando…';
+  $('totais').innerHTML = '';
+  $('lista').innerHTML = '';
+
+  const params = new URLSearchParams();
+  if($('f-de').value) params.set('from', $('f-de').value);
+  if($('f-ate').value) params.set('to', $('f-ate').value);
+  params.set('date_basis', $('f-base').value);
+  params.set('detail', 'true');
+
+  try{
+    const r = await fetch(`${BASE}/api/ledger/commissions?${params}`, {
+      headers: {'Authorization': `Bearer ${TOKEN}`}
+    });
+    if(r.status === 401){
+      erro.textContent = 'Sessão expirada — faça login de novo.';
+      erro.style.display = 'block';
+      $('estado').textContent = '';
+      return;
+    }
+    if(!r.ok){ throw new Error(`HTTP ${r.status}`); }
+    const data = await r.json();
+    render(data);
+  }catch(e){
+    $('estado').textContent = '';
+    erro.textContent = `Erro ao buscar comissões: ${e.message}`;
+    erro.style.display = 'block';
+  }
+}
+
+// ---------- render ----------
+function render(data){
+  const t = data.totals || {};
+  $('totais').innerHTML = `
+    <div class="total-card">
+      <div class="rotulo">Total no período</div>
+      <div class="valor">${fmt(t.total_commission)}</div>
+    </div>
+    <div class="total-card pago">
+      <div class="rotulo">Pago</div>
+      <div class="valor">${fmt(t.paid_commission)}</div>
+    </div>
+    <div class="total-card pendente">
+      <div class="rotulo">Pendente</div>
+      <div class="valor">${fmt(t.pending_commission)}</div>
+    </div>
+    <div class="total-card">
+      <div class="rotulo">Pedidos · Vendedores</div>
+      <div class="valor">${t.orders_count ?? 0} · ${t.vendedores_count ?? 0}</div>
+    </div>`;
+
+  const vs = data.vendedores || [];
+  if(!vs.length){
+    $('estado').textContent = 'Nenhuma comissão no período selecionado.';
+    return;
+  }
+  $('estado').textContent = '';
+
+  $('lista').innerHTML = vs.map(v => {
+    const total = v.total_commission || 0;
+    const pct = total > 0 ? Math.round((v.paid_commission || 0) / total * 100) : 0;
+    const fontes = (v.by_source || []).map(s =>
+      `<span class="fonte-chip ${esc(s.source)}">${esc(s.source)} · ${fmt(s.total)} (${s.orders_count})</span>`
+    ).join('');
+    const linhas = (v.items || []).map(i => `
+      <tr>
+        <td>${fmtData(i.dia_entrega)}</td>
+        <td>${esc(i.cliente)}</td>
+        <td>${esc(i.source)}</td>
+        <td class="num">${(i.commission_rate_pct ?? 0)}%</td>
+        <td class="num">${fmt(i.commission_amount)}</td>
+        <td><span class="tag ${i.status === 'settled' ? 'settled' : 'active'}">${i.status === 'settled' ? 'pago' : 'pendente'}</span></td>
+      </tr>`).join('');
+    return `
+    <div class="vendedor">
+      <div class="topo">
+        <h3>${esc(v.name)}</h3>
+        <span class="email">${esc(v.email)}</span>
+        <span class="spacer"></span>
+        <span class="total">${fmt(total)}</span>
+      </div>
+      <div class="barra"><div class="pago" style="width:${pct}%"></div></div>
+      <div class="legenda">
+        <span><span class="dot" style="background:var(--verde-700)"></span>Pago ${fmt(v.paid_commission)}</span>
+        <span><span class="dot" style="background:var(--ambar)"></span>Pendente ${fmt(v.pending_commission)}</span>
+        <span>${v.orders_count ?? 0} pedido(s)</span>
+      </div>
+      <div class="fontes">${fontes}</div>
+      ${v.items && v.items.length ? `
+      <details>
+        <summary>Ver pedidos (${v.items.length})</summary>
+        <table>
+          <thead><tr><th>Entrega</th><th>Cliente</th><th>Fonte</th><th class="num">%</th><th class="num">Comissão</th><th>Status</th></tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </details>` : ''}
+    </div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

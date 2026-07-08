@@ -78,6 +78,7 @@ def create_app(config=None):
         from app.routes.clientes import clientes_bp
         from app.routes.config import config_bp
         from app.routes.core import core_bp
+        from app.routes.dashboard import dashboard_bp
         from app.routes.fontes import fontes_bp
         from app.routes.leads import leads_bp
         from app.routes.ledger_routes import ledger_bp
@@ -113,6 +114,9 @@ def create_app(config=None):
 
         # Storefront: endpoints públicos para scripts Nuvemshop (CORS *)
         app.register_blueprint(storefront_bp)
+
+        # Dashboard de comissões: HTML estático servido same-origin (evita CORS)
+        app.register_blueprint(dashboard_bp)
 
         # Debug endpoints: só registrar se ENABLE_DEBUG_ENDPOINTS=true
         if os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true":

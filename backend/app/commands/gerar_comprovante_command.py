@@ -58,6 +58,21 @@ def parse_valor_to_float(val):
         return 0.0
 
 
+def fmt_tel(val):
+    """Formata telefone BR para leitura rápida: (62) 99296-6245.
+    Aceita dígitos com ou sem DDI 55; se não reconhecer o padrão, devolve como veio."""
+    if val is None or val == "":
+        return "-"
+    digits = "".join(c for c in str(val) if c.isdigit())
+    if digits.startswith("55") and len(digits) in (12, 13):
+        digits = digits[2:]
+    if len(digits) == 11:  # celular com DDD
+        return f"({digits[:2]}) {digits[2:7]}-{digits[7:]}"
+    if len(digits) == 10:  # fixo com DDD
+        return f"({digits[:2]}) {digits[2:6]}-{digits[6:]}"
+    return str(val)
+
+
 def fmt_brl(val):
     if val is None or val == "":
         return "-"
@@ -204,7 +219,7 @@ def build_pedido_context(pedido) -> dict:
         if pedido.fonte_pedido_rel
         else (pedido.fonte_pedido or ""),
         "cliente_nome": pedido.cliente,
-        "cliente_tel": pedido.telefone_cliente,
+        "cliente_tel": fmt_tel(pedido.telefone_cliente),
         "destinatario_nome": pedido.destinatario,
         "show_destinatario": not is_mesma_pessoa,
         "produto": pedido.produto,
@@ -261,6 +276,9 @@ COMPROVANTE_CSS = """
     .head-meta { text-align: right; font-size: 12px; line-height: 1.5; white-space: nowrap; }
     .head-meta .fonte { font-size: 15px; font-weight: 800; text-transform: uppercase; }
     .head-meta b { font-weight: 800; }
+    /* 8. Horário de entrega em destaque — define a ordem de produção do dia.
+       Precisa saltar aos olhos numa pilha de comandas, tanto quanto o nº do pedido. */
+    .entrega-big { display: inline-block; border: 3px solid #000; padding: 3px 10px; margin: 3px 0 2px; font-size: 21px; font-weight: 900; letter-spacing: 0.5px; }
 
     /* 2. Pagamento em destaque: CAIXA ALTA, NEGRITO, BORDA DUPLA */
     .pay { border: 5px double #000; text-align: center; padding: 8px 10px; margin-bottom: 10px; }
@@ -274,7 +292,6 @@ COMPROVANTE_CSS = """
     .produto-xl { font-size: 24px; font-weight: 900; line-height: 1.15; }
     .kv { font-size: 12px; line-height: 1.5; }
     .kv b { font-weight: 800; }
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
     /* 5. Endereço inteligente */
     .addr-strong { font-size: 16px; font-weight: 800; line-height: 1.35; }
@@ -285,6 +302,18 @@ COMPROVANTE_CSS = """
     .instr-val { font-size: 14px; font-weight: 800; white-space: pre-wrap; }
 
     .msg { white-space: pre-wrap; font-size: 14px; font-weight: 700; min-height: 14px; }
+
+    /* 9. Bloco DE → PARA (cliente/destinatário) — alta visibilidade.
+       PARA é quem o entregador procura na porta: nome grande.
+       DE identifica quem comprou (e o telefone de contato do pedido). */
+    .depara { display: grid; grid-template-columns: 1fr 1.2fr; border: 1.5px solid #000; margin-bottom: 8px; page-break-inside: avoid; }
+    .depara-col { padding: 8px 10px; }
+    .depara-col + .depara-col { border-left: 2px dashed #000; }
+    .depara-lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 5px; }
+    .depara-nome { font-size: 16px; font-weight: 800; line-height: 1.15; }
+    .depara-nome-xl { font-size: 21px; font-weight: 900; line-height: 1.1; text-transform: uppercase; }
+    .depara-tel { font-size: 14px; font-weight: 700; margin-top: 3px; }
+    .depara-solo { grid-template-columns: 1fr; }
 
     .pickup { text-align: center; border: 2px solid #000; padding: 12px; font-size: 16px; font-weight: 900; letter-spacing: 1px; }
 
@@ -338,7 +367,6 @@ def render_comprovante_body(ctx: dict) -> str:
     enorme, pagamento em borda dupla, endereço inteligente, instrução de entrega
     e checkbox de conferência. Sem <html>/<style>/<script> — reusado pelo single
     e pelo lote 1-por-página."""
-    seal_class, seal_text = payment_seal(ctx)
     pay = payment_display(ctx)
     is_retirada = str(ctx.get("tipo") or "").lower() == "retirada"
 
@@ -418,16 +446,38 @@ def render_comprovante_body(ctx: dict) -> str:
         else f"<b>Qtd:</b> {fmt(ctx['quantidade'])}"
     )
 
-    html_destinatario = (
-        f'<div class="kv"><b>Para:</b> {fmt(ctx["destinatario_nome"])}</div>'
-        if ctx.get("show_destinatario")
-        else ""
-    )
     obs_html = (
-        f'<div class="kv"><b>Obs.:</b> {fmt(ctx["obs"])}</div>'
+        f'<div class="kv" style="margin-top:4px"><b>Obs.:</b> {fmt(ctx["obs"])}</div>'
         if fmt(ctx.get("obs")) != "-"
         else ""
     )
+
+    # 9. Bloco DE → PARA: destinatário grande (quem o entregador procura),
+    # cliente + telefone ao lado. Se cliente = destinatário, vira bloco único.
+    if ctx.get("show_destinatario"):
+        depara_html = f"""
+  <div class="depara">
+    <div class="depara-col">
+        <div class="depara-lbl">De (cliente)</div>
+        <div class="depara-nome">{fmt(ctx['cliente_nome'])}</div>
+        <div class="depara-tel">{fmt(ctx['cliente_tel'])}</div>
+        {obs_html}
+    </div>
+    <div class="depara-col">
+        <div class="depara-lbl">Para (quem recebe)</div>
+        <div class="depara-nome-xl">{fmt(ctx['destinatario_nome'])}</div>
+    </div>
+  </div>"""
+    else:
+        depara_html = f"""
+  <div class="depara depara-solo">
+    <div class="depara-col">
+        <div class="depara-lbl">Cliente — envia e recebe</div>
+        <div class="depara-nome-xl">{fmt(ctx['cliente_nome'])}</div>
+        <div class="depara-tel">{fmt(ctx['cliente_tel'])}</div>
+        {obs_html}
+    </div>
+  </div>"""
 
     return f"""
   <!-- 3. Tipo de operação (garrafais, tracejado) -->
@@ -441,7 +491,7 @@ def render_comprovante_body(ctx: dict) -> str:
     </div>
     <div class="head-meta">
         <div class="fonte">Fonte: {fmt(ctx['fonte'])}</div>
-        <div><b>Entrega:</b> {ctx['data_entrega']} {fmt(ctx['horario'])}</div>
+        <div class="entrega-big">{ctx['data_entrega']} · {fmt(ctx['horario'])}</div>
         <div>Emissão: {ctx['impresso_em']}</div>
     </div>
   </div>
@@ -462,22 +512,8 @@ def render_comprovante_body(ctx: dict) -> str:
   <!-- 5. Endereço inteligente · 6. Instrução de entrega -->
   {endereco_html}
 
-  <!-- Cliente + Pagamento -->
-  <div class="sec two-col">
-    <div>
-        <div class="sec-title">Cliente</div>
-        <div class="kv"><b>{fmt(ctx['cliente_nome'])}</b></div>
-        <div class="kv">{fmt(ctx['cliente_tel'])}</div>
-        {html_destinatario}
-    </div>
-    <div>
-        <div class="sec-title">Pagamento</div>
-        <div class="kv"><b>Forma:</b> {fmt(ctx['pagamento'])}</div>
-        <div class="kv"><b>Status:</b> <span class="slip-seal {seal_class}">{seal_text}</span></div>
-        <div class="kv"><b>Total:</b> {fmt_brl(ctx['valor'])}</div>
-        {obs_html}
-    </div>
-  </div>
+  <!-- 9. DE → PARA (cliente / destinatário) em alta visibilidade -->
+{depara_html}
 
   <!-- 7. Conferência do florista (apenas marcação) -->
   <div class="florist">

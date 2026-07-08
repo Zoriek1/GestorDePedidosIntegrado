@@ -209,15 +209,17 @@ class GerarComprovanteLoteCommand:
 
     .sheet {{
       width: 100%;
-      height: 281mm; /* A4 portrait (297mm) menos margens (8mm cada) */
+      height: 280mm; /* A4 portrait (297mm) menos margens (8mm cada), com folga de 1mm
+                        contra arredondamento de renderização que estoura a página */
       display: grid;
       gap: 6mm;
-      page-break-after: always;
-      break-after: page;
     }}
-    .sheet:last-child {{
-      page-break-after: auto;
-      break-after: auto;
+    /* Quebra ANTES de cada folha a partir da 2ª — nunca sobra quebra pendurada
+       após a última (o rodapé fixo vinha depois dela e o :last-child não casava,
+       gerando uma página em branco no fim do lote). */
+    .sheet + .sheet {{
+      page-break-before: always;
+      break-before: page;
     }}
     /* VIS-05: 2-up são guias RETRATO lado a lado → 2 colunas, 1 linha
        (antes eram 2 metades horizontais empilhadas, que liam como paisagem). */
@@ -290,7 +292,8 @@ class GerarComprovanteLoteCommand:
       align-items: baseline;
       gap: 4mm;
     }}
-    .slip-data {{ font-size: 12px; font-weight: 700; color: #000; }}
+    /* Horário de entrega em destaque — define a ordem de produção numa pilha de guias */
+    .slip-data {{ font-size: 14px; font-weight: 900; color: #000; border: 2px solid #000; padding: 0.5mm 2mm; }}
     .slip-valor {{ font-size: 13px; font-weight: 700; color: #000; }}
 
     /* ===== BODY ===== */
@@ -454,8 +457,9 @@ class GerarComprovanteLoteCommand:
   <meta charset="UTF-8">
   <title>Comprovantes em lote ({len(contexts)} pedidos · 1 por página)</title>
   <style>{COMPROVANTE_CSS}
-    .page-1up {{ page-break-after: always; break-after: page; }}
-    .page-1up:last-child {{ page-break-after: auto; break-after: auto; }}
+    /* Quebra ANTES de cada página a partir da 2ª — o :last-child não casava
+       (o rodapé fixo vem depois no DOM) e gerava página em branco no fim. */
+    .page-1up + .page-1up {{ page-break-before: always; break-before: page; }}
     .meta-foot {{
       position: fixed;
       bottom: 2mm;

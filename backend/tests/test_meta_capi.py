@@ -1159,7 +1159,7 @@ def test_meta_capi_verbose_summary():
 
 
 class TestFbcMilliseconds:
-    """Garante que o fbc sai em milissegundos quando a flag está ligada."""
+    """Garante que o fbc sai sempre em milissegundos (spec Meta)."""
 
     @pytest.fixture
     def service(self):
@@ -1169,7 +1169,6 @@ class TestFbcMilliseconds:
                 "META_PIXEL_ID": "test",
                 "META_CAPI_ACCESS_TOKEN": "t",
                 "META_CAPI_USE_GATEWAY": "false",
-                "META_CAPI_FBC_MS_ENABLED": "true",
             },
         ):
             from app.services.meta_capi import MetaConversionsApiService
@@ -1177,27 +1176,40 @@ class TestFbcMilliseconds:
             return MetaConversionsApiService()
 
     def test_build_fbc_uses_milliseconds(self, service):
-        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "true"}):
-            fbc = service.build_fbc_from_fbclid("abc123")
-            assert fbc is not None
-            ts = int(fbc.split(".")[2])
-            assert ts >= 10**12, f"timestamp deve ser ms, veio {ts}"
+        fbc = service.build_fbc_from_fbclid("abc123")
+        assert fbc is not None
+        ts = int(fbc.split(".")[2])
+        assert ts >= 10**12, f"timestamp deve ser ms, veio {ts}"
 
     def test_build_fbc_from_datetime_source_uses_ms(self, service):
-        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "true"}):
-            dt = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-            fbc = service.build_fbc_from_fbclid("abc", timestamp_source=dt)
-            ts = int(fbc.split(".")[2])
-            assert ts == int(dt.timestamp() * 1000)
+        dt = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        fbc = service.build_fbc_from_fbclid("abc", timestamp_source=dt)
+        ts = int(fbc.split(".")[2])
+        assert ts == int(dt.timestamp() * 1000)
 
-    def test_is_valid_fbc_rejects_seconds_when_flag_on(self, service):
-        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "true"}):
-            assert service.is_valid_fbc("fb.1.1700000000.abc") is False
-            assert service.is_valid_fbc("fb.1.1700000000000.abc") is True
+    def test_build_fbc_from_naive_datetime_assumes_brazil_tz(self, service):
+        from app.models.pedido import TIMEZONE_BRASIL
 
-    def test_is_valid_fbc_accepts_seconds_when_flag_off(self, service):
-        with patch.dict(os.environ, {"META_CAPI_FBC_MS_ENABLED": "false"}):
-            assert service.is_valid_fbc("fb.1.1700000000.abc") is True
+        # Colunas naive do Postgres guardam wall-clock de Brasília.
+        naive = datetime(2025, 1, 15, 12, 0, 0)
+        fbc = service.build_fbc_from_fbclid("abc", timestamp_source=naive)
+        ts = int(fbc.split(".")[2])
+        expected = int(naive.replace(tzinfo=TIMEZONE_BRASIL).timestamp() * 1000)
+        assert ts == expected
+
+    def test_build_fbc_from_int_seconds_converts_to_ms(self, service):
+        fbc = service.build_fbc_from_fbclid("abc", timestamp_source=1700000000)
+        ts = int(fbc.split(".")[2])
+        assert ts == 1700000000000
+
+    def test_build_fbc_from_int_ms_kept_as_is(self, service):
+        fbc = service.build_fbc_from_fbclid("abc", timestamp_source=1700000000000)
+        ts = int(fbc.split(".")[2])
+        assert ts == 1700000000000
+
+    def test_is_valid_fbc_rejects_seconds(self, service):
+        assert service.is_valid_fbc("fb.1.1700000000.abc") is False
+        assert service.is_valid_fbc("fb.1.1700000000000.abc") is True
 
 
 class TestPurchaseSkipInvalidValue:
@@ -1461,3 +1473,77 @@ class TestPurchaseEnrichmentLnAndUa:
             pedido = self._make_pedido()
             event = service.build_purchase_event(pedido)
             assert "client_user_agent" not in event["user_data"]
+
+
+class TestPurchaseFbcPriority:
+    """fbc do lead (creationTime = primeira observação do fbclid) tem prioridade
+    sobre o fbc do frontend (timestamp da criação do pedido)."""
+
+    PEDIDO_FBC = "fb.1.1750000000000.IwARclick"
+
+    @pytest.fixture
+    def service(self):
+        with patch.dict(
+            os.environ,
+            {"META_PIXEL_ID": "t", "META_CAPI_ACCESS_TOKEN": "t", "META_CAPI_USE_GATEWAY": "false"},
+        ):
+            from app.services.meta_capi import MetaConversionsApiService
+
+            return MetaConversionsApiService()
+
+    def _make_pedido(self, fbc=PEDIDO_FBC):
+        pedido = MagicMock()
+        pedido.id = 99
+        pedido.telefone_cliente = "62999887766"
+        pedido.cliente = "Maria da Silva"
+        pedido.fonte_pedido = "WhatsApp"
+        pedido.fonte_pedido_rel = None
+        pedido.valor = "150,00"
+        pedido.cidade = "Goiania"
+        pedido.cep = "74000000"
+        pedido.tipo_pedido = "Entrega"
+        pedido.cliente_id = None
+        pedido.cliente_rel = None
+        pedido.fbc = fbc
+        pedido.fbp = None
+        pedido.updated_at = datetime.now()
+        pedido.created_at = datetime.now()
+        pedido.total_pago = MagicMock(return_value=150.0)
+        return pedido
+
+    def _make_lead(self, fbclid="IwARclick"):
+        lead = MagicMock()
+        lead.id = 7
+        lead.fbclid = fbclid
+        lead.fbp = None
+        lead.created_at = datetime(2025, 1, 10, 8, 30, 0, tzinfo=timezone.utc)
+        lead.ip_address = None
+        lead.client_user_agent = None
+        lead.url = None
+        return lead
+
+    def test_purchase_prefers_lead_fbc_over_pedido_fbc(self, service):
+        lead = self._make_lead()
+        expected = service.build_fbc_from_fbclid(lead.fbclid, lead.created_at)
+        with patch.object(service, "resolve_lead_for_purchase", return_value=lead):
+            event = service.build_purchase_event(self._make_pedido())
+        assert event["user_data"]["fbc"] == expected
+        assert event["user_data"]["fbc"] != self.PEDIDO_FBC
+
+    def test_purchase_uses_pedido_fbc_without_lead(self, service):
+        with patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            event = service.build_purchase_event(self._make_pedido())
+        assert event["user_data"]["fbc"] == self.PEDIDO_FBC
+
+    def test_purchase_uses_pedido_fbc_when_lead_has_no_fbclid(self, service):
+        lead = self._make_lead(fbclid=None)
+        with patch.object(service, "resolve_lead_for_purchase", return_value=lead):
+            event = service.build_purchase_event(self._make_pedido())
+        assert event["user_data"]["fbc"] == self.PEDIDO_FBC
+
+    def test_purchase_omits_fbc_when_only_seconds_available(self, service):
+        with patch.object(service, "resolve_lead_for_purchase", return_value=None):
+            event = service.build_purchase_event(
+                self._make_pedido(fbc="fb.1.1700000000.abc")
+            )
+        assert "fbc" not in event["user_data"]

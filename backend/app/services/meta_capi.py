@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
-from app.models.pedido import Pedido
+from app.models.pedido import Pedido, TIMEZONE_BRASIL
 
 logger = logging.getLogger(__name__)
 
@@ -220,11 +220,9 @@ class MetaConversionsApiService:
         m = re.fullmatch(r"fb\.1\.(\d+)\.([A-Za-z0-9_-]+)", value.strip())
         if not m:
             return False
-        if _flag("META_CAPI_FBC_MS_ENABLED", default=False):
-            # Meta exige timestamp em milissegundos (>= ~10^12 a partir de 2001).
-            # Rejeita valores em segundos (legado bug) para forçar fallback reconstruído.
-            return int(m.group(1)) >= 10**12
-        return True
+        # Meta exige timestamp em milissegundos (>= ~10^12 a partir de 2001).
+        # Rejeita valores em segundos (legado bug) para forçar fallback reconstruído.
+        return int(m.group(1)) >= 10**12
 
     def is_valid_fbp(self, value: str) -> bool:
         if not value:
@@ -238,7 +236,8 @@ class MetaConversionsApiService:
 
         Formato Meta: fb.1.{timestamp_ms}.{fbclid}. Timestamp em milissegundos
         é obrigatório — segundos faz a Meta rejeitar o evento com
-        "creationTime inválido".
+        "creationTime inválido". `timestamp_source` deve ser o momento da
+        PRIMEIRA observação do fbclid (spec Meta), ex.: lead.created_at.
         """
         if not fbclid:
             return None
@@ -247,19 +246,22 @@ class MetaConversionsApiService:
         if not fbclid_clean:
             return None
 
-        use_ms = _flag("META_CAPI_FBC_MS_ENABLED", default=False)
-        scale = 1000 if use_ms else 1
-
-        ts = int(time.time() * scale)
+        ts = int(time.time() * 1000)
         if timestamp_source is not None:
             try:
                 if hasattr(timestamp_source, "timestamp"):
-                    ts = int(timestamp_source.timestamp() * scale)
+                    dt = timestamp_source
+                    if getattr(dt, "tzinfo", None) is None:
+                        # Colunas DateTime naive gravadas por datetime_now_brazil()
+                        # guardam wall-clock de Brasília (Postgres descarta o offset).
+                        dt = dt.replace(tzinfo=TIMEZONE_BRASIL)
+                    ts = int(dt.timestamp() * 1000)
                 else:
-                    # Inteiro recebido — assumir segundos epoch; converter se em ms.
-                    ts = int(timestamp_source) * (scale if use_ms else 1)
+                    raw = int(timestamp_source)
+                    # Epoch em segundos ou já em milissegundos.
+                    ts = raw if raw >= 10**12 else raw * 1000
             except Exception:
-                ts = int(time.time() * scale)
+                ts = int(time.time() * 1000)
 
         return f"fb.1.{ts}.{fbclid_clean}"
 
@@ -559,7 +561,10 @@ class MetaConversionsApiService:
         lead_fbc = self.build_fbc_from_fbclid(
             getattr(lead, "fbclid", None), getattr(lead, "created_at", None)
         )
-        for fbc_candidate in [getattr(pedido, "fbc", None), lead_fbc]:
+        # Prioridade: fbc reconstruído do lead (creationTime = primeira observação
+        # do fbclid, conforme spec Meta) > fbc do frontend (timestamp da criação do
+        # pedido — correto apenas quando o fbclid foi colado manualmente sem lead).
+        for fbc_candidate in [lead_fbc, getattr(pedido, "fbc", None)]:
             if fbc_candidate and self.is_valid_fbc(fbc_candidate):
                 event["user_data"]["fbc"] = fbc_candidate
                 break

@@ -22,5 +22,6 @@ python scripts/migrations/add_search_trgm_unaccent.py
 python scripts/migrations/create_catalogo_arranjos.py
 python scripts/migrations/create_bling_integration.py
 python scripts/migrations/create_pedido_sugestoes_endereco.py
+python scripts/migrations/convert_pedidos_fbc_seconds_to_ms.py
 
 exec python wsgi.py

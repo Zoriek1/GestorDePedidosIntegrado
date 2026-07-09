@@ -1,3 +1,4 @@
 -r requirements.txt
 pre-commit>=3.6.0
+radon>=6.0  # analise de complexidade (CC) e manutenibilidade (MI) — ver scripts/maintenance/analise_complexidade.sh
 

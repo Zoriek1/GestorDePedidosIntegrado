@@ -15,6 +15,7 @@ python scripts/migrations/add_slot_entrega_to_pedidos.py
 python scripts/migrations/add_delivery_details_to_pedidos.py
 python scripts/migrations/add_fiscal_fields_to_pedidos.py
 python scripts/migrations/add_session_fields_to_lead_touchpoints.py
+python scripts/migrations/add_whatsapp_marketing_tracking.py
 python scripts/migrations/add_pedido_id_to_push_subscriptions.py
 python scripts/migrations/add_codigo_whatsapp_to_pedidos.py
 python scripts/migrations/backfill_slot_inicio_from_horario.py

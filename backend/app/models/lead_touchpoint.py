@@ -21,8 +21,11 @@ def derive_is_paid(
     utm_medium: str | None,
     fbclid: str | None,
     utm_id: str | None,
+    gclid: str | None = None,
+    gbraid: str | None = None,
+    wbraid: str | None = None,
 ) -> bool:
-    if fbclid:
+    if fbclid or gclid or gbraid or wbraid:
         return True
     if utm_id:
         return True
@@ -52,6 +55,12 @@ class LeadTouchpoint(db.Model):
     sck = db.Column(db.String(200))
     fbclid = db.Column(db.String(255))
     fbp = db.Column(db.String(255))
+    gclid = db.Column(db.String(255))
+    gbraid = db.Column(db.String(255))
+    wbraid = db.Column(db.String(255))
+    ga_client_id = db.Column(db.String(255))
+    ga_session_id = db.Column(db.String(100))
+    ga_session_started_at = db.Column(db.DateTime, nullable=True)
     referrer = db.Column(db.Text)
     url = db.Column(db.Text)
     # Camada de sessão da LP (sessionStorage): primeira URL e referrer DESTA sessão.
@@ -59,6 +68,9 @@ class LeadTouchpoint(db.Model):
     # (storage sandboxed em webview) de teoria Apple/iOS. Ver rota /api/leads.
     first_landing_url = db.Column(db.Text)
     session_referrer = db.Column(db.Text)
+    cta_location = db.Column(db.String(100))
+    product_id = db.Column(db.String(100))
+    product_name = db.Column(db.String(255))
     ip_address = db.Column(db.String(45))
     client_user_agent = db.Column(db.String(512))
     is_paid = db.Column(db.Boolean, nullable=False, default=False)
@@ -81,10 +93,21 @@ class LeadTouchpoint(db.Model):
             "sck": self.sck,
             "fbclid": self.fbclid,
             "fbp": self.fbp,
+            "gclid": self.gclid,
+            "gbraid": self.gbraid,
+            "wbraid": self.wbraid,
+            "ga_client_id": self.ga_client_id,
+            "ga_session_id": self.ga_session_id,
+            "ga_session_started_at": (
+                self.ga_session_started_at.isoformat() if self.ga_session_started_at else None
+            ),
             "referrer": self.referrer,
             "url": self.url,
             "first_landing_url": self.first_landing_url,
             "session_referrer": self.session_referrer,
+            "cta_location": self.cta_location,
+            "product_id": self.product_id,
+            "product_name": self.product_name,
             "ip_address": self.ip_address,
             "is_paid": bool(self.is_paid),
             "created_at": self.created_at.isoformat() if self.created_at else None,

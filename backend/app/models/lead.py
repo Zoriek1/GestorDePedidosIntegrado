@@ -43,6 +43,17 @@ class Lead(db.Model):
     situacao = db.Column(db.String(30), index=True, nullable=True)
     fbclid = db.Column(db.String(255), index=True)
     fbp = db.Column(db.String(255))
+    gclid = db.Column(db.String(255), index=True)
+    gbraid = db.Column(db.String(255), index=True)
+    wbraid = db.Column(db.String(255), index=True)
+    ga_client_id = db.Column(db.String(255), index=True)
+    ga_session_id = db.Column(db.String(100))
+    ga_session_started_at = db.Column(db.DateTime, nullable=True)
+    first_landing_url = db.Column(db.Text)
+    session_referrer = db.Column(db.Text)
+    cta_location = db.Column(db.String(100))
+    product_id = db.Column(db.String(100))
+    product_name = db.Column(db.String(255))
     ip_address = db.Column(db.String(45))
     created_at = db.Column(db.DateTime, default=datetime_now_brazil, index=True)
     # Meta Pixel/CAPI: mesmo event_id por estágio para dedup browser+servidor
@@ -103,6 +114,19 @@ class Lead(db.Model):
             "situacao": self.situacao,
             "fbclid": self.fbclid,
             "fbp": self.fbp,
+            "gclid": self.gclid,
+            "gbraid": self.gbraid,
+            "wbraid": self.wbraid,
+            "ga_client_id": self.ga_client_id,
+            "ga_session_id": self.ga_session_id,
+            "ga_session_started_at": (
+                self.ga_session_started_at.isoformat() if self.ga_session_started_at else None
+            ),
+            "first_landing_url": self.first_landing_url,
+            "session_referrer": self.session_referrer,
+            "cta_location": self.cta_location,
+            "product_id": self.product_id,
+            "product_name": self.product_name,
             "ip_address": self.ip_address,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "meta_event_id_contact": self.meta_event_id_contact,

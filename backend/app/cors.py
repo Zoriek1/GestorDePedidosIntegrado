@@ -69,6 +69,9 @@ def get_allowed_origins():
         # (passa sem CORS), mas leituras de resposta exigem o Origin na allowlist.
         "https://lpb.planteumaflor.com",
         "https://www.lpb.planteumaflor.com",
+        # Loja Nuvemshop principal (botao WhatsApp instrumentado no tema).
+        "https://planteumaflor.com",
+        "https://www.planteumaflor.com",
     ]
 
     # Permitir HTTP apenas para localhost (desenvolvimento)

@@ -19,6 +19,7 @@ from app.models.lead_touchpoint import LeadTouchpoint
 from app.models.ledger_entry import LedgerEntry
 from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
 from app.models.meta_capi_outbox import MetaCapiOutbox
+from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.nuvemshop_store import NuvemshopStore
 from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
 from app.models.pedido import Pedido
@@ -49,6 +50,7 @@ __all__ = [
     "BlingPaymentMethod",
     "MetaCapiOutbox",
     "MetaCapiLeadOutbox",
+    "MarketingConversionOutbox",
     "NuvemshopStore",
     "NuvemshopWebhookDelivery",
     "PedidoExternalRef",

@@ -161,6 +161,62 @@ def test_cria_lead_text_plain_sendbeacon(client, session):
     assert session.query(Lead).count() == 1
 
 
+def test_google_ads_ga4_e_touchpoints_reutilizam_token(client, session):
+    from app.models.lead_touchpoint import LeadTouchpoint
+
+    paid = {
+        "event": "whatsapp_click",
+        "url": "https://www.planteumaflor.com/produtos/buque?gclid=click-1",
+        "utm_source": "google",
+        "utm_medium": "cpc",
+        "utm_campaign": "flores",
+        "gclid": "click-1",
+        "ga_client_id": "123456789.1700000000",
+        "ga_session_id": "1700000000",
+        "ga_session_started_at": 1700000000000,
+        "first_landing_url": "https://www.planteumaflor.com/?gclid=click-1",
+        "cta_location": "floating",
+        "product_id": "42",
+        "product_name": "Buquê Premium",
+        "token_rastreio": _VALID_TOKEN,
+        "meta_event_id_contact": _META_EVT_CONTACT,
+    }
+    first = client.post("/api/leads/", json=paid, headers={"User-Agent": "pytest"})
+    assert first.status_code == 201
+
+    direct = {
+        "event": "whatsapp_click",
+        "url": "https://www.planteumaflor.com/contato",
+        "token_rastreio": _VALID_TOKEN,
+        "meta_event_id_contact": "evt_contact_repeat",
+    }
+    second = client.post("/api/leads/", json=direct, headers={"User-Agent": "pytest"})
+    assert second.status_code == 200
+    assert second.get_json()["duplicated"] is True
+
+    lead = session.query(Lead).one()
+    assert lead.gclid == "click-1"
+    assert lead.ga_client_id == "123456789.1700000000"
+    assert lead.product_id == "42"
+    assert session.query(LeadTouchpoint).filter_by(lead_id=lead.id).count() == 2
+
+
+def test_novo_toque_google_pago_substitui_atribuicao_do_mesmo_token(client, session):
+    base = {
+        "event": "whatsapp_click",
+        "utm_source": "google",
+        "utm_medium": "cpc",
+        "token_rastreio": _VALID_TOKEN,
+    }
+    assert client.post(
+        "/api/leads", json={**base, "gclid": "old", "meta_event_id_contact": _META_EVT_CONTACT}
+    ).status_code == 201
+    assert client.post(
+        "/api/leads", json={**base, "gclid": "new", "meta_event_id_contact": "evt_new"}
+    ).status_code == 200
+    assert session.query(Lead).one().gclid == "new"
+
+
 def test_dedup_por_sck_prioriza_mesmo_com_payload_diferente(client, session):
     p1 = {
         "event": "whatsapp_click",

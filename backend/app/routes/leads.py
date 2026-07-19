@@ -93,6 +93,14 @@ ALLOWED_FIELDS = (
     "phone",
     "fbclid",
     "fbp",
+    "gclid",
+    "gbraid",
+    "wbraid",
+    "ga_client_id",
+    "ga_session_id",
+    "cta_location",
+    "product_id",
+    "product_name",
 )
 
 
@@ -182,6 +190,24 @@ def _normalize_fbp(value: object) -> str | None:
     return _clip(value, 255)
 
 
+def _parse_tracking_datetime(value: object) -> datetime | None:
+    """Aceita epoch (segundos/milisegundos) ou ISO-8601 enviado pelo navegador."""
+    if value is None or value == "":
+        return None
+    try:
+        if isinstance(value, (int, float)) or str(value).strip().isdigit():
+            raw = float(value)
+            if raw > 10_000_000_000:
+                raw /= 1000
+            return datetime.fromtimestamp(raw, tz=TIMEZONE_BRASIL)
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=TIMEZONE_BRASIL)
+        return parsed.astimezone(TIMEZONE_BRASIL)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
 def _is_whatsapp_event(event: str | None) -> bool:
     return (event or "").strip().lower() == WHATSAPP_EVENT
 
@@ -191,6 +217,9 @@ def _build_touchpoint_fields(data: dict, ip_address: str | None, user_agent: str
     fbclid = _extract_fbclid(data)
     utm_id = _clip(data.get("utm_id"), 100)
     utm_medium = _clip(data.get("utm_medium"), 100)
+    gclid = _clip(data.get("gclid"), 255)
+    gbraid = _clip(data.get("gbraid"), 255)
+    wbraid = _clip(data.get("wbraid"), 255)
     return {
         "utm_source": _clip(data.get("utm_source"), 100),
         "utm_medium": utm_medium,
@@ -203,6 +232,12 @@ def _build_touchpoint_fields(data: dict, ip_address: str | None, user_agent: str
         "sck": _clip(data.get("sck"), 200),
         "fbclid": fbclid,
         "fbp": _normalize_fbp(data.get("fbp")),
+        "gclid": gclid,
+        "gbraid": gbraid,
+        "wbraid": wbraid,
+        "ga_client_id": _clip(data.get("ga_client_id") or data.get("client_id"), 255),
+        "ga_session_id": _clip(data.get("ga_session_id") or data.get("session_id"), 100),
+        "ga_session_started_at": _parse_tracking_datetime(data.get("ga_session_started_at")),
         "referrer": _clip(data.get("referrer"), 10_000),
         "url": _clip(data.get("url") or data.get("destination_url"), 10_000),
         # Camada de sessão da LP (diagnóstico de perda de UTM). NÃO entram em
@@ -210,9 +245,19 @@ def _build_touchpoint_fields(data: dict, ip_address: str | None, user_agent: str
         # variam por sessão, fragmentariam a deduplicação.
         "first_landing_url": _clip(data.get("first_landing_url"), 10_000),
         "session_referrer": _clip(data.get("session_referrer"), 10_000),
+        "cta_location": _clip(data.get("cta_location") or data.get("placement"), 100),
+        "product_id": _clip(data.get("product_id"), 100),
+        "product_name": _clip(data.get("product_name"), 255),
         "ip_address": ip_address,
         "client_user_agent": user_agent,
-        "is_paid": derive_is_paid(utm_medium=utm_medium, fbclid=fbclid, utm_id=utm_id),
+        "is_paid": derive_is_paid(
+            utm_medium=utm_medium,
+            fbclid=fbclid,
+            utm_id=utm_id,
+            gclid=gclid,
+            gbraid=gbraid,
+            wbraid=wbraid,
+        ),
     }
 
 
@@ -235,6 +280,25 @@ def _record_touchpoint(lead: Lead, tp_fields: dict) -> LeadTouchpoint:
             lead.fbclid = tp.fbclid
         if tp.fbp:
             lead.fbp = tp.fbp
+        lead.gclid = tp.gclid
+        lead.gbraid = tp.gbraid
+        lead.wbraid = tp.wbraid
+        if tp.ga_client_id:
+            lead.ga_client_id = tp.ga_client_id
+        if tp.ga_session_id:
+            lead.ga_session_id = tp.ga_session_id
+        if tp.ga_session_started_at:
+            lead.ga_session_started_at = tp.ga_session_started_at
+        if tp.first_landing_url:
+            lead.first_landing_url = tp.first_landing_url
+        if tp.session_referrer:
+            lead.session_referrer = tp.session_referrer
+        if tp.cta_location:
+            lead.cta_location = tp.cta_location
+        if tp.product_id:
+            lead.product_id = tp.product_id
+        if tp.product_name:
+            lead.product_name = tp.product_name
         lead.last_touch_id = tp.id
     return tp
 
@@ -450,7 +514,20 @@ def criar_lead():
 
     tp_fields = _build_touchpoint_fields(data, ip_address, full_ua)
 
-    existing = Lead.query.filter(Lead.dedup_key == dedup_key).first()
+    # O token e a chave idempotente do funil. Repeticoes do mesmo clique/sessao
+    # enriquecem o lead existente e sempre acrescentam um touchpoint.
+    existing = None
+    if is_whatsapp and token_valido:
+        existing = (
+            Lead.query.filter(
+                Lead.token_rastreio == token_rastreio,
+                Lead.status != "compra_realizada",
+            )
+            .order_by(Lead.created_at.desc(), Lead.id.desc())
+            .first()
+        )
+    if existing is None:
+        existing = Lead.query.filter(Lead.dedup_key == dedup_key).first()
     if existing is not None:
         _record_touchpoint(existing, tp_fields)
         db.session.commit()
@@ -485,6 +562,17 @@ def criar_lead():
         status=status,
         fbclid=_extract_fbclid(data),
         fbp=_normalize_fbp(data.get("fbp")),
+        gclid=tp_fields["gclid"],
+        gbraid=tp_fields["gbraid"],
+        wbraid=tp_fields["wbraid"],
+        ga_client_id=tp_fields["ga_client_id"],
+        ga_session_id=tp_fields["ga_session_id"],
+        ga_session_started_at=tp_fields["ga_session_started_at"],
+        first_landing_url=tp_fields["first_landing_url"],
+        session_referrer=tp_fields["session_referrer"],
+        cta_location=tp_fields["cta_location"],
+        product_id=tp_fields["product_id"],
+        product_name=tp_fields["product_name"],
         meta_event_id_contact=meta_event_id_contact,
         client_user_agent=client_ua,
     )

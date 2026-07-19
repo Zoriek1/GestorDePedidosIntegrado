@@ -1615,6 +1615,17 @@ def criar_pedido():
             print(f"[AVISO] Erro ao criar outbox para pedido #{pedido.id}: {e}")
 
         try:
+            from app.services.marketing_conversion_service import enqueue_whatsapp_purchase
+
+            enqueue_whatsapp_purchase(pedido)
+        except Exception as e:
+            # Não expor payload, telefone ou credenciais nos logs.
+            print(
+                f"[AVISO] Falha ao enfileirar conversões WhatsApp do pedido #{pedido.id}: "
+                f"{e.__class__.__name__}"
+            )
+
+        try:
             from app.utils.bling_helper import enqueue_bling_for_new_order
 
             enqueue_bling_for_new_order(pedido)
@@ -1950,6 +1961,16 @@ def atualizar_pedido(pedido_id):
         db.session.commit()
 
         # Meta CAPI: Purchase é disparado na criação do pedido, não em update.
+        # O outbox GA4/Ads tenta novamente aqui para cobrir pedido criado sem valor.
+        try:
+            from app.services.marketing_conversion_service import enqueue_whatsapp_purchase
+
+            enqueue_whatsapp_purchase(pedido)
+        except Exception as e:
+            print(
+                f"[AVISO] Falha ao enfileirar conversões WhatsApp do pedido #{pedido.id}: "
+                f"{e.__class__.__name__}"
+            )
 
         try:
             from app.utils.utmify_helper import send_utmify_if_purchase

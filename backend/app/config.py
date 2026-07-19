@@ -97,6 +97,28 @@ class BaseConfig:
     # Endpoint completo do Gateway (opcional - se fornecido, usa este ao invés de construir)
     META_CAPI_GATEWAY_ENDPOINT = os.environ.get("META_CAPI_GATEWAY_ENDPOINT") or ""
 
+    # Conversoes de vendas originadas no clique de WhatsApp da loja.
+    MARKETING_DISPATCH_ENABLED = (
+        os.environ.get("MARKETING_DISPATCH_ENABLED", "false").lower() == "true"
+    )
+    GA4_MEASUREMENT_ID = os.environ.get("GA4_MEASUREMENT_ID") or ""
+    GA4_API_SECRET = os.environ.get("GA4_API_SECRET") or ""
+    GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY = (
+        os.environ.get("GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY", "false").lower() == "true"
+    )
+    GOOGLE_DATAMANAGER_ENABLED = (
+        os.environ.get("GOOGLE_DATAMANAGER_ENABLED", "false").lower() == "true"
+    )
+    GOOGLE_DATAMANAGER_VALIDATE_ONLY = (
+        os.environ.get("GOOGLE_DATAMANAGER_VALIDATE_ONLY", "true").lower() == "true"
+    )
+    GOOGLE_CLOUD_PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT_ID") or ""
+    GOOGLE_ADS_CUSTOMER_ID = os.environ.get("GOOGLE_ADS_CUSTOMER_ID") or ""
+    GOOGLE_ADS_CONVERSION_ACTION_ID = os.environ.get("GOOGLE_ADS_CONVERSION_ACTION_ID") or ""
+    GOOGLE_DATAMANAGER_CREDENTIALS_JSON = (
+        os.environ.get("GOOGLE_DATAMANAGER_CREDENTIALS_JSON") or ""
+    )
+
     # Segurança e Middleware
     ENABLE_AUTH = os.environ.get("ENABLE_AUTH", "true").lower() == "true"
     ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"

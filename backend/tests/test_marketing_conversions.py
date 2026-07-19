@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from app.models.lead import Lead
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.pedido import Pedido, datetime_now_brazil
+from app.services.marketing_diagnostics_service import MarketingDiagnosticsService
 from app.services.marketing_conversion_dispatcher import MarketingConversionDispatcher
 from app.services.marketing_conversion_service import enqueue_whatsapp_purchase
 from app.utils.tracking_token import extract_tracking_token_from_text
@@ -349,3 +350,81 @@ def test_google_ads_status_expira_apos_24_horas(app, session):
     assert row.status == "failed"
     assert row.last_error == "datamanager_status_timeout_24h"
     assert stats["failed"] == 1
+
+
+class _DiagnosticsHttp:
+    def post(self, url, **kwargs):
+        if "datamanager" in url:
+            assert kwargs["json"]["validateOnly"] is True
+            return _Response(200, {"requestId": "diagnostic-request"})
+        return _Response(200, {"validationMessages": []})
+
+
+def test_diagnostics_ga4_e_google_nao_criam_dados_de_negocio(app, session, monkeypatch):
+    app.config.update(
+        GA4_MEASUREMENT_ID="G-DIAGNOSTIC",
+        GA4_API_SECRET="diagnostic-secret",
+        GOOGLE_DATAMANAGER_ENABLED=True,
+        GOOGLE_CLOUD_PROJECT_ID="diagnostic-project",
+        GOOGLE_ADS_CUSTOMER_ID="1234567890",
+        GOOGLE_ADS_CONVERSION_ACTION_ID="987654",
+    )
+    monkeypatch.setattr(
+        MarketingConversionDispatcher,
+        "_google_headers",
+        lambda self: {"Authorization": "Bearer diagnostic"},
+    )
+    before = {
+        "pedidos": session.query(Pedido).count(),
+        "leads": session.query(Lead).count(),
+        "outbox": session.query(MarketingConversionOutbox).count(),
+    }
+    service = MarketingDiagnosticsService(http=_DiagnosticsHttp())
+
+    ga4 = service.run("ga4")
+    google_ads = service.run("google_ads")
+
+    assert ga4["ok"] is True
+    assert ga4["status"] == "validated"
+    assert google_ads["ok"] is True
+    assert google_ads["request_id"] == "diagnostic-request"
+    assert session.query(Pedido).count() == before["pedidos"]
+    assert session.query(Lead).count() == before["leads"]
+    assert session.query(MarketingConversionOutbox).count() == before["outbox"]
+
+
+def test_diagnostic_meta_exige_test_event_code(app, monkeypatch):
+    monkeypatch.setenv("META_PIXEL_ID", "pixel-diagnostic")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "token-diagnostic")
+    monkeypatch.delenv("META_TEST_EVENT_CODE", raising=False)
+
+    result = MarketingDiagnosticsService(http=_DiagnosticsHttp()).run("meta")
+
+    assert result["ok"] is False
+    assert result["status"] == "not_tested"
+    assert result["error"] == "meta_test_event_code_obrigatorio"
+
+
+def test_diagnostic_meta_usa_test_events_sem_persistir_codigo(app, monkeypatch):
+    from app.services.meta_capi import MetaConversionsApiService
+
+    monkeypatch.setenv("META_PIXEL_ID", "pixel-diagnostic")
+    monkeypatch.setenv("META_CAPI_ACCESS_TOKEN", "token-diagnostic")
+    monkeypatch.delenv("META_TEST_EVENT_CODE", raising=False)
+    captured = {}
+
+    def fake_send(service, events):
+        captured["test_event_code"] = service.test_event_code
+        captured["events"] = events
+        return {"_status_code": 200, "events_received": 1, "fbtrace_id": "trace"}
+
+    monkeypatch.setattr(MetaConversionsApiService, "send_events", fake_send)
+
+    result = MarketingDiagnosticsService(http=_DiagnosticsHttp()).run(
+        "meta", meta_test_event_code="TEST123"
+    )
+
+    assert result["ok"] is True
+    assert captured["test_event_code"] == "TEST123"
+    assert captured["events"][0]["event_name"] == "MarketingIntegrationTest"
+    assert "TEST123" not in str(result)

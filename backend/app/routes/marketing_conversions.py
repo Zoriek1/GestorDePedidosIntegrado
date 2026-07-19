@@ -70,6 +70,10 @@ def retry():
             continue
         row.status = "pending"
         row.request_id = None
+        row.validation_only = False
+        row.status_check_attempts = 0
+        row.last_status_check_at = None
+        row.next_status_check_at = None
         row.submitted_at = None
         row.sent_at = None
         row.last_http_status = None

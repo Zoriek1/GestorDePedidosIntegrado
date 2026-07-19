@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 import requests
 from flask import current_app
@@ -15,6 +16,10 @@ from app.models.pedido import datetime_now_brazil
 DATAMANAGER_SCOPE = "https://www.googleapis.com/auth/datamanager"
 DATAMANAGER_INGEST_URL = "https://datamanager.googleapis.com/v1/events:ingest"
 DATAMANAGER_STATUS_URL = "https://datamanager.googleapis.com/v1/requestStatus:retrieve"
+DATAMANAGER_INITIAL_STATUS_DELAY = timedelta(minutes=30)
+DATAMANAGER_MAX_STATUS_DELAY = timedelta(minutes=60)
+DATAMANAGER_STATUS_TIMEOUT = timedelta(hours=24)
+DATAMANAGER_BACKOFF_MULTIPLIER = 1.3
 
 
 class MarketingConversionDispatcher:
@@ -47,7 +52,12 @@ class MarketingConversionDispatcher:
             .limit(limit)
             .all()
         )
+        now = datetime_now_brazil()
         for row in submitted:
+            next_check = self._aware(row.next_status_check_at, now)
+            if next_check and next_check > now:
+                continue
+            stats["processed"] += 1
             self._poll_google_ads(row, stats)
         return stats
 
@@ -168,32 +178,45 @@ class MarketingConversionDispatcher:
             db.session.commit()
             return "failed"
         row.request_id = str(request_id)
+        row.validation_only = validate_only
+        row.status_check_attempts = 0
+        row.last_status_check_at = None
+        row.next_status_check_at = None
         row.submitted_at = datetime_now_brazil()
         if validate_only:
             # Diagnostics by request_id are unavailable for validateOnly calls.
             # A successful HTTP response completes this validation request.
             row.status = "sent"
             row.sent_at = datetime_now_brazil()
+            row.next_status_check_at = None
             row.last_error = "validated_only"
             db.session.commit()
             return "sent"
         row.status = "submitted"
+        row.next_status_check_at = row.submitted_at + DATAMANAGER_INITIAL_STATUS_DELAY
         row.last_error = None
         db.session.commit()
         return "submitted"
 
     def _poll_google_ads(self, row: MarketingConversionOutbox, stats: dict) -> None:
-        if current_app.config.get("GOOGLE_DATAMANAGER_VALIDATE_ONLY", True):
+        if row.validation_only:
             # Compatibility for validation rows created before validateOnly was
             # finalized synchronously. They cannot be queried for diagnostics.
             row.status = "sent"
             row.sent_at = datetime_now_brazil()
+            row.next_status_check_at = None
             row.last_error = "validated_only"
             db.session.commit()
             stats["sent"] += 1
             return
         if not row.request_id:
             self._fail(row, "datamanager_sem_request_id")
+            stats["failed"] += 1
+            return
+        now = datetime_now_brazil()
+        submitted_at = self._aware(row.submitted_at, now)
+        if submitted_at and now - submitted_at >= DATAMANAGER_STATUS_TIMEOUT:
+            self._fail(row, "datamanager_status_timeout_24h")
             stats["failed"] += 1
             return
         try:
@@ -203,9 +226,12 @@ class MarketingConversionDispatcher:
                 params={"requestId": row.request_id},
                 timeout=15,
             )
+            row.status_check_attempts = (row.status_check_attempts or 0) + 1
+            row.last_status_check_at = now
             row.last_http_status = response.status_code
             if response.status_code < 200 or response.status_code >= 300:
                 row.last_error = f"datamanager_status_http_{response.status_code}"
+                self._schedule_next_status_check(row, now)
                 db.session.commit()
                 return
             statuses = response.json().get("requestStatusPerDestination", [])
@@ -213,11 +239,8 @@ class MarketingConversionDispatcher:
             if values and values <= {"SUCCESS"}:
                 row.status = "sent"
                 row.sent_at = datetime_now_brazil()
-                row.last_error = (
-                    "validated_only"
-                    if current_app.config.get("GOOGLE_DATAMANAGER_VALIDATE_ONLY", True)
-                    else None
-                )
+                row.next_status_check_at = None
+                row.last_error = None
                 db.session.commit()
                 stats["sent"] += 1
             elif values & {"FAILED", "PARTIAL_SUCCESS"}:
@@ -234,12 +257,34 @@ class MarketingConversionDispatcher:
                     if "PROCESSING" in values
                     else "datamanager_status_sem_destinos"
                 )
+                self._schedule_next_status_check(row, now)
                 db.session.commit()
         except Exception as exc:
             # Status assíncrono será consultado novamente no próximo ciclo.
             db.session.rollback()
+            row.status_check_attempts = (row.status_check_attempts or 0) + 1
+            row.last_status_check_at = now
             row.last_error = f"datamanager_status:{exc.__class__.__name__}"
+            self._schedule_next_status_check(row, now)
             db.session.commit()
+
+    @staticmethod
+    def _aware(value, reference):
+        if value is None or value.tzinfo is not None:
+            return value
+        return value.replace(tzinfo=reference.tzinfo)
+
+    @staticmethod
+    def _schedule_next_status_check(row: MarketingConversionOutbox, now) -> None:
+        attempts = max(1, int(row.status_check_attempts or 1))
+        base_seconds = DATAMANAGER_INITIAL_STATUS_DELAY.total_seconds() * (
+            DATAMANAGER_BACKOFF_MULTIPLIER**attempts
+        )
+        jitter = sum((row.request_id or "").encode("utf-8")) % 31
+        delay_seconds = min(
+            DATAMANAGER_MAX_STATUS_DELAY.total_seconds(), base_seconds + jitter
+        )
+        row.next_status_check_at = now + timedelta(seconds=delay_seconds)
 
     @staticmethod
     def _fail(row: MarketingConversionOutbox, reason: str, commit: bool = True) -> None:

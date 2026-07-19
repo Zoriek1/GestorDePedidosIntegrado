@@ -77,6 +77,30 @@ def migrate() -> None:
             ],
         )
     MarketingConversionOutbox.__table__.create(db.engine, checkfirst=True)
+    _add_missing_columns(
+        "marketing_conversion_outbox",
+        MarketingConversionOutbox,
+        [
+            "validation_only",
+            "status_check_attempts",
+            "last_status_check_at",
+            "next_status_check_at",
+        ],
+    )
+    db.session.execute(
+        db.text(
+            "UPDATE marketing_conversion_outbox "
+            "SET validation_only = COALESCE(validation_only, false), "
+            "status_check_attempts = COALESCE(status_check_attempts, 0)"
+        )
+    )
+    db.session.execute(
+        db.text(
+            "CREATE INDEX IF NOT EXISTS ix_marketing_conversion_outbox_next_status_check_at "
+            "ON marketing_conversion_outbox (next_status_check_at)"
+        )
+    )
+    db.session.commit()
     print("[MIGRATION]   marketing_conversion_outbox pronta")
 
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from app.models.lead import Lead
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
@@ -195,8 +195,17 @@ def test_google_ads_real_usa_diagnostico_assincrono(app, session):
     stats = dispatcher.process_cycle()
 
     assert stats["submitted"] == 1
-    assert stats["sent"] == 1
     ads = session.query(MarketingConversionOutbox).filter_by(destino="google_ads").one()
+    assert ads.status == "submitted"
+    assert ads.validation_only is False
+    assert ads.next_status_check_at is not None
+    assert http.get_calls == 0
+
+    ads.next_status_check_at = datetime_now_brazil() - timedelta(seconds=1)
+    session.commit()
+    poll_stats = dispatcher.process_cycle()
+
+    assert poll_stats["sent"] == 1
     assert ads.status == "sent"
     assert ads.last_error is None
     assert http.get_calls == 1
@@ -232,6 +241,7 @@ def test_google_ads_validate_only_finaliza_registro_submitted_legado(app, sessio
         payload_json="{}",
         status="submitted",
         request_id="legacy-request",
+        validation_only=True,
         submitted_at=datetime_now_brazil(),
     )
     session.add(row)
@@ -244,3 +254,94 @@ def test_google_ads_validate_only_finaliza_registro_submitted_legado(app, sessio
     assert row.last_error == "validated_only"
     assert stats["sent"] == 1
     assert http.get_calls == 0
+
+
+def test_google_ads_processing_aplica_backoff_persistente(app, session):
+    app.config.update(MARKETING_DISPATCH_ENABLED=True)
+    pedido = _pedido()
+    session.add(pedido)
+    session.flush()
+    lead = Lead(
+        dedup_key="dispatcher-processing-backoff",
+        event="whatsapp_click",
+        token_rastreio=VALID_TOKEN,
+        token_valido=True,
+        status="compra_realizada",
+        pedido_id=pedido.id,
+        phone="62999990000",
+        gclid="google-click",
+    )
+    session.add(lead)
+    session.flush()
+    now = datetime_now_brazil()
+    row = MarketingConversionOutbox(
+        pedido_id=pedido.id,
+        lead_id=lead.id,
+        destino="google_ads",
+        evento="purchase",
+        transaction_id=f"GESTOR-WA-{pedido.id}",
+        event_time=now,
+        payload_json="{}",
+        status="submitted",
+        request_id="processing-request",
+        validation_only=False,
+        submitted_at=now - timedelta(hours=1),
+        next_status_check_at=now - timedelta(seconds=1),
+    )
+    session.add(row)
+    session.commit()
+
+    http = _Http()
+    http.get = lambda *args, **kwargs: _Response(
+        200, {"requestStatusPerDestination": [{"requestStatus": "PROCESSING"}]}
+    )
+    dispatcher = MarketingConversionDispatcher(http=http)
+    dispatcher._google_headers = lambda: {"Authorization": "Bearer test"}
+    dispatcher.process_cycle()
+
+    assert row.status == "submitted"
+    assert row.status_check_attempts == 1
+    assert row.last_error == "datamanager_processing"
+    assert row.next_status_check_at > row.last_status_check_at + timedelta(minutes=38)
+
+
+def test_google_ads_status_expira_apos_24_horas(app, session):
+    app.config.update(MARKETING_DISPATCH_ENABLED=True)
+    pedido = _pedido()
+    session.add(pedido)
+    session.flush()
+    lead = Lead(
+        dedup_key="dispatcher-status-timeout",
+        event="whatsapp_click",
+        token_rastreio=VALID_TOKEN,
+        token_valido=True,
+        status="compra_realizada",
+        pedido_id=pedido.id,
+        phone="62999990000",
+        gclid="google-click",
+    )
+    session.add(lead)
+    session.flush()
+    now = datetime_now_brazil()
+    row = MarketingConversionOutbox(
+        pedido_id=pedido.id,
+        lead_id=lead.id,
+        destino="google_ads",
+        evento="purchase",
+        transaction_id=f"GESTOR-WA-{pedido.id}",
+        event_time=now,
+        payload_json="{}",
+        status="submitted",
+        request_id="timeout-request",
+        validation_only=False,
+        submitted_at=now - timedelta(hours=25),
+        next_status_check_at=now - timedelta(seconds=1),
+    )
+    session.add(row)
+    session.commit()
+
+    stats = MarketingConversionDispatcher(http=_Http()).process_cycle()
+
+    assert row.status == "failed"
+    assert row.last_error == "datamanager_status_timeout_24h"
+    assert stats["failed"] == 1

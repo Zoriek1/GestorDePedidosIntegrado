@@ -54,10 +54,13 @@ GOOGLE_DATAMANAGER_CREDENTIALS_JSON={...service account...}
 ```
 
 O worker existente `meta_capi_worker_entrypoint.py` processa Meta, GA4 e Google Ads de
-forma independente. O `requestId` da Data Manager passa por `submitted` e é consultado
-até `SUCCESS`, `FAILED` ou `PARTIAL_SUCCESS`.
+forma independente. Requisições Google em `validateOnly` terminam imediatamente como
+`sent/validated_only`, porque não oferecem diagnóstico posterior por `requestId`.
+Envios reais passam por `submitted`: a primeira consulta ocorre após 30 minutos e as
+seguintes usam backoff persistente até 60 minutos, com prazo total de 24 horas.
 
-Nunca registrar o conteúdo das credenciais. O outbox do Google armazena apenas telefone
+Nunca registrar o conteúdo das credenciais. A Meta usa bearer token fora da URL e seus
+erros são sanitizados antes de chegar ao worker. O outbox do Google armazena apenas telefone
 normalizado e já transformado em SHA-256; GA4 não recebe telefone, nome ou endereço.
 
 ## GTM web da loja
@@ -78,16 +81,37 @@ como conversão primária no Google Ads; a fonte primária é apenas a ação of
 - `GET /api/admin/marketing-conversions`: contagens e últimas entradas do outbox.
 - `POST /api/admin/marketing-conversions/retry`: reenvia falhas; aceita `ids`, `destino`
   e `force=true` para reenviar uma entrada validada.
-- GA4: usar `GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY=true`, Validation Server e DebugView.
-- Google Ads: usar `GOOGLE_DATAMANAGER_VALIDATE_ONLY=true` e conferir o status final do
-  `requestId`.
+- `Configurações > Marketing`: mostra configuração, últimos envios e executa diagnósticos
+  independentes sem criar pedido, lead, outbox real ou lançamento no Bling.
+- Meta: o diagnóstico exige um código de **Test Events**, usado apenas na requisição.
+- GA4: usar `GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY=true` para validar o payload. Eventos
+  enviados a `/debug/mp/collect` não aparecem nos relatórios; para confirmar a coleta é
+  necessário desligar a flag e conferir `whatsapp_purchase` no Tempo real.
+- Google Ads: o diagnóstico sempre usa `validateOnly=true`, independentemente da flag de
+  produção, e considera HTTP 2xx com `requestId` uma validação concluída.
 - Tema: publicar primeiro no preview FTP e validar clique, texto, `dataLayer`, Pixel e
   lead antes de promover.
 
-Depois da homologação, desligar os dois `VALIDATE_ONLY`, manter a conversão Ads como
-secundária por um período de observação e só então promovê-la para primária. O código não
+Depois da homologação, esvaziar `META_TEST_EVENT_CODE`, rotacionar qualquer token exposto,
+desligar os dois `VALIDATE_ONLY`, manter a conversão Ads como secundária por um período de
+observação e só então promovê-la para primária. O código não
 declara consentimento concedido quando o estado é desconhecido e, pela decisão de
 negócio atual, não bloqueia o envio pelo banner de cookies.
+
+Configuração final de produção:
+
+```dotenv
+MARKETING_DISPATCH_ENABLED=true
+GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY=false
+GOOGLE_DATAMANAGER_ENABLED=true
+GOOGLE_DATAMANAGER_VALIDATE_ONLY=false
+META_TEST_EVENT_CODE=
+```
+
+Os IDs, o API Secret, o projeto Cloud e o JSON da service account permanecem iguais aos
+validados na homologação. O teste final de atribuição ainda deve partir de um clique real
+do Google Ads; identificadores de clique sintéticos validam a integração, mas não comprovam
+atribuição.
 
 Referências oficiais: [GA4 Measurement Protocol](https://developers.google.com/analytics/devguides/collection/protocol/ga4)
 e [Data Manager API: send events](https://developers.google.com/data-manager/api/devguides/events/send-events).

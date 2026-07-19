@@ -108,12 +108,16 @@ class _Response:
 
 
 class _Http:
+    def __init__(self):
+        self.get_calls = 0
+
     def post(self, url, **kwargs):
         if "datamanager" in url:
             return _Response(200, {"requestId": "request-123"})
         return _Response(204)
 
     def get(self, url, **kwargs):
+        self.get_calls += 1
         return _Response(200, {"requestStatusPerDestination": [{"requestStatus": "SUCCESS"}]})
 
 
@@ -145,8 +149,98 @@ def test_worker_processa_destinos_independentemente(app, session):
     session.commit()
     enqueue_whatsapp_purchase(pedido)
 
-    dispatcher = MarketingConversionDispatcher(http=_Http())
+    http = _Http()
+    dispatcher = MarketingConversionDispatcher(http=http)
     dispatcher._google_headers = lambda: {"Authorization": "Bearer test"}
     stats = dispatcher.process_cycle()
     assert stats["failed"] == 0
     assert session.query(MarketingConversionOutbox).filter_by(status="sent").count() == 2
+    ads = session.query(MarketingConversionOutbox).filter_by(destino="google_ads").one()
+    assert ads.last_error == "validated_only"
+    assert ads.request_id == "request-123"
+    assert http.get_calls == 0
+
+
+def test_google_ads_real_usa_diagnostico_assincrono(app, session):
+    app.config.update(
+        MARKETING_DISPATCH_ENABLED=True,
+        GOOGLE_DATAMANAGER_ENABLED=True,
+        GOOGLE_DATAMANAGER_VALIDATE_ONLY=False,
+        GOOGLE_ADS_CUSTOMER_ID="123-456-7890",
+        GOOGLE_ADS_CONVERSION_ACTION_ID="987654",
+    )
+    pedido = _pedido()
+    session.add(pedido)
+    session.flush()
+    lead = Lead(
+        dedup_key="dispatcher-real-google-ads",
+        event="whatsapp_click",
+        token_rastreio=VALID_TOKEN,
+        token_valido=True,
+        status="compra_realizada",
+        pedido_id=pedido.id,
+        phone="62999990000",
+        gclid="google-click",
+        ga_client_id="123.456",
+    )
+    session.add(lead)
+    session.commit()
+    enqueue_whatsapp_purchase(pedido)
+    session.query(MarketingConversionOutbox).filter_by(destino="ga4").delete()
+    session.commit()
+
+    http = _Http()
+    dispatcher = MarketingConversionDispatcher(http=http)
+    dispatcher._google_headers = lambda: {"Authorization": "Bearer test"}
+    stats = dispatcher.process_cycle()
+
+    assert stats["submitted"] == 1
+    assert stats["sent"] == 1
+    ads = session.query(MarketingConversionOutbox).filter_by(destino="google_ads").one()
+    assert ads.status == "sent"
+    assert ads.last_error is None
+    assert http.get_calls == 1
+
+
+def test_google_ads_validate_only_finaliza_registro_submitted_legado(app, session):
+    app.config.update(
+        MARKETING_DISPATCH_ENABLED=True,
+        GOOGLE_DATAMANAGER_VALIDATE_ONLY=True,
+    )
+    pedido = _pedido()
+    session.add(pedido)
+    session.flush()
+    lead = Lead(
+        dedup_key="dispatcher-legacy-validation",
+        event="whatsapp_click",
+        token_rastreio=VALID_TOKEN,
+        token_valido=True,
+        status="compra_realizada",
+        pedido_id=pedido.id,
+        phone="62999990000",
+        gclid="google-click",
+    )
+    session.add(lead)
+    session.flush()
+    row = MarketingConversionOutbox(
+        pedido_id=pedido.id,
+        lead_id=lead.id,
+        destino="google_ads",
+        evento="purchase",
+        transaction_id=f"GESTOR-WA-{pedido.id}",
+        event_time=datetime_now_brazil(),
+        payload_json="{}",
+        status="submitted",
+        request_id="legacy-request",
+        submitted_at=datetime_now_brazil(),
+    )
+    session.add(row)
+    session.commit()
+
+    http = _Http()
+    stats = MarketingConversionDispatcher(http=http).process_cycle()
+
+    assert row.status == "sent"
+    assert row.last_error == "validated_only"
+    assert stats["sent"] == 1
+    assert http.get_calls == 0

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.models.lead import Lead
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
@@ -70,11 +70,15 @@ def test_enfileira_ga4_e_google_ads_uma_vez_por_pedido(app, session):
     assert params["value"] == 299.9
     assert params["currency"] == "BRL"
     assert params["session_id"] == 1700000000
+    assert params["engagement_time_msec"] == 1
+    assert ga4_payload["timestamp_micros"] > 0
     assert "phone" not in ga4.payload_json.lower()
 
     ads = next(row for row in rows if row.destino == "google_ads")
     ads_payload = json.loads(ads.payload_json)
     assert ads_payload["adIdentifiers"]["gclid"] == "google-click"
+    ads_event_time = datetime.fromisoformat(ads_payload["eventTimestamp"])
+    assert int(ga4_payload["timestamp_micros"] / 1_000_000) == int(ads_event_time.timestamp())
     phone_hash = ads_payload["userData"]["userIdentifiers"][0]["phoneNumber"]
     assert len(phone_hash) == 64
     assert "62999990000" not in ads.payload_json

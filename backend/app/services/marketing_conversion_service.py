@@ -49,7 +49,11 @@ def _linked_store_lead(pedido: Pedido) -> Lead | None:
 
 
 def _ga4_payload(
-    pedido: Pedido, lead: Lead, transaction_id: str, value: float
+    pedido: Pedido,
+    lead: Lead,
+    transaction_id: str,
+    value: float,
+    conversion_time: datetime,
 ) -> dict | None:
     if not lead.ga_client_id:
         return None
@@ -60,6 +64,7 @@ def _ga4_payload(
         "sales_channel": "whatsapp",
         "lead_id": lead.id,
         "items": [],
+        "engagement_time_msec": 1,
     }
     session_start = _aware(lead.ga_session_started_at)
     now = _aware(datetime_now_brazil())
@@ -76,12 +81,17 @@ def _ga4_payload(
             params["session_id"] = lead.ga_session_id
     return {
         "client_id": lead.ga_client_id,
+        "timestamp_micros": int(_aware(conversion_time).timestamp() * 1_000_000),
         "events": [{"name": "whatsapp_purchase", "params": params}],
     }
 
 
 def _google_ads_payload(
-    pedido: Pedido, lead: Lead, transaction_id: str, value: float
+    pedido: Pedido,
+    lead: Lead,
+    transaction_id: str,
+    value: float,
+    conversion_time: datetime,
 ) -> dict | None:
     ad_identifiers = {
         key: value
@@ -96,7 +106,7 @@ def _google_ads_payload(
         return None
     event = {
         "transactionId": transaction_id,
-        "eventTimestamp": _aware(datetime_now_brazil()).isoformat(),
+        "eventTimestamp": _aware(conversion_time).isoformat(),
         "conversionValue": value,
         "currency": "BRL",
         "eventSource": "WEB",
@@ -126,14 +136,18 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
         "GA4_API_SECRET"
     ):
         candidates.append(
-            ("ga4", "whatsapp_purchase", _ga4_payload(pedido, lead, transaction_id, value))
+            (
+                "ga4",
+                "whatsapp_purchase",
+                _ga4_payload(pedido, lead, transaction_id, value, event_time),
+            )
         )
     if current_app.config.get("GOOGLE_DATAMANAGER_ENABLED"):
         candidates.append(
             (
                 "google_ads",
                 "purchase",
-                _google_ads_payload(pedido, lead, transaction_id, value),
+                _google_ads_payload(pedido, lead, transaction_id, value, event_time),
             )
         )
 

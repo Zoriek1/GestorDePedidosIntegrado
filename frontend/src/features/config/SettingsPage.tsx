@@ -1,6 +1,7 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
 import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People, CreditCard, BarChart } from '@mui/icons-material';
+import { Megaphone } from 'lucide-react';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { TaxaCartaoSettings } from './components/TaxaCartaoSettings';
 import { Loading } from '../../components/common/Loading';
@@ -13,6 +14,7 @@ import { useConfirm } from '../../components/system/useConfirm';
 import CustomersPage from '../customers/CustomersPage';
 import NuvemshopPage from '../integrations/NuvemshopPage';
 import BlingPage from '../integrations/BlingPage';
+import MarketingPage from '../integrations/MarketingPage';
 import FontesPage from '../fontes/FontesPage';
 import UserListPage from '../users/components/UserListPage';
 
@@ -154,6 +156,7 @@ export default function SettingsPage() {
           {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
           {isAdmin && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
           {isAdmin && <Tab icon={<Payment />} label="Bling" iconPosition="start" />}
+          {isAdmin && <Tab icon={<Megaphone />} label="Marketing" iconPosition="start" />}
           {isAdmin && <Tab icon={<People />} label="Funcionários" iconPosition="start" />}
         </Tabs>
       </Paper>
@@ -167,7 +170,8 @@ export default function SettingsPage() {
           {!isEntregador && tabValue === (isAdmin ? 4 : 3) && <CustomersPage />}
           {isAdmin && tabValue === 5 && <NuvemshopPage />}
           {isAdmin && tabValue === 6 && <BlingPage />}
-          {isAdmin && tabValue === 7 && <UserListPage />}
+          {isAdmin && tabValue === 7 && <MarketingPage />}
+          {isAdmin && tabValue === 8 && <UserListPage />}
         </Suspense>
       </Box>
     </Box>

@@ -7,10 +7,28 @@ from sqlalchemy import func
 from app import db
 from app.middleware import requires_any_role
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
+from app.services.marketing_diagnostics_service import MarketingDiagnosticsService
 
 marketing_conversions_bp = Blueprint(
     "marketing_conversions", __name__, url_prefix="/api/admin/marketing-conversions"
 )
+
+
+@marketing_conversions_bp.route("/config", methods=["GET"])
+@requires_any_role("admin")
+def config_status():
+    return jsonify({"ok": True, **MarketingDiagnosticsService().config_status()})
+
+
+@marketing_conversions_bp.route("/diagnostics/<destination>", methods=["POST"])
+@requires_any_role("admin")
+def run_diagnostic(destination: str):
+    data = request.get_json(silent=True) or {}
+    result = MarketingDiagnosticsService().run(
+        destination,
+        meta_test_event_code=str(data.get("meta_test_event_code") or "") or None,
+    )
+    return jsonify({"ok": True, "result": result})
 
 
 @marketing_conversions_bp.route("", methods=["GET"])
@@ -70,6 +88,10 @@ def retry():
             continue
         row.status = "pending"
         row.request_id = None
+        row.validation_only = False
+        row.status_check_attempts = 0
+        row.last_status_check_at = None
+        row.next_status_check_at = None
         row.submitted_at = None
         row.sent_at = None
         row.last_http_status = None

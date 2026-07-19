@@ -657,6 +657,9 @@ class TestMetaCapiServiceSendEvents:
         assert result["events_received"] == 1
         assert result["fbtrace_id"] == "abc123"
         assert result["_status_code"] == 200
+        request_kwargs = mock_post.call_args.kwargs
+        assert request_kwargs["params"] == {}
+        assert request_kwargs["headers"]["Authorization"] == "Bearer test_token_abc"
 
     @patch("app.services.meta_capi.requests.post")
     def test_send_events_failure(self, mock_post, service):
@@ -691,6 +694,23 @@ class TestMetaCapiServiceSendEvents:
 
         assert result["_status_code"] == 400
         assert "Invalid parameter" in result["_error"]
+
+    @patch("app.services.meta_capi.requests.post")
+    def test_send_events_network_error_never_exposes_token(self, mock_post, service):
+        from requests.exceptions import ConnectionError
+
+        secret = "test_token_abc"
+        mock_post.side_effect = ConnectionError(
+            f"failed https://graph.facebook.com/events?access_token={secret}"
+        )
+
+        result = service.send_events([{"event_name": "Purchase"}])
+
+        serialized = str(result)
+        assert result["_status_code"] == 0
+        assert result["_error"] == "meta_request_ConnectionError"
+        assert secret not in serialized
+        assert "access_token=" not in serialized
 
 
 class TestMetaCapiOutboxRepository:

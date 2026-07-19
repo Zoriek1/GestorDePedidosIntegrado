@@ -19,6 +19,10 @@ class MarketingConversionOutbox(db.Model):
     status = db.Column(db.String(20), nullable=False, default="pending", index=True)
     attempts = db.Column(db.Integer, nullable=False, default=0)
     request_id = db.Column(db.String(255), nullable=True, index=True)
+    validation_only = db.Column(db.Boolean, nullable=False, default=False)
+    status_check_attempts = db.Column(db.Integer, nullable=False, default=0)
+    last_status_check_at = db.Column(db.DateTime, nullable=True)
+    next_status_check_at = db.Column(db.DateTime, nullable=True, index=True)
     last_http_status = db.Column(db.Integer, nullable=True)
     last_error = db.Column(db.Text, nullable=True)
     submitted_at = db.Column(db.DateTime, nullable=True)
@@ -47,6 +51,14 @@ class MarketingConversionOutbox(db.Model):
             "status": self.status,
             "attempts": self.attempts,
             "request_id": self.request_id,
+            "validation_only": bool(self.validation_only),
+            "status_check_attempts": self.status_check_attempts,
+            "last_status_check_at": (
+                self.last_status_check_at.isoformat() if self.last_status_check_at else None
+            ),
+            "next_status_check_at": (
+                self.next_status_check_at.isoformat() if self.next_status_check_at else None
+            ),
             "last_http_status": self.last_http_status,
             "last_error": self.last_error,
             "submitted_at": self.submitted_at.isoformat() if self.submitted_at else None,

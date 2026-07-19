@@ -18,6 +18,20 @@ from app.models.pedido import Pedido
 logger = logging.getLogger(__name__)
 
 
+def _redact_sensitive_error(value: object, secrets: tuple[str, ...] = ()) -> str:
+    """Return an operational error message without credentials or URL query secrets."""
+    text = str(value or "")
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "***")
+    text = re.sub(
+        r"(?i)(access_token|authorization|api_secret|private_key)=?[^\s&,;]+",
+        r"\1=***",
+        text,
+    )
+    return text[:1000]
+
+
 def _flag(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name, "true" if default else "false")
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
@@ -890,16 +904,19 @@ class MetaConversionsApiService:
             payload["test_event_code"] = self.test_event_code
 
         # Headers
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.access_token}",
+        }
 
-        # Query params e headers dependem do método usado
+        # Gateway and direct Graph requests both use bearer authentication.
         if self.use_gateway:
             # Gateway: access_token vai no header Authorization
             headers["Authorization"] = f"Bearer {self.access_token}"
             params = {}
         else:
-            # Integração direta: access_token vai no query param
-            params = {"access_token": self.access_token}
+            # Direct Graph API request; keep the query string free of credentials.
+            params = {}
 
         self._debug_log(
             "[META_CAPI] Enviando eventos.",
@@ -938,7 +955,7 @@ class MetaConversionsApiService:
         except requests.exceptions.RequestException as e:
             # Capturar erro de requisição
             status_code = getattr(e.response, "status_code", 0) if hasattr(e, "response") else 0
-            error_msg = str(e)
+            error_msg = f"meta_request_{e.__class__.__name__}"
 
             # Tentar parsear resposta de erro se disponível
             error_response = {}
@@ -953,7 +970,9 @@ class MetaConversionsApiService:
                         meta_error = error_response["error"]
 
                     if isinstance(meta_error, dict):
-                        error_msg = meta_error.get("message", error_msg)
+                        error_msg = _redact_sensitive_error(
+                            meta_error.get("message", error_msg), (self.access_token,)
+                        )
                         # Adicionar código de erro se disponível
                         if "code" in meta_error:
                             error_msg = f"[{meta_error['code']}] {error_msg}"
@@ -963,10 +982,11 @@ class MetaConversionsApiService:
                         if "type" in meta_error:
                             error_msg += f" (type: {meta_error['type']})"
                     elif isinstance(meta_error, str):
-                        error_msg = meta_error
+                        error_msg = _redact_sensitive_error(meta_error, (self.access_token,))
                 except Exception:
                     error_response = {"error": {"message": error_msg}}
 
+            error_msg = _redact_sensitive_error(error_msg, (self.access_token,))
             error_response["_status_code"] = status_code
             error_response["_error"] = error_msg
 

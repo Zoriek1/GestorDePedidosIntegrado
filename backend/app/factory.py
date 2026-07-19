@@ -83,6 +83,7 @@ def create_app(config=None):
         from app.routes.leads import leads_bp
         from app.routes.ledger_routes import ledger_bp
         from app.routes.meta_gateway import meta_gateway_bp
+        from app.routes.marketing_conversions import marketing_conversions_bp
         from app.routes.notifications import notifications_bp
         from app.routes.nuvemshop import nuvemshop_bp
         from app.routes.pedidos import pedidos_bp
@@ -111,6 +112,7 @@ def create_app(config=None):
 
         # Meta Gateway (antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)
+        app.register_blueprint(marketing_conversions_bp)
 
         # Storefront: endpoints públicos para scripts Nuvemshop (CORS *)
         app.register_blueprint(storefront_bp)

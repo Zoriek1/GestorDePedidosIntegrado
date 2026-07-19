@@ -20,7 +20,7 @@ O `frontend-assets` (stage do Dockerfile) faz `npm ci && npm run build` no conta
 
 ## VPS
 
-Repo clonado, `cp backend/.env.example .env`, `docker compose up -d`. Atrás de reverse proxy (Caddy ou Nginx) — exemplos em [deploy/](../deploy/):
+Repo clonado, `cp .env.example .env`, `docker compose up -d`. Atrás de reverse proxy (Caddy ou Nginx) — exemplos em [deploy/](../deploy/):
 
 - `deploy/Caddyfile.example` — terminação TLS automática via Let's Encrypt
 - `deploy/nginx.conf.example` — alternativa com cert manual

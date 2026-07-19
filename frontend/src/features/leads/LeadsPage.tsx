@@ -1348,6 +1348,9 @@ export default function LeadsPage() {
                         {lead.utm_source ? (
                           <Chip label={lead.utm_source} size="small" variant="outlined" sx={{ borderRadius: '4px' }} />
                         ) : null}
+                        {lead.gclid || lead.gbraid || lead.wbraid ? (
+                          <Chip label="Google Ads" size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px' }} />
+                        ) : null}
                         {lead.utm_campaign ? (
                           <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
                             {lead.utm_campaign}

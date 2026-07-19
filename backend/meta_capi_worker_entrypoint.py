@@ -78,19 +78,28 @@ def run_outbox_cycle() -> None:
             stats = SendDailyPurchasesToMetaCommand().process_outbox_cycle(
                 limit=50, retry_backoff_seconds=RETRY_BACKOFF, quiet=True
             )
+            from app.services.marketing_conversion_dispatcher import (
+                MarketingConversionDispatcher,
+            )
+
+            marketing_stats = MarketingConversionDispatcher().process_cycle(limit=50)
 
             touched = (
                 stats.get("pending_processed", 0)
                 + stats.get("failed_retryable_processed", 0)
                 + stats.get("lead_pending_processed", 0)
                 + stats.get("lead_failed_retryable_processed", 0)
+                + marketing_stats.get("processed", 0)
             )
             if touched:
                 print(
                     "[CAPI_WORKER] Ciclo — "
                     f"Purchase ok={stats.get('sent_success', 0)} falha={stats.get('sent_failed', 0)} | "
                     f"Lead ok={stats.get('lead_sent_success', 0)} "
-                    f"falha={stats.get('lead_sent_failed', 0)}",
+                    f"falha={stats.get('lead_sent_failed', 0)} | "
+                    f"Marketing ok={marketing_stats.get('sent', 0)} "
+                    f"submetido={marketing_stats.get('submitted', 0)} "
+                    f"falha={marketing_stats.get('failed', 0)}",
                     flush=True,
                 )
     except Exception as exc:

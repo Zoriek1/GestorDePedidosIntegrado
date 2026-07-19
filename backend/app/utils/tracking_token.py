@@ -9,7 +9,10 @@ from urllib.parse import unquote
 
 CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 _TOKEN_RE = re.compile(r"^[A-Z0-9]{10}$")
-_COD_RE = re.compile(r"\[Cod:\s*([A-Z0-9]{10})\]", re.IGNORECASE)
+_COD_RE = re.compile(
+    r"(?:\[Cod:\s*|\(c[oó]digo\s+de\s+atendimento:\s*)([A-Z0-9]{10})(?:\]|\))",
+    re.IGNORECASE,
+)
 
 
 def normalize_tracking_token(value: object) -> str | None:

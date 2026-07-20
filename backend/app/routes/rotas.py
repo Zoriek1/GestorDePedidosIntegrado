@@ -2,7 +2,7 @@
 """
 Rotas de Otimização - Blueprint para endpoints de rotas otimizadas
 """
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app import db
 from app.middleware import requires_any_role
@@ -125,6 +125,7 @@ def calcular_rota_otimizada():
         # Salvar no banco
         # ------------------------------------------------------------------
         rota = RotaOtimizada(
+            store_ref_id=getattr(g, "tenant_store_id", None),
             nome=nome_rota,
             distancia_total_km=resultado["distancia_total_km"],
             duracao_total_min=resultado["duracao_total_min"],

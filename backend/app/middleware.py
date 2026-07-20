@@ -92,6 +92,19 @@ def check_auth(username, password):
     return is_authenticated, role if is_authenticated else None
 
 
+def _bind_basic_tenant():
+    """Aplica a política Basic: compatível em single-store, bloqueada em multi-store."""
+    from flask import jsonify
+
+    from app.services.auth_context import bind_single_store_identity
+
+    error = bind_single_store_identity()
+    if error:
+        body, status = error
+        return jsonify(body), status
+    return None
+
+
 def requires_auth(f):
     """
     Decorator para proteger rotas com autenticação HTTP Basic
@@ -121,6 +134,10 @@ def requires_auth(f):
                     "Content-Type": "application/json",
                 },
             )
+
+        tenant_error = _bind_basic_tenant()
+        if tenant_error:
+            return tenant_error
 
         # Armazenar usuário autenticado no request (opcional)
         request.authenticated_user = auth.username
@@ -193,6 +210,10 @@ def requires_edit_auth(f):
                 ),
                 401,
             )
+
+        tenant_error = _bind_basic_tenant()
+        if tenant_error:
+            return tenant_error
 
         request.authenticated_user = auth.username
         request.user_role = role
@@ -334,6 +355,10 @@ def requires_role(required_role: str):
                     401,
                 )
 
+            tenant_error = _bind_basic_tenant()
+            if tenant_error:
+                return tenant_error
+
             if role != required_role:
                 return (
                     jsonify(
@@ -418,6 +443,10 @@ def requires_any_role(*allowed_roles: str):
                     401,
                 )
 
+            tenant_error = _bind_basic_tenant()
+            if tenant_error:
+                return tenant_error
+
             if role not in allowed_roles:
                 return (
                     jsonify(
@@ -480,6 +509,10 @@ def requires_permission(permission: str):
                     ),
                     401,
                 )
+
+            tenant_error = _bind_basic_tenant()
+            if tenant_error:
+                return tenant_error
 
             if not has_permission(role, permission):
                 from flask import jsonify

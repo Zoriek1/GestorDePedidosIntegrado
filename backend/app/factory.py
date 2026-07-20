@@ -69,6 +69,11 @@ def create_app(config=None):
         # IMPORTANTE: usar alias. `import app.models` religaria o nome local `app`
         # (instancia Flask) para o modulo `app`, quebrando app.register_blueprint.
         import app.models as _app_models  # noqa: F401
+        from app.services.auth_context import prime_request_tenant
+        from app.services.tenant_scope import register_tenant_scope
+
+        register_tenant_scope()
+        app.before_request(prime_request_tenant)
         from app.models.ledger_entry import LedgerEntry  # noqa: F401
         from app.models.user import User  # noqa: F401
         from app.routes.auth import auth_bp

@@ -6,13 +6,14 @@ Cada dispositivo que aceita notificações gera um endpoint único.
 """
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class PushSubscription(db.Model):
+class PushSubscription(TenantScoped, db.Model):
     __tablename__ = "push_subscriptions"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    endpoint = db.Column(db.Text, nullable=False, unique=True)
+    endpoint = db.Column(db.Text, nullable=False)
     p256dh = db.Column(db.String(255), nullable=False)
     auth = db.Column(db.String(255), nullable=False)
     # Pedido associado (inscrição do CLIENTE, opt-in na tela de acompanhamento).
@@ -25,6 +26,12 @@ class PushSubscription(db.Model):
         index=True,
     )
     created_at = db.Column(db.DateTime, default=datetime_now_brazil)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "store_ref_id", "endpoint", name="uq_push_subscriptions_store_endpoint"
+        ),
+    )
 
     def to_dict(self):
         return {

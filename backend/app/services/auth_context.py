@@ -88,6 +88,9 @@ def load_request_identity(
 
     # store pode ser None apenas no fallback legado (sem loja default no banco).
     g.current_store = store
+    g.tenant_store_id = store.id if store else None
+    g.tenant_multi = _request_is_multi_store()
+    g.tenant_initialized = True
 
     current_user = dict(payload)
     current_user.update(
@@ -102,3 +105,66 @@ def load_request_identity(
     )
     request.current_user = current_user
     return current_user, None
+
+
+def _request_is_multi_store() -> bool:
+    cached = getattr(g, "tenant_multi", None)
+    if cached is not None:
+        return bool(cached)
+    from app.services.tenancy import is_multi_store
+
+    return is_multi_store()
+
+
+def bind_single_store_identity() -> Optional[IdentityError]:
+    """Vincula autenticação Basic/legada à loja default em single-store."""
+    if _request_is_multi_store():
+        return (
+            {
+                "error": "Acesso negado",
+                "message": "HTTP Basic não é permitido no modo multiempresa; use JWT.",
+            },
+            401,
+        )
+
+    store = Store.query.filter_by(slug=DEFAULT_STORE_SLUG, active=True).first()
+    g.current_store = store
+    g.tenant_store_id = store.id if store else None
+    g.tenant_multi = False
+    g.tenant_initialized = True
+    return None
+
+
+def prime_request_tenant() -> None:
+    """Resolve tenant cedo para que até consultas de rotas legadas sejam filtradas."""
+    if getattr(g, "tenant_initialized", False):
+        return
+
+    multi = _request_is_multi_store()
+    g.tenant_multi = multi
+    g.current_store = None
+    g.tenant_store_id = None
+    g.tenant_initialized = True
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        try:
+            from app.services.auth_service import decode_token, extract_bearer_token
+
+            token = extract_bearer_token(auth_header)
+            payload = decode_token(token) if token else None
+            if payload:
+                load_request_identity(payload)
+                return
+        except Exception:
+            # O decorator da rota produzirá o erro de autenticação apropriado.
+            pass
+
+    if not multi:
+        bind_single_store_identity()
+
+
+def resolve_public_store_id() -> int | None:
+    """Empresa explícita das entradas públicas enquanto não há domínio→loja."""
+    store = Store.query.filter_by(slug=DEFAULT_STORE_SLUG, active=True).first()
+    return store.id if store else None

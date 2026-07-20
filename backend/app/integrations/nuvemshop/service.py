@@ -367,7 +367,21 @@ class NuvemshopOrderImporter:
 
         default_vendedor_id = getattr(self.store, "default_vendedor_id", None)
         if default_vendedor_id:
-            pedido_data["vendedor_id"] = default_vendedor_id
+            from app.models.user import User
+
+            valid = User.query.filter(
+                User.id == default_vendedor_id,
+                User.store_ref_id == getattr(self.store, "store_ref_id", None),
+                User.role == "vendedor",
+                User.is_active.is_(True),
+            ).first()
+            if valid:
+                pedido_data["vendedor_id"] = default_vendedor_id
+            else:
+                logger.warning(
+                    "[NUVEMSHOP] Vendedor padrão %s não pertence à empresa da instalação",
+                    default_vendedor_id,
+                )
 
     def _get_external_ref(self, order: Dict[str, Any]) -> Optional[PedidoExternalRef]:
         """
@@ -492,6 +506,11 @@ class NuvemshopOrderImporter:
         como update.
         """
         from app.services.order_commission_lifecycle import apply_commission_lifecycle
+        from app.services.order_number_allocator import allocate_order_number
+
+        store_ref_id = getattr(self.store, "store_ref_id", None)
+        pedido_data["store_ref_id"] = store_ref_id
+        pedido_data["numero_pedido"] = allocate_order_number(store_ref_id)
 
         pedido = Pedido(**pedido_data)
         db.session.add(pedido)
@@ -890,15 +909,16 @@ class NuvemshopOrderImporter:
             # Formatar data/hora de entrega
             entrega_info = format_delivery_datetime(pedido.dia_entrega, pedido.horario)
             if entrega_info:
-                body = f"#{pedido.id} - {dest} | {produto} | Entrega: {entrega_info}"
+                body = f"#{pedido.display_number} - {dest} | {produto} | Entrega: {entrega_info}"
             else:
-                body = f"#{pedido.id} - {dest} | {produto}"
+                body = f"#{pedido.display_number} - {dest} | {produto}"
 
             send_push_to_all_async(
                 app=current_app._get_current_object(),
                 title="Novo Pedido Nuvemshop!",
                 body=body,
                 url="/",
+                store_ref_id=pedido.store_ref_id,
             )
         except Exception as exc:
             logger.debug("Push notification não enviada: %s", exc)

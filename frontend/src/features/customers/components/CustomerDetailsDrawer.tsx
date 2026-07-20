@@ -15,7 +15,7 @@ import { formatBRL } from '../../../lib/format/currency';
 interface CustomerDetailsDrawerProps {
   open: boolean;
   customer?: Customer | null;
-  orders?: Array<{ id: number; created_at?: string; dia_entrega?: string; horario?: string; status?: string; valor?: string }>;
+  orders?: Array<{ id: number; numero_pedido?: number | null; created_at?: string; dia_entrega?: string; horario?: string; status?: string; valor?: string }>;
   badges?: CustomerBadge[];
   onClose: () => void;
 }
@@ -76,7 +76,7 @@ export function CustomerDetailsDrawer({ open, customer, orders, badges, onClose 
             {(orders || []).map((o) => (
               <Box key={o.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
                 <Typography variant="body2" fontWeight="bold">
-                  Pedido #{o.id}
+                  Pedido #{o.numero_pedido ?? o.id}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Data: {o.dia_entrega || formatDate(o.created_at)} {o.horario || ''}
@@ -100,4 +100,3 @@ export function CustomerDetailsDrawer({ open, customer, orders, badges, onClose 
     </Drawer>
   );
 }
-

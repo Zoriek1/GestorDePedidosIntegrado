@@ -3,7 +3,7 @@
  */
 
 import dayjs from 'dayjs';
-import type { Pedido } from '../../../api/endpoints/pedidos';
+import { pedidoDisplayNumber, type Pedido } from '../../../api/endpoints/pedidos';
 import { formatDateBR } from '../../../lib/format/date';
 import { formatBRL } from '../../../lib/format/currency';
 
@@ -251,7 +251,7 @@ export function buildEncaminharMensagem(pedido: Pedido): string {
   const isEntrega = pedido.tipo_pedido === 'Entrega';
 
   // Header
-  addLine(lines, `📦 Pedido #${pedido.id} • ${pedido.tipo_pedido.toUpperCase()}`);
+  addLine(lines, `📦 Pedido #${pedidoDisplayNumber(pedido)} • ${pedido.tipo_pedido.toUpperCase()}`);
   const dataHora = `${formatDateBR(pedido.dia_entrega)} ${pedido.horario || ''}`.trim();
   addLine(lines, `🗓️ ${dataHora}`);
 

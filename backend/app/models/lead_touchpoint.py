@@ -12,6 +12,7 @@ em PAID_MEDIUMS.
 """
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 PAID_MEDIUMS = frozenset({"paid_social", "paidsocial", "cpc", "ppc", "paid", "ads", "paidsearch"})
 
@@ -34,7 +35,7 @@ def derive_is_paid(
     return False
 
 
-class LeadTouchpoint(db.Model):
+class LeadTouchpoint(TenantScoped, db.Model):
     __tablename__ = "lead_touchpoints"
 
     id = db.Column(db.Integer, primary_key=True)

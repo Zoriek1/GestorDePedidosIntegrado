@@ -7,9 +7,10 @@ import json
 from datetime import datetime
 
 from app import db
+from app.services.tenant_scope import TenantScoped
 
 
-class RotaOtimizada(db.Model):
+class RotaOtimizada(TenantScoped, db.Model):
     """Modelo de Rota Otimizada com sequência de pedidos"""
 
     __tablename__ = "rotas_otimizadas"

@@ -28,10 +28,6 @@ class TaxaEntregaService:
         self.config_path = config_path
         self.config = self._carregar_config()
 
-        if self.DEBUG:
-            print("[DEBUG] TaxaEntregaService inicializado")
-            print(f"[DEBUG] Tipo de cálculo: {self.config.get('tipo', 'desconhecido')}")
-
     def _carregar_config(self) -> Dict:
         """Carrega configuração do arquivo JSON"""
         try:

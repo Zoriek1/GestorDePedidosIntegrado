@@ -36,9 +36,6 @@ class DistanciaService:
         self.endereco_floricultura = os.environ.get("ENDERECO_FLORICULTURA", "")
         self._coords_floricultura = None
 
-        if self.endereco_floricultura and self.DEBUG:
-            print(f"[DEBUG] Endereço floricultura: {self.endereco_floricultura}")
-
     def validar_endereco(self, endereco):
         """
         Valida se o endereço tem formato mínimo aceitável para geocodificação

@@ -142,7 +142,6 @@ def create_app(config=None):
         from app.openapi import init_openapi
 
         init_openapi(app)
-        print("[OPENAPI] Swagger UI disponível em /docs/swagger")
     except ImportError:
         # flask-smorest não instalado, continuar sem documentação
         print("[AVISO] flask-smorest não instalado. Swagger UI não estará disponível.")
@@ -254,7 +253,6 @@ def setup_security(app):
     from app.middleware import setup_security_middleware
 
     ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
-    ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
 
     try:
         setup_security_middleware(
@@ -262,15 +260,6 @@ def setup_security(app):
             enable_auth=False,  # Autenticação global desativada - apenas rotas específicas
             enable_rate_limit=ENABLE_RATE_LIMIT,
         )
-        print("[SEGURANCA] OK Autenticacao seletiva ATIVADA")
-        print(
-            "[SEGURANCA]   Visualizacao livre - Apenas criar/deletar pedidos requerem autenticacao"
-        )
-        print("[SEGURANCA]   Usuario: admin")
-        if ENABLE_RATE_LIMIT:
-            print("[SEGURANCA] OK Rate Limiting ATIVADO (60/min, 1000/hora)")
-        if not ENABLE_DEBUG_ENDPOINTS:
-            print("[SEGURANCA] OK Endpoints de Debug DESATIVADOS")
     except ImportError:
         print("[AVISO] Middleware de segurança não encontrado.")
     except Exception as e:

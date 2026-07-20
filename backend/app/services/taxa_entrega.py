@@ -11,7 +11,9 @@ from typing import Dict, Optional
 class TaxaEntregaService:
     """Serviço para cálculo de taxa de entrega baseada em distância"""
 
-    DEBUG = True
+    # Logs de depuração do cálculo de frete desligados por padrão (poluíam os
+    # logs de produção a cada pedido). Ative pontualmente se precisar depurar.
+    DEBUG = False
 
     def __init__(self, config_path: Optional[str] = None):
         """

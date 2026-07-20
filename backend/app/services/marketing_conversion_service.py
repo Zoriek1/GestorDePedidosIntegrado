@@ -14,6 +14,7 @@ from app.models.lead import Lead
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.pedido import TIMEZONE_BRASIL, Pedido, datetime_now_brazil
 from app.services.integration_settings_service import runtime_config
+from app.services.tenancy import is_store_inactive
 from app.utils.tracking_token import normalize_tracking_token
 
 
@@ -123,6 +124,8 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
     tenant_config = runtime_config(getattr(pedido, "store_ref_id", None))
     if not tenant_config.get("MARKETING_DISPATCH_ENABLED"):
         return []
+    if is_store_inactive(pedido.store_ref_id):
+        return []
     value = round(float(pedido.total_pago() or 0), 2)
     if value <= 0:
         return []
@@ -161,6 +164,7 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
             continue
         row = MarketingConversionOutbox(
             pedido_id=pedido.id,
+            store_ref_id=pedido.store_ref_id,
             lead_id=lead.id,
             destino=destino,
             evento=evento,

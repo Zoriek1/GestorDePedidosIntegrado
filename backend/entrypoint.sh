@@ -29,6 +29,7 @@ python scripts/migrations/add_store_ref_and_numero_to_orders.py
 python scripts/migrations/add_store_ref_to_customers_and_sources.py
 python scripts/migrations/add_store_ref_to_order_external_refs.py
 python scripts/migrations/add_store_ref_to_audit_log.py
+python scripts/migrations/add_store_ref_to_outboxes.py
 python scripts/migrations/backfill_store_ref_on_integrations.py
 python scripts/migrations/create_pedido_sugestoes_endereco.py
 python scripts/migrations/convert_pedidos_fbc_seconds_to_ms.py

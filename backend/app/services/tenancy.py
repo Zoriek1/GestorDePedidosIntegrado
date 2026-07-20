@@ -13,6 +13,8 @@ tenant passa a ser obrigatória (fail-closed).
 
 from __future__ import annotations
 
+from typing import Optional
+
 from flask import current_app, has_app_context
 
 from app import db
@@ -44,3 +46,23 @@ def is_multi_store() -> bool:
     except Exception:
         db.session.rollback()
         return False
+
+
+def is_store_inactive(store_ref_id: Optional[int]) -> bool:
+    """True somente quando a empresa existe e está explicitamente ``active=False``.
+
+    Usado pelos workers (sem ``g.current_store``) e pelos guards de enqueue para
+    aplicar a política de empresa inativa: linha de empresa inativa não gera novo
+    envio e, se já pendente, é invalidada.
+
+    **Fail-open, de propósito:** ``store_ref_id`` ``None`` (linha legada
+    single-tenant) ou empresa inexistente **não** é tratado como inativo, para
+    preservar o comportamento single-tenant/legado. Só bloqueia quando há uma
+    empresa real marcada ``active=False``. Usa a identity map da sessão
+    (``session.get``), então repetir a chamada com o mesmo id no mesmo ciclo não
+    gera nova query.
+    """
+    if store_ref_id is None:
+        return False
+    store = db.session.get(Store, store_ref_id)
+    return store is not None and not store.active

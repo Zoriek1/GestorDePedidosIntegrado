@@ -28,6 +28,7 @@ from app.models.bling_payment_mapping import BlingPaymentMapping
 from app.models.bling_payment_method import BlingPaymentMethod
 from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
+from app.services.tenancy import is_store_inactive
 from app.utils.fiscal import is_valid_cpf_cnpj, normalize_cpf_cnpj, normalize_uf
 
 GESTOR_PAYMENT_LABELS = [
@@ -455,6 +456,30 @@ class BlingIntegrationService:
         failed = 0
         results: List[Dict[str, Any]] = []
         for outbox in outboxes:
+            # Empresa inativa: invalida a linha pendente e não envia (política Fase D).
+            if is_store_inactive(getattr(outbox, "store_ref_id", None)):
+                self._mark_failed(
+                    outbox,
+                    "store_inactive",
+                    "Empresa inativa: envio Bling invalidado",
+                    retryable=False,
+                )
+                refreshed = BlingOutbox.query.get(outbox.id)
+                processed += 1
+                failed += 1
+                results.append(
+                    {
+                        "outbox_id": refreshed.id,
+                        "pedido_id": refreshed.pedido_id,
+                        "store_ref_id": refreshed.store_ref_id,
+                        "operation": refreshed.operation,
+                        "status": refreshed.status,
+                        "step": refreshed.step,
+                        "error_code": refreshed.error_code,
+                        "error_message": refreshed.error_message,
+                    }
+                )
+                continue
             self._dispatch(outbox.id, outbox.operation)
             refreshed = BlingOutbox.query.get(outbox.id)
             processed += 1
@@ -464,6 +489,7 @@ class BlingIntegrationService:
                 {
                     "outbox_id": refreshed.id,
                     "pedido_id": refreshed.pedido_id,
+                    "store_ref_id": refreshed.store_ref_id,
                     "operation": refreshed.operation,
                     "status": refreshed.status,
                     "step": refreshed.step,

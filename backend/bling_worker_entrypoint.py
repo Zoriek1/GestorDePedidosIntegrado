@@ -44,7 +44,8 @@ def _log_results(result: dict) -> None:
     )
     for r in result.get("results") or []:
         print(
-            f"   {_status_tag(r['status'])} pedido #{r['pedido_id']} {r['operation']} "
+            f"   {_status_tag(r['status'])} pedido #{r['pedido_id']} "
+            f"loja={r.get('store_ref_id')} {r['operation']} "
             f"-> {r['status']} (step={r['step']})",
             flush=True,
         )

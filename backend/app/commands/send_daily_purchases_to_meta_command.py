@@ -39,7 +39,40 @@ class SendDailyPurchasesToMetaCommand:
         self.pedido_repo = PedidoRepository()
         self.outbox_repo = MetaCapiOutboxRepository()
         self.lead_outbox_repo = MetaCapiLeadOutboxRepository()
+        # Instância default (tenant None) só para helpers puros: sanitize/classify.
+        # O ENVIO usa uma instância por tenant (pixel/token da própria loja), nunca
+        # um único token para lotes de lojas diferentes (invariante da Fase D).
         self.service = MetaConversionsApiService()
+        self._services: dict = {}
+
+    def _service_for(self, store_ref_id):
+        """Serviço Meta da loja da linha, cacheado durante o ciclo."""
+        svc = self._services.get(store_ref_id)
+        if svc is None:
+            svc = MetaConversionsApiService(store_ref_id=store_ref_id)
+            self._services[store_ref_id] = svc
+        return svc
+
+    def _partition_by_store(self, batch: list, stats: dict, *, lead: bool) -> dict:
+        """Agrupa entries por ``store_ref_id`` para envio isolado por tenant.
+
+        Linhas de empresa inativa são invalidadas aqui (falha permanente,
+        `store_inactive`) e não entram em nenhum grupo de envio — aplica a
+        política de descarte da Fase D às linhas já pendentes.
+        """
+        from app.services.tenancy import is_store_inactive
+
+        fperm_key = "lead_failed_permanent" if lead else "failed_permanent"
+        repo = self.lead_outbox_repo if lead else self.outbox_repo
+        groups: dict = {}
+        for entry in batch:
+            store_ref_id = getattr(entry, "store_ref_id", None)
+            if is_store_inactive(store_ref_id):
+                repo.mark_failed(entry.id, "store_inactive", 0, "permanent", entry.attempts)
+                stats[fperm_key] += 1
+                continue
+            groups.setdefault(store_ref_id, []).append(entry)
+        return groups
 
     def execute(self) -> dict:
         """
@@ -247,11 +280,22 @@ class SendDailyPurchasesToMetaCommand:
             self._send_batch(batch, stats)
 
     def _send_batch(self, batch: list, stats: dict):
+        """Envia um lote agrupado por tenant, uma instância/token Meta por loja."""
+        for store_ref_id, entries in self._partition_by_store(batch, stats, lead=False).items():
+            print(
+                f"[META_CAPI] Grupo Purchase store_ref_id={store_ref_id}: "
+                f"{len(entries)} linha(s)",
+                flush=True,
+            )
+            self._send_batch_group(self._service_for(store_ref_id), entries, stats)
+
+    def _send_batch_group(self, service, batch: list, stats: dict):
         """
-        Envia um lote de eventos para Meta
+        Envia um lote de eventos de UMA loja para Meta
 
         Args:
-            batch: Lista de MetaCapiOutbox para enviar
+            service: MetaConversionsApiService já configurado com o tenant do grupo
+            batch: Lista de MetaCapiOutbox (mesmo store_ref_id) para enviar
             stats: Dicionário de estatísticas (atualizado in-place)
         """
         # Reconstruir eventos a partir do payload_json
@@ -279,7 +323,7 @@ class SendDailyPurchasesToMetaCommand:
                     "user_data": payload.get("user_data", {}),
                     "custom_data": payload["custom_data"],
                 }
-                events.append(self.service.sanitize_event_payload(event))
+                events.append(service.sanitize_event_payload(event))
                 outbox_map[entry.event_id] = entry
             except Exception as e:
                 error_msg = f"Erro ao parsear payload de outbox #{entry.id}: {str(e)}"
@@ -319,9 +363,9 @@ class SendDailyPurchasesToMetaCommand:
         except Exception:
             pass
 
-        # Enviar para Meta
+        # Enviar para Meta (token/pixel do tenant deste grupo)
         print(f"[META_CAPI] Enviando {len(events)} eventos para Meta...")
-        response = self.service.send_events(events)
+        response = service.send_events(events)
 
         # Processar resposta
         status_code = response.get("_status_code", 200)
@@ -344,7 +388,7 @@ class SendDailyPurchasesToMetaCommand:
 
         else:
             # Erro
-            error_type, is_retryable = self.service.classify_error(response, status_code)
+            error_type, is_retryable = service.classify_error(response, status_code)
 
             # Capturar mensagem detalhada da Meta
             error_detail = response.get("details", response.get("error", {}))
@@ -456,6 +500,15 @@ class SendDailyPurchasesToMetaCommand:
             self._send_lead_batch(batch, stats)
 
     def _send_lead_batch(self, batch: list, stats: dict):
+        """Envia lote de leads agrupado por tenant, uma instância/token por loja."""
+        for store_ref_id, entries in self._partition_by_store(batch, stats, lead=True).items():
+            print(
+                f"[META_CAPI] Grupo Lead store_ref_id={store_ref_id}: " f"{len(entries)} linha(s)",
+                flush=True,
+            )
+            self._send_lead_batch_group(self._service_for(store_ref_id), entries, stats)
+
+    def _send_lead_batch_group(self, service, batch: list, stats: dict):
         events = []
         outbox_map = {}
 
@@ -471,7 +524,7 @@ class SendDailyPurchasesToMetaCommand:
                     "user_data": payload.get("user_data", {}),
                     "custom_data": payload["custom_data"],
                 }
-                events.append(self.service.sanitize_event_payload(event))
+                events.append(service.sanitize_event_payload(event))
                 outbox_map[entry.event_id] = entry
             except Exception as e:
                 error_msg = f"Erro ao parsear payload lead outbox #{entry.id}: {str(e)}"
@@ -487,7 +540,7 @@ class SendDailyPurchasesToMetaCommand:
             return
 
         print(f"[META_CAPI] Enviando {len(events)} eventos (leads) para Meta...")
-        response = self.service.send_events(events)
+        response = service.send_events(events)
         status_code = response.get("_status_code", 200)
         sent_at = datetime_now_brazil()
 
@@ -502,7 +555,7 @@ class SendDailyPurchasesToMetaCommand:
                     self.lead_outbox_repo.mark_sent(entry.id, sent_at, response)
                     stats["lead_sent_success"] += 1
         else:
-            error_type, is_retryable = self.service.classify_error(response, status_code)
+            error_type, is_retryable = service.classify_error(response, status_code)
             error_detail = response.get("details", response.get("error", {}))
             meta_error = None
             if isinstance(error_detail, dict) and "error" in error_detail:

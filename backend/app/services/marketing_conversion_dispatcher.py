@@ -13,6 +13,7 @@ from app import db
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.pedido import datetime_now_brazil
 from app.services.integration_settings_service import runtime_config
+from app.services.tenancy import is_store_inactive
 
 DATAMANAGER_SCOPE = "https://www.googleapis.com/auth/datamanager"
 DATAMANAGER_INGEST_URL = "https://datamanager.googleapis.com/v1/events:ingest"
@@ -40,6 +41,11 @@ class MarketingConversionDispatcher:
         )
         for row in rows:
             stats["processed"] += 1
+            # Empresa inativa: invalida a linha pendente e não envia (política Fase D).
+            if is_store_inactive(getattr(row, "store_ref_id", None)):
+                self._fail(row, "store_inactive")
+                stats["failed"] += 1
+                continue
             try:
                 result = self._send(row)
                 stats[result] += 1

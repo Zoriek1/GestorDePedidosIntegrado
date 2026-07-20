@@ -6,9 +6,10 @@ Registra todas as operações críticas no sistema para trilha de auditoria
 from datetime import datetime
 
 from app import db
+from app.services.tenant_scope import TenantScoped
 
 
-class AuditLog(db.Model):
+class AuditLog(TenantScoped, db.Model):
     """Modelo de log de auditoria"""
 
     __tablename__ = "audit_log"

@@ -48,7 +48,7 @@ def create_app(config=None):
     if not app.config.get("SECRET_KEY"):
         raise RuntimeError(
             "SECRET_KEY não configurada.\n"
-            "Gere uma chave segura: python -c \"import secrets; print(secrets.token_hex(32))\""
+            'Gere uma chave segura: python -c "import secrets; print(secrets.token_hex(32))"'
         )
 
     # 1.2 Credenciais Google (escreve arquivo a partir de env var se necessário)
@@ -69,11 +69,6 @@ def create_app(config=None):
         # IMPORTANTE: usar alias. `import app.models` religaria o nome local `app`
         # (instancia Flask) para o modulo `app`, quebrando app.register_blueprint.
         import app.models as _app_models  # noqa: F401
-        from app.services.auth_context import prime_request_tenant
-        from app.services.tenant_scope import register_tenant_scope
-
-        register_tenant_scope()
-        app.before_request(prime_request_tenant)
         from app.models.ledger_entry import LedgerEntry  # noqa: F401
         from app.models.user import User  # noqa: F401
         from app.routes.auth import auth_bp
@@ -87,14 +82,19 @@ def create_app(config=None):
         from app.routes.fontes import fontes_bp
         from app.routes.leads import leads_bp
         from app.routes.ledger_routes import ledger_bp
-        from app.routes.meta_gateway import meta_gateway_bp
         from app.routes.marketing_conversions import marketing_conversions_bp
+        from app.routes.meta_gateway import meta_gateway_bp
         from app.routes.notifications import notifications_bp
         from app.routes.nuvemshop import nuvemshop_bp
         from app.routes.pedidos import pedidos_bp
         from app.routes.rotas import rotas_bp
         from app.routes.storefront import storefront_bp
         from app.routes.user_routes import users_bp
+        from app.services.auth_context import prime_request_tenant
+        from app.services.tenant_scope import register_tenant_scope
+
+        register_tenant_scope()
+        app.before_request(prime_request_tenant)
 
         # Blueprints por domínio
         app.register_blueprint(pedidos_bp)
@@ -174,11 +174,7 @@ def create_app(config=None):
 def _validate_bling_config(app):
     """Falha rápida no boot se a integração Bling estiver habilitada em produção
     sem as credenciais obrigatórias (em vez de só quebrar tarde, em runtime)."""
-    env = (
-        os.environ.get("APP_ENV")
-        or os.environ.get("FLASK_ENV")
-        or ""
-    ).lower()
+    env = (os.environ.get("APP_ENV") or os.environ.get("FLASK_ENV") or "").lower()
     if env != "production":
         return
     if not app.config.get("BLING_ENABLED"):

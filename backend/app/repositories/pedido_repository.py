@@ -508,6 +508,8 @@ class PedidoRepository(BaseRepository):
                 entity_type="pedido",
                 entity_id=pedido_id,
                 actor=actor or "system",
+                store_ref_id=pedido.store_ref_id,
+                entity=pedido,
                 metadata={
                     "cliente": pedido.cliente,
                     "destinatario": pedido.destinatario,
@@ -550,6 +552,8 @@ class PedidoRepository(BaseRepository):
                 entity_type="pedido",
                 entity_id=pedido_id,
                 actor=actor or "system",
+                store_ref_id=pedido.store_ref_id,
+                entity=pedido,
                 metadata={
                     "cliente": pedido.cliente,
                     "destinatario": pedido.destinatario,

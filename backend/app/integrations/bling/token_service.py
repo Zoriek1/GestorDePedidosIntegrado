@@ -2,21 +2,21 @@
 """OAuth/token service da integracao Bling."""
 
 import base64
-import hashlib
 import json
-import os
 from datetime import timedelta
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 import requests
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import current_app
 
 from app import db
 from app.integrations.bling.errors import BlingConfigError, BlingRetryableError
 from app.models.bling_credential import BlingCredential
 from app.models.pedido import datetime_now_brazil
+from app.utils.crypto import decrypt_secret, derive_key, encrypt_secret
+
+BLING_CRYPTO_PURPOSE = b":bling-oauth"
 
 
 class BlingTokenService:
@@ -48,37 +48,30 @@ class BlingTokenService:
 
     @staticmethod
     def _key() -> bytes:
-        secret = (current_app.config.get("SECRET_KEY") or "").encode("utf-8")
-        if not secret:
-            raise BlingConfigError("SECRET_KEY obrigatoria para criptografar tokens Bling")
-        return hashlib.sha256(secret + b":bling-oauth").digest()
+        try:
+            return derive_key(BLING_CRYPTO_PURPOSE)
+        except RuntimeError as exc:
+            raise BlingConfigError("SECRET_KEY obrigatoria para criptografar tokens Bling") from exc
 
     @staticmethod
     def encrypt(value: Optional[str]) -> Optional[str]:
         if not value:
             return None
-        nonce = os.urandom(12)
-        ciphertext = AESGCM(BlingTokenService._key()).encrypt(
-            nonce,
-            value.encode("utf-8"),
-            associated_data=None,
-        )
-        return "v1:" + base64.urlsafe_b64encode(nonce + ciphertext).decode("ascii")
+        try:
+            return encrypt_secret(value, BLING_CRYPTO_PURPOSE)
+        except RuntimeError as exc:
+            raise BlingConfigError("SECRET_KEY obrigatoria para criptografar tokens Bling") from exc
 
     @staticmethod
     def decrypt(value: Optional[str]) -> Optional[str]:
         if not value:
             return None
-        if not value.startswith("v1:"):
-            return value
-        blob = base64.urlsafe_b64decode(value.split(":", 1)[1].encode("ascii"))
-        nonce = blob[:12]
-        ciphertext = blob[12:]
-        return AESGCM(BlingTokenService._key()).decrypt(
-            nonce,
-            ciphertext,
-            associated_data=None,
-        ).decode("utf-8")
+        try:
+            return decrypt_secret(value, BLING_CRYPTO_PURPOSE)
+        except RuntimeError as exc:
+            raise BlingConfigError(
+                "SECRET_KEY obrigatoria para descriptografar tokens Bling"
+            ) from exc
 
     @staticmethod
     def _basic_auth_header() -> str:

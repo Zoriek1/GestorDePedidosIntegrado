@@ -12,6 +12,16 @@ class NuvemshopStore(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     store_id = db.Column(db.String(50), unique=True, index=True, nullable=False)
+    store_ref_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "stores.id",
+            name="fk_nuvemshop_stores_store_ref_id_stores",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+    )
     access_token = db.Column(db.Text, nullable=False)
     active = db.Column(db.Boolean, default=True, nullable=False)
     default_vendedor_id = db.Column(

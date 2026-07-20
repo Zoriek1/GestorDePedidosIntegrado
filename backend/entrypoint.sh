@@ -22,6 +22,8 @@ python scripts/migrations/backfill_slot_inicio_from_horario.py
 python scripts/migrations/add_search_trgm_unaccent.py
 python scripts/migrations/create_catalogo_arranjos.py
 python scripts/migrations/create_bling_integration.py
+python scripts/migrations/add_store_foundation.py
+python scripts/migrations/create_store_settings.py
 python scripts/migrations/create_pedido_sugestoes_endereco.py
 python scripts/migrations/convert_pedidos_fbc_seconds_to_ms.py
 

@@ -14,6 +14,7 @@ from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
 from app.models.pedido import datetime_now_brazil
 from app.repositories.base_repository import BaseRepository
 from app.services.meta_capi import MetaConversionsApiService
+from app.services.tenancy import is_store_inactive
 
 
 class MetaCapiLeadOutboxRepository(BaseRepository):
@@ -35,6 +36,8 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
     def create_contact_from_lead(self, lead: Lead) -> Optional[MetaCapiLeadOutbox]:
         if self.get_by_lead_and_stage(lead.id, self.STAGE_CONTACT):
             return None
+        if is_store_inactive(lead.store_ref_id):
+            return None
         event = self.service.build_contact_event_from_lead(lead)
         payload_safe = {
             "event_name": event["event_name"],
@@ -48,6 +51,7 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
         event_time = lead.created_at or datetime_now_brazil()
         row = MetaCapiLeadOutbox(
             lead_id=lead.id,
+            store_ref_id=lead.store_ref_id,
             funnel_stage=self.STAGE_CONTACT,
             event_id=event["event_id"],
             event_time=event_time,
@@ -68,6 +72,8 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
     ) -> Optional[MetaCapiLeadOutbox]:
         if self.get_by_lead_and_stage(lead.id, self.STAGE_LEAD):
             return None
+        if is_store_inactive(lead.store_ref_id):
+            return None
         ts = event_time or lead.updated_at or lead.created_at or datetime_now_brazil()
         event_time_int = int(ts.timestamp())
         event = self.service.build_lead_event_from_lead(lead, event_time_override=event_time_int)
@@ -82,6 +88,7 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
         }
         row = MetaCapiLeadOutbox(
             lead_id=lead.id,
+            store_ref_id=lead.store_ref_id,
             funnel_stage=self.STAGE_LEAD,
             event_id=event["event_id"],
             event_time=ts,
@@ -106,6 +113,8 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
         """
         if self.get_by_lead_and_stage(lead.id, self.STAGE_DISQUALIFIED):
             return None
+        if is_store_inactive(lead.store_ref_id):
+            return None
         ts = event_time or datetime_now_brazil()
         event_time_int = int(ts.timestamp())
         event = self.service.build_disqualified_event_from_lead(
@@ -122,6 +131,7 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
         }
         row = MetaCapiLeadOutbox(
             lead_id=lead.id,
+            store_ref_id=lead.store_ref_id,
             funnel_stage=self.STAGE_DISQUALIFIED,
             event_id=event["event_id"],
             event_time=ts,

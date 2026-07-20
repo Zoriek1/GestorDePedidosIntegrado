@@ -6,9 +6,10 @@ Garante entrega de eventos Purchase para Meta com retry e idempotência
 
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class MetaCapiOutbox(db.Model):
+class MetaCapiOutbox(TenantScoped, db.Model):
     """
     Outbox para eventos Meta Conversions API
     Armazena eventos Purchase pendentes/enviados/falhados

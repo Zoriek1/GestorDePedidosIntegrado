@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { usePedido } from '../../api/endpoints/pedidos';
+import { pedidoDisplayNumber, usePedido } from '../../api/endpoints/pedidos';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { formatBRL } from '../../lib/format/currency';
@@ -189,7 +189,7 @@ export default function OrderDetailsPage() {
       >
         <Stack spacing={1}>
           <Typography variant="h4" component="h1">
-            Pedido #{pedido.id}
+            Pedido #{pedidoDisplayNumber(pedido)}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Chip label={statusLabel} color={statusColor} />

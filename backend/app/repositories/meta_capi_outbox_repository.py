@@ -51,6 +51,12 @@ class MetaCapiOutboxRepository(BaseRepository):
         if existing:
             return None
 
+        from app.services.tenancy import is_store_inactive
+
+        # Empresa inativa não gera novos enqueues (política da Fase D).
+        if is_store_inactive(pedido.store_ref_id):
+            return None
+
         from app.utils.meta_capi_helper import should_skip_purchase_for_meta_capi
 
         if should_skip_purchase_for_meta_capi(pedido):
@@ -79,9 +85,10 @@ class MetaCapiOutboxRepository(BaseRepository):
         # Timestamp do evento (usar updated_at quando status mudou, ou created_at)
         event_time = pedido.updated_at if pedido.updated_at else pedido.created_at
 
-        # Criar registro
+        # Criar registro (tenant copiado do pedido de origem)
         outbox_entry = MetaCapiOutbox(
             order_id=pedido.id,
+            store_ref_id=pedido.store_ref_id,
             event_id=f"order_{pedido.id}",
             event_time=event_time,
             payload_json=json.dumps(payload_safe),

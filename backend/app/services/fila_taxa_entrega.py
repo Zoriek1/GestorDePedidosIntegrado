@@ -25,10 +25,10 @@ def start_worker(app):
     t.start()
 
 
-def enfileirar_calculo_taxa(pedido_id: int) -> None:
+def enfileirar_calculo_taxa(pedido_id: int, store_ref_id: int | None = None) -> None:
     """Coloca o pedido na fila para cálculo de taxa de entrega (após distância já calculada)."""
     try:
-        _queue.put_nowait(pedido_id)
+        _queue.put_nowait((pedido_id, store_ref_id))
     except queue.Full:
         pass
 
@@ -36,17 +36,22 @@ def enfileirar_calculo_taxa(pedido_id: int) -> None:
 def _worker_loop():
     while True:
         try:
-            pedido_id = _queue.get()
+            item = _queue.get()
         except Exception:
             continue
         app = _app_ref
         if not app:
             continue
         with app.app_context():
-            _processar_taxa(pedido_id)
+            # Compatibilidade com itens antigos em memoria durante hot reload.
+            if isinstance(item, tuple):
+                pedido_id, store_ref_id = item
+            else:
+                pedido_id, store_ref_id = item, None
+            _processar_taxa(pedido_id, store_ref_id)
 
 
-def _processar_taxa(pedido_id: int) -> None:
+def _processar_taxa(pedido_id: int, store_ref_id: int | None = None) -> None:
     """Calcula e persiste taxa para o pedido (usa distância já salva)."""
     from app.extensions import db
 
@@ -54,7 +59,14 @@ def _processar_taxa(pedido_id: int) -> None:
         from app.models.pedido import Pedido
         from app.services.taxa_entrega import taxa_entrega_service
 
-        pedido = Pedido.query.get(pedido_id)
+        pedido = (
+            Pedido.query.execution_options(include_all_tenants=True)
+            .filter(
+                Pedido.id == pedido_id,
+                Pedido.store_ref_id == store_ref_id,
+            )
+            .first()
+        )
         if not pedido or pedido.distancia_km is None:
             return
         taxa = taxa_entrega_service.calcular_taxa(pedido.distancia_km)

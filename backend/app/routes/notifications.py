@@ -9,11 +9,12 @@ Endpoints:
 """
 import logging
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app import db
 from app.config import Config
-from app.middleware import requires_role
+from app.middleware import requires_any_role, requires_role
+from app.models.pedido import Pedido
 from app.models.push_subscription import PushSubscription
 from app.schemas.common import error_response, success_response
 
@@ -32,6 +33,7 @@ def get_vapid_public_key():
 
 
 @notifications_bp.route("/subscribe", methods=["POST"])
+@requires_any_role("admin", "atendente", "vendedor", "entregador")
 def subscribe():
     """
     Salva uma inscrição de push notification.
@@ -64,7 +66,12 @@ def subscribe():
         logger.info("[Push] Subscription atualizada: %s...", endpoint[:60])
         return success_response({"status": "updated"})
 
-    sub = PushSubscription(endpoint=endpoint, p256dh=p256dh, auth=auth)
+    sub = PushSubscription(
+        endpoint=endpoint,
+        p256dh=p256dh,
+        auth=auth,
+        store_ref_id=getattr(g, "tenant_store_id", None),
+    )
     db.session.add(sub)
     db.session.commit()
     logger.info("[Push] Nova subscription: %s...", endpoint[:60])
@@ -100,11 +107,23 @@ def subscribe_track(token):
     if pedido_id is None:
         return error_response("Pedido não encontrado", 404)
 
+    pedido = (
+        Pedido.query.execution_options(include_all_tenants=True)
+        .filter(Pedido.id == pedido_id)
+        .first()
+    )
+    if not pedido or pedido.oculto or pedido.deleted_at:
+        return error_response("Pedido não encontrado", 404)
+
     payload, err = _read_subscription_payload()
     if err:
         return err
 
-    existing = PushSubscription.query.filter_by(endpoint=payload["endpoint"]).first()
+    existing = (
+        PushSubscription.query.execution_options(include_all_tenants=True)
+        .filter_by(endpoint=payload["endpoint"], store_ref_id=pedido.store_ref_id)
+        .first()
+    )
     if existing:
         existing.p256dh = payload["p256dh"]
         existing.auth = payload["auth"]
@@ -118,6 +137,7 @@ def subscribe_track(token):
         p256dh=payload["p256dh"],
         auth=payload["auth"],
         pedido_id=pedido_id,
+        store_ref_id=pedido.store_ref_id,
     )
     db.session.add(sub)
     db.session.commit()
@@ -134,12 +154,28 @@ def unsubscribe_track(token):
     if pedido_id is None:
         return error_response("Pedido não encontrado", 404)
 
+    pedido = (
+        Pedido.query.execution_options(include_all_tenants=True)
+        .filter(Pedido.id == pedido_id)
+        .first()
+    )
+    if not pedido or pedido.oculto or pedido.deleted_at:
+        return error_response("Pedido não encontrado", 404)
+
     data = request.get_json() or {}
     endpoint = (data.get("endpoint") or "").strip()
     if not endpoint:
         return error_response("Campo obrigatório: endpoint", 400)
 
-    removed = PushSubscription.query.filter_by(endpoint=endpoint, pedido_id=pedido_id).delete()
+    removed = (
+        PushSubscription.query.execution_options(include_all_tenants=True)
+        .filter_by(
+            endpoint=endpoint,
+            pedido_id=pedido_id,
+            store_ref_id=pedido.store_ref_id,
+        )
+        .delete()
+    )
     db.session.commit()
     return success_response({"status": "deleted", "removed": removed})
 
@@ -154,5 +190,6 @@ def test_notification():
         title="Teste de Notificação",
         body="Se você está lendo isso, as notificações estão funcionando!",
         url="/",
+        store_ref_id=getattr(g, "tenant_store_id", None),
     )
     return success_response(result)

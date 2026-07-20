@@ -9,9 +9,10 @@ sincronizações posteriores sobrescrevam a edição manual.
 
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class PedidoManualOverride(db.Model):
+class PedidoManualOverride(TenantScoped, db.Model):
     """
     Registra campos de pedidos que foram editados manualmente.
 
@@ -100,7 +101,12 @@ class PedidoManualOverride(db.Model):
 
     @classmethod
     def set_override(
-        cls, pedido_id: int, field_name: str, field_value: str, edited_by: str = None
+        cls,
+        pedido_id: int,
+        field_name: str,
+        field_value: str,
+        edited_by: str = None,
+        store_ref_id: int | None = None,
     ) -> "PedidoManualOverride":
         """
         Cria ou atualiza um override manual para um campo.
@@ -121,8 +127,18 @@ class PedidoManualOverride(db.Model):
             override.edited_by = edited_by
             override.edited_at = datetime_now_brazil()
         else:
+            if store_ref_id is None:
+                from app.models.pedido import Pedido
+
+                pedido = (
+                    Pedido.query.execution_options(include_all_tenants=True)
+                    .filter(Pedido.id == pedido_id)
+                    .first()
+                )
+                store_ref_id = pedido.store_ref_id if pedido else None
             override = cls(
                 pedido_id=pedido_id,
+                store_ref_id=store_ref_id,
                 field_name=field_name,
                 field_value=str(field_value) if field_value is not None else None,
                 edited_by=edited_by,

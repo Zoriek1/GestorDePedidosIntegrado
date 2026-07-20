@@ -9,13 +9,14 @@ Mantém rastreabilidade de quem pediu o quê e quando.
 
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 STATUS_PENDENTE = "pendente"
 STATUS_APLICADA = "aplicada"
 STATUS_IGNORADA = "ignorada"
 
 
-class PedidoSugestaoEndereco(db.Model):
+class PedidoSugestaoEndereco(TenantScoped, db.Model):
     __tablename__ = "pedido_sugestoes_endereco"
 
     id = db.Column(db.Integer, primary_key=True)

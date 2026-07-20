@@ -3,7 +3,7 @@
 
 import logging
 
-from flask import Blueprint, redirect, request
+from flask import Blueprint, g, redirect, request
 
 from app.integrations.bling.errors import BlingIntegrationError
 from app.integrations.bling.service import BlingIntegrationService
@@ -11,9 +11,15 @@ from app.integrations.bling.token_service import BlingTokenService
 from app.middleware import requires_any_role, requires_role
 from app.models.bling_integration_log import BlingIntegrationLog
 from app.schemas.common import error_response, success_response
+from app.services.oauth_state import sign_state, verify_state
+from app.services.tenancy import is_multi_store
 
 bling_bp = Blueprint("bling", __name__, url_prefix="/api/integrations/bling")
 logger = logging.getLogger(__name__)
+
+
+def _service() -> BlingIntegrationService:
+    return BlingIntegrationService(store_ref_id=getattr(g, "tenant_store_id", None))
 
 
 def _front_url(path: str) -> str:
@@ -38,7 +44,11 @@ def _handle_error(exc: Exception):
 @requires_role("admin")
 def bling_install():
     try:
-        url = BlingTokenService.build_authorize_url(state="gestor-bling")
+        # State assinado amarra o fluxo à loja autenticada (Fase B). Fallback ao
+        # state estático apenas quando não há loja no contexto (single-tenant legado).
+        store = getattr(g, "current_store", None)
+        state = sign_state(store.id, "bling") if store else "gestor-bling"
+        url = BlingTokenService.build_authorize_url(state=state)
         if request.args.get("redirect", "").lower() == "true":
             return redirect(url)
         return success_response({"authorize_url": url})
@@ -51,8 +61,16 @@ def bling_oauth_callback():
     code = request.args.get("code")
     if not code:
         return error_response("Parametro code ausente", 400)
+
+    # Resolve o tenant pelo state assinado. No modo multi-tenant, state ausente/
+    # inválido falha fechado; no single-tenant cai na loja default (compat).
+    verified = verify_state(request.args.get("state"), "bling")
+    store_ref_id = verified["srid"] if verified else None
+    if store_ref_id is None and is_multi_store():
+        return error_response("State OAuth inválido ou ausente", 400)
+
     try:
-        BlingTokenService.exchange_code(code)
+        BlingTokenService.exchange_code(code, store_ref_id=store_ref_id)
         return redirect(_front_url("/integracoes/bling?bling=connected"))
     except Exception as exc:
         return _handle_error(exc)
@@ -62,7 +80,7 @@ def bling_oauth_callback():
 @requires_role("admin")
 def bling_status():
     try:
-        return success_response(BlingIntegrationService().status())
+        return success_response(_service().status())
     except Exception as exc:
         return _handle_error(exc)
 
@@ -71,7 +89,7 @@ def bling_status():
 @requires_role("admin")
 def bling_sync_config():
     try:
-        result = BlingIntegrationService().sync_config()
+        result = _service().sync_config()
         return success_response(result, message="Configuracao Bling sincronizada")
     except Exception as exc:
         return _handle_error(exc)
@@ -81,7 +99,7 @@ def bling_sync_config():
 @requires_role("admin")
 def bling_config():
     try:
-        return success_response(BlingIntegrationService().list_config())
+        return success_response(_service().list_config())
     except Exception as exc:
         return _handle_error(exc)
 
@@ -90,7 +108,7 @@ def bling_config():
 @requires_role("admin")
 def bling_update_mapping(mapping_id: int):
     try:
-        mapping = BlingIntegrationService().save_mapping(mapping_id, request.get_json() or {})
+        mapping = _service().save_mapping(mapping_id, request.get_json() or {})
         return success_response({"mapping": mapping.to_dict()}, message="Mapeamento salvo")
     except Exception as exc:
         return _handle_error(exc)
@@ -100,7 +118,7 @@ def bling_update_mapping(mapping_id: int):
 @requires_any_role("admin", "atendente", "vendedor")
 def bling_preview_pedido(pedido_id: int):
     try:
-        return success_response(BlingIntegrationService().preview_order(pedido_id))
+        return success_response(_service().preview_order(pedido_id))
     except Exception as exc:
         return _handle_error(exc)
 
@@ -109,7 +127,7 @@ def bling_preview_pedido(pedido_id: int):
 @requires_any_role("admin", "atendente")
 def bling_send_pedido(pedido_id: int):
     try:
-        result = BlingIntegrationService().send_order(pedido_id)
+        result = _service().send_order(pedido_id)
         return success_response(result, message="Envio Bling processado")
     except Exception as exc:
         return _handle_error(exc)
@@ -119,7 +137,7 @@ def bling_send_pedido(pedido_id: int):
 @requires_any_role("admin", "atendente")
 def bling_retry_outbox(outbox_id: int):
     try:
-        result = BlingIntegrationService().retry_outbox(outbox_id)
+        result = _service().retry_outbox(outbox_id)
         return success_response(result, message="Retry Bling processado")
     except Exception as exc:
         return _handle_error(exc)
@@ -141,6 +159,6 @@ def bling_outbox_logs(outbox_id: int):
 def bling_process_pending():
     limit = request.args.get("limit", type=int) or 20
     try:
-        return success_response(BlingIntegrationService().process_pending(limit=limit))
+        return success_response(_service().process_pending(limit=limit))
     except Exception as exc:
         return _handle_error(exc)

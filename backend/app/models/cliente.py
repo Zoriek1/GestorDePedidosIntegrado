@@ -7,9 +7,10 @@ import re
 from datetime import datetime
 
 from app import db
+from app.services.tenant_scope import TenantScoped
 
 
-class Cliente(db.Model):
+class Cliente(TenantScoped, db.Model):
     """
     Model de Cliente com relacionamentos para Pedidos e Endereços
     """
@@ -19,7 +20,7 @@ class Cliente(db.Model):
     # Campos principais
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False, index=True)
-    telefone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    telefone = db.Column(db.String(20), nullable=False, index=True)
     cpf_cnpj = db.Column(db.String(14), nullable=True, index=True)
     email = db.Column(db.String(100), nullable=True)
     observacoes = db.Column(db.Text, nullable=True)
@@ -40,6 +41,10 @@ class Cliente(db.Model):
         backref="cliente_rel",
         lazy="dynamic",
         foreign_keys="Pedido.cliente_id",
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint("store_ref_id", "telefone", name="uq_clientes_store_telefone"),
     )
 
     def __repr__(self):

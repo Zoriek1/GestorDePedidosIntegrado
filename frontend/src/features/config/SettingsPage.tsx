@@ -1,9 +1,10 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
 import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People, CreditCard, BarChart } from '@mui/icons-material';
-import { Megaphone } from 'lucide-react';
+import { KeyRound, Megaphone } from 'lucide-react';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { TaxaCartaoSettings } from './components/TaxaCartaoSettings';
+import { IntegrationSettings } from './components/IntegrationSettings';
 import { Loading } from '../../components/common/Loading';
 import { DailyFreightDialog } from '../pedidos/components/DailyFreightDialog';
 import { FreightBySourceDialog } from '../pedidos/components/FreightBySourceDialog';
@@ -120,12 +121,12 @@ function BatchActionsTab() {
 
 export default function SettingsPage() {
   const { getUserRole } = useAuth();
-  const [tabValue, setTabValue] = React.useState(0);
+  const [tabValue, setTabValue] = React.useState('delivery');
   const userRole = getUserRole() ?? 'viewer';
   const isEntregador = userRole === 'entregador';
   const isAdmin = userRole === 'admin';
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: string) => {
     setTabValue(newValue);
   };
 
@@ -149,29 +150,31 @@ export default function SettingsPage() {
           variant="scrollable"
           scrollButtons="auto"
         >
-          <Tab icon={<LocalShipping />} label="Taxa de Entrega" iconPosition="start" />
-          {isAdmin && <Tab icon={<CreditCard />} label="Taxa de Cartão" iconPosition="start" />}
-          <Tab icon={<Build />} label="Ações em Lote" iconPosition="start" />
-          {!isEntregador && <Tab icon={<Build />} label="Fontes" iconPosition="start" />}
-          {!isEntregador && <Tab icon={<Group />} label="Clientes" iconPosition="start" />}
-          {isAdmin && <Tab icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
-          {isAdmin && <Tab icon={<Payment />} label="Bling" iconPosition="start" />}
-          {isAdmin && <Tab icon={<Megaphone />} label="Marketing" iconPosition="start" />}
-          {isAdmin && <Tab icon={<People />} label="Funcionários" iconPosition="start" />}
+          <Tab value="delivery" icon={<LocalShipping />} label="Taxa de Entrega" iconPosition="start" />
+          {isAdmin && <Tab value="card" icon={<CreditCard />} label="Taxa de Cartão" iconPosition="start" />}
+          <Tab value="batch" icon={<Build />} label="Ações em Lote" iconPosition="start" />
+          {!isEntregador && <Tab value="sources" icon={<Build />} label="Fontes" iconPosition="start" />}
+          {!isEntregador && <Tab value="customers" icon={<Group />} label="Clientes" iconPosition="start" />}
+          {isAdmin && <Tab value="integrations" icon={<KeyRound />} label="Integrações" iconPosition="start" />}
+          {isAdmin && <Tab value="nuvemshop" icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
+          {isAdmin && <Tab value="bling" icon={<Payment />} label="Bling" iconPosition="start" />}
+          {isAdmin && <Tab value="marketing" icon={<Megaphone />} label="Marketing" iconPosition="start" />}
+          {isAdmin && <Tab value="users" icon={<People />} label="Funcionários" iconPosition="start" />}
         </Tabs>
       </Paper>
 
       <Box sx={{ mt: 2 }}>
         <Suspense fallback={<Loading />}>
-          {tabValue === 0 && <TaxaEntregaSettings />}
-          {isAdmin && tabValue === 1 && <TaxaCartaoSettings />}
-          {tabValue === (isAdmin ? 2 : 1) && <BatchActionsTab />}
-          {!isEntregador && tabValue === (isAdmin ? 3 : 2) && <FontesPage />}
-          {!isEntregador && tabValue === (isAdmin ? 4 : 3) && <CustomersPage />}
-          {isAdmin && tabValue === 5 && <NuvemshopPage />}
-          {isAdmin && tabValue === 6 && <BlingPage />}
-          {isAdmin && tabValue === 7 && <MarketingPage />}
-          {isAdmin && tabValue === 8 && <UserListPage />}
+          {tabValue === 'delivery' && <TaxaEntregaSettings />}
+          {isAdmin && tabValue === 'card' && <TaxaCartaoSettings />}
+          {tabValue === 'batch' && <BatchActionsTab />}
+          {!isEntregador && tabValue === 'sources' && <FontesPage />}
+          {!isEntregador && tabValue === 'customers' && <CustomersPage />}
+          {isAdmin && tabValue === 'integrations' && <IntegrationSettings />}
+          {isAdmin && tabValue === 'nuvemshop' && <NuvemshopPage />}
+          {isAdmin && tabValue === 'bling' && <BlingPage />}
+          {isAdmin && tabValue === 'marketing' && <MarketingPage />}
+          {isAdmin && tabValue === 'users' && <UserListPage />}
         </Suspense>
       </Box>
     </Box>

@@ -50,20 +50,28 @@ def require_auth(roles: Optional[List[str]] = None):
                     401,
                 )
 
-            if roles and payload.get("role") not in roles:
+            # Confirma usuário e loja no banco (não confia só nas claims) e popula
+            # g.current_store + request.current_user.
+            from app.services.auth_context import load_request_identity
+
+            current_user, error = load_request_identity(payload)
+            if error:
+                body, status = error
+                return jsonify(body), status
+
+            # Checagem de role usa a role autoritativa do banco.
+            if roles and current_user.get("role") not in roles:
                 return (
                     jsonify(
                         {
                             "error": "Acesso negado",
                             "message": f"Esta operação requer um dos roles: {', '.join(roles)}",
-                            "user_role": payload.get("role"),
+                            "user_role": current_user.get("role"),
                         }
                     ),
                     403,
                 )
 
-            # Disponibiliza o payload para a view
-            request.current_user = payload
             return f(*args, **kwargs)
 
         decorated._auth = f"jwt:{','.join(roles) if roles else 'any'}"

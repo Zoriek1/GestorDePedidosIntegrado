@@ -8,9 +8,10 @@ import re
 from datetime import datetime
 
 from app import db
+from app.services.tenant_scope import TenantScoped
 
 
-class EnderecoCliente(db.Model):
+class EnderecoCliente(TenantScoped, db.Model):
     """
     Model de Endereço vinculado a um Cliente
     Um cliente pode ter múltiplos endereços (casa, trabalho, etc)
@@ -197,7 +198,10 @@ class EnderecoCliente(db.Model):
         Marca este endereço como principal e desmarca os outros do mesmo cliente
         """
         # Desmarcar todos os endereços do cliente
-        EnderecoCliente.query.filter_by(cliente_id=self.cliente_id).update({"principal": False})
+        EnderecoCliente.query.filter_by(
+            cliente_id=self.cliente_id,
+            store_ref_id=self.store_ref_id,
+        ).update({"principal": False})
 
         # Marcar este como principal
         self.principal = True

@@ -4,6 +4,7 @@ Rotas de Leads UTM — captura cliques da landing page e lista para o admin.
 """
 import hashlib
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta
 from urllib.parse import unquote
@@ -31,6 +32,7 @@ from app.utils.tracking_token import (
 )
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
+logger = logging.getLogger(__name__)
 
 # Evento padrão quando nenhum filtro de evento é enviado pelo frontend
 DEFAULT_KEY_EVENTS = ("whatsapp_click",)
@@ -267,7 +269,11 @@ def _record_touchpoint(lead: Lead, tp_fields: dict) -> LeadTouchpoint:
     touchpoint para last_touch e copia utm_*/fbclid/fbp pro lead. Toques diretos
     apenas viram histórico (last non-direct).
     """
-    tp = LeadTouchpoint(lead_id=lead.id, **tp_fields)
+    tp = LeadTouchpoint(
+        lead_id=lead.id,
+        store_ref_id=lead.store_ref_id,
+        **tp_fields,
+    )
     db.session.add(tp)
     db.session.flush()
     if tp.is_paid:
@@ -446,12 +452,24 @@ def _find_recent_valid_token_in_text(text: str) -> str | None:
     if not normalized_text:
         return None
 
+    from app.services.auth_context import resolve_public_store_id
+    from app.services.tenancy import is_multi_store
+
+    store_ref_id = resolve_public_store_id()
+    query = Lead.query.execution_options(include_all_tenants=True).filter(
+        Lead.token_valido.is_(True),
+        Lead.token_rastreio.isnot(None),
+    )
+    if store_ref_id is not None:
+        # Loja pública resolvida (loja default): restringe a busca ao tenant.
+        query = query.filter(Lead.store_ref_id == store_ref_id)
+    elif is_multi_store():
+        # Multiempresa sem loja resolvida: fail-closed, não cruza tenants
+        # (consistente com criar_lead/marcar_whatsapp_iniciado).
+        return None
+    # Single-store sem loja default (legado): comportamento global preservado.
     recent_tokens = (
-        Lead.query.filter(
-            Lead.token_valido.is_(True),
-            Lead.token_rastreio.isnot(None),
-        )
-        .order_by(Lead.created_at.desc(), Lead.id.desc())
+        query.order_by(Lead.created_at.desc(), Lead.id.desc())
         .limit(RECENT_WHATSAPP_TOKEN_MATCH_LIMIT)
         .all()
     )
@@ -466,7 +484,16 @@ def _find_recent_valid_token_in_text(text: str) -> str | None:
 @leads_bp.route("/", methods=["POST"])
 def criar_lead():
     """Recebe dados UTM da landing page (aceita application/json e text/plain via sendBeacon)."""
+    from app.services.auth_context import resolve_public_store_id
+
     data = _parse_request_payload()
+    store_ref_id = resolve_public_store_id()
+    if store_ref_id is None:
+        from app.services.tenancy import is_multi_store
+
+        if is_multi_store():
+            logger.error("lead.public_store_unresolved route=create")
+            return jsonify({"ok": False, "error": "Entrada publica indisponivel"}), 503
 
     ip_address = _get_ip_address()
     dedup_key = _build_dedup_key(data, ip_address)
@@ -519,7 +546,8 @@ def criar_lead():
     existing = None
     if is_whatsapp and token_valido:
         existing = (
-            Lead.query.filter(
+            Lead.query.execution_options(include_all_tenants=True).filter(
+                Lead.store_ref_id == store_ref_id,
                 Lead.token_rastreio == token_rastreio,
                 Lead.status != "compra_realizada",
             )
@@ -527,7 +555,10 @@ def criar_lead():
             .first()
         )
     if existing is None:
-        existing = Lead.query.filter(Lead.dedup_key == dedup_key).first()
+        existing = Lead.query.execution_options(include_all_tenants=True).filter(
+            Lead.store_ref_id == store_ref_id,
+            Lead.dedup_key == dedup_key,
+        ).first()
     if existing is not None:
         _record_touchpoint(existing, tp_fields)
         db.session.commit()
@@ -544,6 +575,7 @@ def criar_lead():
         )
 
     lead = Lead(
+        store_ref_id=store_ref_id,
         dedup_key=dedup_key,
         ip_address=ip_address,
         event=event,
@@ -580,7 +612,11 @@ def criar_lead():
     try:
         db.session.add(lead)
         db.session.flush()
-        tp = LeadTouchpoint(lead_id=lead.id, **tp_fields)
+        tp = LeadTouchpoint(
+            lead_id=lead.id,
+            store_ref_id=store_ref_id,
+            **tp_fields,
+        )
         db.session.add(tp)
         db.session.flush()
         lead.first_touch_id = tp.id
@@ -609,7 +645,10 @@ def criar_lead():
     except IntegrityError:
         # Race: outro request inseriu o mesmo dedup_key entre nosso SELECT e INSERT.
         db.session.rollback()
-        existing = Lead.query.filter(Lead.dedup_key == dedup_key).first()
+        existing = Lead.query.execution_options(include_all_tenants=True).filter(
+            Lead.store_ref_id == store_ref_id,
+            Lead.dedup_key == dedup_key,
+        ).first()
         if existing is not None:
             _record_touchpoint(existing, tp_fields)
             db.session.commit()
@@ -632,7 +671,16 @@ def marcar_whatsapp_iniciado():
     Promove lead para lead_pendente quando uma nova conversa do WhatsApp contém
     um dos tokens válidos recentes. O webhook nunca confirma o Lead sozinho.
     """
+    from app.services.auth_context import resolve_public_store_id
+
     data = _parse_request_payload()
+    store_ref_id = resolve_public_store_id()
+    if store_ref_id is None:
+        from app.services.tenancy import is_multi_store
+
+        if is_multi_store():
+            logger.error("lead.public_store_unresolved route=whatsapp-start")
+            return jsonify({"ok": False, "error": "Entrada publica indisponivel"}), 503
 
     phone = _extract_whatsapp_phone(data)
     token = normalize_tracking_token(data.get("token_rastreio"))
@@ -651,7 +699,8 @@ def marcar_whatsapp_iniciado():
         return jsonify({"ok": True, "found": False, "token": token, "token_valido": False}), 200
 
     lead = (
-        Lead.query.filter(Lead.token_rastreio == token)
+        Lead.query.execution_options(include_all_tenants=True)
+        .filter(Lead.store_ref_id == store_ref_id, Lead.token_rastreio == token)
         .order_by(Lead.created_at.desc(), Lead.id.desc())
         .first()
     )
@@ -782,7 +831,7 @@ def atualizar_status_lead(lead_id: int):
     Transições válidas são explícitas para evitar estados inconsistentes.
     """
     data = _parse_request_payload()
-    lead = db.session.get(Lead, lead_id)
+    lead = Lead.query.filter(Lead.id == lead_id).first()
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
     return _apply_lead_status_update(lead, data)
@@ -856,7 +905,7 @@ def atualizar_telefone_lead_por_token():
 def atualizar_telefone_lead(lead_id: int):
     """Atualiza o telefone de um lead e destrava status pendente de WhatsApp."""
     data = _parse_request_payload()
-    lead = db.session.get(Lead, lead_id)
+    lead = Lead.query.filter(Lead.id == lead_id).first()
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
     return _apply_lead_phone_update(lead, data)
@@ -897,7 +946,7 @@ def atualizar_situacao_lead_por_token():
 def atualizar_situacao_lead(lead_id: int):
     """Marca a situação operacional de um lead confirmado (etiqueta de funil)."""
     data = _parse_request_payload()
-    lead = db.session.get(Lead, lead_id)
+    lead = Lead.query.filter(Lead.id == lead_id).first()
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
     return _apply_lead_situacao_update(lead, data)
@@ -923,7 +972,7 @@ def marcar_followup_lead(lead_id: int):
     if action not in {"mark", "undo"}:
         return jsonify({"ok": False, "error": "action deve ser 'mark' ou 'undo'"}), 400
 
-    lead = db.session.get(Lead, lead_id)
+    lead = Lead.query.filter(Lead.id == lead_id).first()
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
 
@@ -943,7 +992,7 @@ def marcar_followup_lead(lead_id: int):
 @requires_any_role("admin", "atendente", "vendedor")
 def listar_touchpoints(lead_id: int):
     """Histórico completo de toques de um lead, do mais antigo ao mais recente."""
-    lead = db.session.get(Lead, lead_id)
+    lead = Lead.query.filter(Lead.id == lead_id).first()
     if not lead:
         return jsonify({"ok": False, "error": "Lead não encontrado"}), 404
     touchpoints = (

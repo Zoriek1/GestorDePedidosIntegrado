@@ -62,12 +62,37 @@ def login():
                     )
 
             if db_user and verify_password(password, db_user.password_hash):
-                token = generate_token(db_user)
+                # Resolve a loja antes de emitir o token (multi-tenant, Fase A):
+                # - vínculo explícito precisa resolver p/ uma loja existente e ativa
+                #   (loja ausente/órfã ou inativa bloqueia mesmo com senha válida);
+                # - durante o rollout, usuário sem vínculo (store_ref_id NULL) cai na
+                #   loja default; se nem a default existir (base legada single-tenant),
+                #   segue sem loja para não quebrar a compatibilidade.
+                from app.services.auth_context import resolve_user_store
+
+                store = resolve_user_store(db_user)
+                if db_user.store_ref_id is not None and store is None:
+                    log_debug("Login sem loja", {"email": email})
+                    return error_response(
+                        "Sua conta não está associada a uma loja válida. "
+                        "Contate o administrador.",
+                        403,
+                    )
+                if store is not None and not store.active:
+                    log_debug("Login em loja inativa", {"email": email, "store": store.slug})
+                    return error_response("Loja inativa. Contate o administrador.", 403)
+
+                token = generate_token(db_user, store)
                 log_debug("JWT login success", {"email": email, "role": db_user.role})
+                user_payload = {
+                    **db_user.to_dict(),
+                    "store_ref_id": store.id if store else db_user.store_ref_id,
+                    "store_slug": store.slug if store else None,
+                }
                 return success_response(
                     {
                         "access_token": token,
-                        "user": db_user.to_dict(),
+                        "user": user_payload,
                     },
                     message="Login realizado com sucesso",
                 )
@@ -125,7 +150,17 @@ def me():
         if not user:
             return error_response("Usuário não encontrado", 404)
 
-        return success_response({"user": user.to_dict()})
+        # Resolve a loja pelo usuário no banco (funciona mesmo para tokens legados
+        # sem claims de tenant).
+        from app.services.auth_context import resolve_user_store
+
+        store = resolve_user_store(user)
+        user_payload = {
+            **user.to_dict(),
+            "store_ref_id": store.id if store else user.store_ref_id,
+            "store_slug": store.slug if store else None,
+        }
+        return success_response({"user": user_payload})
 
     except Exception:
         logger.exception("Falha em GET /auth/me")
@@ -139,7 +174,12 @@ def me():
 def change_password():
     """Altera a senha do usuário autenticado via JWT."""
     try:
-        from app.services.auth_service import decode_token, extract_bearer_token, hash_password, verify_password
+        from app.services.auth_service import (
+            decode_token,
+            extract_bearer_token,
+            hash_password,
+            verify_password,
+        )
 
         token = extract_bearer_token(request.headers.get("Authorization"))
         if not token:

@@ -5,9 +5,10 @@ Outbox para eventos Meta CAPI do funil de leads (Contact + Lead).
 
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class MetaCapiLeadOutbox(db.Model):
+class MetaCapiLeadOutbox(TenantScoped, db.Model):
     """
     Fila de envio Contact/Lead para Meta CAPI, com retry.
     Um registro por estágio por lead (contact | lead).

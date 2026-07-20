@@ -24,7 +24,10 @@ class BaseRepository(Generic[ModelType]):
 
     def get_by_id(self, id: int) -> Optional[ModelType]:
         """Busca entidade por ID"""
-        return self.model.query.get(id)
+        # Query.get/Session.get podem devolver uma instância já presente no
+        # identity map sem executar o SELECT — e portanto sem passar pelo
+        # filtro automático de tenant. O predicado força a consulta escopada.
+        return self.model.query.filter(self.model.id == id).first()
 
     def get_all(self, limit: Optional[int] = None, offset: int = 0) -> List[ModelType]:
         """Lista todas as entidades"""

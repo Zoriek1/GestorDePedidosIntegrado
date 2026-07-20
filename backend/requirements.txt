@@ -20,6 +20,7 @@ python-dotenv==1.0.0
 requests==2.31.0
 # zoneinfo para Python 3.8 (em 3.9+ usa stdlib)
 backports.zoneinfo>=0.2.1; python_version < "3.9"
+tzdata>=2024.1; sys_platform == "win32"
 
 # Geração de PDF (para futura integração)
 reportlab==4.0.7
@@ -51,5 +52,4 @@ pywebpush>=2.0.0
 # Descomente para usar em produção
 gunicorn==21.2.0
 waitress==2.1.2
-
 

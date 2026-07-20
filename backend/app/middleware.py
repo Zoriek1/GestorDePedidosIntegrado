@@ -92,6 +92,19 @@ def check_auth(username, password):
     return is_authenticated, role if is_authenticated else None
 
 
+def _bind_basic_tenant():
+    """Aplica a política Basic: compatível em single-store, bloqueada em multi-store."""
+    from flask import jsonify
+
+    from app.services.auth_context import bind_single_store_identity
+
+    error = bind_single_store_identity()
+    if error:
+        body, status = error
+        return jsonify(body), status
+    return None
+
+
 def requires_auth(f):
     """
     Decorator para proteger rotas com autenticação HTTP Basic
@@ -122,6 +135,10 @@ def requires_auth(f):
                 },
             )
 
+        tenant_error = _bind_basic_tenant()
+        if tenant_error:
+            return tenant_error
+
         # Armazenar usuário autenticado no request (opcional)
         request.authenticated_user = auth.username
         request.user_role = role
@@ -146,18 +163,25 @@ def requires_edit_auth(f):
         # --- Tentar JWT Bearer primeiro ---
         auth_header = request.headers.get("Authorization", "")
         if auth_header.lower().startswith("bearer "):
+            payload = None
             try:
                 from app.services.auth_service import decode_token, extract_bearer_token
 
                 token = extract_bearer_token(auth_header)
                 payload = decode_token(token) if token else None
-                if payload:
-                    request.authenticated_user = payload.get("email", "")
-                    request.user_role = payload.get("role", "")
-                    request.current_user = payload
-                    return f(*args, **kwargs)
             except Exception:
-                pass
+                payload = None
+            if payload:
+                # Token válido: confirma usuário e loja no banco (popula g.current_store).
+                from app.services.auth_context import load_request_identity
+
+                current_user, error = load_request_identity(payload)
+                if error:
+                    body, status = error
+                    return jsonify(body), status
+                request.authenticated_user = current_user.get("email", "")
+                request.user_role = current_user.get("role", "")
+                return f(*args, **kwargs)
 
         # --- Fallback: HTTP Basic Auth ---
         auth = request.authorization
@@ -186,6 +210,10 @@ def requires_edit_auth(f):
                 ),
                 401,
             )
+
+        tenant_error = _bind_basic_tenant()
+        if tenant_error:
+            return tenant_error
 
         request.authenticated_user = auth.username
         request.user_role = role
@@ -280,30 +308,36 @@ def requires_role(required_role: str):
             # --- Tentar JWT Bearer primeiro ---
             auth_header = request.headers.get("Authorization", "")
             if auth_header.lower().startswith("bearer "):
+                payload = None
                 try:
                     from app.services.auth_service import decode_token, extract_bearer_token
 
                     token = extract_bearer_token(auth_header)
                     payload = decode_token(token) if token else None
-                    if payload:
-                        role = payload.get("role", "")
-                        if role != required_role:
-                            return (
-                                jsonify(
-                                    {
-                                        "error": "Acesso negado",
-                                        "message": f"Esta operação requer papel '{required_role}'",
-                                        "user_role": role,
-                                    }
-                                ),
-                                403,
-                            )
-                        request.authenticated_user = payload.get("email", "")
-                        request.user_role = role
-                        request.current_user = payload
-                        return f(*args, **kwargs)
                 except Exception:
-                    pass
+                    payload = None
+                if payload:
+                    from app.services.auth_context import load_request_identity
+
+                    current_user, error = load_request_identity(payload)
+                    if error:
+                        body, status = error
+                        return jsonify(body), status
+                    role = current_user.get("role", "")
+                    if role != required_role:
+                        return (
+                            jsonify(
+                                {
+                                    "error": "Acesso negado",
+                                    "message": f"Esta operação requer papel '{required_role}'",
+                                    "user_role": role,
+                                }
+                            ),
+                            403,
+                        )
+                    request.authenticated_user = current_user.get("email", "")
+                    request.user_role = role
+                    return f(*args, **kwargs)
 
             # --- Fallback: HTTP Basic Auth ---
             auth = request.authorization
@@ -320,6 +354,10 @@ def requires_role(required_role: str):
                     jsonify({"error": "Acesso negado", "message": "Credenciais inválidas"}),
                     401,
                 )
+
+            tenant_error = _bind_basic_tenant()
+            if tenant_error:
+                return tenant_error
 
             if role != required_role:
                 return (
@@ -358,30 +396,36 @@ def requires_any_role(*allowed_roles: str):
             # --- Tentar JWT Bearer primeiro ---
             auth_header = request.headers.get("Authorization", "")
             if auth_header.lower().startswith("bearer "):
+                payload = None
                 try:
                     from app.services.auth_service import decode_token, extract_bearer_token
 
                     token = extract_bearer_token(auth_header)
                     payload = decode_token(token) if token else None
-                    if payload:
-                        role = payload.get("role", "")
-                        if role not in allowed_roles:
-                            return (
-                                jsonify(
-                                    {
-                                        "error": "Acesso negado",
-                                        "message": f"Esta operação requer um dos papéis: {', '.join(allowed_roles)}",
-                                        "user_role": role,
-                                    }
-                                ),
-                                403,
-                            )
-                        request.authenticated_user = payload.get("email", "")
-                        request.user_role = role
-                        request.current_user = payload
-                        return f(*args, **kwargs)
                 except Exception:
-                    pass
+                    payload = None
+                if payload:
+                    from app.services.auth_context import load_request_identity
+
+                    current_user, error = load_request_identity(payload)
+                    if error:
+                        body, status = error
+                        return jsonify(body), status
+                    role = current_user.get("role", "")
+                    if role not in allowed_roles:
+                        return (
+                            jsonify(
+                                {
+                                    "error": "Acesso negado",
+                                    "message": f"Esta operação requer um dos papéis: {', '.join(allowed_roles)}",
+                                    "user_role": role,
+                                }
+                            ),
+                            403,
+                        )
+                    request.authenticated_user = current_user.get("email", "")
+                    request.user_role = role
+                    return f(*args, **kwargs)
 
             # --- Fallback: HTTP Basic Auth ---
             auth = request.authorization
@@ -398,6 +442,10 @@ def requires_any_role(*allowed_roles: str):
                     jsonify({"error": "Acesso negado", "message": "Credenciais inválidas"}),
                     401,
                 )
+
+            tenant_error = _bind_basic_tenant()
+            if tenant_error:
+                return tenant_error
 
             if role not in allowed_roles:
                 return (
@@ -461,6 +509,10 @@ def requires_permission(permission: str):
                     ),
                     401,
                 )
+
+            tenant_error = _bind_basic_tenant()
+            if tenant_error:
+                return tenant_error
 
             if not has_permission(role, permission):
                 from flask import jsonify

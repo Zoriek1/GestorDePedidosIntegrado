@@ -3,9 +3,10 @@
 
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class MarketingConversionOutbox(db.Model):
+class MarketingConversionOutbox(TenantScoped, db.Model):
     __tablename__ = "marketing_conversion_outbox"
 
     id = db.Column(db.Integer, primary_key=True)

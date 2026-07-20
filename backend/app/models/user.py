@@ -26,7 +26,22 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False, comment="Nome de exibição")
-    email = db.Column(db.String(200), unique=True, nullable=False, index=True, comment="Email de login")
+    email = db.Column(
+        db.String(200), unique=True, nullable=False, index=True, comment="Email de login"
+    )
+    # Multi-tenant (Fase A): loja à qual o usuário pertence. Nullable durante o rollout;
+    # NOT NULL e unique composto (store_ref_id, email) ficam para fase posterior.
+    store_ref_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "stores.id",
+            name="fk_users_store_ref_id_stores",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+        comment="Loja (tenant) do usuário; resolve identidade autenticada",
+    )
     password_hash = db.Column(db.String(256), nullable=False, comment="bcrypt hash")
     role = db.Column(
         db.String(20),
@@ -62,6 +77,7 @@ class User(db.Model):
             "id": self.id,
             "name": self.name,
             "email": self.email,
+            "store_ref_id": self.store_ref_id,
             "role": self.role,
             "is_active": self.is_active,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
@@ -75,9 +91,7 @@ class PayrollConfig(db.Model):
     __tablename__ = "payroll_config"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(
-        db.Integer, db.ForeignKey("users.id"), nullable=False, index=True
-    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     category = db.Column(
         db.String(50),
         nullable=False,
@@ -121,9 +135,7 @@ class CommissionConfig(db.Model):
     __tablename__ = "commission_config"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(
-        db.Integer, db.ForeignKey("users.id"), nullable=False, index=True
-    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     fonte_pedido_id = db.Column(
         db.Integer,
         db.ForeignKey("fontes_pedido.id"),

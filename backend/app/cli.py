@@ -414,13 +414,22 @@ def create_admin_command(email, password, name):
     app = create_app()
     with app.app_context():
         try:
+            from app import db
+            from app.models.store import Store
             from app.models.user import User
             from app.services.auth_service import hash_password
-            from app import db
 
             existing = User.query.filter_by(email=email).first()
             if existing:
                 raise click.ClickException(f"Usuário com email '{email}' já existe.")
+
+            # Bootstrap usa a loja default (resolvida por slug, nunca por ID).
+            default_store = Store.query.filter_by(slug="default").first()
+            if not default_store:
+                raise click.ClickException(
+                    "Loja default ausente. Rode as migrations "
+                    "(scripts/migrations/add_store_foundation.py) antes de criar o admin."
+                )
 
             admin = User(
                 name=name,
@@ -428,6 +437,7 @@ def create_admin_command(email, password, name):
                 password_hash=hash_password(password),
                 role="admin",
                 is_active=True,
+                store_ref_id=default_store.id,
             )
             db.session.add(admin)
             db.session.commit()

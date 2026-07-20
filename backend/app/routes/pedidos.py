@@ -17,7 +17,7 @@ from app.commands.gerar_comprovante_lote_command import (
 )
 from app.middleware import requires_any_role, requires_edit_auth, requires_role
 from app.models.lead import Lead
-from app.models.pedido import datetime_now_brazil
+from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
 from app.models.pedido_sugestao_endereco import (
@@ -304,6 +304,7 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
 
         candidate = EnderecoCliente(
             cliente_id=pedido.cliente_id,
+            store_ref_id=pedido.store_ref_id,
             cep=pedido.cep,
             rua=pedido.rua,
             numero=pedido.numero,
@@ -315,7 +316,9 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
         address_hash = candidate.compute_address_hash()
 
         existing = EnderecoCliente.query.filter_by(
-            cliente_id=pedido.cliente_id, address_hash=address_hash
+            cliente_id=pedido.cliente_id,
+            store_ref_id=pedido.store_ref_id,
+            address_hash=address_hash,
         ).first()
         if existing:
             return
@@ -323,7 +326,10 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
         candidate.address_canonical = candidate.build_address_canonical()
         candidate.address_hash = address_hash
         # Primeiro endereço do cliente vira o principal.
-        if EnderecoCliente.query.filter_by(cliente_id=pedido.cliente_id).count() == 0:
+        if EnderecoCliente.query.filter_by(
+            cliente_id=pedido.cliente_id,
+            store_ref_id=pedido.store_ref_id,
+        ).count() == 0:
             candidate.principal = True
         db.session.add(candidate)
     except Exception as e:  # noqa: BLE001 - upsert é best-effort
@@ -433,7 +439,11 @@ def acompanhar_pedido(token):
     pedido_id = parse_track_token(token)
     if pedido_id is None:
         return error_response("Pedido não encontrado", 404)
-    pedido = pedido_repo.get_by_id(pedido_id)
+    pedido = (
+        Pedido.query.execution_options(include_all_tenants=True)
+        .filter(Pedido.id == pedido_id)
+        .first()
+    )
     if not pedido or pedido.oculto or pedido.deleted_at:
         return error_response("Pedido não encontrado", 404)
     return success_response({"pedido": pedido.to_public_dict()})
@@ -474,7 +484,11 @@ def sugerir_endereco(token):
     pedido_id = parse_track_token(token)
     if pedido_id is None:
         return error_response("Pedido não encontrado", 404)
-    pedido = pedido_repo.get_by_id(pedido_id)
+    pedido = (
+        Pedido.query.execution_options(include_all_tenants=True)
+        .filter(Pedido.id == pedido_id)
+        .first()
+    )
     if not pedido or pedido.oculto or pedido.deleted_at:
         return error_response("Pedido não encontrado", 404)
 
@@ -488,9 +502,15 @@ def sugerir_endereco(token):
         )
 
     # Rate-limit: se já existe uma pendente, atualiza no lugar de acumular.
-    pendente = PedidoSugestaoEndereco.query.filter_by(
-        pedido_id=pedido_id, status=STATUS_PENDENTE
-    ).first()
+    pendente = (
+        PedidoSugestaoEndereco.query.execution_options(include_all_tenants=True)
+        .filter_by(
+            pedido_id=pedido_id,
+            store_ref_id=pedido.store_ref_id,
+            status=STATUS_PENDENTE,
+        )
+        .first()
+    )
     if pendente:
         pendente.texto = texto
         pendente.endereco_anterior = pedido.endereco
@@ -498,6 +518,7 @@ def sugerir_endereco(token):
     else:
         pendente = PedidoSugestaoEndereco(
             pedido_id=pedido_id,
+            store_ref_id=pedido.store_ref_id,
             texto=texto,
             endereco_anterior=pedido.endereco,
         )
@@ -509,8 +530,11 @@ def sugerir_endereco(token):
         send_push_to_all_async(
             current_app._get_current_object(),
             title="Sugestão de endereço",
-            body=f"Pedido #{pedido_id}: o cliente sugeriu uma correção de endereço.",
+            body=(
+                f"Pedido #{pedido.display_number}: o cliente sugeriu uma correção de endereço."
+            ),
             url=f"/pedidos/{pedido_id}",
+            store_ref_id=pedido.store_ref_id,
         )
     except Exception:  # pragma: no cover - push é best-effort
         pass
@@ -546,7 +570,9 @@ def resolver_sugestao_endereco(sugestao_id):
     """
     from app import db
 
-    sugestao = PedidoSugestaoEndereco.query.get(sugestao_id)
+    sugestao = PedidoSugestaoEndereco.query.filter(
+        PedidoSugestaoEndereco.id == sugestao_id
+    ).first()
     if not sugestao:
         return error_response("Sugestão não encontrada", 404)
     if sugestao.status != STATUS_PENDENTE:
@@ -644,6 +670,7 @@ def atualizar_status(pedido_id):
                         title="Plante uma Flor",
                         body=body,
                         url=build_track_url(pedido.id),
+                        store_ref_id=pedido.store_ref_id,
                     )
         except Exception as e:
             print(f"[AVISO] Erro ao notificar cliente do pedido #{pedido_id}: {e}")
@@ -674,6 +701,10 @@ def _get_current_user_id() -> int | None:
         u = (
             _User.query.filter(_User.is_active.is_(True))
             .filter((_User.email == authenticated_user) | (_User.name == authenticated_user))
+            .filter(
+                (_User.store_ref_id == getattr(g, "tenant_store_id", None))
+                | (_User.store_ref_id.is_(None))
+            )
             .first()
         )
         return u.id if u else None
@@ -685,6 +716,18 @@ def _current_role() -> str | None:
     if current_user:
         return current_user.get("role")
     return getattr(request, "user_role", None)
+
+
+def _user_belongs_to_current_store(user_id: int, role: str | None = None) -> bool:
+    from app.models.user import User
+
+    tenant_id = getattr(g, "tenant_store_id", None)
+    query = User.query.filter(User.id == user_id, User.is_active.is_(True))
+    if tenant_id is not None:
+        query = query.filter(User.store_ref_id == tenant_id)
+    if role:
+        query = query.filter(User.role == role)
+    return query.first() is not None
 
 
 # ====================================================================
@@ -826,6 +869,8 @@ def atribuir_entregador(pedido_id):
 
         if not target_id:
             return error_response("entregador_id não resolvido", 400)
+        if not _user_belongs_to_current_store(target_id, role="entregador"):
+            return error_response("entregador_id inválido", 400)
 
         # Vendedor (não-admin) não pode override em pedido já atribuído
         ok, msg = _atribuir_um(pedido, target_id, override=override)
@@ -871,6 +916,8 @@ def atribuir_entregadores_lote():
 
         if not target_id:
             return error_response("entregador_id não resolvido", 400)
+        if not _user_belongs_to_current_store(target_id, role="entregador"):
+            return error_response("entregador_id inválido", 400)
 
         pedidos = Pedido.query.filter(Pedido.id.in_(ids)).all()
         found_ids = {p.id for p in pedidos}
@@ -1482,6 +1529,7 @@ def criar_pedido():
             else:
                 try:
                     novo_cliente = Cliente(
+                        store_ref_id=getattr(g, "tenant_store_id", None),
                         nome=cliente,
                         telefone=telefone_cliente,
                         cpf_cnpj=cpf_cnpj,
@@ -1500,7 +1548,9 @@ def criar_pedido():
             cliente_id_int = None
 
         if cliente_id_int and cpf_cnpj:
-            cliente_selecionado = Cliente.query.get(cliente_id_int)
+            cliente_selecionado = Cliente.query.filter(Cliente.id == cliente_id_int).first()
+            if not cliente_selecionado:
+                return error_response("cliente_id inválido", 400)
             if cliente_selecionado and not cliente_selecionado.cpf_cnpj:
                 cliente_selecionado.cpf_cnpj = cpf_cnpj
 
@@ -1515,6 +1565,14 @@ def criar_pedido():
             fonte = FontePedido.query.filter_by(nome=fonte_pedido, ativo=True).first()
             if fonte:
                 fonte_pedido_id_int = fonte.id
+
+        if fonte_pedido_id_int:
+            fonte_valida = FontePedido.query.filter(
+                FontePedido.id == fonte_pedido_id_int,
+                FontePedido.ativo.is_(True),
+            ).first()
+            if not fonte_valida:
+                return error_response("fonte_pedido_id inválido", 400)
 
         # Determinar vendedor_id:
         # - vendedor (JWT ou Basic Auth): auto-atribuir o próprio ID
@@ -1542,6 +1600,11 @@ def criar_pedido():
             except (ValueError, TypeError):
                 vendedor_id_final = None
 
+        if vendedor_id_final and not _user_belongs_to_current_store(
+            vendedor_id_final, role="vendedor"
+        ):
+            return error_response("vendedor_id inválido", 400)
+
         # INT-01: derivar slot_inicio (Time) do horário também no pedido manual, para
         # ordenação cronológica confiável e para entrar na ocupação do alocador (INT-02).
         from app.services.delivery_slot_allocator import derive_slot_inicio
@@ -1549,8 +1612,13 @@ def criar_pedido():
         slot_inicio_manual = derive_slot_inicio(horario)
 
         # Criar pedido
+        from app.services.order_number_allocator import allocate_order_number
+
+        store_ref_id = getattr(g, "tenant_store_id", None)
         payment_snapshot = _build_payment_snapshot(data, valor, status_pagamento, pagamento)
         pedido = Pedido(
+            store_ref_id=store_ref_id,
+            numero_pedido=allocate_order_number(store_ref_id),
             cliente=cliente if cliente else None,
             telefone_cliente=telefone_cliente,
             cpf_cnpj=cpf_cnpj,
@@ -1639,17 +1707,6 @@ def criar_pedido():
         except Exception as e:
             print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido.id}: {e}")
 
-        # Inserir na tabela auxiliar da fonte (se houver)
-        if fonte_pedido_id_int:
-            try:
-                from app.models.pedido_fonte import PedidoFonte
-
-                PedidoFonte.adicionar_pedido(
-                    pedido.id, fonte_pedido_id_int, valor if valor else None
-                )
-            except Exception:
-                pass  # Não falhar se houver erro
-
         # Enviar push notification em background (não bloqueia a resposta)
         try:
             from flask import current_app
@@ -1662,15 +1719,19 @@ def criar_pedido():
             # Formatar data/hora de entrega
             entrega_info = format_delivery_datetime(pedido.dia_entrega, pedido.horario)
             if entrega_info:
-                body = f"#{pedido.id} - {destinatario} | {produto} | Entrega: {entrega_info}"
+                body = (
+                    f"#{pedido.display_number} - {destinatario} | {produto} | "
+                    f"Entrega: {entrega_info}"
+                )
             else:
-                body = f"#{pedido.id} - {destinatario} | {produto}"
+                body = f"#{pedido.display_number} - {destinatario} | {produto}"
 
             send_push_to_all_async(
                 app=current_app._get_current_object(),
                 title="Novo Pedido!",
                 body=body,
                 url="/",
+                store_ref_id=pedido.store_ref_id,
             )
         except Exception:
             pass  # Best-effort: não falhar criação do pedido
@@ -1779,8 +1840,12 @@ def atualizar_pedido(pedido_id):
             track_change("cpf_cnpj", pedido.cpf_cnpj, data["cpf_cnpj"])
             pedido.cpf_cnpj = data["cpf_cnpj"]
             if pedido.cliente_id and data["cpf_cnpj"]:
-                cliente_selecionado = Cliente.query.get(pedido.cliente_id)
-                if cliente_selecionado and not cliente_selecionado.cpf_cnpj:
+                cliente_selecionado = Cliente.query.filter(
+                    Cliente.id == pedido.cliente_id
+                ).first()
+                if not cliente_selecionado:
+                    return error_response("cliente_id inválido", 400)
+                if not cliente_selecionado.cpf_cnpj:
                     cliente_selecionado.cpf_cnpj = data["cpf_cnpj"]
         if "destinatario" in data:
             track_change("destinatario", pedido.destinatario, data["destinatario"])
@@ -1791,6 +1856,11 @@ def atualizar_pedido(pedido_id):
         if "fonte_pedido_id" in data:
             try:
                 new_fonte_id = int(data["fonte_pedido_id"]) if data["fonte_pedido_id"] else None
+                if new_fonte_id and not FontePedido.query.filter(
+                    FontePedido.id == new_fonte_id,
+                    FontePedido.ativo.is_(True),
+                ).first():
+                    return error_response("fonte_pedido_id inválido", 400)
                 track_change("fonte_pedido_id", pedido.fonte_pedido_id, new_fonte_id)
                 pedido.fonte_pedido_id = new_fonte_id
             except (ValueError, TypeError):
@@ -1912,9 +1982,14 @@ def atualizar_pedido(pedido_id):
         )
         if user_role == "admin" and "vendedor_id" in data:
             try:
-                pedido.vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
+                vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
             except (ValueError, TypeError):
-                pass
+                vendedor_id = None
+            if vendedor_id and not _user_belongs_to_current_store(
+                vendedor_id, role="vendedor"
+            ):
+                return error_response("vendedor_id inválido", 400)
+            pedido.vendedor_id = vendedor_id
         elif user_role == "vendedor" and pedido.vendedor_id is None:
             pedido.vendedor_id = _get_current_vendedor_id()
 

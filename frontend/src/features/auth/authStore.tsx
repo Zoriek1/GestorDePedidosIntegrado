@@ -7,10 +7,16 @@
  */
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../../api/http';
 import { createLogger } from '../../lib/logger';
 
 const log = createLogger('AuthStore');
+
+// Query key raiz do cache de integrações por loja. Mantido em sincronia com
+// features/config/hooks/useConfig.ts para que o logout/troca de identidade limpe
+// o cache correto sem vazar segredos entre lojas.
+const INTEGRATIONS_QUERY_KEY = ['config', 'integrations'] as const;
 
 // JWT: sessionStorage (sem lembrar) ou localStorage (lembrar-me)
 const JWT_KEY = 'puf_jwt';
@@ -26,6 +32,9 @@ export interface AuthUser {
   name?: string;
   email?: string;
   role: string;
+  // Multi-tenant (Fase A): identidade da loja retornada pelo login/JWT.
+  store_ref_id?: number | null;
+  store_slug?: string | null;
 }
 
 interface LegacyCredentials {
@@ -142,6 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Token JWT em estado React (fonte primária de verdade para renders)
   const [jwtToken, setJwtToken] = useState<string | null>(() => readJwtToken());
   const [jwtUser, setJwtUser] = useState<AuthUser | null>(() => readJwtUser());
+  const queryClient = useQueryClient();
+
+  // Remove o cache de integrações (segredos mascarados por loja). Chamado no
+  // logout e ao trocar de identidade autenticada, para não exibir dados da loja
+  // anterior.
+  const clearIntegrationsCache = useCallback(() => {
+    queryClient.removeQueries({ queryKey: INTEGRATIONS_QUERY_KEY });
+  }, [queryClient]);
 
   // ---------------------------------------------------------------------------
   const isAuthenticated = useCallback((): boolean => {
@@ -200,7 +217,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearLegacyCreds();
     setJwtToken(null);
     setJwtUser(null);
-  }, []);
+    clearIntegrationsCache();
+  }, [clearIntegrationsCache]);
 
   // Logout automático em 401/403
   useEffect(() => {
@@ -247,6 +265,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role: data.role ?? 'vendedor',
             email: username,
           };
+          // Nova identidade: descarta qualquer cache de integrações da sessão anterior.
+          clearIntegrationsCache();
           writeJwt(data.access_token, user, remember);
           setJwtToken(data.access_token);
           setJwtUser(user);
@@ -259,6 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data?.username) {
           const role = data.role ?? 'admin';
           const creds: LegacyCredentials = { username: data.username, password, role, timestamp: Date.now() };
+          clearIntegrationsCache();
           writeLegacyCreds(creds, remember);
           clearJwt();
           setJwtToken(null);
@@ -275,7 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Erro ao conectar com o servidor. Verifique sua conexão.' };
       }
     },
-    [logout]
+    [logout, clearIntegrationsCache]
   );
 
   // ---------------------------------------------------------------------------

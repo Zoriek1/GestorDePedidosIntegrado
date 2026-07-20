@@ -12,8 +12,13 @@ import unicodedata
 from typing import Dict, List, Optional, Tuple
 
 import requests
+from flask import current_app, has_app_context
 
-from app.models.pedido import Pedido, TIMEZONE_BRASIL
+from app.models.pedido import TIMEZONE_BRASIL, Pedido
+from app.services.integration_settings_service import (
+    runtime_config,
+    uses_environment_fallback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +47,35 @@ class MetaConversionsApiService:
     Serviço para envio de eventos para Meta Conversions API
     """
 
-    def __init__(self):
-        """Inicializa o serviço com configurações do .env"""
-        self.pixel_id = os.environ.get("META_PIXEL_ID", "")
-        self.access_token = os.environ.get("META_CAPI_ACCESS_TOKEN", "")
-        self.api_version = os.environ.get("META_CAPI_API_VERSION", "v21.0")
+    def __init__(self, store_ref_id: int | None = None):
+        """Inicializa o serviço com a configuração do tenant solicitado."""
+        if has_app_context():
+            tenant_config = runtime_config(store_ref_id)
+            if uses_environment_fallback(store_ref_id):
+                self.pixel_id = (
+                    os.environ.get("META_PIXEL_ID") or tenant_config.get("META_PIXEL_ID") or ""
+                )
+                self.access_token = (
+                    os.environ.get("META_CAPI_ACCESS_TOKEN")
+                    or tenant_config.get("META_CAPI_ACCESS_TOKEN")
+                    or ""
+                )
+            else:
+                self.pixel_id = tenant_config.get("META_PIXEL_ID") or ""
+                self.access_token = tenant_config.get("META_CAPI_ACCESS_TOKEN") or ""
+        else:
+            tenant_config = {}
+            self.pixel_id = os.environ.get("META_PIXEL_ID", "")
+            self.access_token = os.environ.get("META_CAPI_ACCESS_TOKEN", "")
+        self.api_version = (
+            current_app.config.get("META_CAPI_API_VERSION", "v21.0")
+            if has_app_context()
+            else os.environ.get("META_CAPI_API_VERSION", "v21.0")
+        )
         self.test_event_code = os.environ.get("META_TEST_EVENT_CODE", "")
         self.debug_enabled = os.environ.get("META_CAPI_DEBUG", "false").lower() == "true"
+        self.endereco_floricultura = tenant_config.get("ENDERECO_FLORICULTURA") or ""
+        self.loja_cep = tenant_config.get("LOJA_CEP") or ""
 
         # Conversions API Gateway (opcional - melhora visualização e métricas)
         self.use_gateway = os.environ.get("META_CAPI_USE_GATEWAY", "false").lower() == "true"
@@ -513,14 +540,14 @@ class MetaConversionsApiService:
         cidade_efetiva = pedido.cidade
         cep_efetivo = pedido.cep
         if is_retirada and not cidade_efetiva:
-            endereco_loja = os.environ.get("ENDERECO_FLORICULTURA", "")
+            endereco_loja = self.endereco_floricultura
             if endereco_loja:
                 partes = [p.strip() for p in endereco_loja.split(",")]
                 # Formato: Rua, Numero, Bairro, Cidade, Estado  (cidade = penúltimo)
                 if len(partes) >= 2:
                     cidade_efetiva = partes[-2] if len(partes) >= 3 else partes[-1]
         if is_retirada and not cep_efetivo:
-            cep_efetivo = os.environ.get("LOJA_CEP", "")
+            cep_efetivo = self.loja_cep
 
         # Dados de localização para user_data (apenas hashes)
         user_location = {}
@@ -889,7 +916,9 @@ class MetaConversionsApiService:
             dict: Resposta da API Meta com events_received, fbtrace_id, etc.
         """
         if not self.pixel_id or not self.access_token:
-            error_msg = "META_PIXEL_ID e META_CAPI_ACCESS_TOKEN devem estar configurados no .env"
+            error_msg = (
+                "META_PIXEL_ID e META_CAPI_ACCESS_TOKEN devem estar configurados para a loja"
+            )
             return {
                 "_status_code": 0,
                 "_error": error_msg,

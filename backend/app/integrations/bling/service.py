@@ -28,6 +28,7 @@ from app.models.bling_payment_mapping import BlingPaymentMapping
 from app.models.bling_payment_method import BlingPaymentMethod
 from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
+from app.services.tenancy import is_store_inactive
 from app.utils.fiscal import is_valid_cpf_cnpj, normalize_cpf_cnpj, normalize_uf
 
 GESTOR_PAYMENT_LABELS = [
@@ -47,17 +48,25 @@ GESTOR_PAYMENT_LABELS = [
 class BlingIntegrationService:
     provider = "bling"
 
-    def __init__(self) -> None:
+    def __init__(self, store_ref_id: Optional[int] = None) -> None:
         self.mapper = BlingOrderMapper()
+        self.store_ref_id = store_ref_id
 
-    def client(self) -> BlingClient:
-        access_token = BlingTokenService.get_valid_access_token()
+    def client(self, store_ref_id: Optional[int] = None) -> BlingClient:
+        resolved_store_ref_id = (
+            store_ref_id if store_ref_id is not None else self.store_ref_id
+        )
+        access_token = BlingTokenService.get_valid_access_token(
+            store_ref_id=resolved_store_ref_id
+        )
         return BlingClient(
             access_token=access_token,
             base_url=current_app.config["BLING_API_BASE_URL"],
             timeout_seconds=int(current_app.config.get("BLING_TIMEOUT_SECONDS") or 20),
             on_unauthorized=lambda: BlingTokenService.decrypt(
-                BlingTokenService.refresh_access_token().access_token_encrypted
+                BlingTokenService.refresh_access_token(
+                    store_ref_id=resolved_store_ref_id
+                ).access_token_encrypted
             ),
         )
 
@@ -73,7 +82,7 @@ class BlingIntegrationService:
     def status(self) -> Dict[str, Any]:
         credential = None
         try:
-            credential = BlingTokenService.get_credential()
+            credential = BlingTokenService.get_credential(store_ref_id=self.store_ref_id)
         except BlingIntegrationError:
             pass
         return {
@@ -455,6 +464,29 @@ class BlingIntegrationService:
         failed = 0
         results: List[Dict[str, Any]] = []
         for outbox in outboxes:
+            # Empresa inativa: invalida a linha pendente e não envia (política Fase D).
+            if is_store_inactive(getattr(outbox, "store_ref_id", None)):
+                self._mark_failed(
+                    outbox,
+                    "store_inactive",
+                    "Empresa inativa: envio Bling invalidado",
+                    retryable=False,
+                )
+                refreshed = BlingOutbox.query.get(outbox.id)
+                processed += 1
+                failed += 1
+                results.append(
+                    {
+                        "outbox_id": refreshed.id,
+                        "pedido_id": refreshed.pedido_id,
+                        "operation": refreshed.operation,
+                        "status": refreshed.status,
+                        "step": refreshed.step,
+                        "error_code": refreshed.error_code,
+                        "error_message": refreshed.error_message,
+                    }
+                )
+                continue
             self._dispatch(outbox.id, outbox.operation)
             refreshed = BlingOutbox.query.get(outbox.id)
             processed += 1
@@ -464,6 +496,7 @@ class BlingIntegrationService:
                 {
                     "outbox_id": refreshed.id,
                     "pedido_id": refreshed.pedido_id,
+                    "store_ref_id": refreshed.store_ref_id,
                     "operation": refreshed.operation,
                     "status": refreshed.status,
                     "step": refreshed.step,
@@ -519,7 +552,7 @@ class BlingIntegrationService:
             # Dentro do try para que falhas aqui (pedido removido, token ausente)
             # marquem o outbox como failed_* em vez de deixa-lo preso em processing.
             pedido = self._get_pedido(outbox.pedido_id)
-            client = self.client()
+            client = self.client(store_ref_id=pedido.store_ref_id)
             self._log(outbox, "info", "validating_mapping", "Validando pedido e mapeamentos")
             context = self.mapper.build(pedido)
             payload = context["payload"]
@@ -644,7 +677,8 @@ class BlingIntegrationService:
                 self._finish_outbox(outbox, "Pedido sem venda no Bling; nada a cancelar")
                 return
 
-            client = self.client()
+            pedido = self._get_pedido(outbox.pedido_id)
+            client = self.client(store_ref_id=pedido.store_ref_id)
             outbox.bling_order_id = str(order_id)
 
             # 1) Apagar os recebimentos (lancamentos de caixa) do pedido -- e o
@@ -1139,7 +1173,7 @@ class BlingIntegrationService:
         return count
 
     def _get_pedido(self, pedido_id: int) -> Pedido:
-        pedido = Pedido.query.get(pedido_id)
+        pedido = Pedido.query.filter(Pedido.id == pedido_id).first()
         if not pedido or pedido.deleted_at is not None:
             raise BlingValidationError("Pedido nao encontrado")
         return pedido
@@ -1152,7 +1186,11 @@ class BlingIntegrationService:
         )
 
     def _get_order_ref(self, pedido_id: int) -> Optional[PedidoExternalRef]:
+        pedido = Pedido.query.filter(Pedido.id == pedido_id).first()
+        if not pedido:
+            return None
         return PedidoExternalRef.query.filter_by(
+            store_ref_id=pedido.store_ref_id,
             provider=self.provider,
             store_id=current_app.config.get("BLING_STORE_ID") or "default",
             pedido_id=pedido_id,
@@ -1164,14 +1202,17 @@ class BlingIntegrationService:
         external_order_id: str,
         external_order_number: Optional[str] = None,
     ) -> PedidoExternalRef:
+        pedido = self._get_pedido(pedido_id)
         store_id = current_app.config.get("BLING_STORE_ID") or "default"
         ref = PedidoExternalRef.query.filter_by(
+            store_ref_id=pedido.store_ref_id,
             provider=self.provider,
             store_id=store_id,
             external_order_id=str(external_order_id),
         ).first()
         if not ref:
             ref = PedidoExternalRef(
+                store_ref_id=pedido.store_ref_id,
                 provider=self.provider,
                 store_id=store_id,
                 external_order_id=str(external_order_id),

@@ -10,6 +10,16 @@ class BlingCredential(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     store_id = db.Column(db.String(50), nullable=False, unique=True, index=True, default="default")
+    store_ref_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "stores.id",
+            name="fk_bling_credentials_store_ref_id_stores",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+    )
     access_token_encrypted = db.Column(db.Text, nullable=True)
     refresh_token_encrypted = db.Column(db.Text, nullable=True)
     token_type = db.Column(db.String(30), nullable=True)

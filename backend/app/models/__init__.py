@@ -17,9 +17,9 @@ from app.models.fonte_pedido import FontePedido
 from app.models.lead import Lead
 from app.models.lead_touchpoint import LeadTouchpoint
 from app.models.ledger_entry import LedgerEntry
+from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
 from app.models.meta_capi_outbox import MetaCapiOutbox
-from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.nuvemshop_store import NuvemshopStore
 from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
 from app.models.pedido import Pedido
@@ -28,6 +28,8 @@ from app.models.pedido_manual_override import PedidoManualOverride
 from app.models.pedido_sugestao_endereco import PedidoSugestaoEndereco
 from app.models.push_subscription import PushSubscription
 from app.models.rota_otimizada import RotaOtimizada
+from app.models.store import Store
+from app.models.store_setting import StoreSetting
 from app.models.user import CommissionConfig, PayrollConfig, User
 
 __all__ = [
@@ -57,6 +59,8 @@ __all__ = [
     "PedidoManualOverride",
     "PedidoSugestaoEndereco",
     "PushSubscription",
+    "Store",
+    "StoreSetting",
     "User",
     "PayrollConfig",
     "CommissionConfig",

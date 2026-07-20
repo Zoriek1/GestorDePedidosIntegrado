@@ -149,12 +149,8 @@ class BaseConfig:
         "BLING_AUTH_BASE_URL", "https://www.bling.com.br/Api/v3/oauth"
     ).rstrip("/")
     BLING_TIMEOUT_SECONDS = int(os.environ.get("BLING_TIMEOUT_SECONDS") or 20)
-    BLING_DEFAULT_PRODUCT_CODE = os.environ.get(
-        "BLING_DEFAULT_PRODUCT_CODE", "PEDIDO-FLORICULTURA"
-    )
-    BLING_DEFAULT_PRODUCT_NAME = os.environ.get(
-        "BLING_DEFAULT_PRODUCT_NAME", "Pedido Floricultura"
-    )
+    BLING_DEFAULT_PRODUCT_CODE = os.environ.get("BLING_DEFAULT_PRODUCT_CODE", "PEDIDO-FLORICULTURA")
+    BLING_DEFAULT_PRODUCT_NAME = os.environ.get("BLING_DEFAULT_PRODUCT_NAME", "Pedido Floricultura")
     # Bling v3 exige contato.id na venda. Por padrao o app cria/usa um contato
     # com o nome do cliente do pedido; defina aqui para forcar um contato fixo.
     BLING_DEFAULT_CONTACT_ID = os.environ.get("BLING_DEFAULT_CONTACT_ID") or ""
@@ -163,8 +159,17 @@ class BaseConfig:
     BLING_CONTACT_TYPE_ID = os.environ.get("BLING_CONTACT_TYPE_ID") or ""
     BLING_STORE_ID = os.environ.get("BLING_STORE_ID", "default")
     # Teto de paginas ao varrer /contas/receber procurando as contas do pedido.
-    BLING_RECEIVABLE_SEARCH_PAGES = int(
-        os.environ.get("BLING_RECEIVABLE_SEARCH_PAGES") or 10
+    BLING_RECEIVABLE_SEARCH_PAGES = int(os.environ.get("BLING_RECEIVABLE_SEARCH_PAGES") or 10)
+
+    # Multi-tenant: força o modo estrito (OAuth state/callback por loja, sem
+    # fallbacks single-tenant) mesmo com uma única loja. Por padrão o modo é
+    # data-driven (ativa sozinho quando existe mais de uma loja ATIVA); este flag
+    # serve para validar o comportamento em staging antes de criar a 2ª loja.
+    FORCE_MULTI_TENANT = os.environ.get("FORCE_MULTI_TENANT", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
     # UTMify API (vendas WhatsApp / manual — Integrações > Credenciais de API)

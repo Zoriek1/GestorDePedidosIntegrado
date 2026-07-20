@@ -5,9 +5,10 @@ import json
 
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class BlingOutbox(db.Model):
+class BlingOutbox(TenantScoped, db.Model):
     __tablename__ = "bling_outbox"
     __table_args__ = (
         # No maximo 1 outbox por pedido/operacao: fecha o caminho de duplo-insert

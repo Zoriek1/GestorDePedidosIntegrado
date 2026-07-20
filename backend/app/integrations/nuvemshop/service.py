@@ -20,7 +20,6 @@ from app.models.nuvemshop_store import NuvemshopStore
 from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
 from app.models.pedido import datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
-from app.models.pedido_fonte import PedidoFonte
 from app.models.pedido_manual_override import PedidoManualOverride
 
 logger = logging.getLogger(__name__)
@@ -329,14 +328,19 @@ class NuvemshopOrderImporter:
         if not telefone or telefone == "0000000000":
             return None
 
-        # Buscar cliente existente por telefone
-        cliente = Cliente.buscar_por_telefone(telefone)
+        # Buscar cliente existente por telefone dentro da empresa da instalação.
+        store_ref_id = getattr(self.store, "store_ref_id", None)
+        cliente = Cliente.query.execution_options(include_all_tenants=True).filter(
+            Cliente.store_ref_id == store_ref_id,
+            Cliente.telefone == telefone,
+        ).first()
 
         if not cliente:
             # Criar novo cliente
             nome = pedido_data.get("cliente") or "Cliente Nuvemshop"
             try:
                 cliente = Cliente(
+                    store_ref_id=store_ref_id,
                     nome=nome,
                     telefone=telefone,
                     email=None,  # Email será adicionado nas observações
@@ -352,10 +356,14 @@ class NuvemshopOrderImporter:
         return cliente.id
 
     def _get_or_create_fonte(self, nome: str) -> FontePedido:
-        fonte = FontePedido.query.filter_by(nome=nome).first()
+        store_ref_id = getattr(self.store, "store_ref_id", None)
+        fonte = FontePedido.query.execution_options(include_all_tenants=True).filter_by(
+            nome=nome,
+            store_ref_id=store_ref_id,
+        ).first()
         if fonte:
             return fonte
-        fonte = FontePedido(nome=nome, ativo=True)
+        fonte = FontePedido(nome=nome, ativo=True, store_ref_id=store_ref_id)
         db.session.add(fonte)
         db.session.commit()
         return fonte
@@ -367,7 +375,21 @@ class NuvemshopOrderImporter:
 
         default_vendedor_id = getattr(self.store, "default_vendedor_id", None)
         if default_vendedor_id:
-            pedido_data["vendedor_id"] = default_vendedor_id
+            from app.models.user import User
+
+            valid = User.query.filter(
+                User.id == default_vendedor_id,
+                User.store_ref_id == getattr(self.store, "store_ref_id", None),
+                User.role == "vendedor",
+                User.is_active.is_(True),
+            ).first()
+            if valid:
+                pedido_data["vendedor_id"] = default_vendedor_id
+            else:
+                logger.warning(
+                    "[NUVEMSHOP] Vendedor padrão %s não pertence à empresa da instalação",
+                    default_vendedor_id,
+                )
 
     def _get_external_ref(self, order: Dict[str, Any]) -> Optional[PedidoExternalRef]:
         """
@@ -376,7 +398,8 @@ class NuvemshopOrderImporter:
         """
         # Primeiro, tentar buscar por external_order_id (método padrão)
         external_ref = (
-            PedidoExternalRef.query.filter_by(
+            PedidoExternalRef.query.execution_options(include_all_tenants=True).filter_by(
+                store_ref_id=getattr(self.store, "store_ref_id", None),
                 provider="nuvemshop",
                 store_id=str(self.store.store_id),
                 external_order_id=str(order.get("id")),
@@ -406,13 +429,16 @@ class NuvemshopOrderImporter:
 
         # Buscar pedidos sem external_ref que foram criados no mesmo período
         pedidos_duplicados = (
-            Pedido.query.filter(
+            Pedido.query.execution_options(include_all_tenants=True).filter(
+                Pedido.store_ref_id == getattr(self.store, "store_ref_id", None),
                 Pedido.telefone_cliente == telefone,
                 Pedido.created_at >= time_window_start,
                 Pedido.created_at <= time_window_end,
                 ~Pedido.id.in_(
                     db.session.query(PedidoExternalRef.pedido_id).filter(
-                        PedidoExternalRef.provider == "nuvemshop"
+                        PedidoExternalRef.provider == "nuvemshop",
+                        PedidoExternalRef.store_ref_id
+                        == getattr(self.store, "store_ref_id", None),
                     )
                 ),
             )
@@ -429,6 +455,7 @@ class NuvemshopOrderImporter:
             )
             # Criar external_ref para vincular o pedido existente
             external_ref = PedidoExternalRef(
+                store_ref_id=getattr(self.store, "store_ref_id", None),
                 provider="nuvemshop",
                 store_id=str(self.store.store_id),
                 external_order_id=str(order.get("id")),
@@ -492,6 +519,11 @@ class NuvemshopOrderImporter:
         como update.
         """
         from app.services.order_commission_lifecycle import apply_commission_lifecycle
+        from app.services.order_number_allocator import allocate_order_number
+
+        store_ref_id = getattr(self.store, "store_ref_id", None)
+        pedido_data["store_ref_id"] = store_ref_id
+        pedido_data["numero_pedido"] = allocate_order_number(store_ref_id)
 
         pedido = Pedido(**pedido_data)
         db.session.add(pedido)
@@ -513,6 +545,7 @@ class NuvemshopOrderImporter:
             )
 
         ref = PedidoExternalRef(
+            store_ref_id=store_ref_id,
             provider="nuvemshop",
             store_id=str(self.store.store_id),
             external_order_id=str(order.get("id")),
@@ -525,12 +558,6 @@ class NuvemshopOrderImporter:
         )
         db.session.add(ref)
         db.session.commit()  # pedido + ref num único commit (atômico)
-
-        try:
-            PedidoFonte.adicionar_pedido(pedido.id, fonte_id, pedido_data.get("valor"))
-        except Exception:
-            # Nao falhar se a tabela da fonte nao puder ser atualizada
-            pass
 
         return pedido
 
@@ -546,7 +573,10 @@ class NuvemshopOrderImporter:
             snapshot_commission_fields,
         )
 
-        pedido = Pedido.query.get(external_ref.pedido_id)
+        pedido = Pedido.query.execution_options(include_all_tenants=True).filter(
+            Pedido.id == external_ref.pedido_id,
+            Pedido.store_ref_id == getattr(self.store, "store_ref_id", None),
+        ).first()
         if not pedido:
             return
 
@@ -740,7 +770,10 @@ class NuvemshopOrderImporter:
         Args:
             pedido_id: ID do pedido para calcular distância
         """
-        pedido = Pedido.query.get(pedido_id)
+        pedido = Pedido.query.execution_options(include_all_tenants=True).filter(
+            Pedido.id == pedido_id,
+            Pedido.store_ref_id == getattr(self.store, "store_ref_id", None),
+        ).first()
         if not pedido:
             return
 
@@ -784,7 +817,7 @@ class NuvemshopOrderImporter:
                 try:
                     from app.services.fila_taxa_entrega import enfileirar_calculo_taxa
 
-                    enfileirar_calculo_taxa(pedido_id)
+                    enfileirar_calculo_taxa(pedido_id, pedido.store_ref_id)
                 except Exception:
                     pass
             else:
@@ -833,7 +866,10 @@ class NuvemshopOrderImporter:
                         return
 
                     # Buscar external_ref e pedido
-                    external_ref = PedidoExternalRef.query.filter_by(
+                    external_ref = PedidoExternalRef.query.execution_options(
+                        include_all_tenants=True
+                    ).filter_by(
+                        store_ref_id=getattr(self.store, "store_ref_id", None),
                         provider="nuvemshop",
                         store_id=str(self.store.store_id),
                         external_order_id=str(order_id),
@@ -890,15 +926,16 @@ class NuvemshopOrderImporter:
             # Formatar data/hora de entrega
             entrega_info = format_delivery_datetime(pedido.dia_entrega, pedido.horario)
             if entrega_info:
-                body = f"#{pedido.id} - {dest} | {produto} | Entrega: {entrega_info}"
+                body = f"#{pedido.display_number} - {dest} | {produto} | Entrega: {entrega_info}"
             else:
-                body = f"#{pedido.id} - {dest} | {produto}"
+                body = f"#{pedido.display_number} - {dest} | {produto}"
 
             send_push_to_all_async(
                 app=current_app._get_current_object(),
                 title="Novo Pedido Nuvemshop!",
                 body=body,
                 url="/",
+                store_ref_id=pedido.store_ref_id,
             )
         except Exception as exc:
             logger.debug("Push notification não enviada: %s", exc)

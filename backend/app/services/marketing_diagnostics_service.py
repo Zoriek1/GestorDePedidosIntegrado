@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import requests
 from flask import current_app
 
+from app.services.integration_settings_service import runtime_config
 from app.services.marketing_conversion_dispatcher import (
     DATAMANAGER_INGEST_URL,
     MarketingConversionDispatcher,
@@ -23,39 +24,37 @@ class MarketingDiagnosticsService:
         self.http = http or requests
 
     def config_status(self) -> dict:
+        tenant_config = runtime_config()
         return {
-            "dispatch_enabled": bool(current_app.config.get("MARKETING_DISPATCH_ENABLED")),
+            "dispatch_enabled": bool(tenant_config.get("MARKETING_DISPATCH_ENABLED")),
             "meta": {
                 "configured": bool(
-                    current_app.config.get("META_PIXEL_ID")
-                    and current_app.config.get("META_CAPI_ACCESS_TOKEN")
+                    tenant_config.get("META_PIXEL_ID")
+                    and tenant_config.get("META_CAPI_ACCESS_TOKEN")
                 ),
                 "test_mode": bool(current_app.config.get("META_TEST_EVENT_CODE")),
             },
             "ga4": {
                 "configured": bool(
-                    current_app.config.get("GA4_MEASUREMENT_ID")
-                    and current_app.config.get("GA4_API_SECRET")
+                    tenant_config.get("GA4_MEASUREMENT_ID") and tenant_config.get("GA4_API_SECRET")
                 ),
-                "validate_only": bool(
-                    current_app.config.get("GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY")
-                ),
-                "measurement_id": current_app.config.get("GA4_MEASUREMENT_ID") or None,
+                "validate_only": bool(tenant_config.get("GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY")),
+                "measurement_id": tenant_config.get("GA4_MEASUREMENT_ID") or None,
             },
             "google_ads": {
                 "configured": bool(
-                    current_app.config.get("GOOGLE_DATAMANAGER_ENABLED")
+                    tenant_config.get("GOOGLE_DATAMANAGER_ENABLED")
                     and current_app.config.get("GOOGLE_CLOUD_PROJECT_ID")
-                    and current_app.config.get("GOOGLE_ADS_CUSTOMER_ID")
-                    and current_app.config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
+                    and tenant_config.get("GOOGLE_ADS_CUSTOMER_ID")
+                    and tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
                 ),
-                "enabled": bool(current_app.config.get("GOOGLE_DATAMANAGER_ENABLED")),
+                "enabled": bool(tenant_config.get("GOOGLE_DATAMANAGER_ENABLED")),
                 "validate_only": bool(
                     current_app.config.get("GOOGLE_DATAMANAGER_VALIDATE_ONLY", True)
                 ),
-                "customer_id": current_app.config.get("GOOGLE_ADS_CUSTOMER_ID") or None,
+                "customer_id": tenant_config.get("GOOGLE_ADS_CUSTOMER_ID") or None,
                 "conversion_action_id": (
-                    current_app.config.get("GOOGLE_ADS_CONVERSION_ACTION_ID") or None
+                    tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID") or None
                 ),
             },
         }
@@ -131,8 +130,9 @@ class MarketingDiagnosticsService:
         }
 
     def _ga4(self) -> dict:
-        measurement_id = current_app.config.get("GA4_MEASUREMENT_ID")
-        api_secret = current_app.config.get("GA4_API_SECRET")
+        tenant_config = runtime_config()
+        measurement_id = tenant_config.get("GA4_MEASUREMENT_ID")
+        api_secret = tenant_config.get("GA4_API_SECRET")
         if not measurement_id or not api_secret:
             return {"ok": False, "status": "failed", "error": "ga4_config_incompleta"}
         now = datetime.now(timezone.utc)
@@ -175,13 +175,12 @@ class MarketingDiagnosticsService:
         return {"ok": True, "status": "validated", "http_status": response.status_code}
 
     def _google_ads(self) -> dict:
+        tenant_config = runtime_config()
         customer_id = "".join(
-            ch
-            for ch in current_app.config.get("GOOGLE_ADS_CUSTOMER_ID", "")
-            if ch.isdigit()
+            ch for ch in tenant_config.get("GOOGLE_ADS_CUSTOMER_ID", "") if ch.isdigit()
         )
-        action_id = current_app.config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
-        if not current_app.config.get("GOOGLE_DATAMANAGER_ENABLED"):
+        action_id = tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
+        if not tenant_config.get("GOOGLE_DATAMANAGER_ENABLED"):
             return {"ok": False, "status": "failed", "error": "datamanager_desabilitado"}
         if not customer_id or not action_id:
             return {"ok": False, "status": "failed", "error": "datamanager_config_incompleta"}

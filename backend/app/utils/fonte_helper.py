@@ -62,7 +62,7 @@ def get_tabela_fonte(fonte_id):
     Returns:
         str: Nome da tabela (ex: "pedidos_whatsapp_paula") ou None se fonte não existe
     """
-    fonte = FontePedido.query.get(fonte_id)
+    fonte = FontePedido.query.filter(FontePedido.id == fonte_id).first()
     if not fonte:
         return None
 

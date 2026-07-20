@@ -64,6 +64,66 @@ export interface TaxaCartaoConfig {
   credito: TaxaCartaoCreditoFaixa[];
 }
 
+export interface IntegrationSettingsConfig {
+  store: { id: number; name: string; slug: string };
+  configured: boolean;
+  marketing_dispatch_enabled: boolean;
+  meta_pixel_id: string | null;
+  meta_capi_access_token: string | null;
+  has_meta_capi_access_token: boolean;
+  ga4_measurement_id: string | null;
+  ga4_api_secret: string | null;
+  has_ga4_api_secret: boolean;
+  ga4_validate_only: boolean;
+  google_datamanager_enabled: boolean;
+  google_ads_customer_id: string | null;
+  google_ads_conversion_action_id: string | null;
+  utmify_enabled: boolean;
+  utmify_api_token: string | null;
+  has_utmify_api_token: boolean;
+  utmify_platform: string | null;
+  utmify_is_test: boolean;
+  endereco_floricultura: string | null;
+  loja_cep: string | null;
+}
+
+export type IntegrationSettingsPayload = Omit<
+  IntegrationSettingsConfig,
+  | 'store'
+  | 'configured'
+  | 'has_meta_capi_access_token'
+  | 'has_ga4_api_secret'
+  | 'has_utmify_api_token'
+>;
+
+export const IntegrationSettingsService = {
+  get: async (
+    apiRequest: ReturnType<typeof createApiRequest>,
+  ): Promise<IntegrationSettingsConfig> => {
+    const response = await apiRequest<{
+      success: boolean;
+      config: IntegrationSettingsConfig;
+    }>('/config/integrations');
+    if (!response.ok) throw new Error(response.message || 'Erro ao carregar integrações');
+    return response.data.config;
+  },
+
+  update: async (
+    apiRequest: ReturnType<typeof createApiRequest>,
+    config: IntegrationSettingsPayload,
+  ): Promise<IntegrationSettingsConfig> => {
+    const response = await apiRequest<{
+      success: boolean;
+      config: IntegrationSettingsConfig;
+    }>('/config/integrations', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+    if (!response.ok) throw new Error(response.message || 'Erro ao atualizar integrações');
+    return response.data.config;
+  },
+};
+
 /**
  * Calcula a taxa do adquirente (R$) para uma forma de pagamento.
  * Espelha a lógica do backend em services/taxa_cartao.py.

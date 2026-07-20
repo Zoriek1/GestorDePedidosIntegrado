@@ -15,14 +15,15 @@ Consulta útil (SQL):
 
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class Lead(db.Model):
+class Lead(TenantScoped, db.Model):
     __tablename__ = "leads"
 
     id = db.Column(db.Integer, primary_key=True)
     # Chave de deduplicação (evita recontagem por retries/duplo clique)
-    dedup_key = db.Column(db.String(64), unique=True, index=True, nullable=False)
+    dedup_key = db.Column(db.String(64), index=True, nullable=False)
     event = db.Column(db.String(50), index=True)
     url = db.Column(db.Text)
     referrer = db.Column(db.Text)
@@ -91,6 +92,10 @@ class Lead(db.Model):
         foreign_keys=[last_touch_id],
         post_update=True,
         lazy="joined",
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint("store_ref_id", "dedup_key", name="uq_leads_store_dedup_key"),
     )
 
     def to_dict(self):

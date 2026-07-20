@@ -199,9 +199,13 @@ class PedidoRepository(BaseRepository):
                 lowered = f"%{search.lower()}%"
                 conds.extend(func.lower(col).like(lowered) for col in text_cols)
 
-            # Número do pedido (id) quando o termo é só dígitos.
+            # Número visível por empresa; id só é fallback para legado sem número.
             if search.isdigit():
-                conds.append(Pedido.id == int(search))
+                number = int(search)
+                conds.append(Pedido.numero_pedido == number)
+                conds.append(
+                    db.and_(Pedido.numero_pedido.is_(None), Pedido.id == number)
+                )
 
             # Telefone ignorando máscara.
             if digits:
@@ -504,6 +508,8 @@ class PedidoRepository(BaseRepository):
                 entity_type="pedido",
                 entity_id=pedido_id,
                 actor=actor or "system",
+                store_ref_id=pedido.store_ref_id,
+                entity=pedido,
                 metadata={
                     "cliente": pedido.cliente,
                     "destinatario": pedido.destinatario,
@@ -546,6 +552,8 @@ class PedidoRepository(BaseRepository):
                 entity_type="pedido",
                 entity_id=pedido_id,
                 actor=actor or "system",
+                store_ref_id=pedido.store_ref_id,
+                entity=pedido,
                 metadata={
                     "cliente": pedido.cliente,
                     "destinatario": pedido.destinatario,

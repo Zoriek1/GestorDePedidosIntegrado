@@ -31,7 +31,7 @@ import dayjs from 'dayjs';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { usePedidos, useCalcularDistanciasLote } from '../../api/endpoints/pedidos';
+import { pedidoDisplayNumber, usePedidos, useCalcularDistanciasLote } from '../../api/endpoints/pedidos';
 import { useCalcularRotaOtimizada, useRotaOtimizada, useGerarRotaMaps, type RotaOtimizada } from '../../api/endpoints/rotas';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -458,7 +458,7 @@ export default function RoutePage() {
                     fontSize: '11px',
                     fontWeight: 'bold',
                   } : undefined}
-                  title={`#${pedido.id} - ${pedido.destinatario || pedido.cliente}`}
+                  title={`#${pedidoDisplayNumber(pedido)} - ${pedido.destinatario || pedido.cliente}`}
                   // ROT-02: clicar no pino apenas INSPECIONA (abre o InfoWindow);
                   // a seleção entra/sai por controle explícito (chip / checkbox da lista).
                   onClick={() => setActiveInfoWindow(pedido.id)}
@@ -466,7 +466,7 @@ export default function RoutePage() {
                   {activeInfoWindow === pedido.id && (
                     <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
                       <div style={{ maxWidth: 230 }}>
-                        <strong>Pedido #{pedido.id}</strong>
+                        <strong>Pedido #{pedidoDisplayNumber(pedido)}</strong>
                         <br />
                         <strong>Buquê:</strong> {pedido.produto || '—'}
                         <br />
@@ -769,7 +769,7 @@ export default function RoutePage() {
                                     fontWeight="bold"
                                     sx={{ fontSize: isMobile ? '0.8rem' : undefined }}
                                   >
-                                    {idx + 1}. #{pedido.id} · {pedido.destinatario || pedido.cliente}
+                                    {idx + 1}. #{pedidoDisplayNumber(pedido)} · {pedido.destinatario || pedido.cliente}
                                   </Typography>
                                   {pedido.cliente && pedido.cliente !== pedido.destinatario && (
                                     <Typography

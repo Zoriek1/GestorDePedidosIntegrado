@@ -3,11 +3,14 @@
 Vinculo entre pedido interno e fonte externa (ex: Nuvemshop).
 """
 
+from sqlalchemy import Index, text
+
 from app import db
 from app.models.pedido import datetime_now_brazil
+from app.services.tenant_scope import TenantScoped
 
 
-class PedidoExternalRef(db.Model):
+class PedidoExternalRef(TenantScoped, db.Model):
     __tablename__ = "pedido_external_refs"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -39,10 +42,20 @@ class PedidoExternalRef(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint(
+            "store_ref_id",
             "provider",
             "store_id",
             "external_order_id",
-            name="uq_pedido_external_provider_store_order",
+            name="uq_pedido_external_tenant_provider_store_order",
+        ),
+        Index(
+            "uq_pedido_external_legacy_provider_store_order",
+            "provider",
+            "store_id",
+            "external_order_id",
+            unique=True,
+            sqlite_where=text("store_ref_id IS NULL"),
+            postgresql_where=text("store_ref_id IS NULL"),
         ),
     )
 

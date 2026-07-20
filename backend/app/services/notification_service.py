@@ -72,6 +72,7 @@ def _dispatch_to_subscriptions(
     body: str,
     url: Optional[str],
     icon: Optional[str],
+    store_ref_id: int | None,
 ) -> dict:
     """Envia o payload para uma lista de inscrições e limpa as inválidas (404/410)."""
     if not Config.VAPID_PRIVATE_KEY or not Config.VAPID_PUBLIC_KEY:
@@ -140,9 +141,10 @@ def _dispatch_to_subscriptions(
     # Remover subscriptions inválidas
     removed = 0
     if to_remove:
-        removed = PushSubscription.query.filter(PushSubscription.id.in_(to_remove)).delete(
-            synchronize_session="fetch"
-        )
+        removed = PushSubscription.query.filter(
+            PushSubscription.id.in_(to_remove),
+            PushSubscription.store_ref_id == store_ref_id,
+        ).delete(synchronize_session="fetch")
         db.session.commit()
 
     result = {"sent": sent, "failed": failed, "removed": removed}
@@ -155,6 +157,7 @@ def send_push_to_all(
     body: str,
     url: Optional[str] = "/",
     icon: Optional[str] = "/pwa-192x192.png",
+    store_ref_id: int | None = None,
 ) -> dict:
     """
     Envia push notification para as inscrições da EQUIPE (broadcast).
@@ -165,8 +168,11 @@ def send_push_to_all(
     Returns:
         dict com contadores: sent, failed, removed.
     """
-    subscriptions = PushSubscription.query.filter(PushSubscription.pedido_id.is_(None)).all()
-    return _dispatch_to_subscriptions(subscriptions, title, body, url, icon)
+    subscriptions = PushSubscription.query.filter(
+        PushSubscription.pedido_id.is_(None),
+        PushSubscription.store_ref_id == store_ref_id,
+    ).all()
+    return _dispatch_to_subscriptions(subscriptions, title, body, url, icon, store_ref_id)
 
 
 def send_push_to_pedido(
@@ -175,13 +181,17 @@ def send_push_to_pedido(
     body: str,
     url: Optional[str] = "/",
     icon: Optional[str] = "/pwa-192x192.png",
+    store_ref_id: int | None = None,
 ) -> dict:
     """
     Envia push apenas para as inscrições do CLIENTE de um pedido específico
     (``pedido_id`` preenchido). Usado para avisar mudança de status.
     """
-    subscriptions = PushSubscription.query.filter_by(pedido_id=pedido_id).all()
-    return _dispatch_to_subscriptions(subscriptions, title, body, url, icon)
+    subscriptions = PushSubscription.query.filter_by(
+        pedido_id=pedido_id,
+        store_ref_id=store_ref_id,
+    ).all()
+    return _dispatch_to_subscriptions(subscriptions, title, body, url, icon, store_ref_id)
 
 
 def send_push_to_all_async(
@@ -190,6 +200,7 @@ def send_push_to_all_async(
     body: str,
     url: Optional[str] = "/",
     icon: Optional[str] = "/pwa-192x192.png",
+    store_ref_id: int | None = None,
 ) -> None:
     """
     Versão assíncrona (background thread) de send_push_to_all.
@@ -201,7 +212,13 @@ def send_push_to_all_async(
     def _worker():
         with app.app_context():
             try:
-                send_push_to_all(title=title, body=body, url=url, icon=icon)
+                send_push_to_all(
+                    title=title,
+                    body=body,
+                    url=url,
+                    icon=icon,
+                    store_ref_id=store_ref_id,
+                )
             except Exception:
                 logger.exception("[Push] Erro no envio assíncrono de push.")
 
@@ -216,6 +233,7 @@ def send_push_to_pedido_async(
     body: str,
     url: Optional[str] = "/",
     icon: Optional[str] = "/pwa-192x192.png",
+    store_ref_id: int | None = None,
 ) -> None:
     """Versão assíncrona (background thread) de send_push_to_pedido."""
 
@@ -224,6 +242,7 @@ def send_push_to_pedido_async(
             try:
                 send_push_to_pedido(
                     pedido_id=pedido_id, title=title, body=body, url=url, icon=icon
+                    , store_ref_id=store_ref_id
                 )
             except Exception:
                 logger.exception("[Push] Erro no envio assíncrono de push (pedido).")

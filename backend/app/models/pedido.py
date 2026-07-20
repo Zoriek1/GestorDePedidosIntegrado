@@ -13,6 +13,7 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 from app import db
+from app.services.tenant_scope import TenantScoped
 
 # Timezone do Brasil (São Paulo - GMT-3)
 TIMEZONE_BRASIL = ZoneInfo("America/Sao_Paulo")
@@ -23,13 +24,20 @@ def datetime_now_brazil():
     return datetime.now(TIMEZONE_BRASIL)
 
 
-class Pedido(db.Model):
+class Pedido(TenantScoped, db.Model):
     """Modelo de Pedido com todos os campos necessários para o PWA"""
 
     __tablename__ = "pedidos"
 
+    __table_args__ = (
+        db.UniqueConstraint(
+            "store_ref_id", "numero_pedido", name="uq_pedidos_store_numero_pedido"
+        ),
+    )
+
     # Identificador único
     id = db.Column(db.Integer, primary_key=True)
+    numero_pedido = db.Column(db.Integer, nullable=True, index=True)
 
     # Step 1 - Dados do Cliente
     cliente = db.Column(db.String(100), nullable=False, comment="Quem enviou (remetente)")
@@ -301,6 +309,7 @@ class Pedido(db.Model):
         """Converte o pedido para dicionário (para API JSON)"""
         return {
             "id": self.id,
+            "numero_pedido": self.numero_pedido,
             # Step 1
             "cliente": self.cliente or "",
             "telefone_cliente": self.telefone_cliente or "",
@@ -401,6 +410,10 @@ class Pedido(db.Model):
                 self.deleted_at.strftime("%Y-%m-%d %H:%M:%S") if self.deleted_at else None
             ),
         }
+
+    @property
+    def display_number(self) -> int | None:
+        return self.numero_pedido if self.numero_pedido is not None else self.id
 
     # Mapa status interno -> rótulo amigável ao cliente final
     _STATUS_PUBLICO = {

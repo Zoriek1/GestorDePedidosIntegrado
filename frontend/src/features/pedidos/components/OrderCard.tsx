@@ -40,7 +40,7 @@ import {
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Pedido } from '../../../api/endpoints/pedidos';
+import { pedidoDisplayNumber, type Pedido } from '../../../api/endpoints/pedidos';
 import { formatDateBR } from '../../../lib/format/date';
 import { formatBRL } from '../../../lib/format/currency';
 import { getStatusColor, getStatusLabel, getPaymentStatusColor, getPaymentStatusLabel } from '../useCases/orderMapping';
@@ -294,7 +294,7 @@ export function OrderCard({
     const horarioEntrega = pedido.horario;
     const total = pedido.valor ? formatBRL(pedido.valor) : 'R$ 0,00';
     
-    const mensagem = `Olá, ${nome}. Seu pedido #${pedido.id} (entrega ${dataEntrega} ${horarioEntrega}) está com pagamento ${paymentStatus}. Total: ${total}.`;
+    const mensagem = `Olá, ${nome}. Seu pedido #${pedidoDisplayNumber(pedido)} (entrega ${dataEntrega} ${horarioEntrega}) está com pagamento ${paymentStatus}. Total: ${total}.`;
     
     // Adicionar link/chave Pix se existir (aqui você pode adicionar lógica para buscar isso)
     // Por enquanto, deixamos sem
@@ -458,7 +458,7 @@ export function OrderCard({
               size="small"
               sx={{ height: 17, '& .MuiChip-label': { px: 0.5, fontSize: '0.58rem' } }}
             />
-            <Typography sx={{ fontSize: '0.58rem', color: 'text.secondary' }}>#{pedido.id}</Typography>
+            <Typography sx={{ fontSize: '0.58rem', color: 'text.secondary' }}>#{pedidoDisplayNumber(pedido)}</Typography>
           </Stack>
 
           <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.2 }} noWrap>
@@ -645,7 +645,7 @@ export function OrderCard({
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} mb={1}>
             <Box flex={1}>
               <Typography variant={isMobile ? 'h6' : 'h5'} component="div" fontWeight="bold" gutterBottom>
-                Pedido #{pedido.id}
+                Pedido #{pedidoDisplayNumber(pedido)}
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                 {pedido.impresso && (

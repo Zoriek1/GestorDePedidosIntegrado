@@ -14,6 +14,7 @@ import { useToast } from '../../components/system/useToast';
 // Types
 export interface Pedido {
   id: number;
+  numero_pedido?: number | null;
   cliente: string;
   telefone_cliente: string;
   cpf_cnpj?: string;
@@ -82,6 +83,9 @@ export interface Pedido {
   updated_at?: string;
   deleted_at?: string | null;
 }
+
+export const pedidoDisplayNumber = (pedido: Pick<Pedido, 'id' | 'numero_pedido'>): number =>
+  pedido.numero_pedido ?? pedido.id;
 
 export interface PedidosResponse {
   success: boolean;

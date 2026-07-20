@@ -2,9 +2,17 @@ import json
 import os
 from datetime import date
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
-from app.middleware import requires_edit_auth
+from app import db
+from app.middleware import requires_edit_auth, requires_role
+from app.services.integration_settings_service import (
+    default_store,
+    get_or_create_settings,
+    get_settings,
+    serialize_settings,
+    update_settings,
+)
 from app.services.taxa_cartao import taxa_cartao_service
 from app.services.taxa_entrega import taxa_entrega_service
 
@@ -12,6 +20,68 @@ config_bp = Blueprint("config", __name__, url_prefix="/api/config")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 META_FATURAMENTO_PATH = os.path.join(BASE_DIR, "config", "meta_faturamento.json")
+
+
+def _current_store():
+    """Loja autenticada da request (multi-tenant).
+
+    Usa `g.current_store` populado pela resolução de identidade. Só cai em
+    `default_store()` como salvaguarda de transição quando não há loja no contexto
+    (ex.: caminho legado Basic Auth), nunca para o fluxo JWT normal.
+    """
+    store = getattr(g, "current_store", None)
+    if store is not None:
+        return store
+    return default_store()
+
+
+@config_bp.route("/integrations", methods=["GET"])
+@requires_role("admin")
+def get_integration_settings():
+    """Retorna credenciais da loja autenticada com segredos sempre mascarados."""
+    try:
+        store = _current_store()
+        settings = get_settings(store.id)
+        return jsonify(
+            {
+                "success": True,
+                "config": serialize_settings(store, settings),
+            }
+        )
+    except RuntimeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:
+        return jsonify({"success": False, "error": "Falha ao ler as integracoes"}), 500
+
+
+@config_bp.route("/integrations", methods=["PUT"])
+@requires_role("admin")
+def update_integration_settings():
+    """Atualiza configuracoes do tenant sem regravar valores mascarados."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "error": "Payload JSON invalido"}), 400
+    try:
+        store = _current_store()
+        settings = get_or_create_settings(store.id)
+        update_settings(settings, data)
+        db.session.commit()
+        return jsonify(
+            {
+                "success": True,
+                "message": "Integracoes atualizadas",
+                "config": serialize_settings(store, settings),
+            }
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except RuntimeError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:
+        db.session.rollback()
+        return jsonify({"success": False, "error": "Falha ao salvar as integracoes"}), 500
 
 
 def _load_meta_faturamento() -> dict:

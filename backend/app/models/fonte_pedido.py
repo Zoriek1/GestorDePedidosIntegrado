@@ -6,9 +6,10 @@ Permite controlar de onde vem cada pedido (Ifood, Site, WhatsApp, etc)
 from datetime import datetime
 
 from app import db
+from app.services.tenant_scope import TenantScoped
 
 
-class FontePedido(db.Model):
+class FontePedido(TenantScoped, db.Model):
     """
     Model de Fonte de Pedido
     Representa a origem/fonte de um pedido (Ifood, Site, WhatsApp, etc)
@@ -18,12 +19,16 @@ class FontePedido(db.Model):
 
     # Campos principais
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    nome = db.Column(db.String(100), nullable=False, index=True)
     ativo = db.Column(db.Boolean, default=True, nullable=False)
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("store_ref_id", "nome", name="uq_fontes_pedido_store_nome"),
+    )
 
     def __repr__(self):
         status = "Ativo" if self.ativo else "Inativo"

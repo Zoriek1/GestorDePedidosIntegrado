@@ -7,13 +7,14 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 
-from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.models.lead import Lead
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.pedido import TIMEZONE_BRASIL, Pedido, datetime_now_brazil
+from app.services.integration_settings_service import runtime_config
+from app.services.tenancy import is_store_inactive
 from app.utils.tracking_token import normalize_tracking_token
 
 
@@ -120,7 +121,10 @@ def _google_ads_payload(
 
 def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]:
     """Enfileira GA4/Ads apenas para pedido ligado a token valido da loja."""
-    if not current_app.config.get("MARKETING_DISPATCH_ENABLED"):
+    tenant_config = runtime_config(getattr(pedido, "store_ref_id", None))
+    if not tenant_config.get("MARKETING_DISPATCH_ENABLED"):
+        return []
+    if is_store_inactive(pedido.store_ref_id):
         return []
     value = round(float(pedido.total_pago() or 0), 2)
     if value <= 0:
@@ -132,9 +136,7 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
     transaction_id = f"GESTOR-WA-{pedido.id}"
     event_time = datetime_now_brazil()
     candidates: list[tuple[str, str, dict | None]] = []
-    if current_app.config.get("GA4_MEASUREMENT_ID") and current_app.config.get(
-        "GA4_API_SECRET"
-    ):
+    if tenant_config.get("GA4_MEASUREMENT_ID") and tenant_config.get("GA4_API_SECRET"):
         candidates.append(
             (
                 "ga4",
@@ -142,7 +144,7 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
                 _ga4_payload(pedido, lead, transaction_id, value, event_time),
             )
         )
-    if current_app.config.get("GOOGLE_DATAMANAGER_ENABLED"):
+    if tenant_config.get("GOOGLE_DATAMANAGER_ENABLED"):
         candidates.append(
             (
                 "google_ads",
@@ -162,6 +164,7 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
             continue
         row = MarketingConversionOutbox(
             pedido_id=pedido.id,
+            store_ref_id=pedido.store_ref_id,
             lead_id=lead.id,
             destino=destino,
             evento=evento,

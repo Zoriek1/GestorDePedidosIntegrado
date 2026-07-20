@@ -143,7 +143,7 @@ class UserRepository(BaseRepository[User]):
     def _resolve_source_from_fonte(self, fonte_pedido_id: int | None) -> str | None:
         if not fonte_pedido_id:
             return None
-        fonte = FontePedido.query.get(fonte_pedido_id)
+        fonte = FontePedido.query.filter(FontePedido.id == fonte_pedido_id).first()
         if not fonte or not fonte.nome:
             return None
 

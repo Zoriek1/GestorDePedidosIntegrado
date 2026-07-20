@@ -7,11 +7,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from app import db
 from app.middleware import requires_edit_auth
-from app.models import FontePedido
+from app.models import FontePedido, Pedido
+from app.utils.money import parse_brl_money
 
 # ============================================
 # ENDPOINT DE CRIAÇÃO DE PEDIDO - MIGRADO
@@ -127,22 +128,14 @@ def criar_fonte_pedido():
             )
 
         # Criar nova fonte
-        fonte = FontePedido(nome=nome, ativo=data.get("ativo", True))
+        fonte = FontePedido(
+            nome=nome,
+            ativo=data.get("ativo", True),
+            store_ref_id=getattr(g, "tenant_store_id", None),
+        )
 
         db.session.add(fonte)
         db.session.commit()
-
-        # Criar tabela auxiliar para a nova fonte (se estiver ativa)
-        if fonte.ativo:
-            try:
-                from app.models.pedido_fonte import PedidoFonte
-
-                sucesso, nome_tabela = PedidoFonte.criar_tabela_para_fonte(fonte.id)
-                if sucesso:
-                    print(f"[INFO] Tabela '{nome_tabela}' criada para fonte '{fonte.nome}'")
-            except Exception as e:
-                print(f"[WARN] Erro ao criar tabela para nova fonte: {e}")
-                # Não falhar a criação da fonte se houver erro na tabela
 
         return (
             jsonify(
@@ -165,7 +158,7 @@ def criar_fonte_pedido():
 def atualizar_fonte_pedido(fonte_id):
     """Atualiza fonte de pedido"""
     try:
-        fonte = FontePedido.query.get(fonte_id)
+        fonte = FontePedido.query.filter(FontePedido.id == fonte_id).first()
 
         if not fonte:
             return jsonify({"error": "Fonte não encontrada", "fonte_id": fonte_id}), 404
@@ -212,7 +205,7 @@ def deletar_fonte_pedido(fonte_id):
     )
 
     try:
-        fonte = FontePedido.query.get(fonte_id)
+        fonte = FontePedido.query.filter(FontePedido.id == fonte_id).first()
 
         if not fonte:
             return jsonify({"error": "Fonte não encontrada", "fonte_id": fonte_id}), 404
@@ -263,10 +256,8 @@ def listar_pedidos_fonte(fonte_id):
     Retorna pedidos com numeração sequencial da fonte
     """
     try:
-        from app.models.pedido_fonte import PedidoFonte
-
         # Verificar se fonte existe
-        fonte = FontePedido.query.get(fonte_id)
+        fonte = FontePedido.query.filter(FontePedido.id == fonte_id).first()
         if not fonte:
             return jsonify({"error": "Fonte não encontrada", "fonte_id": fonte_id}), 404
 
@@ -274,8 +265,26 @@ def listar_pedidos_fonte(fonte_id):
         limit = request.args.get("limit", type=int)
         offset = request.args.get("offset", type=int) or 0
 
-        # Buscar pedidos da fonte
-        pedidos = PedidoFonte.obter_pedidos(fonte_id, limit=limit, offset=offset)
+        query = Pedido.query.filter(Pedido.fonte_pedido_id == fonte_id).order_by(
+            Pedido.numero_pedido.desc(), Pedido.id.desc()
+        )
+        if offset:
+            query = query.offset(offset)
+        if limit:
+            query = query.limit(limit)
+        pedidos = [
+            {
+                "pedido_id": pedido.id,
+                "numero_sequencial": pedido.display_number,
+                "valor": pedido.valor,
+                "created_at": pedido.created_at,
+                "cliente": pedido.cliente,
+                "destinatario": pedido.destinatario,
+                "produto": pedido.produto,
+                "status": pedido.status,
+            }
+            for pedido in query.all()
+        ]
 
         return jsonify(
             {
@@ -304,26 +313,23 @@ def estatisticas_fonte(fonte_id):
     Inclui: total de pedidos, total de vendas, último número sequencial
     """
     try:
-        from app.models.pedido_fonte import PedidoFonte
-
         # Verificar se fonte existe
-        fonte = FontePedido.query.get(fonte_id)
+        fonte = FontePedido.query.filter(FontePedido.id == fonte_id).first()
         if not fonte:
             return jsonify({"error": "Fonte não encontrada", "fonte_id": fonte_id}), 404
 
-        # Obter estatísticas
-        estatisticas = PedidoFonte.obter_estatisticas(fonte_id)
-
-        # Obter nome da tabela
-        from app.utils.fonte_helper import get_tabela_fonte
-
-        nome_tabela = get_tabela_fonte(fonte_id)
+        pedidos = Pedido.query.filter(Pedido.fonte_pedido_id == fonte_id).all()
+        estatisticas = {
+            "total_pedidos": len(pedidos),
+            "total_vendas": round(sum(parse_brl_money(p.valor) for p in pedidos), 2),
+            "ultimo_numero": max((p.display_number or 0 for p in pedidos), default=0),
+        }
 
         return jsonify(
             {
                 "success": True,
                 "fonte": fonte.to_dict(),
-                "tabela": nome_tabela,
+                "tabela": "pedidos",
                 "estatisticas": estatisticas,
             }
         )

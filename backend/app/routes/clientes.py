@@ -5,7 +5,7 @@ API completa para gerenciar clientes, endereços, histórico e LTV
 """
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from app import db
 from app.middleware import requires_any_role, requires_role
@@ -66,6 +66,7 @@ def criar_cliente():
 
         # Criar cliente
         cliente = Cliente(
+            store_ref_id=getattr(g, "tenant_store_id", None),
             nome=nome,
             telefone=telefone,
             cpf_cnpj=cpf_cnpj,
@@ -236,7 +237,7 @@ def obter_cliente(cliente_id):
     GET /api/clientes/123
     """
     try:
-        cliente = Cliente.query.get(cliente_id)
+        cliente = Cliente.query.filter(Cliente.id == cliente_id).first()
 
         if not cliente:
             return (
@@ -260,7 +261,7 @@ def atualizar_cliente(cliente_id):
     Body: { "nome": "João Silva Atualizado", ... }
     """
     try:
-        cliente = Cliente.query.get(cliente_id)
+        cliente = Cliente.query.filter(Cliente.id == cliente_id).first()
 
         if not cliente:
             return (
@@ -358,7 +359,7 @@ def deletar_cliente(cliente_id):
                 details={"error": error_msg, "cliente_id": cliente_id},
             )
 
-        cliente = Cliente.query.get(cliente_id)
+        cliente = Cliente.query.filter(Cliente.id == cliente_id).first()
 
         if not cliente:
             return (
@@ -426,7 +427,7 @@ def obter_ltv_cliente(cliente_id):
     GET /api/clientes/123/ltv
     """
     try:
-        cliente = Cliente.query.get(cliente_id)
+        cliente = Cliente.query.filter(Cliente.id == cliente_id).first()
 
         if not cliente:
             return (
@@ -461,7 +462,7 @@ def obter_pedidos_cliente(cliente_id):
     GET /api/clientes/123/pedidos?limit=50
     """
     try:
-        cliente = Cliente.query.get(cliente_id)
+        cliente = Cliente.query.filter(Cliente.id == cliente_id).first()
 
         if not cliente:
             return (
@@ -500,7 +501,7 @@ def listar_enderecos_cliente(cliente_id):
     GET /api/clientes/123/enderecos
     """
     try:
-        cliente = Cliente.query.get(cliente_id)
+        cliente = Cliente.query.filter(Cliente.id == cliente_id).first()
 
         if not cliente:
             return (
@@ -539,7 +540,7 @@ def adicionar_endereco_cliente(cliente_id):
     }
     """
     try:
-        cliente = Cliente.query.get(cliente_id)
+        cliente = Cliente.query.filter(Cliente.id == cliente_id).first()
 
         if not cliente:
             return (
@@ -555,6 +556,7 @@ def adicionar_endereco_cliente(cliente_id):
         # Criar endereço
         endereco = EnderecoCliente(
             cliente_id=cliente_id,
+            store_ref_id=cliente.store_ref_id,
             apelido=data.get("apelido", "").strip() or None,
             cep=data.get("cep", "").strip() or None,
             rua=data.get("rua", "").strip() or None,
@@ -568,7 +570,10 @@ def adicionar_endereco_cliente(cliente_id):
 
         # Se marcar como principal, desmarcar os outros
         if endereco.principal:
-            EnderecoCliente.query.filter_by(cliente_id=cliente_id).update({"principal": False})
+            EnderecoCliente.query.filter_by(
+                cliente_id=cliente_id,
+                store_ref_id=cliente.store_ref_id,
+            ).update({"principal": False})
 
         db.session.add(endereco)
         db.session.commit()
@@ -598,7 +603,7 @@ def atualizar_endereco(endereco_id):
     PUT /api/clientes/enderecos/456
     """
     try:
-        endereco = EnderecoCliente.query.get(endereco_id)
+        endereco = EnderecoCliente.query.filter(EnderecoCliente.id == endereco_id).first()
 
         if not endereco:
             return (
@@ -628,9 +633,10 @@ def atualizar_endereco(endereco_id):
         if "principal" in data:
             if data["principal"]:
                 # Desmarcar outros endereços do mesmo cliente
-                EnderecoCliente.query.filter_by(cliente_id=endereco.cliente_id).update(
-                    {"principal": False}
-                )
+                EnderecoCliente.query.filter_by(
+                    cliente_id=endereco.cliente_id,
+                    store_ref_id=endereco.store_ref_id,
+                ).update({"principal": False})
                 endereco.principal = True
             else:
                 endereco.principal = False
@@ -678,7 +684,7 @@ def deletar_endereco(endereco_id):
                 details={"error": error_msg, "endereco_id": endereco_id},
             )
 
-        endereco = EnderecoCliente.query.get(endereco_id)
+        endereco = EnderecoCliente.query.filter(EnderecoCliente.id == endereco_id).first()
 
         if not endereco:
             return (
@@ -711,7 +717,7 @@ def marcar_endereco_principal(endereco_id):
     POST /api/clientes/enderecos/456/principal
     """
     try:
-        endereco = EnderecoCliente.query.get(endereco_id)
+        endereco = EnderecoCliente.query.filter(EnderecoCliente.id == endereco_id).first()
 
         if not endereco:
             return (

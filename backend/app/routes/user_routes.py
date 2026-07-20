@@ -369,7 +369,7 @@ def update_commission(user_id):
                 except (TypeError, ValueError):
                     return error_response("fonte_pedido_id inválido", 400)
 
-                fonte = FontePedido.query.get(fonte_pedido_id)
+                fonte = FontePedido.query.filter(FontePedido.id == fonte_pedido_id).first()
                 if not fonte:
                     return error_response(
                         f"fonte_pedido_id '{fonte_pedido_id}' não encontrado", 404

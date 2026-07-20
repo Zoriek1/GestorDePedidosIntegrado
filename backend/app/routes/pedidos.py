@@ -304,6 +304,7 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
 
         candidate = EnderecoCliente(
             cliente_id=pedido.cliente_id,
+            store_ref_id=pedido.store_ref_id,
             cep=pedido.cep,
             rua=pedido.rua,
             numero=pedido.numero,
@@ -315,7 +316,9 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
         address_hash = candidate.compute_address_hash()
 
         existing = EnderecoCliente.query.filter_by(
-            cliente_id=pedido.cliente_id, address_hash=address_hash
+            cliente_id=pedido.cliente_id,
+            store_ref_id=pedido.store_ref_id,
+            address_hash=address_hash,
         ).first()
         if existing:
             return
@@ -323,7 +326,10 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
         candidate.address_canonical = candidate.build_address_canonical()
         candidate.address_hash = address_hash
         # Primeiro endereço do cliente vira o principal.
-        if EnderecoCliente.query.filter_by(cliente_id=pedido.cliente_id).count() == 0:
+        if EnderecoCliente.query.filter_by(
+            cliente_id=pedido.cliente_id,
+            store_ref_id=pedido.store_ref_id,
+        ).count() == 0:
             candidate.principal = True
         db.session.add(candidate)
     except Exception as e:  # noqa: BLE001 - upsert é best-effort
@@ -1523,6 +1529,7 @@ def criar_pedido():
             else:
                 try:
                     novo_cliente = Cliente(
+                        store_ref_id=getattr(g, "tenant_store_id", None),
                         nome=cliente,
                         telefone=telefone_cliente,
                         cpf_cnpj=cpf_cnpj,
@@ -1541,7 +1548,9 @@ def criar_pedido():
             cliente_id_int = None
 
         if cliente_id_int and cpf_cnpj:
-            cliente_selecionado = Cliente.query.get(cliente_id_int)
+            cliente_selecionado = Cliente.query.filter(Cliente.id == cliente_id_int).first()
+            if not cliente_selecionado:
+                return error_response("cliente_id inválido", 400)
             if cliente_selecionado and not cliente_selecionado.cpf_cnpj:
                 cliente_selecionado.cpf_cnpj = cpf_cnpj
 
@@ -1556,6 +1565,14 @@ def criar_pedido():
             fonte = FontePedido.query.filter_by(nome=fonte_pedido, ativo=True).first()
             if fonte:
                 fonte_pedido_id_int = fonte.id
+
+        if fonte_pedido_id_int:
+            fonte_valida = FontePedido.query.filter(
+                FontePedido.id == fonte_pedido_id_int,
+                FontePedido.ativo.is_(True),
+            ).first()
+            if not fonte_valida:
+                return error_response("fonte_pedido_id inválido", 400)
 
         # Determinar vendedor_id:
         # - vendedor (JWT ou Basic Auth): auto-atribuir o próprio ID
@@ -1690,17 +1707,6 @@ def criar_pedido():
         except Exception as e:
             print(f"[AVISO] Erro ao enviar UTMify para pedido #{pedido.id}: {e}")
 
-        # Inserir na tabela auxiliar da fonte (se houver)
-        if fonte_pedido_id_int:
-            try:
-                from app.models.pedido_fonte import PedidoFonte
-
-                PedidoFonte.adicionar_pedido(
-                    pedido.id, fonte_pedido_id_int, valor if valor else None
-                )
-            except Exception:
-                pass  # Não falhar se houver erro
-
         # Enviar push notification em background (não bloqueia a resposta)
         try:
             from flask import current_app
@@ -1834,8 +1840,12 @@ def atualizar_pedido(pedido_id):
             track_change("cpf_cnpj", pedido.cpf_cnpj, data["cpf_cnpj"])
             pedido.cpf_cnpj = data["cpf_cnpj"]
             if pedido.cliente_id and data["cpf_cnpj"]:
-                cliente_selecionado = Cliente.query.get(pedido.cliente_id)
-                if cliente_selecionado and not cliente_selecionado.cpf_cnpj:
+                cliente_selecionado = Cliente.query.filter(
+                    Cliente.id == pedido.cliente_id
+                ).first()
+                if not cliente_selecionado:
+                    return error_response("cliente_id inválido", 400)
+                if not cliente_selecionado.cpf_cnpj:
                     cliente_selecionado.cpf_cnpj = data["cpf_cnpj"]
         if "destinatario" in data:
             track_change("destinatario", pedido.destinatario, data["destinatario"])
@@ -1846,6 +1856,11 @@ def atualizar_pedido(pedido_id):
         if "fonte_pedido_id" in data:
             try:
                 new_fonte_id = int(data["fonte_pedido_id"]) if data["fonte_pedido_id"] else None
+                if new_fonte_id and not FontePedido.query.filter(
+                    FontePedido.id == new_fonte_id,
+                    FontePedido.ativo.is_(True),
+                ).first():
+                    return error_response("fonte_pedido_id inválido", 400)
                 track_change("fonte_pedido_id", pedido.fonte_pedido_id, new_fonte_id)
                 pedido.fonte_pedido_id = new_fonte_id
             except (ValueError, TypeError):

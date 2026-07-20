@@ -20,7 +20,6 @@ from app.models.nuvemshop_store import NuvemshopStore
 from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
 from app.models.pedido import datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
-from app.models.pedido_fonte import PedidoFonte
 from app.models.pedido_manual_override import PedidoManualOverride
 
 logger = logging.getLogger(__name__)
@@ -329,14 +328,19 @@ class NuvemshopOrderImporter:
         if not telefone or telefone == "0000000000":
             return None
 
-        # Buscar cliente existente por telefone
-        cliente = Cliente.buscar_por_telefone(telefone)
+        # Buscar cliente existente por telefone dentro da empresa da instalação.
+        store_ref_id = getattr(self.store, "store_ref_id", None)
+        cliente = Cliente.query.execution_options(include_all_tenants=True).filter(
+            Cliente.store_ref_id == store_ref_id,
+            Cliente.telefone == telefone,
+        ).first()
 
         if not cliente:
             # Criar novo cliente
             nome = pedido_data.get("cliente") or "Cliente Nuvemshop"
             try:
                 cliente = Cliente(
+                    store_ref_id=store_ref_id,
                     nome=nome,
                     telefone=telefone,
                     email=None,  # Email será adicionado nas observações
@@ -352,10 +356,14 @@ class NuvemshopOrderImporter:
         return cliente.id
 
     def _get_or_create_fonte(self, nome: str) -> FontePedido:
-        fonte = FontePedido.query.filter_by(nome=nome).first()
+        store_ref_id = getattr(self.store, "store_ref_id", None)
+        fonte = FontePedido.query.execution_options(include_all_tenants=True).filter_by(
+            nome=nome,
+            store_ref_id=store_ref_id,
+        ).first()
         if fonte:
             return fonte
-        fonte = FontePedido(nome=nome, ativo=True)
+        fonte = FontePedido(nome=nome, ativo=True, store_ref_id=store_ref_id)
         db.session.add(fonte)
         db.session.commit()
         return fonte
@@ -544,12 +552,6 @@ class NuvemshopOrderImporter:
         )
         db.session.add(ref)
         db.session.commit()  # pedido + ref num único commit (atômico)
-
-        try:
-            PedidoFonte.adicionar_pedido(pedido.id, fonte_id, pedido_data.get("valor"))
-        except Exception:
-            # Nao falhar se a tabela da fonte nao puder ser atualizada
-            pass
 
         return pedido
 

@@ -119,7 +119,7 @@ class BlingTokenService:
         return payload
 
     @staticmethod
-    def exchange_code(code: str) -> BlingCredential:
+    def exchange_code(code: str, store_ref_id: Optional[int] = None) -> BlingCredential:
         payload = BlingTokenService._post_token(
             {
                 "grant_type": "authorization_code",
@@ -127,7 +127,22 @@ class BlingTokenService:
                 "redirect_uri": current_app.config.get("BLING_REDIRECT_URI"),
             }
         )
-        return BlingTokenService.save_token_payload(payload)
+        return BlingTokenService.save_token_payload(payload, store_ref_id=store_ref_id)
+
+    @staticmethod
+    def _credential_keys(store_ref_id: Optional[int]) -> tuple[str, Optional[int]]:
+        """Retorna (store_id string, store_ref_id) para chavear a credencial da loja.
+
+        Com `store_ref_id`, a credencial é chaveada pelo slug interno da loja e
+        recebe a FK. Sem ele (single-tenant), usa `BLING_STORE_ID` legado.
+        """
+        if store_ref_id is not None:
+            from app.models.store import Store
+
+            store = db.session.get(Store, store_ref_id)
+            if store:
+                return store.slug, store.id
+        return BlingTokenService._store_id(), store_ref_id
 
     @staticmethod
     def refresh_access_token(credential: Optional[BlingCredential] = None) -> BlingCredential:
@@ -145,6 +160,7 @@ class BlingTokenService:
         payload: Dict[str, Any],
         *,
         credential: Optional[BlingCredential] = None,
+        store_ref_id: Optional[int] = None,
     ) -> BlingCredential:
         access_token = payload.get("access_token")
         refresh_token = payload.get("refresh_token")
@@ -154,11 +170,13 @@ class BlingTokenService:
                 details={"status_code": payload.get("_status_code")},
             )
 
-        store_id = BlingTokenService._store_id()
+        store_id, resolved_ref = BlingTokenService._credential_keys(store_ref_id)
         credential = credential or BlingCredential.query.filter_by(store_id=store_id).first()
         if not credential:
             credential = BlingCredential(store_id=store_id)
             db.session.add(credential)
+        if resolved_ref is not None:
+            credential.store_ref_id = resolved_ref
 
         expires_in = int(payload.get("expires_in") or 0)
         credential.access_token_encrypted = BlingTokenService.encrypt(access_token)
@@ -181,7 +199,19 @@ class BlingTokenService:
         return credential
 
     @staticmethod
-    def get_credential() -> BlingCredential:
+    def get_credential(store_ref_id: Optional[int] = None) -> BlingCredential:
+        # Multi-tenant: com store_ref_id, seleciona por FK interna e não cai na
+        # credencial default silenciosamente quando o modo estrito está ativo.
+        if store_ref_id is not None:
+            credential = BlingCredential.query.filter_by(
+                store_ref_id=store_ref_id, active=True
+            ).first()
+            if credential:
+                return credential
+            from app.services.tenancy import is_multi_store
+
+            if is_multi_store():
+                raise BlingConfigError("Credencial Bling da loja não encontrada")
         credential = BlingCredential.query.filter_by(
             store_id=BlingTokenService._store_id(), active=True
         ).first()

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import requests
-from flask import Blueprint, current_app, redirect, request
+from flask import Blueprint, current_app, g, redirect, request
 
 from app import db
 from app.config import Config
@@ -28,6 +28,8 @@ from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.pedido_external_ref import PedidoExternalRef
 from app.models.pedido_manual_override import PedidoManualOverride
 from app.schemas.common import error_response, success_response
+from app.services.oauth_state import sign_state, verify_state
+from app.services.tenancy import is_multi_store
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +141,13 @@ def _resolve_target_store(store_id: Optional[str] = None) -> Optional[NuvemshopS
     if store_id:
         return NuvemshopStore.query.filter_by(store_id=str(store_id)).first()
 
+    # Multi-tenant: resolve pela loja autenticada, nunca pela "última loja ativa".
+    if is_multi_store():
+        store = getattr(g, "current_store", None)
+        if store is None:
+            return None
+        return NuvemshopStore.query.filter_by(store_ref_id=store.id).first()
+
     return NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
 
 
@@ -180,6 +189,11 @@ def nuvemshop_install():
         f"?redirect_uri={redirect_uri}&scope={scope}"
     )
 
+    # State assinado amarra a instalação à loja autenticada (Fase B).
+    store = getattr(g, "current_store", None)
+    if store:
+        authorize_url += f"&state={sign_state(store.id, 'nuvemshop')}"
+
     if request.args.get("redirect", "").lower() == "true":
         return redirect(authorize_url)
 
@@ -191,6 +205,13 @@ def nuvemshop_oauth_callback():
     code = request.args.get("code")
     if not code:
         return error_response("Parametro code ausente", 400)
+
+    # Resolve o tenant pelo state assinado. Multi-tenant: state ausente/inválido
+    # falha fechado; single-tenant cai na loja default (compat).
+    verified = verify_state(request.args.get("state"), "nuvemshop")
+    store_ref_id = verified["srid"] if verified else None
+    if store_ref_id is None and is_multi_store():
+        return error_response("State OAuth inválido ou ausente", 400)
 
     if not Config.NUVEMSHOP_CLIENT_SECRET or not Config.NUVEMSHOP_APP_ID:
         return error_response(
@@ -238,6 +259,9 @@ def nuvemshop_oauth_callback():
     else:
         store = NuvemshopStore(store_id=str(store_id), access_token=access_token, active=True)
         db.session.add(store)
+    # Amarra a instalação ao tenant interno resolvido pelo state (Fase B).
+    if store_ref_id is not None:
+        store.store_ref_id = store_ref_id
     db.session.commit()
 
     if not Config.NUVEMSHOP_USER_AGENT:
@@ -304,13 +328,7 @@ def nuvemshop_setup_webhooks():
             details={"required_env": ["NUVEMSHOP_USER_AGENT"]},
         )
 
-    store_id = request.args.get("store_id")
-    if not store_id:
-        store = (
-            NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
-        )
-    else:
-        store = NuvemshopStore.query.filter_by(store_id=str(store_id)).first()
+    store = _resolve_target_store(request.args.get("store_id"))
 
     if not store:
         return error_response("Loja Nuvemshop nao encontrada", 404)
@@ -569,9 +587,7 @@ def atribuir_vendedor_nuvemshop():
             prev = snapshot_commission_fields(pedido)
             pedido.vendedor_id = vendedor_id
             try:
-                result = apply_commission_lifecycle(
-                    pedido, previous=prev, actor_id=vendedor_id
-                )
+                result = apply_commission_lifecycle(pedido, previous=prev, actor_id=vendedor_id)
                 if result.get("generated"):
                     comissoes_geradas += 1
             except Exception:
@@ -701,8 +717,7 @@ def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
             )
         except Exception:
             logger.warning(
-                "[NUVEMSHOP] Falha em apply_commission_lifecycle no enrich do "
-                "pedido #%s",
+                "[NUVEMSHOP] Falha em apply_commission_lifecycle no enrich do " "pedido #%s",
                 pedido.id,
                 exc_info=True,
             )

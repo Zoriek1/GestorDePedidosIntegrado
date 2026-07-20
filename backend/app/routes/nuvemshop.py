@@ -139,7 +139,13 @@ def _setup_order_webhooks(client: NuvemshopClient, webhook_url: str) -> None:
 
 def _resolve_target_store(store_id: Optional[str] = None) -> Optional[NuvemshopStore]:
     if store_id:
-        return NuvemshopStore.query.filter_by(store_id=str(store_id)).first()
+        query = NuvemshopStore.query.filter_by(store_id=str(store_id))
+        if is_multi_store():
+            tenant_id = getattr(g, "tenant_store_id", None)
+            if tenant_id is None:
+                return None
+            query = query.filter_by(store_ref_id=tenant_id)
+        return query.first()
 
     # Multi-tenant: resolve pela loja autenticada, nunca pela "última loja ativa".
     if is_multi_store():
@@ -398,7 +404,12 @@ def update_nuvemshop_config():
         except (TypeError, ValueError):
             return error_response("vendedor_id invalido", 400)
 
-        vendedor = User.query.filter_by(id=vendedor_id, is_active=True, role="vendedor").first()
+        vendedor = User.query.filter_by(
+            id=vendedor_id,
+            is_active=True,
+            role="vendedor",
+            store_ref_id=getattr(store, "store_ref_id", None),
+        ).first()
         if not vendedor:
             return error_response("Vendedor nao encontrado", 404)
 
@@ -492,8 +503,15 @@ def nuvemshop_process_pending():
             },
         )
 
+    deliveries_query = NuvemshopWebhookDelivery.query.filter_by(status="pending")
+    if is_multi_store():
+        installation = _resolve_target_store()
+        if not installation:
+            return error_response("Loja Nuvemshop nao encontrada", 404)
+        deliveries_query = deliveries_query.filter_by(store_id=str(installation.store_id))
+
     deliveries = (
-        NuvemshopWebhookDelivery.query.filter_by(status="pending")
+        deliveries_query
         .order_by(NuvemshopWebhookDelivery.received_at.asc())
         .limit(limit)
         .all()
@@ -536,7 +554,7 @@ def listar_pedidos_pendentes_agendamento():
     refs = PedidoExternalRef.query.filter_by(provider="nuvemshop", schedule_pending=True).all()
     pedidos: List[Dict[str, str]] = []
     for ref in refs:
-        pedido = Pedido.query.get(ref.pedido_id)
+        pedido = Pedido.query.filter(Pedido.id == ref.pedido_id).first()
         if not pedido:
             continue
         pedidos.append(
@@ -574,7 +592,11 @@ def atribuir_vendedor_nuvemshop():
     if not vendedor_id:
         return error_response("vendedor_id é obrigatório", 400)
 
-    vendedor = User.query.filter_by(id=vendedor_id, is_active=True).first()
+    vendedor = User.query.filter_by(
+        id=vendedor_id,
+        is_active=True,
+        store_ref_id=getattr(g, "tenant_store_id", None),
+    ).first()
     if not vendedor:
         return error_response("Vendedor não encontrado", 404)
 
@@ -582,7 +604,7 @@ def atribuir_vendedor_nuvemshop():
     atribuidos = 0
     comissoes_geradas = 0
     for ref in refs:
-        pedido = Pedido.query.get(ref.pedido_id)
+        pedido = Pedido.query.filter(Pedido.id == ref.pedido_id).first()
         if pedido and pedido.vendedor_id is None:
             prev = snapshot_commission_fields(pedido)
             pedido.vendedor_id = vendedor_id
@@ -626,7 +648,10 @@ def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
     # Snapshot ANTES de qualquer mutação para o lifecycle detectar transições
     prev_snapshot = snapshot_commission_fields(pedido)
 
-    store = NuvemshopStore.query.filter_by(store_id=ref.store_id).first()
+    store = NuvemshopStore.query.filter_by(
+        store_id=ref.store_id,
+        store_ref_id=ref.store_ref_id,
+    ).first()
     if not store or not store.active or not Config.NUVEMSHOP_USER_AGENT:
         return False
 
@@ -752,7 +777,7 @@ def definir_agendamento_pedido(pedido_id: int):
         if not (re.match(pattern_simples, horario) or re.match(pattern_intervalo, horario)):
             return error_response("Formato de horario invalido", 400)
 
-    pedido = Pedido.query.get(pedido_id)
+    pedido = Pedido.query.filter(Pedido.id == pedido_id).first()
     if not pedido:
         return error_response("Pedido nao encontrado", 404)
 
@@ -812,7 +837,7 @@ def debug_pedidos_recentes():
     days = request.args.get("days", type=int) or 1
 
     # Buscar loja ativa
-    store = NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
+    store = _resolve_target_store()
     if not store:
         return error_response("Nenhuma loja Nuvemshop ativa encontrada", 404)
 
@@ -869,6 +894,7 @@ def debug_pedidos_recentes():
 
             # Verificar se já foi importado
             external_ref = PedidoExternalRef.query.filter_by(
+                store_ref_id=getattr(store, "store_ref_id", None),
                 provider="nuvemshop",
                 store_id=str(store.store_id),
                 external_order_id=order_id,
@@ -924,7 +950,7 @@ def debug_pedido_especifico(order_id: str):
         )
 
     # Buscar loja ativa
-    store = NuvemshopStore.query.filter_by(active=True).order_by(NuvemshopStore.id.desc()).first()
+    store = _resolve_target_store()
     if not store:
         return error_response("Nenhuma loja Nuvemshop ativa encontrada", 404)
 
@@ -969,6 +995,7 @@ def debug_pedido_especifico(order_id: str):
 
         # Verificar se já foi importado
         external_ref = PedidoExternalRef.query.filter_by(
+            store_ref_id=getattr(store, "store_ref_id", None),
             provider="nuvemshop",
             store_id=str(store.store_id),
             external_order_id=str(order_id),
@@ -976,7 +1003,7 @@ def debug_pedido_especifico(order_id: str):
 
         pedido_local = None
         if external_ref:
-            pedido_local = Pedido.query.get(external_ref.pedido_id)
+            pedido_local = Pedido.query.filter(Pedido.id == external_ref.pedido_id).first()
 
         debug_info = {
             "order_id": str(order.get("id", "")),

@@ -79,7 +79,9 @@ def enqueue_bling_cancel_for_order(pedido: Pedido) -> bool:
         .order_by(BlingOutbox.id.desc())
         .first()
     )
-    has_order = bool(sent and sent.bling_order_id) or _has_external_ref(pedido.id, store_id)
+    has_order = bool(sent and sent.bling_order_id) or _has_external_ref(
+        pedido.id, pedido.store_ref_id, store_id
+    )
     if not has_order:
         logger.info("bling.skip_cancel pedido_id=%s reason=not_sent", pedido.id)
         return False
@@ -116,12 +118,15 @@ def enqueue_bling_cancel_for_order(pedido: Pedido) -> bool:
     return True
 
 
-def _has_external_ref(pedido_id: int, store_id: str) -> bool:
+def _has_external_ref(pedido_id: int, store_ref_id: int | None, store_id: str) -> bool:
     from app.models.pedido_external_ref import PedidoExternalRef
 
     return (
         PedidoExternalRef.query.filter_by(
-            provider="bling", store_id=store_id, pedido_id=pedido_id
+            store_ref_id=store_ref_id,
+            provider="bling",
+            store_id=store_id,
+            pedido_id=pedido_id,
         ).first()
         is not None
     )

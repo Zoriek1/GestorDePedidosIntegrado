@@ -1139,7 +1139,7 @@ class BlingIntegrationService:
         return count
 
     def _get_pedido(self, pedido_id: int) -> Pedido:
-        pedido = Pedido.query.get(pedido_id)
+        pedido = Pedido.query.filter(Pedido.id == pedido_id).first()
         if not pedido or pedido.deleted_at is not None:
             raise BlingValidationError("Pedido nao encontrado")
         return pedido
@@ -1152,7 +1152,11 @@ class BlingIntegrationService:
         )
 
     def _get_order_ref(self, pedido_id: int) -> Optional[PedidoExternalRef]:
+        pedido = Pedido.query.filter(Pedido.id == pedido_id).first()
+        if not pedido:
+            return None
         return PedidoExternalRef.query.filter_by(
+            store_ref_id=pedido.store_ref_id,
             provider=self.provider,
             store_id=current_app.config.get("BLING_STORE_ID") or "default",
             pedido_id=pedido_id,
@@ -1164,14 +1168,17 @@ class BlingIntegrationService:
         external_order_id: str,
         external_order_number: Optional[str] = None,
     ) -> PedidoExternalRef:
+        pedido = self._get_pedido(pedido_id)
         store_id = current_app.config.get("BLING_STORE_ID") or "default"
         ref = PedidoExternalRef.query.filter_by(
+            store_ref_id=pedido.store_ref_id,
             provider=self.provider,
             store_id=store_id,
             external_order_id=str(external_order_id),
         ).first()
         if not ref:
             ref = PedidoExternalRef(
+                store_ref_id=pedido.store_ref_id,
                 provider=self.provider,
                 store_id=store_id,
                 external_order_id=str(external_order_id),

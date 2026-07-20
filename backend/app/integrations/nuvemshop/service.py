@@ -398,7 +398,8 @@ class NuvemshopOrderImporter:
         """
         # Primeiro, tentar buscar por external_order_id (método padrão)
         external_ref = (
-            PedidoExternalRef.query.filter_by(
+            PedidoExternalRef.query.execution_options(include_all_tenants=True).filter_by(
+                store_ref_id=getattr(self.store, "store_ref_id", None),
                 provider="nuvemshop",
                 store_id=str(self.store.store_id),
                 external_order_id=str(order.get("id")),
@@ -428,13 +429,16 @@ class NuvemshopOrderImporter:
 
         # Buscar pedidos sem external_ref que foram criados no mesmo período
         pedidos_duplicados = (
-            Pedido.query.filter(
+            Pedido.query.execution_options(include_all_tenants=True).filter(
+                Pedido.store_ref_id == getattr(self.store, "store_ref_id", None),
                 Pedido.telefone_cliente == telefone,
                 Pedido.created_at >= time_window_start,
                 Pedido.created_at <= time_window_end,
                 ~Pedido.id.in_(
                     db.session.query(PedidoExternalRef.pedido_id).filter(
-                        PedidoExternalRef.provider == "nuvemshop"
+                        PedidoExternalRef.provider == "nuvemshop",
+                        PedidoExternalRef.store_ref_id
+                        == getattr(self.store, "store_ref_id", None),
                     )
                 ),
             )
@@ -451,6 +455,7 @@ class NuvemshopOrderImporter:
             )
             # Criar external_ref para vincular o pedido existente
             external_ref = PedidoExternalRef(
+                store_ref_id=getattr(self.store, "store_ref_id", None),
                 provider="nuvemshop",
                 store_id=str(self.store.store_id),
                 external_order_id=str(order.get("id")),
@@ -540,6 +545,7 @@ class NuvemshopOrderImporter:
             )
 
         ref = PedidoExternalRef(
+            store_ref_id=store_ref_id,
             provider="nuvemshop",
             store_id=str(self.store.store_id),
             external_order_id=str(order.get("id")),
@@ -567,7 +573,10 @@ class NuvemshopOrderImporter:
             snapshot_commission_fields,
         )
 
-        pedido = Pedido.query.get(external_ref.pedido_id)
+        pedido = Pedido.query.execution_options(include_all_tenants=True).filter(
+            Pedido.id == external_ref.pedido_id,
+            Pedido.store_ref_id == getattr(self.store, "store_ref_id", None),
+        ).first()
         if not pedido:
             return
 
@@ -761,7 +770,10 @@ class NuvemshopOrderImporter:
         Args:
             pedido_id: ID do pedido para calcular distância
         """
-        pedido = Pedido.query.get(pedido_id)
+        pedido = Pedido.query.execution_options(include_all_tenants=True).filter(
+            Pedido.id == pedido_id,
+            Pedido.store_ref_id == getattr(self.store, "store_ref_id", None),
+        ).first()
         if not pedido:
             return
 
@@ -854,7 +866,10 @@ class NuvemshopOrderImporter:
                         return
 
                     # Buscar external_ref e pedido
-                    external_ref = PedidoExternalRef.query.filter_by(
+                    external_ref = PedidoExternalRef.query.execution_options(
+                        include_all_tenants=True
+                    ).filter_by(
+                        store_ref_id=getattr(self.store, "store_ref_id", None),
                         provider="nuvemshop",
                         store_id=str(self.store.store_id),
                         external_order_id=str(order_id),

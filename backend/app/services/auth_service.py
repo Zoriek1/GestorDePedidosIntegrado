@@ -50,14 +50,28 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def generate_token(user) -> str:
-    """Gera JWT HS256 com payload {user_id, role, exp}."""
+def generate_token(user, store=None) -> str:
+    """Gera JWT HS256 com payload {user_id, role, store_ref_id, store_slug, exp}.
+
+    `store` é opcional: quando ausente, resolve a loja do usuário (store_ref_id ou
+    a loja default). Mantém a assinatura de 1 argumento retrocompatível.
+    """
+    if store is None:
+        try:
+            from app.services.auth_context import resolve_user_store
+
+            store = resolve_user_store(user)
+        except Exception:
+            store = None
+
     exp = datetime.now(timezone.utc) + timedelta(hours=_expiration_hours())
     payload = {
         "user_id": user.id,
         "role": user.role,
         "name": user.name,
         "email": user.email,
+        "store_ref_id": store.id if store else None,
+        "store_slug": store.slug if store else None,
         "exp": exp,
     }
     return jwt.encode(payload, _secret(), algorithm="HS256")

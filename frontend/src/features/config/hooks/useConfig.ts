@@ -63,19 +63,25 @@ export function useTaxaCartaoConfig() {
 }
 
 export function useIntegrationSettings() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const queryClient = useQueryClient();
   const apiRequest = createApiRequest(getAuthHeader);
 
+  // Escopo por loja: a query key inclui a identidade da loja autenticada para não
+  // reaproveitar o cache de integrações entre lojas/sessões.
+  const user = getUser();
+  const storeKey = user?.store_slug ?? user?.store_ref_id ?? null;
+  const integrationsKey = ['config', 'integrations', storeKey] as const;
+
   const query = useQuery({
-    queryKey: ['config', 'integrations'],
+    queryKey: integrationsKey,
     queryFn: () => IntegrationSettingsService.get(apiRequest),
   });
   const mutation = useMutation({
     mutationFn: (config: IntegrationSettingsPayload) =>
       IntegrationSettingsService.update(apiRequest, config),
     onSuccess: (config) => {
-      queryClient.setQueryData(['config', 'integrations'], config);
+      queryClient.setQueryData(integrationsKey, config);
     },
   });
 

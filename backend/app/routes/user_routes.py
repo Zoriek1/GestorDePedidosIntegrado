@@ -2,7 +2,7 @@
 """
 User Routes — CRUD de usuários e configuração de remuneração/comissão (admin only)
 """
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app.decorators.auth_decorator import require_auth
 from app.repositories.user_repository import UserRepository
@@ -10,6 +10,26 @@ from app.schemas.common import error_response, success_response
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users")
 user_repo = UserRepository()
+
+
+def _current_store_id():
+    """ID da loja autenticada da request, ou None (caminho legado sem tenant)."""
+    store = getattr(g, "current_store", None)
+    return store.id if store is not None else None
+
+
+def _in_current_store(user) -> bool:
+    """Escopo multi-tenant para operações administrativas de usuário.
+
+    Durante o rollout um usuário está no escopo quando não há loja no contexto
+    (suítes legadas), quando o alvo ainda não tem loja (nulo, legado) ou quando a
+    loja do alvo bate com a loja autenticada. Um admin nunca gerencia usuários de
+    outra loja com store_ref_id explícito e diferente.
+    """
+    store_id = _current_store_id()
+    if store_id is None:
+        return True
+    return user.store_ref_id is None or user.store_ref_id == store_id
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +47,8 @@ def list_users():
             users = user_repo.get_all_active()
         # Esconde tombstones (já apagados): email começa com "deleted_"
         users = [u for u in users if not (u.email or "").startswith("deleted_")]
+        # Escopo por loja (multi-tenant): admin só enxerga a própria loja.
+        users = [u for u in users if _in_current_store(u)]
         return success_response({"users": [u.to_dict() for u in users]})
     except Exception as e:
         return error_response(str(e), 500)
@@ -41,12 +63,9 @@ def list_users():
 def list_entregadores():
     try:
         users = user_repo.get_active_by_role("entregador")
+        users = [u for u in users if _in_current_store(u)]
         return success_response(
-            {
-                "users": [
-                    {"id": u.id, "name": u.name, "email": u.email} for u in users
-                ]
-            }
+            {"users": [{"id": u.id, "name": u.name, "email": u.email} for u in users]}
         )
     except Exception as e:
         return error_response(str(e), 500)
@@ -83,12 +102,15 @@ def create_user():
                 f"Nome '{name}' já está em uso por outro usuário. Escolha outro.", 409
             )
 
+        # A loja vem SEMPRE da identidade autenticada — um store_ref_id enviado no
+        # payload é ignorado com segurança (não é aceito de usuário comum).
         user = user_repo.create(
             name=name,
             email=email,
             password_hash=hash_password(password),
             role=role,
             is_active=True,
+            store_ref_id=_current_store_id(),
         )
         return success_response({"user": user.to_dict()}, status_code=201)
     except Exception as e:
@@ -103,7 +125,7 @@ def create_user():
 def update_user(user_id):
     try:
         user = user_repo.get_by_id(user_id)
-        if not user:
+        if not user or not _in_current_store(user):
             return error_response("Usuário não encontrado", 404)
 
         data = request.get_json() or {}
@@ -143,6 +165,7 @@ def update_user(user_id):
             if len(pw) < 8:
                 return error_response("Senha deve ter pelo menos 8 caracteres", 400)
             from app.services.auth_service import hash_password
+
             updates["password_hash"] = hash_password(pw)
 
         user = user_repo.update(user, **updates)
@@ -159,7 +182,7 @@ def update_user(user_id):
 def delete_user(user_id):
     try:
         user = user_repo.get_by_id(user_id)
-        if not user:
+        if not user or not _in_current_store(user):
             return error_response("Usuário não encontrado", 404)
 
         current = request.current_user
@@ -182,7 +205,7 @@ def delete_user(user_id):
 def hard_delete_user(user_id):
     try:
         user = user_repo.get_by_id(user_id)
-        if not user:
+        if not user or not _in_current_store(user):
             return error_response("Usuário não encontrado", 404)
 
         current = request.current_user
@@ -190,9 +213,7 @@ def hard_delete_user(user_id):
             return error_response("Não é possível apagar o próprio usuário", 400)
 
         if user.is_active:
-            return error_response(
-                "Desative o usuário antes de apagar definitivamente", 400
-            )
+            return error_response("Desative o usuário antes de apagar definitivamente", 400)
 
         # Já é um tombstone? Idempotente.
         if (user.email or "").startswith("deleted_"):
@@ -212,7 +233,7 @@ def hard_delete_user(user_id):
 def reactivate_user(user_id):
     try:
         user = user_repo.get_by_id(user_id)
-        if not user:
+        if not user or not _in_current_store(user):
             return error_response("Usuário não encontrado", 404)
         if (user.email or "").startswith("deleted_"):
             return error_response("Usuário foi apagado e não pode ser reativado", 400)
@@ -232,7 +253,7 @@ def reactivate_user(user_id):
 def get_user_config(user_id):
     try:
         user = user_repo.get_by_id(user_id)
-        if not user:
+        if not user or not _in_current_store(user):
             return error_response("Usuário não encontrado", 404)
 
         payroll = user_repo.get_payroll_configs(user_id)
@@ -261,7 +282,7 @@ def update_payroll(user_id):
     """
     try:
         user = user_repo.get_by_id(user_id)
-        if not user:
+        if not user or not _in_current_store(user):
             return error_response("Usuário não encontrado", 404)
 
         data = request.get_json() or {}
@@ -331,7 +352,7 @@ def update_commission(user_id):
         from app.models.fonte_pedido import FontePedido
 
         user = user_repo.get_by_id(user_id)
-        if not user:
+        if not user or not _in_current_store(user):
             return error_response("Usuário não encontrado", 404)
 
         data = request.get_json() or {}

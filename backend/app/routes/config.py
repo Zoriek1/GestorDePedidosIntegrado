@@ -2,7 +2,7 @@ import json
 import os
 from datetime import date
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from app import db
 from app.middleware import requires_edit_auth, requires_role
@@ -22,12 +22,25 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 META_FATURAMENTO_PATH = os.path.join(BASE_DIR, "config", "meta_faturamento.json")
 
 
+def _current_store():
+    """Loja autenticada da request (multi-tenant).
+
+    Usa `g.current_store` populado pela resolução de identidade. Só cai em
+    `default_store()` como salvaguarda de transição quando não há loja no contexto
+    (ex.: caminho legado Basic Auth), nunca para o fluxo JWT normal.
+    """
+    store = getattr(g, "current_store", None)
+    if store is not None:
+        return store
+    return default_store()
+
+
 @config_bp.route("/integrations", methods=["GET"])
 @requires_role("admin")
 def get_integration_settings():
-    """Retorna credenciais por loja com segredos sempre mascarados."""
+    """Retorna credenciais da loja autenticada com segredos sempre mascarados."""
     try:
-        store = default_store()
+        store = _current_store()
         settings = get_settings(store.id)
         return jsonify(
             {
@@ -49,7 +62,7 @@ def update_integration_settings():
     if not isinstance(data, dict):
         return jsonify({"success": False, "error": "Payload JSON invalido"}), 400
     try:
-        store = default_store()
+        store = _current_store()
         settings = get_or_create_settings(store.id)
         update_settings(settings, data)
         db.session.commit()

@@ -4,6 +4,7 @@ Rotas de Leads UTM — captura cliques da landing page e lista para o admin.
 """
 import hashlib
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta
 from urllib.parse import unquote
@@ -31,6 +32,7 @@ from app.utils.tracking_token import (
 )
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
+logger = logging.getLogger(__name__)
 
 # Evento padrão quando nenhum filtro de evento é enviado pelo frontend
 DEFAULT_KEY_EVENTS = ("whatsapp_click",)
@@ -451,16 +453,23 @@ def _find_recent_valid_token_in_text(text: str) -> str | None:
         return None
 
     from app.services.auth_context import resolve_public_store_id
+    from app.services.tenancy import is_multi_store
 
     store_ref_id = resolve_public_store_id()
+    query = Lead.query.execution_options(include_all_tenants=True).filter(
+        Lead.token_valido.is_(True),
+        Lead.token_rastreio.isnot(None),
+    )
+    if store_ref_id is not None:
+        # Loja pública resolvida (loja default): restringe a busca ao tenant.
+        query = query.filter(Lead.store_ref_id == store_ref_id)
+    elif is_multi_store():
+        # Multiempresa sem loja resolvida: fail-closed, não cruza tenants
+        # (consistente com criar_lead/marcar_whatsapp_iniciado).
+        return None
+    # Single-store sem loja default (legado): comportamento global preservado.
     recent_tokens = (
-        Lead.query.execution_options(include_all_tenants=True)
-        .filter(
-            Lead.store_ref_id == store_ref_id,
-            Lead.token_valido.is_(True),
-            Lead.token_rastreio.isnot(None),
-        )
-        .order_by(Lead.created_at.desc(), Lead.id.desc())
+        query.order_by(Lead.created_at.desc(), Lead.id.desc())
         .limit(RECENT_WHATSAPP_TOKEN_MATCH_LIMIT)
         .all()
     )
@@ -479,6 +488,12 @@ def criar_lead():
 
     data = _parse_request_payload()
     store_ref_id = resolve_public_store_id()
+    if store_ref_id is None:
+        from app.services.tenancy import is_multi_store
+
+        if is_multi_store():
+            logger.error("lead.public_store_unresolved route=create")
+            return jsonify({"ok": False, "error": "Entrada publica indisponivel"}), 503
 
     ip_address = _get_ip_address()
     dedup_key = _build_dedup_key(data, ip_address)
@@ -660,6 +675,12 @@ def marcar_whatsapp_iniciado():
 
     data = _parse_request_payload()
     store_ref_id = resolve_public_store_id()
+    if store_ref_id is None:
+        from app.services.tenancy import is_multi_store
+
+        if is_multi_store():
+            logger.error("lead.public_store_unresolved route=whatsapp-start")
+            return jsonify({"ok": False, "error": "Entrada publica indisponivel"}), 503
 
     phone = _extract_whatsapp_phone(data)
     token = normalize_tracking_token(data.get("token_rastreio"))

@@ -172,7 +172,7 @@ def calcular_rota_otimizada():
 def obter_rota_otimizada(rota_id):
     """Obtém rota otimizada por ID e gera Google Maps URLs."""
     try:
-        rota = RotaOtimizada.query.get(rota_id)
+        rota = RotaOtimizada.query.filter(RotaOtimizada.id == rota_id).first()
         if not rota:
             return error_response("Rota não encontrada", 404)
 

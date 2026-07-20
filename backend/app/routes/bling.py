@@ -18,6 +18,10 @@ bling_bp = Blueprint("bling", __name__, url_prefix="/api/integrations/bling")
 logger = logging.getLogger(__name__)
 
 
+def _service() -> BlingIntegrationService:
+    return BlingIntegrationService(store_ref_id=getattr(g, "tenant_store_id", None))
+
+
 def _front_url(path: str) -> str:
     from app.config import Config
 
@@ -76,7 +80,7 @@ def bling_oauth_callback():
 @requires_role("admin")
 def bling_status():
     try:
-        return success_response(BlingIntegrationService().status())
+        return success_response(_service().status())
     except Exception as exc:
         return _handle_error(exc)
 
@@ -85,7 +89,7 @@ def bling_status():
 @requires_role("admin")
 def bling_sync_config():
     try:
-        result = BlingIntegrationService().sync_config()
+        result = _service().sync_config()
         return success_response(result, message="Configuracao Bling sincronizada")
     except Exception as exc:
         return _handle_error(exc)
@@ -95,7 +99,7 @@ def bling_sync_config():
 @requires_role("admin")
 def bling_config():
     try:
-        return success_response(BlingIntegrationService().list_config())
+        return success_response(_service().list_config())
     except Exception as exc:
         return _handle_error(exc)
 
@@ -104,7 +108,7 @@ def bling_config():
 @requires_role("admin")
 def bling_update_mapping(mapping_id: int):
     try:
-        mapping = BlingIntegrationService().save_mapping(mapping_id, request.get_json() or {})
+        mapping = _service().save_mapping(mapping_id, request.get_json() or {})
         return success_response({"mapping": mapping.to_dict()}, message="Mapeamento salvo")
     except Exception as exc:
         return _handle_error(exc)
@@ -114,7 +118,7 @@ def bling_update_mapping(mapping_id: int):
 @requires_any_role("admin", "atendente", "vendedor")
 def bling_preview_pedido(pedido_id: int):
     try:
-        return success_response(BlingIntegrationService().preview_order(pedido_id))
+        return success_response(_service().preview_order(pedido_id))
     except Exception as exc:
         return _handle_error(exc)
 
@@ -123,7 +127,7 @@ def bling_preview_pedido(pedido_id: int):
 @requires_any_role("admin", "atendente")
 def bling_send_pedido(pedido_id: int):
     try:
-        result = BlingIntegrationService().send_order(pedido_id)
+        result = _service().send_order(pedido_id)
         return success_response(result, message="Envio Bling processado")
     except Exception as exc:
         return _handle_error(exc)
@@ -133,7 +137,7 @@ def bling_send_pedido(pedido_id: int):
 @requires_any_role("admin", "atendente")
 def bling_retry_outbox(outbox_id: int):
     try:
-        result = BlingIntegrationService().retry_outbox(outbox_id)
+        result = _service().retry_outbox(outbox_id)
         return success_response(result, message="Retry Bling processado")
     except Exception as exc:
         return _handle_error(exc)
@@ -155,6 +159,6 @@ def bling_outbox_logs(outbox_id: int):
 def bling_process_pending():
     limit = request.args.get("limit", type=int) or 20
     try:
-        return success_response(BlingIntegrationService().process_pending(limit=limit))
+        return success_response(_service().process_pending(limit=limit))
     except Exception as exc:
         return _handle_error(exc)

@@ -817,7 +817,7 @@ class NuvemshopOrderImporter:
                 try:
                     from app.services.fila_taxa_entrega import enfileirar_calculo_taxa
 
-                    enfileirar_calculo_taxa(pedido_id)
+                    enfileirar_calculo_taxa(pedido_id, pedido.store_ref_id)
                 except Exception:
                     pass
             else:

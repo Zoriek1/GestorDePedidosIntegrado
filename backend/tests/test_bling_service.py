@@ -7,7 +7,7 @@ importar ``app`` no topo do modulo interfere com a fixture ``app`` do conftest
 """
 
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -667,7 +667,17 @@ def test_cancel_deletes_receipt_then_receivable_then_order(bling_app, monkeypatc
     from app import db
     from app.integrations.bling.service import BlingIntegrationService
     from app.models.bling_outbox import BlingOutbox
+    from app.models.pedido import Pedido
 
+    pedido = Pedido(
+        id=501,
+        cliente="Cliente",
+        telefone_cliente="11999999999",
+        destinatario="Destino",
+        produto="Flores",
+        dia_entrega=date.today(),
+        horario="10:00",
+    )
     send = BlingOutbox(
         pedido_id=501,
         operation="send_order",
@@ -677,12 +687,12 @@ def test_cancel_deletes_receipt_then_receivable_then_order(bling_app, monkeypatc
         bling_receivable_ids_json=json.dumps([{"marker": "GESTOR-501-PAGO", "id": "111"}]),
     )
     cancel = BlingOutbox(pedido_id=501, operation="cancel_order", status="pending", step="pending")
-    db.session.add_all([send, cancel])
+    db.session.add_all([pedido, send, cancel])
     db.session.commit()
 
     svc = BlingIntegrationService()
     client = _CancelClient()
-    monkeypatch.setattr(svc, "client", lambda: client)
+    monkeypatch.setattr(svc, "client", lambda store_ref_id=None: client)
     svc.process_cancel(cancel.id)
 
     # Ordem: apagar recebimento (caixa) -> apagar conta -> apagar venda.
@@ -695,17 +705,31 @@ def test_cancel_is_idempotent_on_404(bling_app, monkeypatch):
     from app import db
     from app.integrations.bling.service import BlingIntegrationService
     from app.models.bling_outbox import BlingOutbox
+    from app.models.pedido import Pedido
 
+    pedido = Pedido(
+        id=502,
+        cliente="Cliente",
+        telefone_cliente="11999999999",
+        destinatario="Destino",
+        produto="Flores",
+        dia_entrega=date.today(),
+        horario="10:00",
+    )
     send = BlingOutbox(
         pedido_id=502, operation="send_order", status="completed", step="completed",
         bling_order_id="901",
     )
     cancel = BlingOutbox(pedido_id=502, operation="cancel_order", status="pending", step="pending")
-    db.session.add_all([send, cancel])
+    db.session.add_all([pedido, send, cancel])
     db.session.commit()
 
     svc = BlingIntegrationService()
-    monkeypatch.setattr(svc, "client", lambda: _CancelClient(fail_delete_order_404=True))
+    monkeypatch.setattr(
+        svc,
+        "client",
+        lambda store_ref_id=None: _CancelClient(fail_delete_order_404=True),
+    )
     svc.process_cancel(cancel.id)
 
     db.session.refresh(cancel)

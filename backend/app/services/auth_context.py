@@ -65,6 +65,7 @@ def load_request_identity(
 
     store_ref_id = getattr(user, "store_ref_id", None)
     store = resolve_user_store(user)
+    multi = _request_is_multi_store()
 
     # store_ref_id explicito porem sem loja correspondente -> vinculo orfao.
     if store_ref_id is not None and store is None:
@@ -72,6 +73,17 @@ def load_request_identity(
             {
                 "error": "Acesso negado",
                 "message": "Loja do usuario nao encontrada.",
+            },
+            403,
+        )
+
+    # Sem empresa resolvida, um usuario legado nao pode receber acesso no modo
+    # multiempresa. A compatibilidade sem loja permanece apenas no single-store.
+    if multi and store is None:
+        return None, (
+            {
+                "error": "Acesso negado",
+                "message": "Empresa do usuario nao identificada.",
             },
             403,
         )
@@ -89,7 +101,7 @@ def load_request_identity(
     # store pode ser None apenas no fallback legado (sem loja default no banco).
     g.current_store = store
     g.tenant_store_id = store.id if store else None
-    g.tenant_multi = _request_is_multi_store()
+    g.tenant_multi = multi
     g.tenant_initialized = True
 
     current_user = dict(payload)

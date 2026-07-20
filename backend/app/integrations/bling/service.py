@@ -48,17 +48,25 @@ GESTOR_PAYMENT_LABELS = [
 class BlingIntegrationService:
     provider = "bling"
 
-    def __init__(self) -> None:
+    def __init__(self, store_ref_id: Optional[int] = None) -> None:
         self.mapper = BlingOrderMapper()
+        self.store_ref_id = store_ref_id
 
-    def client(self) -> BlingClient:
-        access_token = BlingTokenService.get_valid_access_token()
+    def client(self, store_ref_id: Optional[int] = None) -> BlingClient:
+        resolved_store_ref_id = (
+            store_ref_id if store_ref_id is not None else self.store_ref_id
+        )
+        access_token = BlingTokenService.get_valid_access_token(
+            store_ref_id=resolved_store_ref_id
+        )
         return BlingClient(
             access_token=access_token,
             base_url=current_app.config["BLING_API_BASE_URL"],
             timeout_seconds=int(current_app.config.get("BLING_TIMEOUT_SECONDS") or 20),
             on_unauthorized=lambda: BlingTokenService.decrypt(
-                BlingTokenService.refresh_access_token().access_token_encrypted
+                BlingTokenService.refresh_access_token(
+                    store_ref_id=resolved_store_ref_id
+                ).access_token_encrypted
             ),
         )
 
@@ -74,7 +82,7 @@ class BlingIntegrationService:
     def status(self) -> Dict[str, Any]:
         credential = None
         try:
-            credential = BlingTokenService.get_credential()
+            credential = BlingTokenService.get_credential(store_ref_id=self.store_ref_id)
         except BlingIntegrationError:
             pass
         return {
@@ -471,7 +479,6 @@ class BlingIntegrationService:
                     {
                         "outbox_id": refreshed.id,
                         "pedido_id": refreshed.pedido_id,
-                        "store_ref_id": refreshed.store_ref_id,
                         "operation": refreshed.operation,
                         "status": refreshed.status,
                         "step": refreshed.step,
@@ -545,7 +552,7 @@ class BlingIntegrationService:
             # Dentro do try para que falhas aqui (pedido removido, token ausente)
             # marquem o outbox como failed_* em vez de deixa-lo preso em processing.
             pedido = self._get_pedido(outbox.pedido_id)
-            client = self.client()
+            client = self.client(store_ref_id=pedido.store_ref_id)
             self._log(outbox, "info", "validating_mapping", "Validando pedido e mapeamentos")
             context = self.mapper.build(pedido)
             payload = context["payload"]
@@ -670,7 +677,8 @@ class BlingIntegrationService:
                 self._finish_outbox(outbox, "Pedido sem venda no Bling; nada a cancelar")
                 return
 
-            client = self.client()
+            pedido = self._get_pedido(outbox.pedido_id)
+            client = self.client(store_ref_id=pedido.store_ref_id)
             outbox.bling_order_id = str(order_id)
 
             # 1) Apagar os recebimentos (lancamentos de caixa) do pedido -- e o

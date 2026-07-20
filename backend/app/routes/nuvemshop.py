@@ -507,6 +507,10 @@ def nuvemshop_process_pending():
     if is_multi_store():
         installation = _resolve_target_store()
         if not installation:
+            logger.warning(
+                "nuvemshop.process_pending_store_unresolved tenant=%s",
+                getattr(g, "tenant_store_id", None),
+            )
             return error_response("Loja Nuvemshop nao encontrada", 404)
         deliveries_query = deliveries_query.filter_by(store_id=str(installation.store_id))
 

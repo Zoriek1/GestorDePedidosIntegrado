@@ -35,7 +35,7 @@ class PedidoFonte:
         Returns:
             tuple: (bool, str) - (sucesso, nome_tabela)
         """
-        fonte = FontePedido.query.get(fonte_id)
+        fonte = FontePedido.query.filter(FontePedido.id == fonte_id).first()
         if not fonte:
             return False, None
 

@@ -3,6 +3,7 @@
 from urllib.parse import parse_qs, urlparse
 
 from app import db
+from app.integrations.bling.service import BlingIntegrationService
 from app.integrations.bling.token_service import BlingTokenService
 from app.models.bling_credential import BlingCredential
 from app.models.nuvemshop_store import NuvemshopStore
@@ -140,6 +141,33 @@ def test_bling_callback_fails_closed_in_multi_store(app, client, session):
     assert resp.status_code == 400
 
 
+def test_bling_access_token_is_selected_by_internal_store(app, session):
+    store_a = _store(session, "loja-a")
+    store_b = _store(session, "loja-b")
+    session.add_all(
+        [
+            BlingCredential(
+                store_id=store_a.slug,
+                store_ref_id=store_a.id,
+                access_token_encrypted=BlingTokenService.encrypt("token-a"),
+                active=True,
+            ),
+            BlingCredential(
+                store_id=store_b.slug,
+                store_ref_id=store_b.id,
+                access_token_encrypted=BlingTokenService.encrypt("token-b"),
+                active=True,
+            ),
+        ]
+    )
+    session.commit()
+
+    assert BlingTokenService.get_valid_access_token(store_a.id) == "token-a"
+    assert BlingTokenService.get_valid_access_token(store_b.id) == "token-b"
+    assert BlingIntegrationService(store_ref_id=store_a.id).client().access_token == "token-a"
+    assert BlingIntegrationService(store_ref_id=store_b.id).client().access_token == "token-b"
+
+
 # ---------------------------------------------------------------------------
 # Nuvemshop
 # ---------------------------------------------------------------------------
@@ -241,6 +269,41 @@ def test_nuvemshop_config_scoped_to_current_store_in_multi_store(app, client, se
     )
     assert r_a.get_json()["store_id"] == "EXT-A"
     assert r_b.get_json()["store_id"] == "EXT-B"
+
+    cross = client.get(
+        "/api/integrations/nuvemshop/config?store_id=EXT-B",
+        headers=_bearer(generate_token(admin_a, store_a)),
+    )
+    assert cross.get_json()["connected"] is False
+
+
+def test_nuvemshop_process_pending_fails_closed_without_tenant_installation(app, client, session):
+    from app.config import Config
+
+    previous_user_agent = Config.NUVEMSHOP_USER_AGENT
+    Config.NUVEMSHOP_USER_AGENT = "App (a@a.test)"
+    try:
+        store_a = _store(session, "loja-a")
+        store_b = _store(session, "loja-b")
+        admin_a = _admin(session, "a@a.test", store_a)
+        session.add(
+            NuvemshopStore(
+                store_id="EXT-B",
+                access_token="tb",
+                active=True,
+                store_ref_id=store_b.id,
+            )
+        )
+        session.commit()
+
+        response = client.post(
+            "/api/integrations/nuvemshop/process-pending",
+            headers=_bearer(generate_token(admin_a, store_a)),
+        )
+
+        assert response.status_code == 404
+    finally:
+        Config.NUVEMSHOP_USER_AGENT = previous_user_agent
 
 
 # ---------------------------------------------------------------------------

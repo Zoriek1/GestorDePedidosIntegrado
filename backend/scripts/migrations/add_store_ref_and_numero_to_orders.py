@@ -137,7 +137,11 @@ def _sqlite_rebuild(connection, model) -> None:
         tuple(c.get("column_names") or ()) for c in inspect(connection).get_unique_constraints(name)
     }
     legacy_single = ("dedup_key",) if name == "leads" else ("endpoint",)
-    desired = ("store_ref_id", "dedup_key") if name == "leads" else ("store_ref_id", "endpoint")
+    desired = (
+        ("store_ref_id", "dedup_key")
+        if name == "leads"
+        else ("store_ref_id", "endpoint")
+    )
     if legacy_single not in uniques and desired in uniques:
         return
 
@@ -149,6 +153,26 @@ def _sqlite_rebuild(connection, model) -> None:
     joined = ", ".join(columns)
     connection.execute(text(f"INSERT INTO {name} ({joined}) SELECT {joined} FROM {old}"))
     connection.execute(text(f"DROP TABLE {old}"))
+
+
+def _sqlite_pedido_unique(connection) -> None:
+    desired = ("store_ref_id", "numero_pedido")
+    constraints = {
+        tuple(item.get("column_names") or ())
+        for item in inspect(connection).get_unique_constraints("pedidos")
+    }
+    indexes = {
+        tuple(item.get("column_names") or ())
+        for item in inspect(connection).get_indexes("pedidos")
+        if item.get("unique")
+    }
+    if desired not in constraints | indexes:
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX uq_pedidos_store_numero_pedido "
+                "ON pedidos (store_ref_id, numero_pedido)"
+            )
+        )
 
 
 def _migrate_connection(connection) -> None:
@@ -168,6 +192,7 @@ def _migrate_connection(connection) -> None:
     if connection.dialect.name == "postgresql":
         _postgres_constraints(connection)
     elif connection.dialect.name == "sqlite":
+        _sqlite_pedido_unique(connection)
         _sqlite_rebuild(connection, Lead)
         _sqlite_rebuild(connection, PushSubscription)
 

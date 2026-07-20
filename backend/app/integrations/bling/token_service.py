@@ -145,8 +145,11 @@ class BlingTokenService:
         return BlingTokenService._store_id(), store_ref_id
 
     @staticmethod
-    def refresh_access_token(credential: Optional[BlingCredential] = None) -> BlingCredential:
-        credential = credential or BlingTokenService.get_credential()
+    def refresh_access_token(
+        credential: Optional[BlingCredential] = None,
+        store_ref_id: Optional[int] = None,
+    ) -> BlingCredential:
+        credential = credential or BlingTokenService.get_credential(store_ref_id=store_ref_id)
         refresh_token = BlingTokenService.decrypt(credential.refresh_token_encrypted)
         if not refresh_token:
             raise BlingConfigError("Refresh token Bling ausente")
@@ -229,10 +232,12 @@ class BlingTokenService:
         return expires_at <= now
 
     @staticmethod
-    def get_valid_access_token() -> str:
-        credential = BlingTokenService.get_credential()
+    def get_valid_access_token(store_ref_id: Optional[int] = None) -> str:
+        credential = BlingTokenService.get_credential(store_ref_id=store_ref_id)
         if BlingTokenService._is_expired(credential.expires_at):
-            credential = BlingTokenService.refresh_access_token(credential)
+            credential = BlingTokenService.refresh_access_token(
+                credential, store_ref_id=store_ref_id
+            )
         token = BlingTokenService.decrypt(credential.access_token_encrypted)
         if not token:
             raise BlingConfigError("Access token Bling ausente")

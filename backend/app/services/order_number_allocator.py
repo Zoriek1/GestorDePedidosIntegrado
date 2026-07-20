@@ -11,6 +11,10 @@ from app.models.store import Store
 def allocate_order_number(store_ref_id: int | None) -> int | None:
     """Retorna o próximo número da empresa, serializando no PostgreSQL."""
     if store_ref_id is None:
+        from app.services.tenancy import is_multi_store
+
+        if is_multi_store():
+            raise RuntimeError("Empresa obrigatoria para numerar pedido em modo multiempresa")
         return None
 
     # A linha da Store funciona como mutex por tenant no PostgreSQL. No SQLite,

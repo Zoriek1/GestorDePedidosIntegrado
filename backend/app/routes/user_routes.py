@@ -21,15 +21,16 @@ def _current_store_id():
 def _in_current_store(user) -> bool:
     """Escopo multi-tenant para operações administrativas de usuário.
 
-    Durante o rollout um usuário está no escopo quando não há loja no contexto
-    (suítes legadas), quando o alvo ainda não tem loja (nulo, legado) ou quando a
-    loja do alvo bate com a loja autenticada. Um admin nunca gerencia usuários de
-    outra loja com store_ref_id explícito e diferente.
+    Em single-store, o caminho legado sem loja e usuários ainda nulos continuam
+    compatíveis. Em multi-store, tenant ausente e usuário-alvo sem tenant falham
+    fechados.
     """
     store_id = _current_store_id()
     if store_id is None:
-        return True
-    return user.store_ref_id is None or user.store_ref_id == store_id
+        return not bool(getattr(g, "tenant_multi", False))
+    if user.store_ref_id is None:
+        return not bool(getattr(g, "tenant_multi", False))
+    return user.store_ref_id == store_id
 
 
 # ---------------------------------------------------------------------------

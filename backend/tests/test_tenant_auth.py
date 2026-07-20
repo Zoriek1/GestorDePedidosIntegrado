@@ -100,6 +100,17 @@ def test_legacy_user_without_store_still_logs_in(session, client):
     assert resp.get_json()["user"]["email"] == "legacy-login@a.test"
 
 
+def test_legacy_user_without_store_fails_closed_in_multi_store(session, client):
+    _store(session, "loja-a")
+    _store(session, "loja-b")
+    legacy = _user(session, "admin", "legacy-multi@a.test", store=None)
+
+    response = client.get("/api/users", headers=_bearer(generate_token(legacy)))
+
+    assert response.status_code == 403
+    assert response.get_json()["message"] == "Empresa do usuario nao identificada."
+
+
 def test_inactive_store_blocks_login(client, session):
     store = _store(session, "loja-inativa", active=False)
     _user(session, "admin", "inativa@a.test", store)
@@ -235,3 +246,16 @@ def test_created_user_inherits_admin_store_and_ignores_payload(client, session):
     assert r.status_code == 201
     created = User.query.filter_by(email="novo@a.test").one()
     assert created.store_ref_id == store_a.id
+
+
+def test_admin_cannot_manage_legacy_null_store_user_in_multi_store(client, session):
+    store_a = _store(session, "loja-a")
+    _store(session, "loja-b")
+    admin_a = _user(session, "admin", "admin-a@a.test", store_a)
+    legacy = _user(session, "vendedor", "legacy-null@a.test", store=None)
+
+    response = client.get("/api/users", headers=_bearer(generate_token(admin_a, store_a)))
+
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.get_json()["users"]}
+    assert legacy.id not in ids

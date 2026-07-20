@@ -130,7 +130,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
     try:
         from app.services.distancia import distancia_service
 
-        pedido = Pedido.query.get(pedido_id)
+        pedido = Pedido.query.filter(Pedido.id == pedido_id).first()
 
         if not pedido:
             return (
@@ -204,7 +204,7 @@ def calcular_distancia_pedido_endpoint(pedido_id):
             try:
                 from app.services.fila_taxa_entrega import enfileirar_calculo_taxa
 
-                enfileirar_calculo_taxa(pedido_id)
+                enfileirar_calculo_taxa(pedido_id, pedido.store_ref_id)
             except Exception:
                 pass
 
@@ -265,6 +265,7 @@ def calcular_distancias_lote():
                 Pedido.tipo_pedido == "Entrega",
             ).all()
 
+        pedido_store_ids = {pedido.id: pedido.store_ref_id for pedido in pedidos}
         resultados = []
         calculados = 0
         do_cache = 0
@@ -377,7 +378,9 @@ def calcular_distancias_lote():
 
                 for r in resultados:
                     if r.get("distancia_km") is not None and not r.get("cached"):
-                        enfileirar_calculo_taxa(r["id"])
+                        enfileirar_calculo_taxa(
+                            r["id"], pedido_store_ids.get(r["id"])
+                        )
             except Exception:
                 pass
 
@@ -412,7 +415,7 @@ def calcular_taxa_pedido(pedido_id):
         from app.services.distancia import distancia_service
         from app.services.taxa_entrega import taxa_entrega_service
 
-        pedido = Pedido.query.get(pedido_id)
+        pedido = Pedido.query.filter(Pedido.id == pedido_id).first()
 
         if not pedido:
             return (

@@ -158,7 +158,9 @@ class PedidoUpdateSchema(Schema):
     cep = fields.Str(allow_none=True)
     rua = fields.Str(allow_none=True)
     numero = fields.Str(allow_none=True)
-    tipo_local = fields.Str(allow_none=True, validate=validate.OneOf(["casa", "predio", "comercial"]))
+    tipo_local = fields.Str(
+        allow_none=True, validate=validate.OneOf(["casa", "predio", "comercial"])
+    )
     nome_local = fields.Str(allow_none=True, validate=validate.Length(max=120))
     apto = fields.Str(allow_none=True, validate=validate.Length(max=50))
     bloco = fields.Str(allow_none=True, validate=validate.Length(max=50))

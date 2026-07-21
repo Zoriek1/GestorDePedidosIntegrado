@@ -105,16 +105,12 @@ def send_utmify_if_purchase(
 
         token = (tenant_config.get("UTMIFY_API_TOKEN") or "").strip()
         if not token:
-            logger.warning(
-                "[UTMIFY] UTMIFY_ENABLED sem UTMIFY_API_TOKEN — pedido_id=%s", pedido.id
-            )
+            logger.warning("[UTMIFY] UTMIFY_ENABLED sem UTMIFY_API_TOKEN — pedido_id=%s", pedido.id)
             return False
 
         url = (current_app.config.get("UTMIFY_POSTBACK_URL") or "").strip()
         if not url:
-            logger.warning(
-                "[UTMIFY] UTMIFY_POSTBACK_URL vazio — pedido_id=%s", pedido.id
-            )
+            logger.warning("[UTMIFY] UTMIFY_POSTBACK_URL vazio — pedido_id=%s", pedido.id)
             return False
 
         platform = (tenant_config.get("UTMIFY_PLATFORM") or "WhatsAppManual").strip()

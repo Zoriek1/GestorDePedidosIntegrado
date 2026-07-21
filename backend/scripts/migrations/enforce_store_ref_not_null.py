@@ -39,6 +39,7 @@ TABLES = [
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _column_exists(inspector, table: str) -> bool:
     return "store_ref_id" in {col["name"] for col in inspector.get_columns(table)}
 
@@ -60,15 +61,15 @@ def _count_nulls(connection, table: str) -> int:
 # Postgres
 # ---------------------------------------------------------------------------
 
+
 def _pg_set_not_null(connection, table: str) -> None:
-    connection.execute(
-        text(f"ALTER TABLE {table} ALTER COLUMN store_ref_id SET NOT NULL")
-    )
+    connection.execute(text(f"ALTER TABLE {table} ALTER COLUMN store_ref_id SET NOT NULL"))
 
 
 # ---------------------------------------------------------------------------
 # SQLite rebuild (ALTER COLUMN not supported)
 # ---------------------------------------------------------------------------
+
 
 def _sqlite_create_sql(connection, table: str):
     row = connection.execute(
@@ -89,7 +90,7 @@ def _split_column_defs(sql: str) -> list:
     body = match.group(1)
     parts, depth, buf = [], 0, []
     for ch in body:
-        if ch == "(" :
+        if ch == "(":
             depth += 1
             buf.append(ch)
         elif ch == ")":
@@ -117,10 +118,7 @@ def _sqlite_rebuild_not_null(connection, table: str) -> bool:
         idx_name = idx[1]
         if idx_name.startswith("sqlite_"):
             continue
-        cols = [
-            r[2]
-            for r in connection.execute(text(f"PRAGMA index_info({idx_name})")).fetchall()
-        ]
+        cols = [r[2] for r in connection.execute(text(f"PRAGMA index_info({idx_name})")).fetchall()]
         indexes.append((idx_name, bool(idx[2]), cols))
 
     parts = _split_column_defs(original)
@@ -137,16 +135,12 @@ def _sqlite_rebuild_not_null(connection, table: str) -> bool:
     temp = f"{table}__nn_migrate"
     new_sql = f'CREATE TABLE "{temp}" (\n' + ",\n".join(parts) + "\n)"
 
-    col_names = [
-        c[1] for c in connection.execute(text(f'PRAGMA table_info("{table}")')).fetchall()
-    ]
+    col_names = [c[1] for c in connection.execute(text(f'PRAGMA table_info("{table}")')).fetchall()]
     joined = ", ".join(col_names)
 
     connection.execute(text(f'DROP TABLE IF EXISTS "{temp}"'))
     connection.execute(text(new_sql))
-    connection.execute(
-        text(f'INSERT INTO "{temp}" ({joined}) SELECT {joined} FROM "{table}"')
-    )
+    connection.execute(text(f'INSERT INTO "{temp}" ({joined}) SELECT {joined} FROM "{table}"'))
     connection.execute(text(f'DROP TABLE "{table}"'))
     connection.execute(text(f'ALTER TABLE "{temp}" RENAME TO "{table}"'))
 
@@ -163,29 +157,27 @@ def _sqlite_rebuild_not_null(connection, table: str) -> bool:
 # Unique constraint
 # ---------------------------------------------------------------------------
 
+
 def _ensure_unique_constraint(connection, inspector, table, name, columns):
     if connection.dialect.name == "sqlite":
         for idx in connection.execute(text(f"PRAGMA index_list({table})")).fetchall():
             if idx[1] == name:
                 print(f"[SKIP] {name} already exists")
                 return
-        connection.execute(
-            text(f"CREATE UNIQUE INDEX {name} ON {table} ({columns})")
-        )
+        connection.execute(text(f"CREATE UNIQUE INDEX {name} ON {table} ({columns})"))
     else:
         for uc in inspector.get_unique_constraints(table):
             if uc.get("name") == name:
                 print(f"[SKIP] {name} already exists")
                 return
-        connection.execute(
-            text(f"ALTER TABLE {table} ADD CONSTRAINT {name} UNIQUE ({columns})")
-        )
+        connection.execute(text(f"ALTER TABLE {table} ADD CONSTRAINT {name} UNIQUE ({columns})"))
     print(f"[MIGRATE] {name} constraint added")
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def _migrate_connection(connection) -> None:
     engine = connection.engine
@@ -206,9 +198,7 @@ def _migrate_connection(connection) -> None:
 
         nulls = _count_nulls(connection, table)
         if nulls:
-            raise RuntimeError(
-                f"{table}: {nulls} row(s) with NULL store_ref_id — backfill first"
-            )
+            raise RuntimeError(f"{table}: {nulls} row(s) with NULL store_ref_id — backfill first")
 
         if is_sqlite:
             _sqlite_rebuild_not_null(connection, table)

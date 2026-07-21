@@ -27,7 +27,9 @@ def add_vendedor_id_column():
         if "vendedor_id" not in existing_columns:
             try:
                 db.session.execute(
-                    db.text("ALTER TABLE pedidos ADD COLUMN vendedor_id INTEGER NULL REFERENCES users(id)")
+                    db.text(
+                        "ALTER TABLE pedidos ADD COLUMN vendedor_id INTEGER NULL REFERENCES users(id)"
+                    )
                 )
                 db.session.commit()
                 print("[OK] Coluna 'vendedor_id' adicionada")

@@ -118,7 +118,9 @@ class MetaCapiOutboxRepository(BaseRepository):
         return query.order_by(MetaCapiOutbox.created_at.asc()).limit(limit).all()
 
     def get_failed_retryable(
-        self, limit: int = 50, min_updated_age_seconds: int | None = None,
+        self,
+        limit: int = 50,
+        min_updated_age_seconds: int | None = None,
         store_ref_id: int | None = None,
     ) -> List[MetaCapiOutbox]:
         """
@@ -133,9 +135,8 @@ class MetaCapiOutboxRepository(BaseRepository):
         Returns:
             Lista de MetaCapiOutbox com status='failed' e error_type='retryable'
         """
-        query = (
-            self.model.query.filter_by(status="failed", error_type="retryable")
-            .filter(MetaCapiOutbox.attempts < 3)
+        query = self.model.query.filter_by(status="failed", error_type="retryable").filter(
+            MetaCapiOutbox.attempts < 3
         )
         if store_ref_id is not None:
             query = query.filter(MetaCapiOutbox.store_ref_id == store_ref_id)

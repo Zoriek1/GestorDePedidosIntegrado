@@ -490,9 +490,7 @@ def nuvemshop_store(session, store):
     return ns
 
 
-def test_bling_disconnect_sets_inactive_and_clears_tokens(
-    client, admin, store, bling_credential
-):
+def test_bling_disconnect_sets_inactive_and_clears_tokens(client, admin, store, bling_credential):
     token = generate_token(admin)
     resp = client.delete(
         "/api/integrations/bling/disconnect",

@@ -1563,7 +1563,5 @@ class TestPurchaseFbcPriority:
 
     def test_purchase_omits_fbc_when_only_seconds_available(self, service):
         with patch.object(service, "resolve_lead_for_purchase", return_value=None):
-            event = service.build_purchase_event(
-                self._make_pedido(fbc="fb.1.1700000000.abc")
-            )
+            event = service.build_purchase_event(self._make_pedido(fbc="fb.1.1700000000.abc"))
         assert "fbc" not in event["user_data"]

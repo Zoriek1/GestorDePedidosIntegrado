@@ -137,7 +137,9 @@ class Lead(TenantScoped, db.Model):
             "meta_event_id_contact": self.meta_event_id_contact,
             "meta_event_id_lead": self.meta_event_id_lead,
             "pedido_id": self.pedido_id,
-            "followup_feito_em": self.followup_feito_em.isoformat() if self.followup_feito_em else None,
+            "followup_feito_em": self.followup_feito_em.isoformat()
+            if self.followup_feito_em
+            else None,
             "followup_por": self.followup_por,
             "first_touch_id": self.first_touch_id,
             "last_touch_id": self.last_touch_id,

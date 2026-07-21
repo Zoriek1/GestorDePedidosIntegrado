@@ -26,8 +26,9 @@ from app.utils.backup_helper import (
 # NOVO LOCAL: app/routes/pedidos.py -> criar_pedido()
 
 
-
 core_bp = Blueprint("core", __name__, url_prefix="/api")
+
+
 @core_bp.route("/stats", methods=["GET"])
 @requires_edit_auth
 def obter_estatisticas():
@@ -376,9 +377,7 @@ def calcular_distancias_lote():
 
                 for r in resultados:
                     if r.get("distancia_km") is not None and not r.get("cached"):
-                        enfileirar_calculo_taxa(
-                            r["id"], pedido_store_ids.get(r["id"])
-                        )
+                        enfileirar_calculo_taxa(r["id"], pedido_store_ids.get(r["id"]))
             except Exception:
                 pass
 

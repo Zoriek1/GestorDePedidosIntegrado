@@ -108,7 +108,9 @@ def test_persiste_campos_de_sessao_no_touchpoint(client, session):
 
     tp = session.query(LeadTouchpoint).order_by(LeadTouchpoint.id.desc()).first()
     assert tp is not None
-    assert tp.first_landing_url == "https://lpb.planteumaflor.com/?utm_source=ig&utm_campaign=buques"
+    assert (
+        tp.first_landing_url == "https://lpb.planteumaflor.com/?utm_source=ig&utm_campaign=buques"
+    )
     assert tp.session_referrer == "https://l.instagram.com/"
     # Capturado server-side a partir do header (a query de diagnóstico usa este campo).
     assert "iPhone" in (tp.client_user_agent or "")
@@ -129,12 +131,20 @@ def test_campos_de_sessao_nao_entram_no_dedup_key(client, session):
     }
     r1 = client.post(
         "/api/leads",
-        json={**base, "first_landing_url": "https://lpb.planteumaflor.com/a", "session_referrer": "https://x/"},
+        json={
+            **base,
+            "first_landing_url": "https://lpb.planteumaflor.com/a",
+            "session_referrer": "https://x/",
+        },
         headers={"User-Agent": "pytest"},
     )
     r2 = client.post(
         "/api/leads",
-        json={**base, "first_landing_url": "https://lpb.planteumaflor.com/b", "session_referrer": "https://y/"},
+        json={
+            **base,
+            "first_landing_url": "https://lpb.planteumaflor.com/b",
+            "session_referrer": "https://y/",
+        },
         headers={"User-Agent": "pytest"},
     )
     assert r1.status_code == 201
@@ -208,12 +218,18 @@ def test_novo_toque_google_pago_substitui_atribuicao_do_mesmo_token(client, sess
         "utm_medium": "cpc",
         "token_rastreio": _VALID_TOKEN,
     }
-    assert client.post(
-        "/api/leads", json={**base, "gclid": "old", "meta_event_id_contact": _META_EVT_CONTACT}
-    ).status_code == 201
-    assert client.post(
-        "/api/leads", json={**base, "gclid": "new", "meta_event_id_contact": "evt_new"}
-    ).status_code == 200
+    assert (
+        client.post(
+            "/api/leads", json={**base, "gclid": "old", "meta_event_id_contact": _META_EVT_CONTACT}
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/leads", json={**base, "gclid": "new", "meta_event_id_contact": "evt_new"}
+        ).status_code
+        == 200
+    )
     assert session.query(Lead).one().gclid == "new"
 
 
@@ -1549,11 +1565,7 @@ def test_bulk_descarte_dispara_outbox_para_cada_lead(client, session, monkeypatc
     assert r.status_code == 200
     assert r.get_json()["updated"] == 3
 
-    rows = (
-        session.query(MetaCapiLeadOutbox)
-        .filter_by(funnel_stage="disqualified")
-        .all()
-    )
+    rows = session.query(MetaCapiLeadOutbox).filter_by(funnel_stage="disqualified").all()
     assert len(rows) == 3
     assert {row.lead_id for row in rows} == set(ids)
 
@@ -1884,9 +1896,7 @@ def test_filtro_pending_followup_days_lista_apenas_atrasados(client, session):
 # ---------------------------------------------------------------------------
 
 
-def test_patch_situacao_em_lead_confirmado_grava_e_nao_dispara_outbox(
-    client, session, monkeypatch
-):
+def test_patch_situacao_em_lead_confirmado_grava_e_nao_dispara_outbox(client, session, monkeypatch):
     """Marcar situação num lead confirmado grava o valor e NÃO enfileira no outbox."""
     monkeypatch.setenv("META_CAPI_LEAD_FUNNEL_ENABLED", "true")
     monkeypatch.setenv("META_PIXEL_ID", "1")

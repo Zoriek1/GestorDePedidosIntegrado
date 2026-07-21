@@ -33,7 +33,9 @@ def add_pedido_id_column():
         print("[MIGRATION] Adicionando coluna pedido_id na tabela leads...")
         try:
             db.session.execute(
-                db.text("ALTER TABLE leads ADD COLUMN pedido_id INTEGER NULL REFERENCES pedidos(id)")
+                db.text(
+                    "ALTER TABLE leads ADD COLUMN pedido_id INTEGER NULL REFERENCES pedidos(id)"
+                )
             )
             db.session.execute(
                 db.text("CREATE INDEX IF NOT EXISTS ix_leads_pedido_id ON leads (pedido_id)")

@@ -94,8 +94,10 @@ def run_outbox_cycle() -> None:
             for store in active_stores:
                 store_ref_id = store.id if store else None
                 stats = SendDailyPurchasesToMetaCommand().process_outbox_cycle(
-                    limit=per_store_limit, retry_backoff_seconds=RETRY_BACKOFF,
-                    quiet=True, store_ref_id=store_ref_id,
+                    limit=per_store_limit,
+                    retry_backoff_seconds=RETRY_BACKOFF,
+                    quiet=True,
+                    store_ref_id=store_ref_id,
                 )
                 touched = (
                     stats.get("pending_processed", 0)

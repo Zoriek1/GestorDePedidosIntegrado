@@ -49,7 +49,9 @@ URL_MAX_LEN = 800
 
 
 def _spreadsheet_title() -> str:
-    return (os.environ.get("GOOGLE_SHEETS_LEADS_DOCUMENT_NAME") or "").strip() or DEFAULT_LEADS_SPREADSHEET_TITLE
+    return (
+        os.environ.get("GOOGLE_SHEETS_LEADS_DOCUMENT_NAME") or ""
+    ).strip() or DEFAULT_LEADS_SPREADSHEET_TITLE
 
 
 def _clip_text(value: Any, max_len: int) -> str:

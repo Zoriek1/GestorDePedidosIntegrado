@@ -41,9 +41,7 @@ def migrate():
     print(f"[MIGRATION] add_followup_to_leads (banco: {db.engine.dialect.name})")
 
     if not column_exists("leads", "followup_feito_em"):
-        db.session.execute(
-            db.text("ALTER TABLE leads ADD COLUMN followup_feito_em TIMESTAMP NULL")
-        )
+        db.session.execute(db.text("ALTER TABLE leads ADD COLUMN followup_feito_em TIMESTAMP NULL"))
         db.session.commit()
         print("[MIGRATION]   coluna leads.followup_feito_em adicionada.")
     else:
@@ -52,8 +50,7 @@ def migrate():
     if not column_exists("leads", "followup_por"):
         db.session.execute(
             db.text(
-                "ALTER TABLE leads ADD COLUMN followup_por INTEGER NULL "
-                "REFERENCES users(id)"
+                "ALTER TABLE leads ADD COLUMN followup_por INTEGER NULL " "REFERENCES users(id)"
             )
         )
         db.session.commit()

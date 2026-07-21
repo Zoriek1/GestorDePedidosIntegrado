@@ -304,8 +304,7 @@ def settle_user_credits(
 
     if input_entry_ids and input_pedido_ids:
         eligible_query = eligible_query.filter(
-            (LedgerEntry.id.in_(input_entry_ids))
-            | (LedgerEntry.pedido_id.in_(input_pedido_ids))
+            (LedgerEntry.id.in_(input_entry_ids)) | (LedgerEntry.pedido_id.in_(input_pedido_ids))
         )
     elif input_entry_ids:
         eligible_query = eligible_query.filter(LedgerEntry.id.in_(input_entry_ids))
@@ -400,8 +399,7 @@ def settle_user_credits(
 
     debit.amount = total_amount
     debit.description = (
-        f"Quitação parcial — {updated} lançamento(s), "
-        f"{len(settled_pedido_ids)} pedido(s)"
+        f"Quitação parcial — {updated} lançamento(s), " f"{len(settled_pedido_ids)} pedido(s)"
     )
 
     db.session.commit()

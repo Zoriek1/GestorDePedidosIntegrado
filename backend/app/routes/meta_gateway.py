@@ -329,7 +329,10 @@ def capig_autoconfig():
 
         logger.debug(
             "Autoconfig: method=%s token_present=%s is_ajax=%s accepts_json=%s",
-            request.method, bool(token), is_ajax, accepts_json,
+            request.method,
+            bool(token),
+            is_ajax,
+            accepts_json,
         )
 
         # Verificar se o Gateway está configurado
@@ -387,7 +390,8 @@ def meta_gateway_events(pixel_id):
         if gateway_domain and gateway_domain not in request_host:
             logger.warning(
                 "Host nao corresponde ao dominio esperado: host=%s expected=%s",
-                request_host, gateway_domain,
+                request_host,
+                gateway_domain,
             )
 
         # Mitigação de injeção (V-06): se a requisição vier de um navegador (tem
@@ -395,20 +399,19 @@ def meta_gateway_events(pixel_id):
         # bloqueia JS de sites terceiros disparando eventos com o nosso pixel/token.
         # Chamadas server-to-server (sem Origin/Referer) seguem permitidas.
         if gateway_domain:
-            browser_origin = (
-                request.headers.get("Origin") or request.headers.get("Referer") or ""
-            )
+            browser_origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
             if browser_origin and gateway_domain not in browser_origin:
-                logger.warning(
-                    "Origin/Referer nao autorizado no gateway: %s", browser_origin
-                )
+                logger.warning("Origin/Referer nao autorizado no gateway: %s", browser_origin)
                 response = jsonify({"error": "Origem não autorizada"})
                 response.headers["Content-Type"] = "application/json; charset=utf-8"
                 return _add_cors_headers_events(response), 403
 
         logger.debug(
             "Evento recebido: method=%s path=%s host=%s content_length=%s",
-            request.method, request.path, request_host, request.content_length,
+            request.method,
+            request.path,
+            request_host,
+            request.content_length,
         )
         # Verificar se pixel_id corresponde ao configurado
         configured_pixel_id = os.environ.get("META_PIXEL_ID", "")
@@ -461,7 +464,8 @@ def meta_gateway_events(pixel_id):
             return _add_cors_headers_events(response), 400
         logger.debug(
             "Payload recebido: events_count=%d has_test_event_code=%s",
-            len(events), "test_event_code" in payload,
+            len(events),
+            "test_event_code" in payload,
         )
 
         # Enviar para Meta usando integração direta (não Gateway recursivo)
@@ -508,7 +512,8 @@ def meta_gateway_events(pixel_id):
             result["_status_code"] = response.status_code
             logger.info(
                 "Envio para Meta concluido: status=%d events_received=%s",
-                response.status_code, result.get("events_received", 0),
+                response.status_code,
+                result.get("events_received", 0),
             )
 
             response_json = jsonify(result)
@@ -532,7 +537,8 @@ def meta_gateway_events(pixel_id):
             )
             logger.error(
                 "Erro ao enviar para Meta: status=%d error=%s",
-                status_code, error_msg,
+                status_code,
+                error_msg,
             )
             response_json.headers["Content-Type"] = "application/json; charset=utf-8"
             return _add_cors_headers_events(response_json), status_code

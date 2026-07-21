@@ -66,16 +66,19 @@ def run():
             print("[migration] Adicionando pedidos.vendedor_id...")
             if dialect == "postgresql":
                 # PostgreSQL: suporta ADD COLUMN IF NOT EXISTS
-                db.session.execute(text(
-                    "ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS "
-                    "vendedor_id INTEGER REFERENCES users(id)"
-                ))
+                db.session.execute(
+                    text(
+                        "ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS "
+                        "vendedor_id INTEGER REFERENCES users(id)"
+                    )
+                )
             else:
                 # SQLite: sem IF NOT EXISTS no ALTER TABLE
-                db.session.execute(text(
-                    "ALTER TABLE pedidos ADD COLUMN "
-                    "vendedor_id INTEGER REFERENCES users(id)"
-                ))
+                db.session.execute(
+                    text(
+                        "ALTER TABLE pedidos ADD COLUMN " "vendedor_id INTEGER REFERENCES users(id)"
+                    )
+                )
             db.session.commit()
             print("[migration] ✓ pedidos.vendedor_id adicionada")
         else:

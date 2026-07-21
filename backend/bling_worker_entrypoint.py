@@ -32,9 +32,7 @@ def _status_tag(status: str) -> str:
 
 
 def _count_pending() -> int:
-    return BlingOutbox.query.filter(
-        BlingOutbox.status.in_(["pending", "failed_retryable"])
-    ).count()
+    return BlingOutbox.query.filter(BlingOutbox.status.in_(["pending", "failed_retryable"])).count()
 
 
 def _log_results(result: dict) -> None:

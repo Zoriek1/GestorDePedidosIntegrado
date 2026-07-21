@@ -23,9 +23,7 @@ def run() -> bool:
     print(f"[INFO] Dialeto: {db.engine.dialect.name}")
 
     pendentes = (
-        Pedido.query.filter(Pedido.slot_inicio.is_(None))
-        .filter(Pedido.horario.isnot(None))
-        .all()
+        Pedido.query.filter(Pedido.slot_inicio.is_(None)).filter(Pedido.horario.isnot(None)).all()
     )
     print(f"[INFO] {len(pendentes)} pedido(s) sem slot_inicio com horário preenchido.")
 

@@ -152,7 +152,10 @@ class SendDailyPurchasesToMetaCommand:
             return stats
 
     def process_outbox_cycle(
-        self, limit: int = 50, retry_backoff_seconds: int = 0, quiet: bool = False,
+        self,
+        limit: int = 50,
+        retry_backoff_seconds: int = 0,
+        quiet: bool = False,
         store_ref_id: int | None = None,
     ) -> dict:
         """
@@ -190,11 +193,17 @@ class SendDailyPurchasesToMetaCommand:
             "lead_failed_retryable": 0,
         }
         self._process_pending_batch(
-            stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds, quiet=quiet,
+            stats,
+            limit=limit,
+            retry_backoff_seconds=retry_backoff_seconds,
+            quiet=quiet,
             store_ref_id=store_ref_id,
         )
         self._process_lead_outbox_batch(
-            stats, limit=limit, retry_backoff_seconds=retry_backoff_seconds, quiet=quiet,
+            stats,
+            limit=limit,
+            retry_backoff_seconds=retry_backoff_seconds,
+            quiet=quiet,
             store_ref_id=store_ref_id,
         )
         return stats
@@ -241,8 +250,12 @@ class SendDailyPurchasesToMetaCommand:
         return [pedido for pedido in pedidos if not should_skip_purchase_for_meta_capi(pedido)]
 
     def _process_pending_batch(
-        self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0,
-        quiet: bool = False, store_ref_id: int | None = None,
+        self,
+        stats: dict,
+        limit: int = 50,
+        retry_backoff_seconds: int = 0,
+        quiet: bool = False,
+        store_ref_id: int | None = None,
     ):
         """
         Processa lote interno de pendentes e failed retryáveis
@@ -264,7 +277,8 @@ class SendDailyPurchasesToMetaCommand:
 
         # Buscar failed retryáveis
         failed_retryable = self.outbox_repo.get_failed_retryable(
-            limit=limit, min_updated_age_seconds=retry_backoff_seconds or None,
+            limit=limit,
+            min_updated_age_seconds=retry_backoff_seconds or None,
             store_ref_id=store_ref_id,
         )
         stats["failed_retryable_processed"] = len(failed_retryable)
@@ -486,13 +500,18 @@ class SendDailyPurchasesToMetaCommand:
             stats["errors"].append(f"Batch failed: {error_msg}")
 
     def _process_lead_outbox_batch(
-        self, stats: dict, limit: int = 50, retry_backoff_seconds: int = 0,
-        quiet: bool = False, store_ref_id: int | None = None,
+        self,
+        stats: dict,
+        limit: int = 50,
+        retry_backoff_seconds: int = 0,
+        quiet: bool = False,
+        store_ref_id: int | None = None,
     ):
         pending = self.lead_outbox_repo.get_pending(limit=limit, store_ref_id=store_ref_id)
         stats["lead_pending_processed"] = len(pending)
         failed_retryable = self.lead_outbox_repo.get_failed_retryable(
-            limit=limit, min_updated_age_seconds=retry_backoff_seconds or None,
+            limit=limit,
+            min_updated_age_seconds=retry_backoff_seconds or None,
             store_ref_id=store_ref_id,
         )
         stats["lead_failed_retryable_processed"] = len(failed_retryable)

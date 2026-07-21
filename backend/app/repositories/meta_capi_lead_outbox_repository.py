@@ -29,9 +29,7 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
         self.service = MetaConversionsApiService()
 
     def get_by_lead_and_stage(self, lead_id: int, stage: str) -> Optional[MetaCapiLeadOutbox]:
-        return (
-            self.model.query.filter_by(lead_id=lead_id, funnel_stage=stage).first()
-        )
+        return self.model.query.filter_by(lead_id=lead_id, funnel_stage=stage).first()
 
     def create_contact_from_lead(self, lead: Lead) -> Optional[MetaCapiLeadOutbox]:
         if self.get_by_lead_and_stage(lead.id, self.STAGE_CONTACT):
@@ -147,19 +145,22 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
             db.session.rollback()
             return None
 
-    def get_pending(self, limit: int = 50, store_ref_id: int | None = None) -> List[MetaCapiLeadOutbox]:
+    def get_pending(
+        self, limit: int = 50, store_ref_id: int | None = None
+    ) -> List[MetaCapiLeadOutbox]:
         query = self.model.query.filter_by(status="pending")
         if store_ref_id is not None:
             query = query.filter(MetaCapiLeadOutbox.store_ref_id == store_ref_id)
         return query.order_by(MetaCapiLeadOutbox.created_at.asc()).limit(limit).all()
 
     def get_failed_retryable(
-        self, limit: int = 50, min_updated_age_seconds: int | None = None,
+        self,
+        limit: int = 50,
+        min_updated_age_seconds: int | None = None,
         store_ref_id: int | None = None,
     ) -> List[MetaCapiLeadOutbox]:
-        query = (
-            self.model.query.filter_by(status="failed", error_type="retryable")
-            .filter(MetaCapiLeadOutbox.attempts < 3)
+        query = self.model.query.filter_by(status="failed", error_type="retryable").filter(
+            MetaCapiLeadOutbox.attempts < 3
         )
         if store_ref_id is not None:
             query = query.filter(MetaCapiLeadOutbox.store_ref_id == store_ref_id)

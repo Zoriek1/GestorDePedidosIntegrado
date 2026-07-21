@@ -135,10 +135,12 @@ def migrate():
     if is_postgres():
         if constraint_exists("ledger_entry_pedido_id_key"):
             print("[MIGRATION]   DROP CONSTRAINT ledger_entry_pedido_id_key...")
-            db.session.execute(db.text(
-                "ALTER TABLE ledger_entry "
-                "DROP CONSTRAINT IF EXISTS ledger_entry_pedido_id_key"
-            ))
+            db.session.execute(
+                db.text(
+                    "ALTER TABLE ledger_entry "
+                    "DROP CONSTRAINT IF EXISTS ledger_entry_pedido_id_key"
+                )
+            )
             db.session.commit()
             print("[MIGRATION]   ok")
         else:
@@ -147,19 +149,19 @@ def migrate():
         if index_exists("uq_ledger_pedido_active") and not index_has_where_predicate(
             "uq_ledger_pedido_active"
         ):
-            print(
-                "[MIGRATION]   índice uq_ledger_pedido_active sem predicate — DROP e recria..."
-            )
+            print("[MIGRATION]   índice uq_ledger_pedido_active sem predicate — DROP e recria...")
             db.session.execute(db.text("DROP INDEX IF EXISTS uq_ledger_pedido_active"))
             db.session.commit()
 
         if not index_exists("uq_ledger_pedido_active"):
             print("[MIGRATION]   CREATE UNIQUE INDEX uq_ledger_pedido_active...")
-            db.session.execute(db.text(
-                "CREATE UNIQUE INDEX uq_ledger_pedido_active "
-                "ON ledger_entry(pedido_id) "
-                "WHERE voided = FALSE AND pedido_id IS NOT NULL"
-            ))
+            db.session.execute(
+                db.text(
+                    "CREATE UNIQUE INDEX uq_ledger_pedido_active "
+                    "ON ledger_entry(pedido_id) "
+                    "WHERE voided = FALSE AND pedido_id IS NOT NULL"
+                )
+            )
             db.session.commit()
             print("[MIGRATION]   ok")
         else:
@@ -169,11 +171,13 @@ def migrate():
         # o índice com sqlite_where. Reforço idempotente abaixo.
         if not index_exists("uq_ledger_pedido_active"):
             print("[MIGRATION]   CREATE UNIQUE INDEX uq_ledger_pedido_active (SQLite)...")
-            db.session.execute(db.text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_pedido_active "
-                "ON ledger_entry(pedido_id) "
-                "WHERE voided=0 AND pedido_id IS NOT NULL"
-            ))
+            db.session.execute(
+                db.text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_pedido_active "
+                    "ON ledger_entry(pedido_id) "
+                    "WHERE voided=0 AND pedido_id IS NOT NULL"
+                )
+            )
             db.session.commit()
             print("[MIGRATION]   ok")
         else:

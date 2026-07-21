@@ -6,6 +6,7 @@ import pytest
 # Fixtures específicas (não usam conftest.app — precisam de BLING_ENABLED etc.)
 # =============================================================================
 
+
 @pytest.fixture
 def bling_app():
     """App Flask minimo com Bling habilitado para testes de process_pending."""
@@ -80,8 +81,8 @@ def meta_session(meta_capi_app):
 # Bling - process_pending com store_ref_id
 # =============================================================================
 
-class TestBlingProcessPendingPerStore:
 
+class TestBlingProcessPendingPerStore:
     def test_process_pending_filters_by_store_ref_id(self, bling_app, bling_session):
         from app.integrations.bling.service import BlingIntegrationService
         from app.models.bling_outbox import BlingOutbox
@@ -94,13 +95,17 @@ class TestBlingProcessPendingPerStore:
         bling_session.commit()
 
         for i in range(3):
-            bling_session.add(BlingOutbox(
-                pedido_id=i, store_ref_id=store_a.id, operation="send_order", status="pending"
-            ))
+            bling_session.add(
+                BlingOutbox(
+                    pedido_id=i, store_ref_id=store_a.id, operation="send_order", status="pending"
+                )
+            )
         for i in range(3, 6):
-            bling_session.add(BlingOutbox(
-                pedido_id=i, store_ref_id=store_b.id, operation="send_order", status="pending"
-            ))
+            bling_session.add(
+                BlingOutbox(
+                    pedido_id=i, store_ref_id=store_b.id, operation="send_order", status="pending"
+                )
+            )
         bling_session.commit()
 
         svc = BlingIntegrationService()
@@ -122,9 +127,11 @@ class TestBlingProcessPendingPerStore:
         bling_session.commit()
 
         for i in range(5):
-            bling_session.add(BlingOutbox(
-                pedido_id=i, store_ref_id=store.id, operation="send_order", status="pending"
-            ))
+            bling_session.add(
+                BlingOutbox(
+                    pedido_id=i, store_ref_id=store.id, operation="send_order", status="pending"
+                )
+            )
         bling_session.commit()
 
         svc = BlingIntegrationService()
@@ -136,10 +143,11 @@ class TestBlingProcessPendingPerStore:
 # Meta CAPI - repositórios com store_ref_id
 # =============================================================================
 
-class TestMetaCapiRepositoriesPerStore:
 
+class TestMetaCapiRepositoriesPerStore:
     def _store(self, session, name, slug):
         from app.models.store import Store
+
         store = Store(name=name, slug=slug, active=True)
         session.add(store)
         session.commit()
@@ -156,15 +164,25 @@ class TestMetaCapiRepositoriesPerStore:
         now = datetime.now()
 
         for i in range(3):
-            meta_session.add(MetaCapiOutbox(
-                order_id=i, store_ref_id=store_a.id, event_id=f"e{i}",
-                event_time=now, status="pending",
-            ))
+            meta_session.add(
+                MetaCapiOutbox(
+                    order_id=i,
+                    store_ref_id=store_a.id,
+                    event_id=f"e{i}",
+                    event_time=now,
+                    status="pending",
+                )
+            )
         for i in range(3, 6):
-            meta_session.add(MetaCapiOutbox(
-                order_id=i, store_ref_id=store_b.id, event_id=f"e{i}",
-                event_time=now, status="pending",
-            ))
+            meta_session.add(
+                MetaCapiOutbox(
+                    order_id=i,
+                    store_ref_id=store_b.id,
+                    event_id=f"e{i}",
+                    event_time=now,
+                    status="pending",
+                )
+            )
         meta_session.commit()
 
         repo = MetaCapiOutboxRepository()
@@ -186,10 +204,15 @@ class TestMetaCapiRepositoriesPerStore:
         now = datetime.now()
 
         for i in range(5):
-            meta_session.add(MetaCapiOutbox(
-                order_id=i, store_ref_id=store.id, event_id=f"e{i}",
-                event_time=now, status="pending",
-            ))
+            meta_session.add(
+                MetaCapiOutbox(
+                    order_id=i,
+                    store_ref_id=store.id,
+                    event_id=f"e{i}",
+                    event_time=now,
+                    status="pending",
+                )
+            )
         meta_session.commit()
 
         repo = MetaCapiOutboxRepository()
@@ -206,14 +229,28 @@ class TestMetaCapiRepositoriesPerStore:
         now = datetime.now()
 
         for i in range(3):
-            meta_session.add(MetaCapiOutbox(
-                order_id=i, store_ref_id=store.id, event_id=f"e{i}",
-                event_time=now, status="failed", error_type="retryable", attempts=1,
-            ))
-        meta_session.add(MetaCapiOutbox(
-            order_id=99, store_ref_id=999, event_id="e99",
-            event_time=now, status="failed", error_type="retryable", attempts=1,
-        ))
+            meta_session.add(
+                MetaCapiOutbox(
+                    order_id=i,
+                    store_ref_id=store.id,
+                    event_id=f"e{i}",
+                    event_time=now,
+                    status="failed",
+                    error_type="retryable",
+                    attempts=1,
+                )
+            )
+        meta_session.add(
+            MetaCapiOutbox(
+                order_id=99,
+                store_ref_id=999,
+                event_id="e99",
+                event_time=now,
+                status="failed",
+                error_type="retryable",
+                attempts=1,
+            )
+        )
         meta_session.commit()
 
         repo = MetaCapiOutboxRepository()
@@ -226,8 +263,8 @@ class TestMetaCapiRepositoriesPerStore:
 # SendDailyPurchasesToMetaCommand - process_outbox_cycle com store_ref_id
 # =============================================================================
 
-class TestSendDailyPurchasesToMetaCommandPerStore:
 
+class TestSendDailyPurchasesToMetaCommandPerStore:
     def test_process_outbox_cycle_respects_store_ref_id(self, meta_capi_app, meta_session):
         from datetime import datetime
 
@@ -245,15 +282,25 @@ class TestSendDailyPurchasesToMetaCommandPerStore:
         now = datetime.now()
 
         for i in range(3):
-            meta_session.add(MetaCapiOutbox(
-                order_id=i, store_ref_id=store_a.id, event_id=f"e{i}",
-                event_time=now, status="pending",
-            ))
+            meta_session.add(
+                MetaCapiOutbox(
+                    order_id=i,
+                    store_ref_id=store_a.id,
+                    event_id=f"e{i}",
+                    event_time=now,
+                    status="pending",
+                )
+            )
         for i in range(3, 6):
-            meta_session.add(MetaCapiOutbox(
-                order_id=i, store_ref_id=store_b.id, event_id=f"e{i}",
-                event_time=now, status="pending",
-            ))
+            meta_session.add(
+                MetaCapiOutbox(
+                    order_id=i,
+                    store_ref_id=store_b.id,
+                    event_id=f"e{i}",
+                    event_time=now,
+                    status="pending",
+                )
+            )
         meta_session.commit()
 
         cmd = SendDailyPurchasesToMetaCommand()

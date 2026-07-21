@@ -49,6 +49,7 @@ def bling_app(monkeypatch):
 
 # --- Fase 1.1: gate BLING_ENABLED -------------------------------------------
 
+
 def test_send_order_blocked_when_disabled(bling_app):
     from app.integrations.bling.errors import BlingConfigError
     from app.integrations.bling.service import BlingIntegrationService
@@ -69,6 +70,7 @@ def test_process_pending_blocked_when_disabled(bling_app):
 
 # --- Fase 1.2: dedupe falha fechado -----------------------------------------
 
+
 def test_resolve_existing_order_id_fails_closed_on_query_error(bling_app):
     from app.integrations.bling.errors import BlingRetryableError
     from app.integrations.bling.service import BlingIntegrationService
@@ -87,6 +89,7 @@ def test_resolve_existing_order_id_fails_closed_on_query_error(bling_app):
 
 
 # --- Fase 1.3: claim atomico ------------------------------------------------
+
 
 def test_process_outbox_skips_already_completed(bling_app, monkeypatch):
     from app import db
@@ -115,6 +118,7 @@ def test_process_outbox_skips_already_completed(bling_app, monkeypatch):
 
 
 # --- Fase 2.1: baixa idempotente --------------------------------------------
+
 
 class _CountingSettleClient:
     def __init__(self):
@@ -168,6 +172,7 @@ def test_settle_is_idempotent_across_retries(bling_app):
 
 
 # --- Fase 2.3: 401 dispara refresh + retry ----------------------------------
+
 
 class _FakeResp:
     def __init__(self, status, body):
@@ -245,6 +250,7 @@ def test_token_expiration_accepts_naive_database_datetime(bling_app):
 
 
 # --- Produto generico auto-criado -------------------------------------------
+
 
 class _FakeProductClient:
     def __init__(self, existing_codes=(), fail_create=False):
@@ -374,6 +380,7 @@ def test_enqueue_bling_for_new_order_creates_pending_once(bling_app):
 
 
 # --- Contato por cliente (Bling exige contato.id na venda) ------------------
+
 
 def test_ensure_contact_uses_configured_id(bling_app):
     from app.integrations.bling.service import BlingIntegrationService
@@ -591,7 +598,9 @@ def test_contact_marked_as_cliente_type(bling_app):
             return {"data": []}
 
         def list_contact_types(self):
-            return {"data": [{"id": 5, "descricao": "Fornecedor"}, {"id": 9, "descricao": "Cliente"}]}
+            return {
+                "data": [{"id": 5, "descricao": "Fornecedor"}, {"id": 9, "descricao": "Cliente"}]
+            }
 
         def create_contact(self, payload):
             self.created.append(payload)
@@ -616,6 +625,7 @@ def test_cliente_contact_type_uses_config_override(bling_app):
 
 
 # --- Cancelamento (apagar recebimento -> apagar conta -> apagar venda) -------
+
 
 class _CancelClient:
     def __init__(self, fail_delete_order_404=False):
@@ -656,7 +666,9 @@ def test_cancel_does_nothing_without_order(bling_app, monkeypatch):
     db.session.commit()
 
     svc = BlingIntegrationService()
-    monkeypatch.setattr(svc, "client", lambda: (_ for _ in ()).throw(AssertionError("nao deveria abrir client")))
+    monkeypatch.setattr(
+        svc, "client", lambda: (_ for _ in ()).throw(AssertionError("nao deveria abrir client"))
+    )
     svc.process_cancel(cancel.id)
 
     db.session.refresh(cancel)
@@ -717,7 +729,10 @@ def test_cancel_is_idempotent_on_404(bling_app, monkeypatch):
         horario="10:00",
     )
     send = BlingOutbox(
-        pedido_id=502, operation="send_order", status="completed", step="completed",
+        pedido_id=502,
+        operation="send_order",
+        status="completed",
+        step="completed",
         bling_order_id="901",
     )
     cancel = BlingOutbox(pedido_id=502, operation="cancel_order", status="pending", step="pending")
@@ -737,6 +752,7 @@ def test_cancel_is_idempotent_on_404(bling_app, monkeypatch):
 
 
 # --- Mensagem de erro do Bling (campos de validacao) ------------------------
+
 
 def test_error_message_inclui_fields_de_validacao():
     from app.integrations.bling.client import BlingClient
@@ -775,13 +791,9 @@ def test_accounts_already_launched_detects_code_62():
 
 # --- Fase 1.4: migration portavel -------------------------------------------
 
+
 def test_migration_uses_portable_timestamp_type():
-    path = (
-        Path(__file__).parent.parent
-        / "scripts"
-        / "migrations"
-        / "create_bling_integration.py"
-    )
+    path = Path(__file__).parent.parent / "scripts" / "migrations" / "create_bling_integration.py"
     src = path.read_text(encoding="utf-8")
     # Postgres nao reconhece DATETIME; as colunas de data devem usar TIMESTAMP.
     assert '("entrada_recebida_at", "TIMESTAMP")' in src

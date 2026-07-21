@@ -60,7 +60,9 @@ def test_enfileira_ga4_e_google_ads_uma_vez_por_pedido(app, session):
 
     assert len(enqueue_whatsapp_purchase(pedido)) == 2
     assert len(enqueue_whatsapp_purchase(pedido)) == 0
-    rows = session.query(MarketingConversionOutbox).order_by(MarketingConversionOutbox.destino).all()
+    rows = (
+        session.query(MarketingConversionOutbox).order_by(MarketingConversionOutbox.destino).all()
+    )
     assert len(rows) == 2
     assert {row.transaction_id for row in rows} == {f"GESTOR-WA-{pedido.id}"}
 

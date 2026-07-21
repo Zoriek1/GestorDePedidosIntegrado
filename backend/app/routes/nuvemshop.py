@@ -264,7 +264,9 @@ def nuvemshop_oauth_callback():
         store.active = True
         store.uninstalled_at = None
     else:
-        store = NuvemshopStore(store_id=str(store_id), access_token=encrypt_token(access_token), active=True)
+        store = NuvemshopStore(
+            store_id=str(store_id), access_token=encrypt_token(access_token), active=True
+        )
         db.session.add(store)
     # Amarra a instalação ao tenant interno resolvido pelo state (Fase B).
     if store_ref_id is not None:
@@ -537,10 +539,7 @@ def nuvemshop_process_pending():
         deliveries_query = deliveries_query.filter_by(store_id=str(installation.store_id))
 
     deliveries = (
-        deliveries_query
-        .order_by(NuvemshopWebhookDelivery.received_at.asc())
-        .limit(limit)
-        .all()
+        deliveries_query.order_by(NuvemshopWebhookDelivery.received_at.asc()).limit(limit).all()
     )
 
     if not deliveries:

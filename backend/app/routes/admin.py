@@ -18,9 +18,17 @@ logger = logging.getLogger(__name__)
 
 # Tables that should have store_ref_id
 _TENANT_TABLES = [
-    "pedidos", "leads", "clientes", "fontes_pedido", "enderecos_clientes",
-    "pedido_external_refs", "audit_log", "push_subscriptions",
-    "users", "bling_credentials", "nuvemshop_stores",
+    "pedidos",
+    "leads",
+    "clientes",
+    "fontes_pedido",
+    "enderecos_clientes",
+    "pedido_external_refs",
+    "audit_log",
+    "push_subscriptions",
+    "users",
+    "bling_credentials",
+    "nuvemshop_stores",
 ]
 
 
@@ -76,12 +84,14 @@ def tenant_health():
         sum(v for v in orphans.values() if isinstance(v, int)),
     )
 
-    return success_response({
-        "success": True,
-        "null_store_refs": null_store_refs,
-        "orphans": orphans,
-        "outbox_pending_by_tenant": outbox_pending,
-    })
+    return success_response(
+        {
+            "success": True,
+            "null_store_refs": null_store_refs,
+            "orphans": orphans,
+            "outbox_pending_by_tenant": outbox_pending,
+        }
+    )
 
 
 @admin_bp.route("/tenant-health", methods=["GET"])

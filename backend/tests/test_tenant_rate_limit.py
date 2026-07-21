@@ -1,10 +1,31 @@
 """Testes para rate limiting por tenant nos workers (Tarefa 4.5)."""
 
+from datetime import date
+
 import pytest
 
 # =============================================================================
 # Fixtures específicas (não usam conftest.app — precisam de BLING_ENABLED etc.)
 # =============================================================================
+
+
+def _pedido(session, numero: int = 1):
+    """Cria um Pedido mínimo para satisfazer FKs."""
+    from app.models.pedido import Pedido, datetime_now_brazil
+
+    p = Pedido(
+        numero_pedido=numero,
+        cliente=f"Cliente {numero}",
+        telefone_cliente="11999999999",
+        destinatario="Destino",
+        produto="Flores",
+        valor="R$ 50,00",
+        dia_entrega=date.today(),
+        horario="10:00",
+    )
+    session.add(p)
+    session.commit()
+    return p
 
 
 @pytest.fixture
@@ -94,16 +115,19 @@ class TestBlingProcessPendingPerStore:
         bling_session.add(store_b)
         bling_session.commit()
 
-        for i in range(3):
+        pedidos_a = [_pedido(bling_session, i) for i in range(3)]
+        pedidos_b = [_pedido(bling_session, i + 10) for i in range(3)]
+
+        for p in pedidos_a:
             bling_session.add(
                 BlingOutbox(
-                    pedido_id=i, store_ref_id=store_a.id, operation="send_order", status="pending"
+                    pedido_id=p.id, store_ref_id=store_a.id, operation="send_order", status="pending"
                 )
             )
-        for i in range(3, 6):
+        for p in pedidos_b:
             bling_session.add(
                 BlingOutbox(
-                    pedido_id=i, store_ref_id=store_b.id, operation="send_order", status="pending"
+                    pedido_id=p.id, store_ref_id=store_b.id, operation="send_order", status="pending"
                 )
             )
         bling_session.commit()
@@ -126,10 +150,11 @@ class TestBlingProcessPendingPerStore:
         bling_session.add(store)
         bling_session.commit()
 
-        for i in range(5):
+        pedidos = [_pedido(bling_session, i) for i in range(5)]
+        for p in pedidos:
             bling_session.add(
                 BlingOutbox(
-                    pedido_id=i, store_ref_id=store.id, operation="send_order", status="pending"
+                    pedido_id=p.id, store_ref_id=store.id, operation="send_order", status="pending"
                 )
             )
         bling_session.commit()
@@ -170,6 +195,7 @@ class TestMetaCapiRepositoriesPerStore:
                     store_ref_id=store_a.id,
                     event_id=f"e{i}",
                     event_time=now,
+                    payload_json="{}",
                     status="pending",
                 )
             )
@@ -180,6 +206,7 @@ class TestMetaCapiRepositoriesPerStore:
                     store_ref_id=store_b.id,
                     event_id=f"e{i}",
                     event_time=now,
+                    payload_json="{}",
                     status="pending",
                 )
             )
@@ -210,6 +237,7 @@ class TestMetaCapiRepositoriesPerStore:
                     store_ref_id=store.id,
                     event_id=f"e{i}",
                     event_time=now,
+                    payload_json="{}",
                     status="pending",
                 )
             )
@@ -235,6 +263,7 @@ class TestMetaCapiRepositoriesPerStore:
                     store_ref_id=store.id,
                     event_id=f"e{i}",
                     event_time=now,
+                    payload_json="{}",
                     status="failed",
                     error_type="retryable",
                     attempts=1,
@@ -246,6 +275,7 @@ class TestMetaCapiRepositoriesPerStore:
                 store_ref_id=999,
                 event_id="e99",
                 event_time=now,
+                payload_json="{}",
                 status="failed",
                 error_type="retryable",
                 attempts=1,
@@ -288,6 +318,7 @@ class TestSendDailyPurchasesToMetaCommandPerStore:
                     store_ref_id=store_a.id,
                     event_id=f"e{i}",
                     event_time=now,
+                    payload_json="{}",
                     status="pending",
                 )
             )
@@ -298,6 +329,7 @@ class TestSendDailyPurchasesToMetaCommandPerStore:
                     store_ref_id=store_b.id,
                     event_id=f"e{i}",
                     event_time=now,
+                    payload_json="{}",
                     status="pending",
                 )
             )

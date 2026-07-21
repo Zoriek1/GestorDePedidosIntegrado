@@ -148,6 +148,7 @@ def settle():
     except Exception as e:
         return error_response(str(e), 500)
 
+
 # ---------------------------------------------------------------------------
 # GET /api/ledger/entries
 # ---------------------------------------------------------------------------
@@ -309,8 +310,7 @@ def get_pedidos_atribuidos():
             LedgerEntry.voided.is_(False),
             or_(
                 # Comissão do vendedor: pedido_id preenchido + categoria comissao_*
-                (LedgerEntry.pedido_id.isnot(None))
-                & (LedgerEntry.category.like("comissao_%")),
+                (LedgerEntry.pedido_id.isnot(None)) & (LedgerEntry.category.like("comissao_%")),
                 # Taxa de entrega do entregador: delivery_pedido_id preenchido + categoria taxa_entrega
                 (LedgerEntry.delivery_pedido_id.isnot(None))
                 & (LedgerEntry.category == "taxa_entrega"),
@@ -428,9 +428,7 @@ def get_commissions():
         to_date = _parse_date(request.args.get("to"))
         date_basis = (request.args.get("date_basis") or "entrega").strip().lower()
         if date_basis not in {"entrega", "vencimento", "competencia"}:
-            return error_response(
-                "date_basis deve ser entrega, vencimento ou competencia", 400
-            )
+            return error_response("date_basis deve ser entrega, vencimento ou competencia", 400)
         want_detail = _parse_bool(request.args.get("detail"), default=False)
 
         filter_user_id = None
@@ -470,9 +468,7 @@ def get_commissions():
         )
         user_ids = {e.user_id for e in entries}
         users_by_id = (
-            {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()}
-            if user_ids
-            else {}
+            {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
         )
 
         agg: dict[int, dict] = {}
@@ -512,9 +508,7 @@ def get_commissions():
             bucket["orders_count"] += 1
 
             source = e.commission_source or (
-                e.category[len("comissao_"):]
-                if e.category.startswith("comissao_")
-                else e.category
+                e.category[len("comissao_") :] if e.category.startswith("comissao_") else e.category
             )
             src = bucket["_by_source"].setdefault(
                 source, {"source": source, "total": 0.0, "orders_count": 0}
@@ -551,9 +545,7 @@ def get_commissions():
             b["total_commission"] = round(b["total_commission"], 2)
             b["paid_commission"] = round(b["paid_commission"], 2)
             b["pending_commission"] = round(b["pending_commission"], 2)
-            by_source = sorted(
-                b.pop("_by_source").values(), key=lambda s: s["total"], reverse=True
-            )
+            by_source = sorted(b.pop("_by_source").values(), key=lambda s: s["total"], reverse=True)
             for s in by_source:
                 s["total"] = round(s["total"], 2)
             b["by_source"] = by_source

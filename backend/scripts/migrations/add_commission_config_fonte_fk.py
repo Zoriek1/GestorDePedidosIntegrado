@@ -14,15 +14,17 @@ sys.path.insert(0, str(backend_dir))
 
 
 def column_exists(table: str, col: str) -> bool:
-    from app import db
     from sqlalchemy import inspect as sa_inspect
+
+    from app import db
 
     return col in [c["name"] for c in sa_inspect(db.engine).get_columns(table)]
 
 
 def table_exists(table: str) -> bool:
-    from app import db
     from sqlalchemy import inspect as sa_inspect
+
+    from app import db
 
     return table in sa_inspect(db.engine).get_table_names()
 
@@ -108,7 +110,7 @@ def migrate():
 
 
 if __name__ == "__main__":
-    from app import create_app, db
+    from app import create_app
 
     app = create_app()
     with app.app_context():

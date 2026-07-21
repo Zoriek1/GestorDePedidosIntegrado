@@ -19,8 +19,9 @@ from app.models import Pedido
 # NOVO LOCAL: app/routes/pedidos.py -> criar_pedido()
 
 
-
 debug_bp = Blueprint("debug", __name__, url_prefix="/api")
+
+
 @debug_bp.route("/debug/geocode", methods=["GET", "POST"])
 @requires_role("admin")
 def debug_geocode():
@@ -522,5 +523,3 @@ def debug_testar_apis():
 
         traceback.print_exc()
         return jsonify({"error": "Erro ao testar APIs", "detalhes": str(e)}), 500
-
-

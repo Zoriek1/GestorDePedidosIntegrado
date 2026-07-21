@@ -137,11 +137,7 @@ def _sqlite_rebuild(connection, model) -> None:
         tuple(c.get("column_names") or ()) for c in inspect(connection).get_unique_constraints(name)
     }
     legacy_single = ("dedup_key",) if name == "leads" else ("endpoint",)
-    desired = (
-        ("store_ref_id", "dedup_key")
-        if name == "leads"
-        else ("store_ref_id", "endpoint")
-    )
+    desired = ("store_ref_id", "dedup_key") if name == "leads" else ("store_ref_id", "endpoint")
     if legacy_single not in uniques and desired in uniques:
         return
 

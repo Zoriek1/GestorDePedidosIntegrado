@@ -124,9 +124,7 @@ class GerarComprovanteLoteCommand:
 
         # Status agora aparece no selo do cabeçalho; o rodapé mostra só a forma.
         seal_class, seal_text = self._payment_seal(ctx)
-        seal_html = (
-            f'<span class="slip-seal {seal_class}">{seal_text}</span>' if seal_text else ""
-        )
+        seal_html = f'<span class="slip-seal {seal_class}">{seal_text}</span>' if seal_text else ""
         pagamento_str = fmt(ctx.get("pagamento"))
 
         cliente_tel_html = (

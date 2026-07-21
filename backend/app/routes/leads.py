@@ -126,7 +126,9 @@ def _parse_brt_day_end(value: str) -> datetime | None:
         return None
     if parsed.tzinfo is None:
         # Date-only: estender para 23:59:59.999999 BRT para incluir o dia inteiro.
-        parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=TIMEZONE_BRASIL)
+        parsed = parsed.replace(
+            hour=23, minute=59, second=59, microsecond=999999, tzinfo=TIMEZONE_BRASIL
+        )
     return parsed
 
 
@@ -407,11 +409,7 @@ def _phone_from_whatsapp_jid(value: object) -> str | None:
 
 
 def _extract_whatsapp_phone(data: dict) -> str | None:
-    key_data = (
-        data.get("data", {}).get("key", {})
-        if isinstance(data.get("data"), dict)
-        else {}
-    )
+    key_data = data.get("data", {}).get("key", {}) if isinstance(data.get("data"), dict) else {}
     remote_jid = key_data.get("remoteJid") if isinstance(key_data, dict) else None
     alternate_jids = []
     if isinstance(key_data, dict):
@@ -546,7 +544,8 @@ def criar_lead():
     existing = None
     if is_whatsapp and token_valido:
         existing = (
-            Lead.query.execution_options(include_all_tenants=True).filter(
+            Lead.query.execution_options(include_all_tenants=True)
+            .filter(
                 Lead.store_ref_id == store_ref_id,
                 Lead.token_rastreio == token_rastreio,
                 Lead.status != "compra_realizada",
@@ -555,10 +554,14 @@ def criar_lead():
             .first()
         )
     if existing is None:
-        existing = Lead.query.execution_options(include_all_tenants=True).filter(
-            Lead.store_ref_id == store_ref_id,
-            Lead.dedup_key == dedup_key,
-        ).first()
+        existing = (
+            Lead.query.execution_options(include_all_tenants=True)
+            .filter(
+                Lead.store_ref_id == store_ref_id,
+                Lead.dedup_key == dedup_key,
+            )
+            .first()
+        )
     if existing is not None:
         _record_touchpoint(existing, tp_fields)
         db.session.commit()
@@ -645,10 +648,14 @@ def criar_lead():
     except IntegrityError:
         # Race: outro request inseriu o mesmo dedup_key entre nosso SELECT e INSERT.
         db.session.rollback()
-        existing = Lead.query.execution_options(include_all_tenants=True).filter(
-            Lead.store_ref_id == store_ref_id,
-            Lead.dedup_key == dedup_key,
-        ).first()
+        existing = (
+            Lead.query.execution_options(include_all_tenants=True)
+            .filter(
+                Lead.store_ref_id == store_ref_id,
+                Lead.dedup_key == dedup_key,
+            )
+            .first()
+        )
         if existing is not None:
             _record_touchpoint(existing, tp_fields)
             db.session.commit()
@@ -780,9 +787,7 @@ def _apply_lead_status_update(lead: Lead, data: dict):
 
     old_status = lead.status
     fire_disqualified = (
-        new_status == "descarte"
-        and is_lead_funnel_enabled()
-        and old_status != "descarte"
+        new_status == "descarte" and is_lead_funnel_enabled() and old_status != "descarte"
     )
     fire_lead_confirmed = (
         new_status == "whatsapp_iniciado"
@@ -1114,9 +1119,7 @@ def listar_leads():
     if status_q:
         query = query.filter(Lead.status == status_q)
     elif hidden_mode == "exclude":
-        query = query.filter(
-            db.or_(Lead.status.is_(None), ~Lead.status.in_(HIDDEN_STATUSES))
-        )
+        query = query.filter(db.or_(Lead.status.is_(None), ~Lead.status.in_(HIDDEN_STATUSES)))
     elif hidden_mode == "only":
         query = query.filter(Lead.status.in_(HIDDEN_STATUSES))
 

@@ -45,7 +45,9 @@ def migrate():
     affected = result.rowcount or 0
     db.session.commit()
 
-    print(f"[MIGRATION]   backfill: {affected} lead(s) 'pendente_whatsapp' com telefone → 'lead_pendente'.")
+    print(
+        f"[MIGRATION]   backfill: {affected} lead(s) 'pendente_whatsapp' com telefone → 'lead_pendente'."
+    )
     print("[MIGRATION]   pronto.")
 
 

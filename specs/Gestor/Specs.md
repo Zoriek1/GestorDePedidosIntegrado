@@ -10,7 +10,9 @@ Estas especificações devem ser revisadas antes da continuação da implementa�
 
 O primeiro incremento foi revisado e consolidado no commit `00c3cfb` (`feat(integrations): add per-store settings foundation`). Ele entrega a fundação de lojas, configurações cifradas e a tela administrativa para o tenant `default`, mas ainda não fornece isolamento multi-tenant de dados.
 
-As **Fases A, B, C e D** foram entregues no branch `multi-tenant`: identidade autenticada, OAuth, domínio isolado (C.1–C.4) e workers por empresa (D) já resolvem tenant. O **Gate 0 (PostgreSQL)** também foi concluído com backup/restore de dados reais de produção, smoke de isolamento e teste de concorrência de `numero_pedido`. O **hardening fail-closed (parte da Fase F, commit `99e5945`)** também foi entregue, fechando as bordas de compatibilidade em multi-store. A próxima implementação é a **Fase E — Frontend/offline** e o **restante da Fase F — Hardening** (`NOT NULL`, uniques finais, remover fallback `.env`, cifrar token Nuvemshop, métricas/alertas). O estado consolidado fica em [08-estado-atual-e-proximos-passos.md](08-estado-atual-e-proximos-passos.md), o checklist executável das Fases C/D/F fica em [09-blueprint-fases-c-d.md](09-blueprint-fases-c-d.md) e o runbook de rollout (Fases 0–2) está em [10-rollout-fases-0-2.md](10-rollout-fases-0-2.md).
+As **Fases A, B, C, D, E e F** foram entregues no branch `multi-tenant`: identidade autenticada, OAuth, domínio isolado (C.1–C.4), workers por empresa (D), hardening (F), frontend/offline por tenant (E), validação de integrações e grid de UI. O **Gate 0 (PostgreSQL)** também foi concluído com backup/restore de dados reais de produção, smoke de isolamento e teste de concorrência de `numero_pedido`.
+
+**Status 2026-07-21: implementação completa.** A próxima ação é o **deploy em produção com 1 loja** (Fase 1 do runbook [10-rollout-fases-0-2.md](10-rollout-fases-0-2.md)), seguido da verificação de `store_settings` (Fase 2). Ver [08-estado-atual-e-proximos-passos.md](08-estado-atual-e-proximos-passos.md) para o panorama completo e [11-proximos-passos.md](11-proximos-passos.md) para o roadmap pós-implementação.
 
 ## Índice
 
@@ -22,14 +24,15 @@ As **Fases A, B, C e D** foram entregues no branch `multi-tenant`: identidade au
 6. [Workers e integrações externas](06-workers-integracoes.md)
 7. [Segurança, testes, rollout e operação](07-seguranca-testes-rollout.md)
 8. [Estado atual e plano de continuação](08-estado-atual-e-proximos-passos.md)
-9. [Blueprint executável das Fases C, D e F](09-blueprint-fases-c-d.md)
+9. [Blueprint executável das Fases C, D, E e F](09-blueprint-fases-c-d.md)
 10. [Runbook — Rollout Fases 0–2](10-rollout-fases-0-2.md)
+11. [Próximos passos — roadmap pós-implementação](11-proximos-passos.md)
 
 O blueprint 09 é um checklist vivo: após cada incremento, deve registrar status, commit realizado,
 testes executados e desvios aprovados. As specs 01–08 continuam sendo a referência temática e
 guardam as decisões permanentes do sistema.
 
-## Sequência proposta
+## Sequência concluída
 
 1. Aprovar identidade e resolução do tenant. ✅
 2. Consolidar a fundação `stores` e executar a migration em ambiente de teste. ✅
@@ -40,9 +43,14 @@ guardam as decisões permanentes do sistema.
 6. Propagar `store_ref_id` para dados de negócio em quatro incrementos. ✅ C.1 → C.2 → C.3 → C.4
 7. Propagar tenant para filas e adaptar os workers para configuração por loja. ✅ (Fase D)
 8. Gate PostgreSQL (migrations, concorrência, isolamento com 2 lojas, backup/restore). ✅ (Gate 0)
-9. Hardening fail-closed das bordas de compatibilidade (numeração, PK lookups, lead público, taxa de entrega, Bling por tenant). ✅ (Fase F parcial, `99e5945`)
-10. Aplicar `NOT NULL` e constraints finais numa etapa separada. ⬅ Restante da Fase F
-11. Remover fallback de credenciais por loja no `.env` somente após auditoria. ⬅ Restante da Fase F
+9. Hardening fail-closed das bordas de compatibilidade. ✅ (Fase F parcial, `99e5945`)
+10. Frontend/offline por tenant (React Query keys, Dexie, cache purge). ✅ (Fase E, `8c4747f`)
+11. Hardening final (NOT NULL 19 tabelas, env fallback flag, Nuvemshop token criptografado). ✅ (Fase F restante, `dccfdee`)
+12. Validação de integrações (dispatcher por canal, IntegrationValidationLog, UI grid). ✅
+13. Deploy em produção com 1 loja. ⬅ Próxima ação
+14. Verificar `store_settings` e `uses_environment_fallback = false`. ⬅ Após deploy
+15. Ativar 2ª loja com `FORCE_MULTI_TENANT=1`. ⬅ Após verificação
+16. Métricas/alertas por tenant, revisão de segurança, cleanup de débitos. ⬅ Roadmap
 
 ## Critério global de conclusão
 
@@ -51,6 +59,7 @@ guardam as decisões permanentes do sistema.
 - Segredos são cifrados em repouso e mascarados nas APIs.
 - Callbacks, workers e tarefas assíncronas resolvem o tenant sem depender de estado global de request.
 - Todas as queries de negócio têm escopo de tenant comprovado por testes negativos de vazamento.
+- Frontend escopa cache, queries e armazenamento offline por tenant.
 - Migrations funcionam em PostgreSQL e no fallback SQLite definido pelo projeto.
 
 ## Fora do escopo inicial

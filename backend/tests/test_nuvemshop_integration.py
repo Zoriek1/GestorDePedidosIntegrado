@@ -41,7 +41,12 @@ def _no_nuvemshop_sleep(monkeypatch):
 
 def _make_user(session, email: str, role: str = "vendedor", name: str | None = None) -> User:
     # Nome único por padrão (derivado do email) — respeita o índice único users.name.
-    user = User(name=name or f"Teste {email}", email=email, password_hash=hash_password("pass1234"), role=role)
+    user = User(
+        name=name or f"Teste {email}",
+        email=email,
+        password_hash=hash_password("pass1234"),
+        role=role,
+    )
     session.add(user)
     session.commit()
     return user

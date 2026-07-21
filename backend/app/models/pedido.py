@@ -30,9 +30,7 @@ class Pedido(TenantScoped, db.Model):
     __tablename__ = "pedidos"
 
     __table_args__ = (
-        db.UniqueConstraint(
-            "store_ref_id", "numero_pedido", name="uq_pedidos_store_numero_pedido"
-        ),
+        db.UniqueConstraint("store_ref_id", "numero_pedido", name="uq_pedidos_store_numero_pedido"),
     )
 
     # Identificador único
@@ -81,7 +79,9 @@ class Pedido(TenantScoped, db.Model):
     rua = db.Column(db.String(200), nullable=True, comment="Rua/Logradouro")
     numero = db.Column(db.String(20), nullable=True, comment="Número")
     tipo_local = db.Column(db.String(20), nullable=True, comment="casa, predio ou comercial")
-    nome_local = db.Column(db.String(120), nullable=True, comment="Predio/condominio/estabelecimento")
+    nome_local = db.Column(
+        db.String(120), nullable=True, comment="Predio/condominio/estabelecimento"
+    )
     apto = db.Column(db.String(50), nullable=True, comment="Apartamento")
     bloco = db.Column(db.String(50), nullable=True, comment="Bloco")
     torre = db.Column(db.String(50), nullable=True, comment="Torre")

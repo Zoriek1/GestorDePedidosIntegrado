@@ -1,11 +1,14 @@
 # Runbook — Rollout Fases 0–2
 
 > **Gate 0 concluído em 2026-07-20** — todos os itens de 0.1 a 0.7 validados, incluindo backup/restore
-> com dados reais de produção. Próximo passo: Fase 1 (deploy em produção com 1 loja).
+> com dados reais de produção.
+> **Fases A–F implementadas em 2026-07-21** — NOT NULL, Nuvemshop token, frontend/offline, validação
+> de integrações e UI grid entregues. Suíte: 786/786.
+> **Próximo passo: Fase 1 (deploy em produção com 1 loja).**
 
 Gate PostgreSQL (staging) → deploy em produção com 1 loja → verificação de `store_settings`.
 Escopo deliberadamente limitado às fases **0, 1 e 2**: nenhuma segunda loja é ativada aqui
-(`is_multi_store()` permanece `False` em produção). Continuação (ativar 2ª loja, Fase F) fica para
+(`is_multi_store()` permanece `False` em produção). Continuação (ativar 2ª loja) fica para
 runbooks seguintes.
 
 ## Princípios que tornam 0–2 seguras
@@ -19,11 +22,15 @@ runbooks seguintes.
 
 ## Estado de partida
 
-- Commits no branch `multi-tenant`: A–D + hardening (`83fc747` Fase D, `99e5945` hardening fail-closed).
+- Commits no branch `multi-tenant`: Fases A–F completas (17 commits de implementação).
 - Suíte SQLite: **786/786**. Gate 0 validado em PostgreSQL real à parte (ver seções 0.4 a 0.7):
   migrations idempotentes, concorrência de `numero_pedido` (2 passed) e smoke de isolamento com 2
   lojas (4 passed) executados contra Postgres real; backup/restore com dados reais de produção
-  (909 pedidos) confirmado. Docker indisponível no dev, mas usou-se Postgres real fora do container.
+  (909 pedidos) confirmado.
+- NOT NULL em 19 tabelas aplicado idempotente (SQLite + Postgres).
+- Token Nuvemshop cifrado com AES-GCM.
+- React Query keys escopadas por tenant; cache purged em troca de identidade.
+- IntegrationValidationLog + grid de validação de integrações funcional.
 - Deploy: `docker compose` (`db` postgres:16 + `backend` + `capi-worker` + `bling-worker`). Só o
   `backend` roda as migrations (via `backend/entrypoint.sh`); os workers apenas leem a fila.
 
@@ -233,12 +240,13 @@ idempotente). Aqui a tarefa é **verificar**, não importar.
 
 ## Fora do escopo 0–2 (não bloqueiam, ficam para depois)
 
-- **Ativar a 2ª loja em produção** (Fase 4) — só depois do gate e do mapeamento landing/domínio→loja
-  (hoje `resolve_public_store_id()` sempre resolve para a default).
-- **Fase F**: `NOT NULL` + uniques finais, remover fallback `.env`, **cifrar token Nuvemshop**
-  (gate de produção multiempresa da Spec 07), rotação de chave, métricas/alertas por tenant, revisão
-  de segurança. Em 0–2 (1 loja) o token Nuvemshop em texto puro e o fallback `.env` continuam
-  tolerados.
+- **Ativar a 2ª loja em produção** — só depois das Fases 1–2 validadas.
+- **Métricas e alertas por tenant** — taxa de erro, latência, volume por `store_ref_id`.
+- **Revisão de segurança** — timing attack, segredos em memória, cookies/sessão.
+- **UTMify síncrono** — envio síncrono de conversões (atualmente WIP).
+- **Landing page → store mapping** — `resolve_public_write_company()` atualmente sempre resolve `default`.
+- **Cleanup de débitos** — Ruff (25), Black (62 arquivos), `tsc --noEmit`.
+- **Ver [11-proximos-passos.md](11-proximos-passos.md)** para o roadmap completo pós-implementação.
 
 ## Artefatos produzidos
 

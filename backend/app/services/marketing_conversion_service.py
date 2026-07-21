@@ -13,7 +13,6 @@ from app import db
 from app.models.lead import Lead
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.pedido import TIMEZONE_BRASIL, Pedido, datetime_now_brazil
-from app.services.integration_settings_service import runtime_config
 from app.services.tenancy import is_store_inactive
 from app.utils.tracking_token import normalize_tracking_token
 
@@ -121,37 +120,39 @@ def _google_ads_payload(
 
 def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]:
     """Enfileira GA4/Ads apenas para pedido ligado a token valido da loja."""
-    tenant_config = runtime_config(getattr(pedido, "store_ref_id", None))
-    if not tenant_config.get("MARKETING_DISPATCH_ENABLED"):
-        return []
-    if is_store_inactive(pedido.store_ref_id):
-        return []
-    value = round(float(pedido.total_pago() or 0), 2)
-    if value <= 0:
-        return []
-    lead = _linked_store_lead(pedido)
-    if not lead:
-        return []
+    from app.services.secure_config import secure_runtime_config
 
-    transaction_id = f"GESTOR-WA-{pedido.id}"
-    event_time = datetime_now_brazil()
-    candidates: list[tuple[str, str, dict | None]] = []
-    if tenant_config.get("GA4_MEASUREMENT_ID") and tenant_config.get("GA4_API_SECRET"):
-        candidates.append(
-            (
-                "ga4",
-                "whatsapp_purchase",
-                _ga4_payload(pedido, lead, transaction_id, value, event_time),
+    with secure_runtime_config(getattr(pedido, "store_ref_id", None)) as tenant_config:
+        if not tenant_config.get("MARKETING_DISPATCH_ENABLED"):
+            return []
+        if is_store_inactive(pedido.store_ref_id):
+            return []
+        value = round(float(pedido.total_pago() or 0), 2)
+        if value <= 0:
+            return []
+        lead = _linked_store_lead(pedido)
+        if not lead:
+            return []
+
+        transaction_id = f"GESTOR-WA-{pedido.id}"
+        event_time = datetime_now_brazil()
+        candidates: list[tuple[str, str, dict | None]] = []
+        if tenant_config.get("GA4_MEASUREMENT_ID") and tenant_config.get("GA4_API_SECRET"):
+            candidates.append(
+                (
+                    "ga4",
+                    "whatsapp_purchase",
+                    _ga4_payload(pedido, lead, transaction_id, value, event_time),
+                )
             )
-        )
-    if tenant_config.get("GOOGLE_DATAMANAGER_ENABLED"):
-        candidates.append(
-            (
-                "google_ads",
-                "purchase",
-                _google_ads_payload(pedido, lead, transaction_id, value, event_time),
+        if tenant_config.get("GOOGLE_DATAMANAGER_ENABLED"):
+            candidates.append(
+                (
+                    "google_ads",
+                    "purchase",
+                    _google_ads_payload(pedido, lead, transaction_id, value, event_time),
+                )
             )
-        )
 
     created: list[MarketingConversionOutbox] = []
     for destino, evento, payload in candidates:

@@ -30,7 +30,9 @@ from app.services.auth_service import generate_token, hash_password  # noqa: E40
 
 def make_user(session, email, password="pass1234", role="entregador", name=None):
     # Nome único por padrão (derivado do email) — respeita o índice único users.name.
-    user = User(name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role)
+    user = User(
+        name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role
+    )
     session.add(user)
     session.commit()
     return user
@@ -79,9 +81,7 @@ def bypass_backup(monkeypatch):
     """Bypassa o guard de backup para que DELETE /api/pedidos/:id funcione em testes."""
     from app.routes import pedidos as pedidos_route
 
-    monkeypatch.setattr(
-        pedidos_route, "ensure_backup_before_destructive_action", lambda **kw: True
-    )
+    monkeypatch.setattr(pedidos_route, "ensure_backup_before_destructive_action", lambda **kw: True)
 
 
 # ===========================================================================
@@ -297,7 +297,9 @@ class TestDeliveryLifecycle:
         )
 
         entregador = make_user(session, "lf3@t.com")
-        pedido = make_pedido(session, entregador_id=entregador.id, status="concluido", taxa_entrega=10.0)
+        pedido = make_pedido(
+            session, entregador_id=entregador.id, status="concluido", taxa_entrega=10.0
+        )
         pedido.delivery_completed_at = datetime.utcnow()
         session.commit()
         generate_delivery_credit(pedido, entregador.id)
@@ -900,9 +902,7 @@ class TestUserRoleValidation:
     """O dropdown de criação de usuário agora oferece 5 roles. O backend precisa
     aceitar todos e rejeitar valores fora do conjunto."""
 
-    @pytest.mark.parametrize(
-        "role", ["admin", "vendedor", "atendente", "entregador", "viewer"]
-    )
+    @pytest.mark.parametrize("role", ["admin", "vendedor", "atendente", "entregador", "viewer"])
     def test_create_user_aceita_role_valido(self, client, session, role):
         admin = make_user(session, f"ur_a_{role}@t.com", role="admin", name="A")
         token = generate_token(admin)
@@ -973,9 +973,7 @@ class TestUserRoleValidation:
         )
         assert resp.status_code == 403
 
-    @pytest.mark.parametrize(
-        "role", ["admin", "vendedor", "atendente", "entregador", "viewer"]
-    )
+    @pytest.mark.parametrize("role", ["admin", "vendedor", "atendente", "entregador", "viewer"])
     def test_update_user_aceita_role_valido(self, client, session, role):
         admin = make_user(session, f"upd_a_{role}@t.com", role="admin", name="A")
         target = make_user(session, f"upd_t_{role}@t.com", role="viewer", name="T")
@@ -1186,7 +1184,7 @@ class TestUserDeleteFlow:
         u = db.session.get(UserModel, target.id)
         assert u.is_active is False
         assert u.email == "del_t@t.com"  # email intacto
-        assert u.name == "Joao"          # nome intacto
+        assert u.name == "Joao"  # nome intacto
 
     def test_hard_delete_em_usuario_ativo_400(self, client, session):
         """Admin não pode pular o passo de desativação."""
@@ -1288,9 +1286,7 @@ class TestUserDeleteFlow:
         token = generate_token(admin)
 
         client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
-        resp = client.post(
-            f"/api/users/{target.id}/reactivate", headers=auth_headers(token)
-        )
+        resp = client.post(f"/api/users/{target.id}/reactivate", headers=auth_headers(token))
         assert resp.status_code == 200
         assert resp.get_json()["user"]["is_active"] is True
 
@@ -1302,9 +1298,7 @@ class TestUserDeleteFlow:
         client.delete(f"/api/users/{target.id}", headers=auth_headers(token))
         client.delete(f"/api/users/{target.id}/hard", headers=auth_headers(token))
 
-        resp = client.post(
-            f"/api/users/{target.id}/reactivate", headers=auth_headers(token)
-        )
+        resp = client.post(f"/api/users/{target.id}/reactivate", headers=auth_headers(token))
         assert resp.status_code == 400
 
     def test_hard_delete_proprio_user_400(self, client, session):

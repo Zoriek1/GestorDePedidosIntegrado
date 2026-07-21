@@ -69,7 +69,9 @@ def migrate():
         )
     )
     db.session.commit()
-    print(f"[MIGRATION]   backfill concluído: {result.rowcount or 0} leads confirmados atualizados.")
+    print(
+        f"[MIGRATION]   backfill concluído: {result.rowcount or 0} leads confirmados atualizados."
+    )
 
 
 if __name__ == "__main__":

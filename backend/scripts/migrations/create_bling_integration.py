@@ -57,10 +57,7 @@ def ensure_outbox_unique() -> None:
         return
 
     db.session.execute(
-        db.text(
-            f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-            "UNIQUE (pedido_id, operation)"
-        )
+        db.text(f"ALTER TABLE {table} ADD CONSTRAINT {constraint} " "UNIQUE (pedido_id, operation)")
     )
     db.session.commit()
     print(f"[ADD] {constraint}")

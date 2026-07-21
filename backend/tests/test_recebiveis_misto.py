@@ -17,7 +17,9 @@ from app.utils.date_utils import get_monday
 
 def make_user(session, email, password="pass1234", role="vendedor", name=None):
     # Nome único por padrão (derivado do email) — respeita o índice único users.name.
-    user = User(name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role)
+    user = User(
+        name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role
+    )
     session.add(user)
     session.commit()
     return user
@@ -54,30 +56,32 @@ def test_pending_mistura_fixos_e_comissoes_na_mesma_competencia(client, session,
     session.flush()
 
     due = fixed_today + timedelta(days=8)
-    session.add_all([
-        LedgerEntry(
-            user_id=vendedor.id,
-            type="CREDIT",
-            category="comissao_site",
-            amount=70.0,
-            week_ref=get_monday(due),
-            due_date=due,
-            status="active",
-            created_by=admin.id,
-            pedido_id=pedido.id,
-        ),
-        LedgerEntry(
-            user_id=vendedor.id,
-            type="CREDIT",
-            category="fixo_semanal",
-            amount=30.0,
-            description="Salario semanal",
-            week_ref=get_monday(due),
-            due_date=due,
-            status="active",
-            created_by=admin.id,
-        ),
-    ])
+    session.add_all(
+        [
+            LedgerEntry(
+                user_id=vendedor.id,
+                type="CREDIT",
+                category="comissao_site",
+                amount=70.0,
+                week_ref=get_monday(due),
+                due_date=due,
+                status="active",
+                created_by=admin.id,
+                pedido_id=pedido.id,
+            ),
+            LedgerEntry(
+                user_id=vendedor.id,
+                type="CREDIT",
+                category="fixo_semanal",
+                amount=30.0,
+                description="Salario semanal",
+                week_ref=get_monday(due),
+                due_date=due,
+                status="active",
+                created_by=admin.id,
+            ),
+        ]
+    )
     session.commit()
 
     iso = due.isocalendar()

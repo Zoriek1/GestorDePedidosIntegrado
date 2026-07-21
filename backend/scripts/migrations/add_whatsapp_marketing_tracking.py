@@ -56,9 +56,7 @@ def migrate() -> None:
             ("ix_leads_wbraid", "wbraid"),
             ("ix_leads_ga_client_id", "ga_client_id"),
         ):
-            db.session.execute(
-                db.text(f"CREATE INDEX IF NOT EXISTS {name} ON leads ({column})")
-            )
+            db.session.execute(db.text(f"CREATE INDEX IF NOT EXISTS {name} ON leads ({column})"))
         db.session.commit()
     if "lead_touchpoints" in tables:
         _add_missing_columns(

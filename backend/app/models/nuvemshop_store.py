@@ -41,4 +41,5 @@ class NuvemshopStore(db.Model):
     @property
     def decrypted_token(self) -> str | None:
         from app.integrations.nuvemshop.token_service import decrypt_token
+
         return decrypt_token(self.access_token)

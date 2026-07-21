@@ -21,8 +21,9 @@ sys.path.insert(0, str(backend_dir))
 
 
 def run():
-    from app import create_app, db
     from sqlalchemy import inspect, text
+
+    from app import create_app, db
 
     app = create_app()
 
@@ -37,15 +38,15 @@ def run():
         if "payment_day" not in payroll_cols:
             print("[migration] Adicionando payroll_config.payment_day...")
             if dialect == "postgresql":
-                db.session.execute(text(
-                    "ALTER TABLE payroll_config ADD COLUMN IF NOT EXISTS "
-                    "payment_day INTEGER"
-                ))
+                db.session.execute(
+                    text(
+                        "ALTER TABLE payroll_config ADD COLUMN IF NOT EXISTS " "payment_day INTEGER"
+                    )
+                )
             else:
-                db.session.execute(text(
-                    "ALTER TABLE payroll_config ADD COLUMN "
-                    "payment_day INTEGER"
-                ))
+                db.session.execute(
+                    text("ALTER TABLE payroll_config ADD COLUMN " "payment_day INTEGER")
+                )
             db.session.commit()
             print("[migration] ✓ payroll_config.payment_day adicionada")
         else:
@@ -61,13 +62,11 @@ def run():
         if "due_date" not in ledger_cols:
             print("[migration] Adicionando ledger_entry.due_date...")
             if dialect == "postgresql":
-                db.session.execute(text(
-                    "ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS due_date DATE"
-                ))
+                db.session.execute(
+                    text("ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS due_date DATE")
+                )
             else:
-                db.session.execute(text(
-                    "ALTER TABLE ledger_entry ADD COLUMN due_date DATE"
-                ))
+                db.session.execute(text("ALTER TABLE ledger_entry ADD COLUMN due_date DATE"))
             db.session.commit()
             print("[migration] ✓ ledger_entry.due_date adicionada")
         else:
@@ -82,15 +81,19 @@ def run():
         if "status" not in ledger_cols:
             print("[migration] Adicionando ledger_entry.status...")
             if dialect == "postgresql":
-                db.session.execute(text(
-                    "ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS "
-                    "status VARCHAR(20) NOT NULL DEFAULT 'confirmado'"
-                ))
+                db.session.execute(
+                    text(
+                        "ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS "
+                        "status VARCHAR(20) NOT NULL DEFAULT 'confirmado'"
+                    )
+                )
             else:
-                db.session.execute(text(
-                    "ALTER TABLE ledger_entry ADD COLUMN "
-                    "status VARCHAR(20) NOT NULL DEFAULT 'confirmado'"
-                ))
+                db.session.execute(
+                    text(
+                        "ALTER TABLE ledger_entry ADD COLUMN "
+                        "status VARCHAR(20) NOT NULL DEFAULT 'confirmado'"
+                    )
+                )
             db.session.commit()
             print("[migration] ✓ ledger_entry.status adicionada (default='confirmado')")
         else:
@@ -105,13 +108,13 @@ def run():
         if "confirmed_at" not in ledger_cols:
             print("[migration] Adicionando ledger_entry.confirmed_at...")
             if dialect == "postgresql":
-                db.session.execute(text(
-                    "ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP"
-                ))
+                db.session.execute(
+                    text("ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP")
+                )
             else:
-                db.session.execute(text(
-                    "ALTER TABLE ledger_entry ADD COLUMN confirmed_at TIMESTAMP"
-                ))
+                db.session.execute(
+                    text("ALTER TABLE ledger_entry ADD COLUMN confirmed_at TIMESTAMP")
+                )
             db.session.commit()
             print("[migration] ✓ ledger_entry.confirmed_at adicionada")
         else:

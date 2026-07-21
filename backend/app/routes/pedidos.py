@@ -326,10 +326,13 @@ def _upsert_cliente_endereco_from_pedido(pedido) -> None:
         candidate.address_canonical = candidate.build_address_canonical()
         candidate.address_hash = address_hash
         # Primeiro endereço do cliente vira o principal.
-        if EnderecoCliente.query.filter_by(
-            cliente_id=pedido.cliente_id,
-            store_ref_id=pedido.store_ref_id,
-        ).count() == 0:
+        if (
+            EnderecoCliente.query.filter_by(
+                cliente_id=pedido.cliente_id,
+                store_ref_id=pedido.store_ref_id,
+            ).count()
+            == 0
+        ):
             candidate.principal = True
         db.session.add(candidate)
     except Exception as e:  # noqa: BLE001 - upsert é best-effort
@@ -497,9 +500,7 @@ def sugerir_endereco(token):
     if not texto:
         return error_response("Descreva a correção do endereço", 400)
     if len(texto) > _SUGESTAO_MAX_LEN:
-        return error_response(
-            f"Texto muito longo (máx. {_SUGESTAO_MAX_LEN} caracteres)", 400
-        )
+        return error_response(f"Texto muito longo (máx. {_SUGESTAO_MAX_LEN} caracteres)", 400)
 
     # Rate-limit: se já existe uma pendente, atualiza no lugar de acumular.
     pendente = (
@@ -530,9 +531,7 @@ def sugerir_endereco(token):
         send_push_to_all_async(
             current_app._get_current_object(),
             title="Sugestão de endereço",
-            body=(
-                f"Pedido #{pedido.display_number}: o cliente sugeriu uma correção de endereço."
-            ),
+            body=(f"Pedido #{pedido.display_number}: o cliente sugeriu uma correção de endereço."),
             url=f"/pedidos/{pedido_id}",
             store_ref_id=pedido.store_ref_id,
         )
@@ -557,9 +556,7 @@ def listar_sugestoes_endereco(pedido_id):
     return success_response({"sugestoes": [s.to_dict() for s in sugestoes]})
 
 
-@pedidos_bp.route(
-    "/sugestoes-endereco/<int:sugestao_id>/resolver", methods=["POST"]
-)
+@pedidos_bp.route("/sugestoes-endereco/<int:sugestao_id>/resolver", methods=["POST"])
 @requires_any_role("admin", "atendente")
 def resolver_sugestao_endereco(sugestao_id):
     """Aplica ou ignora uma sugestão de endereço.
@@ -570,9 +567,7 @@ def resolver_sugestao_endereco(sugestao_id):
     """
     from app import db
 
-    sugestao = PedidoSugestaoEndereco.query.filter(
-        PedidoSugestaoEndereco.id == sugestao_id
-    ).first()
+    sugestao = PedidoSugestaoEndereco.query.filter(PedidoSugestaoEndereco.id == sugestao_id).first()
     if not sugestao:
         return error_response("Sugestão não encontrada", 404)
     if sugestao.status != STATUS_PENDENTE:
@@ -856,7 +851,9 @@ def atribuir_entregador(pedido_id):
                 pedido.status = "pronto_entrega"
             pedido.updated_at = datetime_now_brazil()
             db.session.commit()
-            return success_response({"pedido": pedido.to_dict()}, message="Entrega retirada da rota")
+            return success_response(
+                {"pedido": pedido.to_dict()}, message="Entrega retirada da rota"
+            )
 
         if role == "entregador":
             target_id = _get_current_user_id()
@@ -1807,7 +1804,9 @@ def atualizar_pedido(pedido_id):
         validates_address = "tipo_pedido" in data or any(
             field in data for field in REQUIRED_DELIVERY_ADDRESS_FIELDS
         )
-        missing_address = _missing_delivery_address_fields(data, pedido) if validates_address else []
+        missing_address = (
+            _missing_delivery_address_fields(data, pedido) if validates_address else []
+        )
         if missing_address:
             return error_response(
                 f'Campos de endereço obrigatórios ausentes: {", ".join(missing_address)}',
@@ -1840,9 +1839,7 @@ def atualizar_pedido(pedido_id):
             track_change("cpf_cnpj", pedido.cpf_cnpj, data["cpf_cnpj"])
             pedido.cpf_cnpj = data["cpf_cnpj"]
             if pedido.cliente_id and data["cpf_cnpj"]:
-                cliente_selecionado = Cliente.query.filter(
-                    Cliente.id == pedido.cliente_id
-                ).first()
+                cliente_selecionado = Cliente.query.filter(Cliente.id == pedido.cliente_id).first()
                 if not cliente_selecionado:
                     return error_response("cliente_id inválido", 400)
                 if not cliente_selecionado.cpf_cnpj:
@@ -1856,10 +1853,13 @@ def atualizar_pedido(pedido_id):
         if "fonte_pedido_id" in data:
             try:
                 new_fonte_id = int(data["fonte_pedido_id"]) if data["fonte_pedido_id"] else None
-                if new_fonte_id and not FontePedido.query.filter(
-                    FontePedido.id == new_fonte_id,
-                    FontePedido.ativo.is_(True),
-                ).first():
+                if (
+                    new_fonte_id
+                    and not FontePedido.query.filter(
+                        FontePedido.id == new_fonte_id,
+                        FontePedido.ativo.is_(True),
+                    ).first()
+                ):
                     return error_response("fonte_pedido_id inválido", 400)
                 track_change("fonte_pedido_id", pedido.fonte_pedido_id, new_fonte_id)
                 pedido.fonte_pedido_id = new_fonte_id
@@ -1985,9 +1985,7 @@ def atualizar_pedido(pedido_id):
                 vendedor_id = int(data["vendedor_id"]) if data.get("vendedor_id") else None
             except (ValueError, TypeError):
                 vendedor_id = None
-            if vendedor_id and not _user_belongs_to_current_store(
-                vendedor_id, role="vendedor"
-            ):
+            if vendedor_id and not _user_belongs_to_current_store(vendedor_id, role="vendedor"):
                 return error_response("vendedor_id inválido", 400)
             pedido.vendedor_id = vendedor_id
         elif user_role == "vendedor" and pedido.vendedor_id is None:

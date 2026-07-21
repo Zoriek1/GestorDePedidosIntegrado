@@ -124,8 +124,18 @@ def build_delivery_detail_lines(pedido) -> list[tuple[str, str]]:
 # (edificio, condominio, comercio, loja...) para não depender de digitação exata.
 def _normalize_tipo_local(tipo_local) -> str:
     t = (tipo_local or "casa").strip().lower()
-    if t in ("predio", "prédio", "edificio", "edifício", "apartamento", "ap", "apto",
-             "condominio", "condomínio", "flat"):
+    if t in (
+        "predio",
+        "prédio",
+        "edificio",
+        "edifício",
+        "apartamento",
+        "ap",
+        "apto",
+        "condominio",
+        "condomínio",
+        "flat",
+    ):
         return "predio"
     if t in ("comercial", "comercio", "comércio", "empresa", "loja", "escritorio", "escritório"):
         return "comercial"
@@ -133,7 +143,7 @@ def _normalize_tipo_local(tipo_local) -> str:
 
 
 def _s(value) -> str:
-    return (str(value).strip() if value is not None else "")
+    return str(value).strip() if value is not None else ""
 
 
 def build_address_block(pedido) -> list[tuple[bool, str]]:

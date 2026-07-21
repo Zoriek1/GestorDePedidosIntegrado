@@ -183,7 +183,9 @@ class BaseConfig:
     UTMIFY_IS_TEST = os.environ.get("UTMIFY_IS_TEST", "false").lower() == "true"
 
     # Per-integration env fallback flag
-    INTEGRATION_ENV_FALLBACK = [s.strip() for s in os.environ.get("INTEGRATION_ENV_FALLBACK", "").split(",") if s.strip()]
+    INTEGRATION_ENV_FALLBACK = [
+        s.strip() for s in os.environ.get("INTEGRATION_ENV_FALLBACK", "").split(",") if s.strip()
+    ]
 
     # Ambiente
     FLASK_ENV = os.environ.get("FLASK_ENV") or os.environ.get("ENVIRONMENT") or "development"

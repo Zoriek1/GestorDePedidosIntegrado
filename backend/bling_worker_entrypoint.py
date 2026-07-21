@@ -14,6 +14,7 @@ from datetime import datetime
 from app import create_app
 from app.integrations.bling.service import BlingIntegrationService
 from app.models.bling_outbox import BlingOutbox
+from app.models.store import Store
 
 
 def _ts() -> str:
@@ -31,9 +32,7 @@ def _status_tag(status: str) -> str:
 
 
 def _count_pending() -> int:
-    return BlingOutbox.query.filter(
-        BlingOutbox.status.in_(["pending", "failed_retryable"])
-    ).count()
+    return BlingOutbox.query.filter(BlingOutbox.status.in_(["pending", "failed_retryable"])).count()
 
 
 def _log_results(result: dict) -> None:
@@ -84,11 +83,23 @@ def main() -> None:
             else:
                 disabled_warned = False
                 try:
-                    result = BlingIntegrationService().process_pending(limit=limit)
-                    if result.get("results"):
-                        idle_cycles = 0
-                        _log_results(result)
-                    else:
+                    active_stores = Store.query.filter_by(active=True).all()
+                    if not active_stores:
+                        active_stores = [None]  # fallback: processamento global
+                    per_store_limit = max(1, limit // max(len(active_stores), 1))
+                    total_processed = 0
+                    total_failed = 0
+                    for store in active_stores:
+                        store_ref_id = store.id if store else None
+                        store_result = BlingIntegrationService().process_pending(
+                            limit=per_store_limit, store_ref_id=store_ref_id
+                        )
+                        if store_result.get("results"):
+                            idle_cycles = 0
+                            _log_results(store_result)
+                        total_processed += store_result.get("processed", 0)
+                        total_failed += store_result.get("failed", 0)
+                    if total_processed == 0:
                         idle_cycles += 1
                         if idle_cycles % heartbeat_every == 0:
                             print(

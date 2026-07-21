@@ -44,9 +44,7 @@ def try_flush_pending_meta_capi_for_order(order_id: int) -> None:
             stats["failed_permanent"],
         )
     except Exception as e:
-        logger.exception(
-            "meta_capi.flush_immediate_failed pedido_id=%s error=%s", order_id, e
-        )
+        logger.exception("meta_capi.flush_immediate_failed pedido_id=%s error=%s", order_id, e)
 
 
 def _normalize_source_text(value: str | None) -> str:

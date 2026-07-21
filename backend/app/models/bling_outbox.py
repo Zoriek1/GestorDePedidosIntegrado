@@ -13,9 +13,7 @@ class BlingOutbox(TenantScoped, db.Model):
     __table_args__ = (
         # No maximo 1 outbox por pedido/operacao: fecha o caminho de duplo-insert
         # concorrente (envio manual + worker criando o mesmo pedido no Bling).
-        db.UniqueConstraint(
-            "pedido_id", "operation", name="uq_bling_outbox_pedido_operation"
-        ),
+        db.UniqueConstraint("pedido_id", "operation", name="uq_bling_outbox_pedido_operation"),
     )
 
     id = db.Column(db.Integer, primary_key=True)

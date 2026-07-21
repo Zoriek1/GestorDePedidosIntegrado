@@ -303,9 +303,7 @@ def _ensure_runtime_columns():
                 continue
             definition = _column_def(kind)
             print(f"[DB] Adicionando coluna {table}.{column} ({dialect})...")
-            db.session.execute(
-                text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-            )
+            db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
             db.session.commit()
             print(f"[OK] Coluna {table}.{column} adicionada")
     except Exception as e:

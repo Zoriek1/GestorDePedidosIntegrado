@@ -188,7 +188,9 @@ class LedgerEntry(db.Model):
             "settled_by_id": self.settled_by_id,
             "voided": self.voided,
             "void_reason": self.void_reason,
-            "commission_rate": float(self.commission_rate) if self.commission_rate is not None else None,
+            "commission_rate": float(self.commission_rate)
+            if self.commission_rate is not None
+            else None,
             "commission_source": self.commission_source,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
             "created_by": self.created_by,

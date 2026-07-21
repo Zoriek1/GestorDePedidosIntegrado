@@ -53,12 +53,8 @@ class BlingIntegrationService:
         self.store_ref_id = store_ref_id
 
     def client(self, store_ref_id: Optional[int] = None) -> BlingClient:
-        resolved_store_ref_id = (
-            store_ref_id if store_ref_id is not None else self.store_ref_id
-        )
-        access_token = BlingTokenService.get_valid_access_token(
-            store_ref_id=resolved_store_ref_id
-        )
+        resolved_store_ref_id = store_ref_id if store_ref_id is not None else self.store_ref_id
+        access_token = BlingTokenService.get_valid_access_token(store_ref_id=resolved_store_ref_id)
         return BlingClient(
             access_token=access_token,
             base_url=current_app.config["BLING_API_BASE_URL"],
@@ -75,9 +71,7 @@ class BlingIntegrationService:
         integracao esta desligada. OAuth, preview e sync_config nao passam por
         aqui de proposito: precisam funcionar para configurar antes de habilitar."""
         if not current_app.config.get("BLING_ENABLED"):
-            raise BlingConfigError(
-                "Integracao Bling desabilitada (BLING_ENABLED=false)"
-            )
+            raise BlingConfigError("Integracao Bling desabilitada (BLING_ENABLED=false)")
 
     def status(self) -> Dict[str, Any]:
         credential = None
@@ -169,12 +163,12 @@ class BlingIntegrationService:
     def _product_exists(self, client: BlingClient, code: str) -> bool:
         items = self._extract_list(client.search_products({"codigo": code, "limite": 100}))
         return any(
-            str(item.get("codigo") or "") == str(code)
-            for item in items
-            if isinstance(item, dict)
+            str(item.get("codigo") or "") == str(code) for item in items if isinstance(item, dict)
         )
 
-    def ensure_contact_for_pedido(self, pedido: Pedido, client: Optional[BlingClient] = None) -> str:
+    def ensure_contact_for_pedido(
+        self, pedido: Pedido, client: Optional[BlingClient] = None
+    ) -> str:
         """Resolve o contato.id obrigatorio da venda usando o CLIENTE do pedido:
         procura no Bling pelo nome exato e reaproveita; senao cria um contato com
         o nome (e telefone) do cliente. Assim o Bling fica com os clientes reais.
@@ -319,14 +313,22 @@ class BlingIntegrationService:
         self.ensure_default_mapping_rows()
         db.session.commit()
         return {
-            "payment_methods": [m.to_dict() for m in BlingPaymentMethod.query.order_by(BlingPaymentMethod.nome).all()],
-            "financial_accounts": [
-                a.to_dict() for a in BlingFinancialAccount.query.order_by(BlingFinancialAccount.nome).all()
+            "payment_methods": [
+                m.to_dict()
+                for m in BlingPaymentMethod.query.order_by(BlingPaymentMethod.nome).all()
             ],
-            "categories": [c.to_dict() for c in BlingCategory.query.order_by(BlingCategory.nome).all()],
+            "financial_accounts": [
+                a.to_dict()
+                for a in BlingFinancialAccount.query.order_by(BlingFinancialAccount.nome).all()
+            ],
+            "categories": [
+                c.to_dict() for c in BlingCategory.query.order_by(BlingCategory.nome).all()
+            ],
             "mappings": [
                 m.to_dict()
-                for m in BlingPaymentMapping.query.order_by(BlingPaymentMapping.gestor_payment_label).all()
+                for m in BlingPaymentMapping.query.order_by(
+                    BlingPaymentMapping.gestor_payment_label
+                ).all()
             ],
         }
 
@@ -364,7 +366,9 @@ class BlingIntegrationService:
         ref = self._get_order_ref(pedido_id)
         outbox = self._latest_outbox(pedido_id)
         if ref:
-            warnings.append("Pedido ja possui referencia Bling; reenvio continuara do estado salvo.")
+            warnings.append(
+                "Pedido ja possui referencia Bling; reenvio continuara do estado salvo."
+            )
         return {
             "pedido_id": pedido_id,
             "valid": True,
@@ -448,18 +452,16 @@ class BlingIntegrationService:
         self.process_cancel(outbox.id)
         return {"outbox": BlingOutbox.query.get(outbox.id).to_dict()}
 
-    def process_pending(self, limit: int = 20) -> Dict[str, int]:
+    def process_pending(self, limit: int = 20, store_ref_id: int | None = None) -> Dict[str, int]:
         self._ensure_enabled()
         now = datetime_now_brazil()
-        outboxes = (
-            BlingOutbox.query.filter(
-                BlingOutbox.status.in_(["pending", "failed_retryable"]),
-                (BlingOutbox.next_retry_at.is_(None)) | (BlingOutbox.next_retry_at <= now),
-            )
-            .order_by(BlingOutbox.created_at.asc())
-            .limit(limit)
-            .all()
+        query = BlingOutbox.query.filter(
+            BlingOutbox.status.in_(["pending", "failed_retryable"]),
+            (BlingOutbox.next_retry_at.is_(None)) | (BlingOutbox.next_retry_at <= now),
         )
+        if store_ref_id is not None:
+            query = query.filter(BlingOutbox.store_ref_id == store_ref_id)
+        outboxes = query.order_by(BlingOutbox.created_at.asc()).limit(limit).all()
         processed = 0
         failed = 0
         results: List[Dict[str, Any]] = []
@@ -570,7 +572,13 @@ class BlingIntegrationService:
                 outbox.payload_json = self._json_dumps(payload)
                 outbox.step = "creating_order"
                 db.session.commit()
-                self._log(outbox, "info", "creating_order", "Criando pedido de venda no Bling", request=payload)
+                self._log(
+                    outbox,
+                    "info",
+                    "creating_order",
+                    "Criando pedido de venda no Bling",
+                    request=payload,
+                )
                 response = client.create_order(payload)
                 order_id = self._extract_order_id(response)
                 outbox.response_json = self._json_dumps(response)
@@ -593,14 +601,25 @@ class BlingIntegrationService:
                     launch_response = client.launch_order_accounts(str(outbox.bling_order_id))
                     # Loga a resposta crua: e a fonte mais confiavel das contas
                     # geradas para este pedido.
-                    self._log(outbox, "info", "launching_order_accounts", "Contas lancadas", response=launch_response)
+                    self._log(
+                        outbox,
+                        "info",
+                        "launching_order_accounts",
+                        "Contas lancadas",
+                        response=launch_response,
+                    )
                     outbox.response_json = self._json_dumps(launch_response)
                 except BlingApiError as exc:
                     # lancar-contas nao e idempotente: se as contas ja foram
                     # lancadas (retry), o Bling recusa -- tratamos como sucesso e
                     # seguimos para localizar/baixar.
                     if self._accounts_already_launched(exc):
-                        self._log(outbox, "info", "launching_order_accounts", "Contas ja estavam lancadas; seguindo")
+                        self._log(
+                            outbox,
+                            "info",
+                            "launching_order_accounts",
+                            "Contas ja estavam lancadas; seguindo",
+                        )
                         launch_response = None
                     else:
                         raise
@@ -629,7 +648,9 @@ class BlingIntegrationService:
                 outbox.step = "settling_entry"
                 db.session.commit()
 
-            self._settle_receivables_if_needed(client, pedido, outbox, plan, receivable_ids, context)
+            self._settle_receivables_if_needed(
+                client, pedido, outbox, plan, receivable_ids, context
+            )
 
             outbox.status = "completed"
             outbox.step = "completed"
@@ -686,7 +707,9 @@ class BlingIntegrationService:
             #    o estornar-contas da venda nao serve aqui (recusa conta paga).
             outbox.step = "reversing_receipts"
             db.session.commit()
-            self._log(outbox, "info", "reversing_receipts", "Apagando recebimentos (baixas) do pedido")
+            self._log(
+                outbox, "info", "reversing_receipts", "Apagando recebimentos (baixas) do pedido"
+            )
             self._delete_order_cash_entries(client, outbox)
 
             # 2) Apagar as contas a receber (agora sem baixa, pendentes).
@@ -746,7 +769,7 @@ class BlingIntegrationService:
         self, client: BlingClient, pedido_id: int, send_outbox: Optional[BlingOutbox]
     ) -> List[str]:
         ids: List[str] = []
-        for item in (self._stored_receivable_ids(send_outbox) if send_outbox else []):
+        for item in self._stored_receivable_ids(send_outbox) if send_outbox else []:
             if isinstance(item, dict) and item.get("id"):
                 ids.append(str(item["id"]))
         if ids:
@@ -773,7 +796,9 @@ class BlingIntegrationService:
         que desfaz a baixa. Localiza por historico (contem GESTOR-{pedido_id})."""
         prefix = f"GESTOR-{outbox.pedido_id}"
         try:
-            items = self._extract_list(client.list_cash_entries({"pesquisa": prefix, "limite": 100}))
+            items = self._extract_list(
+                client.list_cash_entries({"pesquisa": prefix, "limite": 100})
+            )
         except Exception:
             items = []
         for item in items:
@@ -781,7 +806,9 @@ class BlingIntegrationService:
                 continue
             if prefix not in json.dumps(item, ensure_ascii=False, default=str):
                 continue
-            self._log(outbox, "info", "reversing_receipts", f"Apagando recebimento (caixa) {item['id']}")
+            self._log(
+                outbox, "info", "reversing_receipts", f"Apagando recebimento (caixa) {item['id']}"
+            )
             self._delete_cash_entry_idempotent(client, str(item["id"]))
 
     def _delete_cash_entry_idempotent(self, client: BlingClient, cash_id: str) -> None:
@@ -843,7 +870,9 @@ class BlingIntegrationService:
             # anterior, nao baixar de novo (evita baixa dupla quando uma parcela
             # baixou e outra falhou no mesmo ciclo).
             if item.get("settled"):
-                self._log(outbox, "info", "settling_entry", f"Conta {item['id']} ja baixada (idempotente)")
+                self._log(
+                    outbox, "info", "settling_entry", f"Conta {item['id']} ja baixada (idempotente)"
+                )
                 continue
 
             raw = item.get("raw") or {}
@@ -1278,7 +1307,13 @@ class BlingIntegrationService:
             outbox.updated_at = datetime_now_brazil()
         db.session.commit()
         self._console(
-            outbox, level, step, message, response=response, status_code=status_code, error_code=error_code
+            outbox,
+            level,
+            step,
+            message,
+            response=response,
+            status_code=status_code,
+            error_code=error_code,
         )
 
     @staticmethod

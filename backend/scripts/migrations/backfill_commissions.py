@@ -71,9 +71,7 @@ def run(dry_run: bool = False, vendedor_id_filter: int | None = None):
     if not dry_run and generated:
         db.session.commit()
 
-    print(
-        f"\n[BACKFILL] Concluído — gerados: {generated}, já existiam: {skipped}, erros: {errors}"
-    )
+    print(f"\n[BACKFILL] Concluído — gerados: {generated}, já existiam: {skipped}, erros: {errors}")
 
 
 if __name__ == "__main__":

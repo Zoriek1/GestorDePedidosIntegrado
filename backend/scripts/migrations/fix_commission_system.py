@@ -49,27 +49,25 @@ def run():
         # ------------------------------------------------------------------
         if not _column_exists(inspector, "ledger_entry", "commission_rate"):
             print("[migration] ledger_entry.commission_rate...")
-            db.session.execute(text(
-                "ALTER TABLE ledger_entry ADD COLUMN commission_rate NUMERIC(5,4)"
-            ))
+            db.session.execute(
+                text("ALTER TABLE ledger_entry ADD COLUMN commission_rate NUMERIC(5,4)")
+            )
             db.session.commit()
             print("[migration] ok")
         inspector = inspect(db.engine)
 
         if not _column_exists(inspector, "ledger_entry", "commission_source"):
             print("[migration] ledger_entry.commission_source...")
-            db.session.execute(text(
-                "ALTER TABLE ledger_entry ADD COLUMN commission_source VARCHAR(50)"
-            ))
+            db.session.execute(
+                text("ALTER TABLE ledger_entry ADD COLUMN commission_source VARCHAR(50)")
+            )
             db.session.commit()
             print("[migration] ok")
         inspector = inspect(db.engine)
 
         if not _column_exists(inspector, "ledger_entry", "void_reason"):
             print("[migration] ledger_entry.void_reason...")
-            db.session.execute(text(
-                "ALTER TABLE ledger_entry ADD COLUMN void_reason VARCHAR(50)"
-            ))
+            db.session.execute(text("ALTER TABLE ledger_entry ADD COLUMN void_reason VARCHAR(50)"))
             db.session.commit()
             print("[migration] ok")
 
@@ -80,34 +78,42 @@ def run():
         if not _index_exists(inspector, "commission_config", "ux_comm_user_fonte_active"):
             print("[migration] index ux_comm_user_fonte_active...")
             if dialect == "postgresql":
-                db.session.execute(text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_fonte_active "
-                    "ON commission_config (user_id, fonte_pedido_id) "
-                    "WHERE is_active = TRUE AND fonte_pedido_id IS NOT NULL"
-                ))
+                db.session.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_fonte_active "
+                        "ON commission_config (user_id, fonte_pedido_id) "
+                        "WHERE is_active = TRUE AND fonte_pedido_id IS NOT NULL"
+                    )
+                )
             else:
-                db.session.execute(text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_fonte_active "
-                    "ON commission_config (user_id, fonte_pedido_id) "
-                    "WHERE is_active = 1 AND fonte_pedido_id IS NOT NULL"
-                ))
+                db.session.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_fonte_active "
+                        "ON commission_config (user_id, fonte_pedido_id) "
+                        "WHERE is_active = 1 AND fonte_pedido_id IS NOT NULL"
+                    )
+                )
             db.session.commit()
             print("[migration] ok")
 
         if not _index_exists(inspector, "commission_config", "ux_comm_user_source_active"):
             print("[migration] index ux_comm_user_source_active...")
             if dialect == "postgresql":
-                db.session.execute(text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_source_active "
-                    "ON commission_config (user_id, source) "
-                    "WHERE is_active = TRUE AND fonte_pedido_id IS NULL AND source <> ''"
-                ))
+                db.session.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_source_active "
+                        "ON commission_config (user_id, source) "
+                        "WHERE is_active = TRUE AND fonte_pedido_id IS NULL AND source <> ''"
+                    )
+                )
             else:
-                db.session.execute(text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_source_active "
-                    "ON commission_config (user_id, source) "
-                    "WHERE is_active = 1 AND fonte_pedido_id IS NULL AND source <> ''"
-                ))
+                db.session.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ux_comm_user_source_active "
+                        "ON commission_config (user_id, source) "
+                        "WHERE is_active = 1 AND fonte_pedido_id IS NULL AND source <> ''"
+                    )
+                )
             db.session.commit()
             print("[migration] ok")
 
@@ -115,10 +121,12 @@ def run():
         # 3. payroll_config: backfill payment_day NULL → 4 (Sexta) para
         #    frequency='semanal'
         # ------------------------------------------------------------------
-        result = db.session.execute(text(
-            "UPDATE payroll_config SET payment_day = 4 "
-            "WHERE payment_day IS NULL AND frequency = 'semanal'"
-        ))
+        result = db.session.execute(
+            text(
+                "UPDATE payroll_config SET payment_day = 4 "
+                "WHERE payment_day IS NULL AND frequency = 'semanal'"
+            )
+        )
         db.session.commit()
         affected = getattr(result, "rowcount", 0) or 0
         if affected:

@@ -12,6 +12,12 @@ class NuvemshopWebhookDelivery(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     store_id = db.Column(db.String(50), index=True, nullable=False)
+    store_ref_id = db.Column(
+        db.Integer,
+        db.ForeignKey("stores.id", name="fk_nuvemshop_deliveries_store_ref_id_stores"),
+        nullable=True,
+        index=True,
+    )
     event = db.Column(db.String(100), nullable=False)
     resource_id = db.Column(db.String(80), index=True, nullable=True)
 

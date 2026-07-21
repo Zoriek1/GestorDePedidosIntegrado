@@ -172,3 +172,29 @@ describe('IntegrationGrid', () => {
     expect(screen.getByText(/Configuração do tenant/)).toBeDefined();
   });
 });
+
+// --- Store switch isolation ---
+
+import { tenantKey } from '../../../lib/tenantKey';
+
+describe('Store switch isolation', () => {
+  it('queryClient.clear() prevents stale data after logout', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(tenantKey('store-a', 'pedidos'), [{ id: 1 }]);
+    client.setQueryData(tenantKey('store-a', 'stats'), { total: 10 });
+    expect(client.getQueryData(tenantKey('store-a', 'pedidos'))).toBeDefined();
+    client.clear();
+    expect(client.getQueryData(tenantKey('store-a', 'pedidos'))).toBeUndefined();
+  });
+
+  it('tenantKey scopes data correctly between stores', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(tenantKey('store-a', 'pedidos'), [{ id: 1 }]);
+    client.setQueryData(tenantKey('store-b', 'pedidos'), [{ id: 2 }]);
+    const storeA = client.getQueryData(tenantKey('store-a', 'pedidos')) as any[];
+    const storeB = client.getQueryData(tenantKey('store-b', 'pedidos')) as any[];
+    expect(storeA[0].id).toBe(1);
+    expect(storeB[0].id).toBe(2);
+    expect(storeA).not.toEqual(storeB);
+  });
+});

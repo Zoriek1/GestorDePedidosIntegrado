@@ -21,7 +21,7 @@ from app.integrations.nuvemshop import (
     verify_nuvemshop_hmac,
 )
 from app.integrations.nuvemshop.client import NuvemshopClient
-from app.integrations.nuvemshop.token_service import encrypt_token, decrypt_token
+from app.integrations.nuvemshop.token_service import encrypt_token
 from app.middleware import requires_role
 from app.models.nuvemshop_store import NuvemshopStore
 from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery

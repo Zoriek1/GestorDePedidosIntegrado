@@ -731,13 +731,16 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
                 )
             else:
                 # Prod: logger estruturado
+                store_ref_id = getattr(g, "tenant_store_id", None)
                 logger = logging.getLogger("request_timing")
                 logger.info(
-                    "%s %s %d %.0fms",
+                    "%s %s %d %.0fms [store=%s]",
                     request.method,
                     request.path,
                     response.status_code,
                     duration_ms,
+                    store_ref_id,
+                    extra={"store_ref_id": store_ref_id},
                 )
 
         # Log de acesso (arquivo)

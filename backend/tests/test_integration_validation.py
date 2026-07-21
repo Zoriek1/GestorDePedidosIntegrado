@@ -150,6 +150,24 @@ def test_validate_meta_token_format_and_meta_call():
     assert not ok and "invalido" in (err or "").lower()
 
 
+def test_validate_meta_token_is_sent_to_api():
+    from app.services.integration_validation.meta_capi import (
+        validate_meta_capi_access_token,
+    )
+
+    captured_urls = []
+
+    def capture_fake(url, timeout):
+        captured_urls.append(url)
+        return 200, {"id": "123"}
+
+    token = "my_secret_token_1234567890"
+    validate_meta_capi_access_token(token, http_get=capture_fake)
+    assert len(captured_urls) == 1
+    assert token in captured_urls[0]
+    assert "access_token=" in captured_urls[0]
+
+
 # ----------------------------------------------------------------------------
 # Lock
 # ----------------------------------------------------------------------------

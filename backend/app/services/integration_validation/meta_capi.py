@@ -50,11 +50,9 @@ def validate_meta_capi_access_token(
     if len(value) < META_TOKEN_MIN_LEN:
         return False, "Token muito curto"
     get = http_get or _default_http_get
+    url = f"https://graph.facebook.com/v18.0/me?fields=id&access_token={value}"
     try:
-        status, _ = get(
-            "https://graph.facebook.com/v18.0/me?fields=id",
-            DEFAULT_TIMEOUT_S,
-        )
+        status, _ = get(url, DEFAULT_TIMEOUT_S)
     except Exception as exc:
         return False, _safe_message("Falha ao contatar Meta", exc)
     if status == 200:

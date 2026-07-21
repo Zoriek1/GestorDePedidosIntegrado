@@ -101,25 +101,25 @@ class MetaCapiOutboxRepository(BaseRepository):
 
         return outbox_entry
 
-    def get_pending(self, limit: int = 50) -> List[MetaCapiOutbox]:
+    def get_pending(self, limit: int = 50, store_ref_id: int | None = None) -> List[MetaCapiOutbox]:
         """
         Busca registros pendentes para envio (lote interno)
 
         Args:
             limit: Limite de registros (padrão: 50)
+            store_ref_id: Se informado, filtra apenas por esta loja
 
         Returns:
             Lista de MetaCapiOutbox com status='pending'
         """
-        return (
-            self.model.query.filter_by(status="pending")
-            .order_by(MetaCapiOutbox.created_at.asc())
-            .limit(limit)
-            .all()
-        )
+        query = self.model.query.filter_by(status="pending")
+        if store_ref_id is not None:
+            query = query.filter(MetaCapiOutbox.store_ref_id == store_ref_id)
+        return query.order_by(MetaCapiOutbox.created_at.asc()).limit(limit).all()
 
     def get_failed_retryable(
-        self, limit: int = 50, min_updated_age_seconds: Optional[int] = None
+        self, limit: int = 50, min_updated_age_seconds: int | None = None,
+        store_ref_id: int | None = None,
     ) -> List[MetaCapiOutbox]:
         """
         Busca registros failed com error_type='retryable' e attempts < 3
@@ -137,6 +137,8 @@ class MetaCapiOutboxRepository(BaseRepository):
             self.model.query.filter_by(status="failed", error_type="retryable")
             .filter(MetaCapiOutbox.attempts < 3)
         )
+        if store_ref_id is not None:
+            query = query.filter(MetaCapiOutbox.store_ref_id == store_ref_id)
         if min_updated_age_seconds:
             cutoff = datetime_now_brazil() - timedelta(seconds=min_updated_age_seconds)
             query = query.filter(MetaCapiOutbox.updated_at <= cutoff)

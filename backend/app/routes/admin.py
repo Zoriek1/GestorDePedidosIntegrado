@@ -5,14 +5,13 @@ import logging
 
 from flask import Blueprint
 
-from app.schemas.common import success_response
-
 from app import db
 from app.decorators.auth_decorator import require_auth
 from app.middleware import requires_role
 from app.models.meta_capi_outbox import MetaCapiOutbox
 from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.store import Store
+from app.schemas.common import success_response
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 logger = logging.getLogger(__name__)
@@ -77,7 +76,7 @@ def tenant_health():
         sum(v for v in orphans.values() if isinstance(v, int)),
     )
 
-    return jsonify({
+    return success_response({
         "success": True,
         "null_store_refs": null_store_refs,
         "orphans": orphans,

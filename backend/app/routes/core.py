@@ -5,15 +5,13 @@ API completa para o frontend PWA
 """
 from __future__ import annotations
 
-import re
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
 from app import db
 from app.middleware import requires_any_role, requires_edit_auth
-from app.models import Cliente, FontePedido, Pedido
-from app.models.pedido import datetime_now_brazil
+from app.models import Pedido
 from app.utils.backup_helper import (
     get_backup_stats,
     get_last_backup_time,

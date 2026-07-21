@@ -21,8 +21,9 @@ sys.path.insert(0, str(backend_dir))
 
 
 def run():
-    from app import create_app, db
     from sqlalchemy import inspect, text
+
+    from app import create_app, db
 
     app = create_app()
 

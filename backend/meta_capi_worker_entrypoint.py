@@ -67,6 +67,9 @@ PAYROLL_MINUTE = int(os.environ.get("PAYROLL_AUTO_MINUTE", 0))
 def run_outbox_cycle() -> None:
     """Ciclo de polling: envia pendentes + failed-retryable (Purchase e Lead).
 
+    Itera sobre lojas ativas com limite por loja para evitar que uma loja
+    consuma todo o lote e paralise as demais.
+
     Loga apenas quando houve atividade (envio ou processamento), para não poluir.
     """
     try:
@@ -74,24 +77,35 @@ def run_outbox_cycle() -> None:
             from app.commands.send_daily_purchases_to_meta_command import (
                 SendDailyPurchasesToMetaCommand,
             )
+            from app.models.store import Store
 
-            stats = SendDailyPurchasesToMetaCommand().process_outbox_cycle(
-                limit=50, retry_backoff_seconds=RETRY_BACKOFF, quiet=True
-            )
+            active_stores = Store.query.filter_by(active=True).all()
+            if not active_stores:
+                active_stores = [None]  # fallback: processamento global
+            per_store_limit = max(1, 50 // max(len(active_stores), 1))
+
             from app.services.marketing_conversion_dispatcher import (
                 MarketingConversionDispatcher,
             )
 
             marketing_stats = MarketingConversionDispatcher().process_cycle(limit=50)
 
-            touched = (
-                stats.get("pending_processed", 0)
-                + stats.get("failed_retryable_processed", 0)
-                + stats.get("lead_pending_processed", 0)
-                + stats.get("lead_failed_retryable_processed", 0)
-                + marketing_stats.get("processed", 0)
-            )
-            if touched:
+            total_touched = 0
+            for store in active_stores:
+                store_ref_id = store.id if store else None
+                stats = SendDailyPurchasesToMetaCommand().process_outbox_cycle(
+                    limit=per_store_limit, retry_backoff_seconds=RETRY_BACKOFF,
+                    quiet=True, store_ref_id=store_ref_id,
+                )
+                touched = (
+                    stats.get("pending_processed", 0)
+                    + stats.get("failed_retryable_processed", 0)
+                    + stats.get("lead_pending_processed", 0)
+                    + stats.get("lead_failed_retryable_processed", 0)
+                )
+                total_touched += touched
+
+            if total_touched:
                 print(
                     "[CAPI_WORKER] Ciclo — "
                     f"Purchase ok={stats.get('sent_success', 0)} falha={stats.get('sent_failed', 0)} | "

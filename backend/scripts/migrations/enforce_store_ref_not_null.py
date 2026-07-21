@@ -90,11 +90,14 @@ def _split_column_defs(sql: str) -> list:
     parts, depth, buf = [], 0, []
     for ch in body:
         if ch == "(" :
-            depth += 1; buf.append(ch)
+            depth += 1
+            buf.append(ch)
         elif ch == ")":
-            depth -= 1; buf.append(ch)
+            depth -= 1
+            buf.append(ch)
         elif ch == "," and depth == 0:
-            parts.append("".join(buf).strip()); buf = []
+            parts.append("".join(buf).strip())
+            buf = []
         else:
             buf.append(ch)
     if buf:

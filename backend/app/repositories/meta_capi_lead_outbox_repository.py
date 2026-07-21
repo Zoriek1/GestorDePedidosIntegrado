@@ -147,21 +147,22 @@ class MetaCapiLeadOutboxRepository(BaseRepository):
             db.session.rollback()
             return None
 
-    def get_pending(self, limit: int = 50) -> List[MetaCapiLeadOutbox]:
-        return (
-            self.model.query.filter_by(status="pending")
-            .order_by(MetaCapiLeadOutbox.created_at.asc())
-            .limit(limit)
-            .all()
-        )
+    def get_pending(self, limit: int = 50, store_ref_id: int | None = None) -> List[MetaCapiLeadOutbox]:
+        query = self.model.query.filter_by(status="pending")
+        if store_ref_id is not None:
+            query = query.filter(MetaCapiLeadOutbox.store_ref_id == store_ref_id)
+        return query.order_by(MetaCapiLeadOutbox.created_at.asc()).limit(limit).all()
 
     def get_failed_retryable(
-        self, limit: int = 50, min_updated_age_seconds: Optional[int] = None
+        self, limit: int = 50, min_updated_age_seconds: int | None = None,
+        store_ref_id: int | None = None,
     ) -> List[MetaCapiLeadOutbox]:
         query = (
             self.model.query.filter_by(status="failed", error_type="retryable")
             .filter(MetaCapiLeadOutbox.attempts < 3)
         )
+        if store_ref_id is not None:
+            query = query.filter(MetaCapiLeadOutbox.store_ref_id == store_ref_id)
         if min_updated_age_seconds:
             cutoff = datetime_now_brazil() - timedelta(seconds=min_updated_age_seconds)
             query = query.filter(MetaCapiLeadOutbox.updated_at <= cutoff)

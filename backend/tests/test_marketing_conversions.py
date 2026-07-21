@@ -5,9 +5,9 @@ from datetime import date, datetime, timedelta
 from app.models.lead import Lead
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.pedido import Pedido, datetime_now_brazil
-from app.services.marketing_diagnostics_service import MarketingDiagnosticsService
 from app.services.marketing_conversion_dispatcher import MarketingConversionDispatcher
 from app.services.marketing_conversion_service import enqueue_whatsapp_purchase
+from app.services.marketing_diagnostics_service import MarketingDiagnosticsService
 from app.utils.tracking_token import extract_tracking_token_from_text
 
 VALID_TOKEN = "A3F9B7K20K"

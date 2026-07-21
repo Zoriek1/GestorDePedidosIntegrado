@@ -448,18 +448,16 @@ class BlingIntegrationService:
         self.process_cancel(outbox.id)
         return {"outbox": BlingOutbox.query.get(outbox.id).to_dict()}
 
-    def process_pending(self, limit: int = 20) -> Dict[str, int]:
+    def process_pending(self, limit: int = 20, store_ref_id: int | None = None) -> Dict[str, int]:
         self._ensure_enabled()
         now = datetime_now_brazil()
-        outboxes = (
-            BlingOutbox.query.filter(
-                BlingOutbox.status.in_(["pending", "failed_retryable"]),
-                (BlingOutbox.next_retry_at.is_(None)) | (BlingOutbox.next_retry_at <= now),
-            )
-            .order_by(BlingOutbox.created_at.asc())
-            .limit(limit)
-            .all()
+        query = BlingOutbox.query.filter(
+            BlingOutbox.status.in_(["pending", "failed_retryable"]),
+            (BlingOutbox.next_retry_at.is_(None)) | (BlingOutbox.next_retry_at <= now),
         )
+        if store_ref_id is not None:
+            query = query.filter(BlingOutbox.store_ref_id == store_ref_id)
+        outboxes = query.order_by(BlingOutbox.created_at.asc()).limit(limit).all()
         processed = 0
         failed = 0
         results: List[Dict[str, Any]] = []

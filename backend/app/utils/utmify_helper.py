@@ -11,7 +11,6 @@ from flask import current_app
 
 from app.models.lead import Lead
 from app.models.pedido import Pedido
-from app.services.integration_settings_service import runtime_config
 from app.services.utmify_api import build_utmify_order_payload, post_utmify_order
 
 logger = logging.getLogger(__name__)
@@ -95,26 +94,32 @@ def send_utmify_if_purchase(
     Returns:
         True se tentou enviar e obteve HTTP 2xx; False caso contrário ou skip.
     """
+    from app.services.secure_config import secure_runtime_config
+
     _ = status_anterior
-    tenant_config = runtime_config(getattr(pedido, "store_ref_id", None))
-    if not tenant_config.get("UTMIFY_ENABLED"):
-        return False
-    if not _is_purchase_transition(pedido, status_pagamento_anterior):
-        return False
+    with secure_runtime_config(getattr(pedido, "store_ref_id", None)) as tenant_config:
+        if not tenant_config.get("UTMIFY_ENABLED"):
+            return False
+        if not _is_purchase_transition(pedido, status_pagamento_anterior):
+            return False
 
-    token = (tenant_config.get("UTMIFY_API_TOKEN") or "").strip()
-    if not token:
-        logger.warning("[UTMIFY] UTMIFY_ENABLED sem UTMIFY_API_TOKEN — pedido_id=%s", pedido.id)
-        return False
+        token = (tenant_config.get("UTMIFY_API_TOKEN") or "").strip()
+        if not token:
+            logger.warning(
+                "[UTMIFY] UTMIFY_ENABLED sem UTMIFY_API_TOKEN — pedido_id=%s", pedido.id
+            )
+            return False
 
-    url = (current_app.config.get("UTMIFY_POSTBACK_URL") or "").strip()
-    if not url:
-        logger.warning("[UTMIFY] UTMIFY_POSTBACK_URL vazio — pedido_id=%s", pedido.id)
-        return False
+        url = (current_app.config.get("UTMIFY_POSTBACK_URL") or "").strip()
+        if not url:
+            logger.warning(
+                "[UTMIFY] UTMIFY_POSTBACK_URL vazio — pedido_id=%s", pedido.id
+            )
+            return False
 
-    platform = (tenant_config.get("UTMIFY_PLATFORM") or "WhatsAppManual").strip()
-    timeout = float(current_app.config.get("UTMIFY_TIMEOUT_SECONDS") or 5)
-    is_test = bool(tenant_config.get("UTMIFY_IS_TEST"))
+        platform = (tenant_config.get("UTMIFY_PLATFORM") or "WhatsAppManual").strip()
+        timeout = float(current_app.config.get("UTMIFY_TIMEOUT_SECONDS") or 5)
+        is_test = bool(tenant_config.get("UTMIFY_IS_TEST"))
 
     lead, match = resolve_lead_for_pedido(pedido)
     payload = build_utmify_order_payload(pedido, lead, platform=platform, is_test=is_test)

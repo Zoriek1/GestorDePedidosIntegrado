@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 """Tests for per-store tenant health endpoint (Tarefa 3.2) and middleware store_ref_id logging (Tarefa 3.1)."""
 
-import base64
 import logging
-
 from datetime import datetime, timedelta
 
-from app import db
 from app.models.meta_capi_outbox import MetaCapiOutbox
 from app.models.pedido import Pedido, datetime_now_brazil
 from app.models.store import Store
@@ -95,7 +92,7 @@ def test_middleware_logs_store_ref_id_in_production(client, app, session):
     logger = logging.getLogger("request_timing")
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
-    prev_env, prev_dev = None, None
+    prev_env = None
     import os
 
     prev_env = os.environ.get("FLASK_ENV")

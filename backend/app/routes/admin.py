@@ -3,7 +3,9 @@
 
 import logging
 
-from flask import Blueprint, jsonify
+from flask import Blueprint
+
+from app.schemas.common import success_response
 
 from app import db
 from app.decorators.auth_decorator import require_auth
@@ -121,4 +123,4 @@ def tenant_health_by_store():
             }
         )
 
-    return jsonify({"success": True, "stores": stores_data})
+    return success_response({"stores": stores_data})

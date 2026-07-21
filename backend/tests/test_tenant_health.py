@@ -76,30 +76,6 @@ def _create_outbox(session, store: Store, status: str) -> MetaCapiOutbox:
     return o
 
 
-# ── Test db.session.query ├╘model queries ────────────────────────────────
-
-
-def _count_pedidos_hoje(store: Store, today_start: datetime) -> int:
-    return (
-        db.session.query(Pedido)
-        .execution_options(include_all_tenants=True)
-        .filter(Pedido.store_ref_id == store.id, Pedido.created_at >= today_start)
-        .count()
-    )
-
-
-def _count_outbox_pendente(store: Store) -> int:
-    return (
-        db.session.query(MetaCapiOutbox)
-        .execution_options(include_all_tenants=True)
-        .filter(
-            MetaCapiOutbox.store_ref_id == store.id,
-            MetaCapiOutbox.status == "PENDING",
-        )
-        .count()
-    )
-
-
 # ── Tarefa 3.1: Middleware store_ref_id logging ─────────────────────────────
 
 

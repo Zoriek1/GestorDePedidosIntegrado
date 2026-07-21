@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { tenantKey } from '../../lib/tenantKey';
 
 export interface MetaFaturamentoResponse {
   success: boolean;
@@ -9,9 +10,10 @@ export interface MetaFaturamentoResponse {
 }
 
 export function useMetaFaturamento(mes: string) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
-  const queryKey: readonly unknown[] = ['config', 'meta-faturamento', mes];
+  const queryKey: readonly unknown[] = tenantKey(storeKey, 'config', 'meta-faturamento', mes);
 
   return useQuery<MetaFaturamentoResponse>({
     queryKey,
@@ -24,7 +26,8 @@ export function useMetaFaturamento(mes: string) {
 }
 
 export function useUpdateMetaFaturamento() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -39,7 +42,7 @@ export function useUpdateMetaFaturamento() {
       return response.data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'meta-faturamento', data.mes] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'config', 'meta-faturamento', data.mes) });
     },
   });
 }

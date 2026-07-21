@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../auth/authStore';
 import { createApiRequest } from '../../../api/http';
+import { tenantKey } from '../../../lib/tenantKey';
 import {
   ConfigService,
   IntegrationFieldService,
@@ -13,19 +14,21 @@ import {
 } from '../services/configService';
 
 export function useTaxaEntregaConfig() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const queryClient = useQueryClient();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
 
   const query = useQuery({
-    queryKey: ['config', 'taxa-entrega'],
+    queryKey: tenantKey(storeKey, 'config', 'taxa-entrega'),
     queryFn: () => ConfigService.getTaxaEntrega(apiRequest),
   });
 
   const mutation = useMutation({
     mutationFn: (config: TaxaEntregaConfig) => ConfigService.updateTaxaEntrega(apiRequest, config),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'taxa-entrega'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'config', 'taxa-entrega') });
     },
   });
 
@@ -39,12 +42,14 @@ export function useTaxaEntregaConfig() {
 }
 
 export function useTaxaCartaoConfig() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const queryClient = useQueryClient();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
 
   const query = useQuery({
-    queryKey: ['config', 'taxa-cartao'],
+    queryKey: tenantKey(storeKey, 'config', 'taxa-cartao'),
     queryFn: () => ConfigService.getTaxaCartao(apiRequest),
     staleTime: 5 * 60 * 1000,
   });
@@ -52,7 +57,7 @@ export function useTaxaCartaoConfig() {
   const mutation = useMutation({
     mutationFn: (config: TaxaCartaoConfig) => ConfigService.updateTaxaCartao(apiRequest, config),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'taxa-cartao'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'config', 'taxa-cartao') });
     },
   });
 
@@ -70,11 +75,9 @@ export function useIntegrationSettings() {
   const queryClient = useQueryClient();
   const apiRequest = createApiRequest(getAuthHeader);
 
-  // Escopo por loja: a query key inclui a identidade da loja autenticada para não
-  // reaproveitar o cache de integrações entre lojas/sessões.
   const user = getUser();
-  const storeKey = user?.store_slug ?? user?.store_ref_id ?? null;
-  const integrationsKey = ['config', 'integrations', storeKey] as const;
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  const integrationsKey = tenantKey(storeKey, 'config', 'integrations');
 
   const query = useQuery({
     queryKey: integrationsKey,
@@ -105,8 +108,8 @@ export function usePatchField() {
   const apiRequest = createApiRequest(getAuthHeader);
 
   const user = getUser();
-  const storeKey = user?.store_slug ?? user?.store_ref_id ?? null;
-  const integrationsKey = ['config', 'integrations', storeKey] as const;
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  const integrationsKey = tenantKey(storeKey, 'config', 'integrations');
 
   return useMutation({
     mutationFn: ({ channel, field, value }: { channel: string; field: string; value: unknown }) =>
@@ -118,8 +121,10 @@ export function usePatchField() {
 }
 
 export function useValidateField() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
 
   return useMutation({
     mutationFn: ({ channel, field, value }: { channel: string; field: string; value?: string }) =>
@@ -128,26 +133,30 @@ export function useValidateField() {
 }
 
 export function useValidationStatus(channel: string) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
 
   return useQuery<ChannelStatus>({
-    queryKey: ['config', 'integration-status', channel],
+    queryKey: tenantKey(storeKey, 'config', 'integration-status', channel),
     queryFn: () => IntegrationFieldService.getChannelValidationStatus(apiRequest, channel),
     staleTime: 30_000,
   });
 }
 
 export function useOAuthDisconnect(provider: 'bling' | 'nuvemshop') {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const queryClient = useQueryClient();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
 
   return useMutation({
     mutationFn: () => IntegrationFieldService.disconnectOAuth(apiRequest, provider),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'integrations'] });
-      queryClient.invalidateQueries({ queryKey: [provider] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'config', 'integrations') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, provider) });
     },
   });
 }

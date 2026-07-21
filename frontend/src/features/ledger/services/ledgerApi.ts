@@ -4,6 +4,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../../../api/http';
 import { useAuth } from '../../auth/authStore';
+import { tenantKey } from '../../../lib/tenantKey';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -162,8 +163,10 @@ export interface PendingPaymentsFilters {
 // Helper
 // ---------------------------------------------------------------------------
 function useApi() {
-  const { getAuthHeader } = useAuth();
-  return createApiRequest(getAuthHeader);
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  return { api: createApiRequest(getAuthHeader), storeKey };
 }
 
 function toParams(obj: Record<string, string | number | boolean | undefined>): string {
@@ -181,9 +184,9 @@ function toParams(obj: Record<string, string | number | boolean | undefined>): s
 
 /** Saldo devedor do usuário atual (vendedor) ou de qualquer um (admin via user_id) */
 export function useLedgerBalance(userId?: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<LedgerBalance>({
-    queryKey: ['ledger-balance', userId],
+    queryKey: tenantKey(storeKey, 'ledger-balance', userId),
     queryFn: async () => {
       const qs = userId ? `?user_id=${userId}` : '';
       const res = await api<LedgerBalance>(`/ledger/balance${qs}`);
@@ -196,9 +199,9 @@ export function useLedgerBalance(userId?: number) {
 
 /** Extrato com filtros (exclui voided automaticamente no backend) */
 export function useLedgerEntries(filters: EntriesFilters = {}) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<LedgerEntry[]>({
-    queryKey: ['ledger-entries', filters],
+    queryKey: tenantKey(storeKey, 'ledger-entries', filters),
     queryFn: async () => {
       const qs = toParams(filters as Record<string, string | number | boolean | undefined>);
       const res = await api<{ entries: LedgerEntry[] }>(`/ledger/entries${qs}`);
@@ -211,9 +214,9 @@ export function useLedgerEntries(filters: EntriesFilters = {}) {
 
 /** Pedidos atribuídos com detalhes de comissão */
 export function usePedidosAtribuidos(filters: { from?: string; to?: string; user_id?: number } = {}) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<PedidoAtribuido[]>({
-    queryKey: ['ledger-pedidos', filters],
+    queryKey: tenantKey(storeKey, 'ledger-pedidos', filters),
     queryFn: async () => {
       const qs = toParams(filters as Record<string, string | number | boolean | undefined>);
       const res = await api<{ pedidos: PedidoAtribuido[] }>(`/ledger/pedidos${qs}`);
@@ -226,9 +229,9 @@ export function usePedidosAtribuidos(filters: { from?: string; to?: string; user
 
 /** Comissões agrupadas por período de pagamento (due_date) */
 export function useLedgerPeriods(userId?: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<LedgerPeriod[]>({
-    queryKey: ['ledger-periods', userId],
+    queryKey: tenantKey(storeKey, 'ledger-periods', userId),
     queryFn: async () => {
       const qs = userId ? `?user_id=${userId}` : '';
       const res = await api<{ periods: LedgerPeriod[] }>(`/ledger/periods${qs}`);
@@ -241,9 +244,9 @@ export function useLedgerPeriods(userId?: number) {
 
 /** Comissões pendentes seccionadas (atrasado / a_receber / quitado) */
 export function usePendingPayments(filters: PendingPaymentsFilters = {}) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<PendingPaymentsResponse>({
-    queryKey: ['ledger-pending', filters],
+    queryKey: tenantKey(storeKey, 'ledger-pending', filters),
     queryFn: async () => {
       const qs = toParams(filters as Record<string, string | number | boolean | undefined>);
       const res = await api<PendingPaymentsResponse>(`/ledger/pending${qs}`);
@@ -256,7 +259,7 @@ export function usePendingPayments(filters: PendingPaymentsFilters = {}) {
 
 /** Quitação parcial por pedido_ids */
 export function useSettleUser() {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: SettlePayload) => {
@@ -266,20 +269,20 @@ export function useSettleUser() {
       return res.data as SettleResult;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
-      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
-      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
-      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
-      qc.invalidateQueries({ queryKey: ['ledger-periods'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-balance') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-pending') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-entries') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-summary') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-periods') });
     },
   });
 }
 
 /** Resumo de todos os vendedores (admin) */
 export function useLedgerSummary() {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<LedgerSummaryItem[]>({
-    queryKey: ['ledger-summary'],
+    queryKey: tenantKey(storeKey, 'ledger-summary'),
     queryFn: async () => {
       const res = await api<{ summary: LedgerSummaryItem[] }>('/ledger/summary');
       if (!res.ok) throw new Error(res.message);
@@ -291,7 +294,7 @@ export function useLedgerSummary() {
 
 /** Apaga (voided=true) lançamento de salário — admin, fixo_semanal/almoco/transporte */
 export function useDeleteSalaryEntry() {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (entryId: number) => {
@@ -300,17 +303,17 @@ export function useDeleteSalaryEntry() {
       return res;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
-      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
-      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
-      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-balance') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-entries') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-pending') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-summary') });
     },
   });
 }
 
 /** Lançamento manual (admin) */
 export function useCreateLedgerEntry() {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: ManualEntryPayload) => {
@@ -322,16 +325,16 @@ export function useCreateLedgerEntry() {
       return res;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
-      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
-      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-balance') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-entries') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-summary') });
     },
   });
 }
 
 /** Gerar créditos fixos da semana (admin) */
 export function useGenerateWeekly() {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (weekRef?: string) => {
@@ -343,18 +346,18 @@ export function useGenerateWeekly() {
       return res.data as { created: number; skipped: number };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
-      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
-      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
-      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
-      qc.invalidateQueries({ queryKey: ['ledger-periods'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-balance') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-entries') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-pending') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-summary') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-periods') });
     },
   });
 }
 
 /** Gerar calendário de créditos para N semanas (admin) */
 export function useGenerateCalendar() {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ nWeeks, fromWeek }: { nWeeks: number; fromWeek?: string }) => {
@@ -366,11 +369,11 @@ export function useGenerateCalendar() {
       return res.data as { weeks: string[]; total_created: number; total_skipped: number };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ledger-balance'] });
-      qc.invalidateQueries({ queryKey: ['ledger-entries'] });
-      qc.invalidateQueries({ queryKey: ['ledger-pending'] });
-      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
-      qc.invalidateQueries({ queryKey: ['ledger-periods'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-balance') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-entries') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-pending') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-summary') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger-periods') });
     },
   });
 }

@@ -4,6 +4,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../../../api/http';
 import { useAuth } from '../../auth/authStore';
+import { tenantKey } from '../../../lib/tenantKey';
 import type { Pedido } from '../../../api/endpoints/pedidos';
 
 interface PedidosList {
@@ -14,10 +15,12 @@ interface PedidosList {
 }
 
 export function useEntregasDisponiveis(options?: { enabled?: boolean }) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   return useQuery<PedidosList>({
-    queryKey: ['entregas-disponiveis'],
+    queryKey: tenantKey(storeKey, 'entregas-disponiveis'),
     queryFn: async () => {
       const r = await apiRequest<PedidosList>('/pedidos/disponiveis-entrega');
       if (!r.ok) throw new Error(r.message);
@@ -29,14 +32,16 @@ export function useEntregasDisponiveis(options?: { enabled?: boolean }) {
 }
 
 export function useMinhasEntregas(options?: { incluirConcluidos?: boolean; entregadorId?: number }) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const params = new URLSearchParams();
   if (options?.incluirConcluidos) params.append('incluir_concluidos', 'true');
   if (options?.entregadorId) params.append('entregador_id', String(options.entregadorId));
   const qs = params.toString();
   return useQuery<PedidosList>({
-    queryKey: ['minhas-entregas', options?.incluirConcluidos, options?.entregadorId],
+    queryKey: tenantKey(storeKey, 'minhas-entregas', options?.incluirConcluidos, options?.entregadorId),
     queryFn: async () => {
       const r = await apiRequest<PedidosList>(`/pedidos/minhas-entregas${qs ? `?${qs}` : ''}`);
       if (!r.ok) throw new Error(r.message);
@@ -54,9 +59,11 @@ interface AtribuirLoteResponse {
 }
 
 export function useAtribuirEntregasLote() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
   const qc = useQueryClient();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   return useMutation({
     mutationFn: async (pedidoIds: number[]) => {
       const r = await apiRequest<AtribuirLoteResponse>('/pedidos/atribuir-entregadores-lote', {
@@ -68,9 +75,9 @@ export function useAtribuirEntregasLote() {
       return r.data!;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['entregas-disponiveis'] });
-      qc.invalidateQueries({ queryKey: ['minhas-entregas'] });
-      qc.invalidateQueries({ queryKey: ['pedidos'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'entregas-disponiveis') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'minhas-entregas') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }
@@ -83,10 +90,12 @@ interface EntregadorOption {
 
 /** Lista leve de entregadores ativos (admin/vendedor/atendente). */
 export function useEntregadores() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   return useQuery<EntregadorOption[]>({
-    queryKey: ['entregadores'],
+    queryKey: tenantKey(storeKey, 'entregadores'),
     queryFn: async () => {
       const r = await apiRequest<{ users: EntregadorOption[] }>('/users/entregadores');
       if (!r.ok) throw new Error(r.message);
@@ -98,9 +107,11 @@ export function useEntregadores() {
 
 /** Atribui (ou desatribui se entregadorId=null) um entregador a um pedido. */
 export function useAtribuirEntregadorPedido() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
   const qc = useQueryClient();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   return useMutation({
     mutationFn: async (params: { pedidoId: number; entregadorId: number | null }) => {
       const r = await apiRequest<{ success: boolean; data?: { pedido: Pedido } }>(
@@ -115,18 +126,20 @@ export function useAtribuirEntregadorPedido() {
       return r.data;
     },
     onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ['pedido', vars.pedidoId] });
-      qc.invalidateQueries({ queryKey: ['pedidos'] });
-      qc.invalidateQueries({ queryKey: ['minhas-entregas'] });
-      qc.invalidateQueries({ queryKey: ['entregas-disponiveis'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', vars.pedidoId) });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'minhas-entregas') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'entregas-disponiveis') });
     },
   });
 }
 
 export function useFinalizarEntrega() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
   const qc = useQueryClient();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   return useMutation({
     mutationFn: async (pedidoId: number) => {
       const r = await apiRequest<{ success: boolean; data?: { pedido: Pedido } }>(
@@ -137,10 +150,10 @@ export function useFinalizarEntrega() {
       return r.data;
     },
     onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: ['minhas-entregas'] });
-      qc.invalidateQueries({ queryKey: ['pedidos'] });
-      qc.invalidateQueries({ queryKey: ['pedido', id] });
-      qc.invalidateQueries({ queryKey: ['ledger'] });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'minhas-entregas') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', id) });
+      qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'ledger') });
     },
   });
 }

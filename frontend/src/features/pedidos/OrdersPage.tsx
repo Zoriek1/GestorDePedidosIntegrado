@@ -33,6 +33,7 @@ import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
+import { useStoreKey, tenantKey } from '../../lib/tenantKey';
 import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
 import { OrdersKPIGrid } from './components/OrdersKPIGrid';
@@ -69,6 +70,7 @@ export default function OrdersPage() {
 
   const queryClient = useQueryClient();
   const { getAuthHeader, getUserRole } = useAuth();
+  const storeKey = useStoreKey();
   const { success, error: showError, info } = useToast();
   const confirm = useConfirm();
   const _gerarRotaMaps = useGerarRotaMaps();
@@ -101,9 +103,8 @@ export default function OrdersPage() {
   const isFetching = isFetchingPedidos || isFetchingStats;
 
   const handleRefresh = () => {
-    // Use exact: false to invalidate all query variations (including filtered ones)
-    queryClient.invalidateQueries({ queryKey: ['pedidos'], exact: false });
-    queryClient.invalidateQueries({ queryKey: ['stats'], exact: false });
+    queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos'), exact: false });
+    queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'stats'), exact: false });
   };
 
   const handleOrderClick = () => {

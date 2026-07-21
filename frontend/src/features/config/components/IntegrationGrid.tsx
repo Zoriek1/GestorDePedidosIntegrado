@@ -8,6 +8,7 @@ import { useIntegrationSettings, useOAuthDisconnect } from '../hooks/useConfig';
 import { IntegrationFieldService } from '../services/configService';
 import { createApiRequest } from '../../../api/http';
 import { useAuth } from '../../auth/authStore';
+import { useStoreKey, tenantKey } from '../../../lib/tenantKey';
 import { INTEGRATION_CHANNELS } from '../constants';
 import { IntegrationCard } from './IntegrationCard';
 import { IntegrationModal } from './IntegrationModal';
@@ -18,6 +19,7 @@ import { useBlingStatus, useBlingInstall } from '../../../api/endpoints/bling';
 export function IntegrationGrid() {
   const { config, isLoading, error } = useIntegrationSettings();
   const { getAuthHeader } = useAuth();
+  const storeKey = useStoreKey();
   const [searchParams] = useSearchParams();
   const [modalChannel, setModalChannel] = useState<string | null>(null);
   const toast = useToast();
@@ -32,7 +34,7 @@ export function IntegrationGrid() {
   const blingDisconnect = useOAuthDisconnect('bling');
 
   const { data: validationEntries } = useQuery({
-    queryKey: ['config', 'integration-validation'],
+    queryKey: tenantKey(storeKey, 'config', 'integration-validation'),
     queryFn: () => IntegrationFieldService.getValidationLogEntries(apiRequest),
     staleTime: 30_000,
   });

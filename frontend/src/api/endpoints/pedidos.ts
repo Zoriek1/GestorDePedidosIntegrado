@@ -10,6 +10,7 @@ import { queryFnWithCache } from '../../lib/offline/queryWithCache';
 import { enqueue } from '../../lib/offline/outbox';
 import { useOffline } from '../../lib/offline/useOffline';
 import { useToast } from '../../components/system/useToast';
+import { tenantKey } from '../../lib/tenantKey';
 
 // Types
 export interface Pedido {
@@ -117,9 +118,11 @@ export interface PedidosFilters {
  * Get orders with filters
  */
 export function usePedidos(filters: PedidosFilters = {}, options?: { enabled?: boolean }) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
-  const queryKey: readonly unknown[] = ['pedidos', filters];
+  const queryKey: readonly unknown[] = tenantKey(storeKey, 'pedidos', filters);
 
   return useQuery<PedidosResponse>({
     queryKey,
@@ -153,9 +156,11 @@ export function usePedidos(filters: PedidosFilters = {}, options?: { enabled?: b
 }
 
 export function useOverdueCount() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
-  const queryKey: readonly unknown[] = ['pedidos', 'overdue'];
+  const queryKey: readonly unknown[] = tenantKey(storeKey, 'pedidos', 'overdue');
 
   return useQuery<OverduePedidosResponse>({
     queryKey,
@@ -174,11 +179,13 @@ export function useOverdueCount() {
  * Get single order by ID
  */
 export function usePedido(id: number) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<{ success: boolean; pedido: Pedido }>({
-    queryKey: ['pedido', id],
+    queryKey: tenantKey(storeKey, 'pedido', id),
     queryFn: async () => {
       const response = await apiRequest<{ success: boolean; pedido: Pedido }>(`/pedidos/${id}`);
       if (!response.ok) {
@@ -237,7 +244,9 @@ export interface CreatePedidoPayload {
 }
 
 export function useCreatePedido() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const { isOnline } = useOffline();
   const { info } = useToast();
@@ -260,7 +269,7 @@ export function useCreatePedido() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     }
   });
 }
@@ -279,11 +288,13 @@ export interface SugestaoEndereco {
 
 /** Lista as sugestões de endereço de um pedido (para revisão no painel). */
 export function useSugestoesEndereco(pedidoId: number) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<{ success: boolean; sugestoes: SugestaoEndereco[] }>({
-    queryKey: ['sugestoes-endereco', pedidoId],
+    queryKey: tenantKey(storeKey, 'sugestoes-endereco', pedidoId),
     queryFn: async () => {
       const response = await apiRequest<{ success: boolean; sugestoes: SugestaoEndereco[] }>(
         `/pedidos/${pedidoId}/sugestoes-endereco`,
@@ -297,7 +308,9 @@ export function useSugestoesEndereco(pedidoId: number) {
 
 /** Aplica ou ignora uma sugestão de endereço. */
 export function useResolverSugestaoEndereco() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -322,8 +335,8 @@ export function useResolverSugestaoEndereco() {
       return response.data;
     },
     onSuccess: (_data, { pedidoId }) => {
-      queryClient.invalidateQueries({ queryKey: ['sugestoes-endereco', pedidoId] });
-      queryClient.invalidateQueries({ queryKey: ['pedido', pedidoId] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'sugestoes-endereco', pedidoId) });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', pedidoId) });
     },
   });
 }
@@ -343,7 +356,9 @@ export function useTrackLink() {
 }
 
 export function useUpdatePedido() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const { isOnline } = useOffline();
   const { info } = useToast();
@@ -366,8 +381,8 @@ export function useUpdatePedido() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-      queryClient.invalidateQueries({ queryKey: ['pedido'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido') });
     }
   });
 }
@@ -376,7 +391,9 @@ export function useUpdatePedido() {
  * Update status do pedido
  */
 export function useUpdatePedidoStatus() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -391,9 +408,9 @@ export function useUpdatePedidoStatus() {
       return response.data;
     },
     onSuccess: (_data, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-      queryClient.invalidateQueries({ queryKey: ['pedido', id] });
-      queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', id) });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'stats') });
     },
   });
 }
@@ -402,7 +419,9 @@ export function useUpdatePedidoStatus() {
  * Delete pedido (DELETE /pedidos/:id)
  */
 export function useDeletePedido() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -415,9 +434,9 @@ export function useDeletePedido() {
       return response.data;
     },
     onSuccess: (_data, id) => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-      queryClient.invalidateQueries({ queryKey: ['pedido', id] });
-      queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', id) });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'stats') });
     },
   });
 }
@@ -426,7 +445,9 @@ export function useDeletePedido() {
  * Marcar pedido como impresso (POST /pedidos/:id/marcar-impresso)
  */
 export function useMarcarImpresso() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -439,8 +460,8 @@ export function useMarcarImpresso() {
       return response.data;
     },
     onSuccess: (_data, id) => {
-      queryClient.invalidateQueries({ queryKey: ['pedido', id] });
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', id) });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }
@@ -450,7 +471,9 @@ export function useMarcarImpresso() {
  * POST /pedidos/:id/toggle-cartao-impresso
  */
 export function useToggleCartaoImpresso() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -468,8 +491,8 @@ export function useToggleCartaoImpresso() {
       return response.data;
     },
     onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['pedido', vars.id] });
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', vars.id) });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }
@@ -478,7 +501,9 @@ export function useToggleCartaoImpresso() {
  * Ocultar todos os pedidos concluídos (POST /pedidos/ocultar-concluidos)
  */
 export function useOcultarPedidosConcluidos() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -491,8 +516,8 @@ export function useOcultarPedidosConcluidos() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-      queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'stats') });
     },
   });
 }
@@ -501,7 +526,9 @@ export function useOcultarPedidosConcluidos() {
  * Calcula distância de um pedido (GET /pedidos/:id/distancia)
  */
 export function useCalcularDistanciaPedido() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -513,8 +540,8 @@ export function useCalcularDistanciaPedido() {
       return response.data;
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-      queryClient.invalidateQueries({ queryKey: ['pedido', variables.id] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', variables.id) });
     },
   });
 }
@@ -523,7 +550,9 @@ export function useCalcularDistanciaPedido() {
  * Calcula taxa de entrega de um pedido (POST /pedidos/:id/calcular-taxa)
  */
 export function useCalcularTaxaEntrega() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -536,8 +565,8 @@ export function useCalcularTaxaEntrega() {
       return response.data;
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
-      queryClient.invalidateQueries({ queryKey: ['pedido', variables.id] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', variables.id) });
     },
   });
 }
@@ -546,7 +575,9 @@ export function useCalcularTaxaEntrega() {
  * Calcula distâncias em lote (POST /pedidos/calcular-distancias)
  */
 export function useCalcularDistanciasLote() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -564,7 +595,7 @@ export function useCalcularDistanciasLote() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }

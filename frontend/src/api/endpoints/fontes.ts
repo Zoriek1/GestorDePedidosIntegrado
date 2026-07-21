@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 import { useToast } from '../../components/system/useToast';
+import { tenantKey } from '../../lib/tenantKey';
 
 // Types
 export interface FontePedido {
@@ -28,11 +29,12 @@ export interface FontesResponse {
  * Uses GET /api/fontes-pedido?ativas=true
  */
 export function useFontesPedido(apenasAtivas: boolean = true) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<FontesResponse>({
-    queryKey: ['fontes-pedido', { apenasAtivas }],
+    queryKey: tenantKey(storeKey, 'fontes-pedido', { apenasAtivas }),
     queryFn: async () => {
       const endpoint = `/fontes-pedido?ativas=${apenasAtivas}`;
       const response = await apiRequest<FontesResponse>(endpoint);
@@ -59,7 +61,8 @@ export interface UpdateFontePayload {
  * Create fonte de pedido
  */
 export function useCreateFonte() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
@@ -76,7 +79,7 @@ export function useCreateFonte() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fontes-pedido'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'fontes-pedido') });
       success('Fonte criada com sucesso');
     },
     onError: (err: Error) => {
@@ -89,7 +92,8 @@ export function useCreateFonte() {
  * Update fonte de pedido
  */
 export function useUpdateFonte() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
@@ -106,7 +110,7 @@ export function useUpdateFonte() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fontes-pedido'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'fontes-pedido') });
       success('Fonte atualizada com sucesso');
     },
     onError: (err: Error) => {
@@ -119,7 +123,8 @@ export function useUpdateFonte() {
  * Delete fonte de pedido
  */
 export function useDeleteFonte() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
@@ -135,7 +140,7 @@ export function useDeleteFonte() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fontes-pedido'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'fontes-pedido') });
       success('Fonte deletada com sucesso');
     },
     onError: (err: Error) => {

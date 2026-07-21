@@ -90,7 +90,7 @@ class NuvemshopOrderImporter:
         self.user_agent = user_agent
         self.client = NuvemshopClient(
             store_id=store.store_id,
-            access_token=store.access_token,
+            access_token=store.decrypted_token,
             user_agent=user_agent,
         )
 

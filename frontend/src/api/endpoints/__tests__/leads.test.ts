@@ -11,7 +11,10 @@ import { useLeads, useUpdateLeadStatus, type LeadsResponse } from '../leads';
 
 vi.mock('../../http', () => ({ createApiRequest: vi.fn() }));
 vi.mock('../../../features/auth/authStore', () => ({
-  useAuth: vi.fn(() => ({ getAuthHeader: vi.fn(() => ({})) })),
+  useAuth: vi.fn(() => ({
+    getAuthHeader: vi.fn(() => ({})),
+    getUser: vi.fn(() => ({ store_slug: 'default', store_ref_id: 1, role: 'admin' })),
+  })),
 }));
 
 import { createApiRequest } from '../../http';

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { tenantKey } from '../../lib/tenantKey';
 
 export type MarketingDestination = 'meta' | 'ga4' | 'google_ads';
 
@@ -48,14 +49,15 @@ export interface MarketingOutboxStatus {
 }
 
 function useApi() {
-  const { getAuthHeader } = useAuth();
-  return createApiRequest(getAuthHeader);
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  return { apiRequest: createApiRequest(getAuthHeader), storeKey };
 }
 
 export function useMarketingConfig() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   return useQuery({
-    queryKey: ['marketing', 'config'],
+    queryKey: tenantKey(storeKey, 'marketing', 'config'),
     queryFn: async () => {
       const response = await apiRequest<MarketingConfigStatus>(
         '/admin/marketing-conversions/config',
@@ -67,9 +69,9 @@ export function useMarketingConfig() {
 }
 
 export function useMarketingOutbox() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   return useQuery({
-    queryKey: ['marketing', 'outbox'],
+    queryKey: tenantKey(storeKey, 'marketing', 'outbox'),
     queryFn: async () => {
       const response = await apiRequest<MarketingOutboxStatus>(
         '/admin/marketing-conversions?limit=30',
@@ -82,7 +84,7 @@ export function useMarketingOutbox() {
 }
 
 export function useMarketingDiagnostic() {
-  const apiRequest = useApi();
+  const { apiRequest } = useApi();
   return useMutation({
     mutationFn: async ({
       destination,

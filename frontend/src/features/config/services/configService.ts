@@ -148,3 +148,108 @@ export function calcularTaxaCartao(
   }
   return 0;
 }
+
+// --- E6: per-field PATCH/validate/disconnect ---
+
+export interface ValidationResult {
+  ok: boolean;
+  error: string | null;
+  last_test_at: string | null;
+}
+
+export interface ChannelStatus {
+  channel: string;
+  ok: boolean | null;
+  last_test_at: string | null;
+  error: string | null;
+}
+
+export interface ValidationEntry {
+  id: number;
+  store_ref_id: number;
+  channel: string;
+  field: string | null;
+  ok: boolean;
+  error: string | null;
+  validated_at: string;
+}
+
+export const IntegrationFieldService = {
+  patchChannelField: async (
+    apiRequest: ReturnType<typeof createApiRequest>,
+    channel: string,
+    field: string,
+    value: unknown,
+  ): Promise<IntegrationSettingsConfig> => {
+    const response = await apiRequest<{
+      success: boolean;
+      config: IntegrationSettingsConfig;
+      error?: string;
+    }>(`/config/integrations/${channel}/${field}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
+    });
+    if (!response.ok) throw new Error(response.error || response.message || 'Erro ao salvar campo');
+    return response.data.config;
+  },
+
+  validateChannelField: async (
+    apiRequest: ReturnType<typeof createApiRequest>,
+    channel: string,
+    field: string,
+    value?: string,
+  ): Promise<ValidationResult> => {
+    const body: Record<string, unknown> = {};
+    if (value !== undefined) body.value = value;
+    const response = await apiRequest<{
+      success: boolean;
+      ok: boolean;
+      error: string | null;
+      last_test_at: string | null;
+    }>(`/config/integrations/${channel}/${field}/validate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(response.message || 'Erro ao validar campo');
+    return {
+      ok: response.data.ok,
+      error: response.data.error,
+      last_test_at: response.data.last_test_at,
+    };
+  },
+
+  getChannelValidationStatus: async (
+    apiRequest: ReturnType<typeof createApiRequest>,
+    channel: string,
+  ): Promise<ChannelStatus> => {
+    const response = await apiRequest<{ success: boolean } & ChannelStatus>(
+      `/config/integrations/${channel}/status`,
+    );
+    if (!response.ok) throw new Error(response.message || 'Erro ao verificar status');
+    return response.data;
+  },
+
+  getValidationLogEntries: async (
+    apiRequest: ReturnType<typeof createApiRequest>,
+    channel?: string,
+  ): Promise<ValidationEntry[]> => {
+    const qs = channel ? `?channel=${encodeURIComponent(channel)}` : '';
+    const response = await apiRequest<{
+      success: boolean;
+      entries: ValidationEntry[];
+    }>(`/config/integrations/validation${qs}`);
+    if (!response.ok) throw new Error(response.message || 'Erro ao listar validações');
+    return response.data.entries;
+  },
+
+  disconnectOAuth: async (
+    apiRequest: ReturnType<typeof createApiRequest>,
+    provider: 'bling' | 'nuvemshop',
+  ): Promise<void> => {
+    const response = await apiRequest<{ success: boolean }>(
+      `/integrations/${provider}/disconnect`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) throw new Error(response.message || 'Erro ao desconectar');
+  },
+};

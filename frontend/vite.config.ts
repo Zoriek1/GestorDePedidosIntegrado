@@ -146,30 +146,6 @@ export default defineConfig(({ mode }) => {
               }
             },
             {
-              urlPattern: /^\/api\/pedidos\?.*/,
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'pedidos-cache',
-                networkTimeoutSeconds: 5,
-                expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 60 * 60 * 24
-                }
-              }
-            },
-            {
-              urlPattern: /^\/api\/stats$/,
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'stats-cache',
-                networkTimeoutSeconds: 5,
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24
-                }
-              }
-            },
-            {
               // ViaCEP proxy - sempre buscar da rede (não cachear)
               urlPattern: /^\/api\/cep\/.*/,
               handler: 'NetworkOnly'

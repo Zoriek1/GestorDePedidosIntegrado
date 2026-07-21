@@ -37,3 +37,8 @@ class NuvemshopStore(db.Model):
 
     def __repr__(self) -> str:
         return f"<NuvemshopStore #{self.store_id} active={self.active}>"
+
+    @property
+    def decrypted_token(self) -> str | None:
+        from app.integrations.nuvemshop.token_service import decrypt_token
+        return decrypt_token(self.access_token)

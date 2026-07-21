@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { tenantKey } from '../../lib/tenantKey';
 
 export interface BlingOption {
   id: number;
@@ -83,14 +84,15 @@ export interface BlingLog {
 }
 
 function useApi() {
-  const { getAuthHeader } = useAuth();
-  return createApiRequest(getAuthHeader);
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  return { apiRequest: createApiRequest(getAuthHeader), storeKey };
 }
 
 export function useBlingStatus() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   return useQuery({
-    queryKey: ['bling', 'status'],
+    queryKey: tenantKey(storeKey, 'bling', 'status'),
     queryFn: async () => {
       const response = await apiRequest<{
         enabled: boolean;
@@ -104,7 +106,7 @@ export function useBlingStatus() {
 }
 
 export function useBlingInstall() {
-  const apiRequest = useApi();
+  const { apiRequest } = useApi();
   return useMutation({
     mutationFn: async (): Promise<string> => {
       const response = await apiRequest<{ authorize_url: string }>('/integrations/bling/install');
@@ -115,9 +117,9 @@ export function useBlingInstall() {
 }
 
 export function useBlingConfig() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   return useQuery<BlingConfigResponse>({
-    queryKey: ['bling', 'config'],
+    queryKey: tenantKey(storeKey, 'bling', 'config'),
     queryFn: async () => {
       const response = await apiRequest<BlingConfigResponse>('/integrations/bling/config');
       if (!response.ok) throw new Error(response.message);
@@ -127,7 +129,7 @@ export function useBlingConfig() {
 }
 
 export function useSyncBlingConfig() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
@@ -136,13 +138,13 @@ export function useSyncBlingConfig() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bling'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'bling') });
     },
   });
 }
 
 export function useSaveBlingMapping() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: { id: number } & Partial<BlingPaymentMapping>) => {
@@ -153,14 +155,14 @@ export function useSaveBlingMapping() {
       if (!response.ok) throw new Error(response.message);
       return response.data.mapping;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bling', 'config'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'bling', 'config') }),
   });
 }
 
 export function useBlingPreviewPedido(pedidoId: number) {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   return useQuery<BlingPreview>({
-    queryKey: ['bling', 'preview', pedidoId],
+    queryKey: tenantKey(storeKey, 'bling', 'preview', pedidoId),
     queryFn: async () => {
       const response = await apiRequest<BlingPreview>(`/integrations/bling/pedidos/${pedidoId}/preview`, {
         method: 'POST',
@@ -174,7 +176,7 @@ export function useBlingPreviewPedido(pedidoId: number) {
 }
 
 export function useSendBlingPedido() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (pedidoId: number) => {
@@ -186,14 +188,14 @@ export function useSendBlingPedido() {
       return response.data;
     },
     onSuccess: (_data, pedidoId) => {
-      queryClient.invalidateQueries({ queryKey: ['bling', 'preview', pedidoId] });
-      queryClient.invalidateQueries({ queryKey: ['pedido', pedidoId] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'bling', 'preview', pedidoId) });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedido', pedidoId) });
     },
   });
 }
 
 export function useRetryBlingOutbox() {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (outboxId: number) => {
@@ -205,18 +207,18 @@ export function useRetryBlingOutbox() {
       return response.data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['bling'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'bling') });
       if (data.outbox?.pedido_id) {
-        queryClient.invalidateQueries({ queryKey: ['bling', 'preview', data.outbox.pedido_id] });
+        queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'bling', 'preview', data.outbox.pedido_id) });
       }
     },
   });
 }
 
 export function useBlingOutboxLogs(outboxId?: number | null) {
-  const apiRequest = useApi();
+  const { apiRequest, storeKey } = useApi();
   return useQuery<{ logs: BlingLog[] }>({
-    queryKey: ['bling', 'logs', outboxId],
+    queryKey: tenantKey(storeKey, 'bling', 'logs', outboxId),
     queryFn: async () => {
       const response = await apiRequest<{ logs: BlingLog[] }>(
         `/integrations/bling/outbox/${outboxId}/logs`,

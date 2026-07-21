@@ -12,6 +12,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { tenantKey } from '../../lib/tenantKey';
 
 /**
  * Aplica o lead atualizado (retornado pela mutação) em TODAS as caches de lista
@@ -25,9 +26,9 @@ import { useAuth } from '../../features/auth/authStore';
  * Só toca entradas com array `.leads` (a query `['leads','stats']` tem outro
  * formato e é ignorada).
  */
-function patchLeadInCaches(queryClient: QueryClient, updated: Lead | undefined) {
+function patchLeadInCaches(queryClient: QueryClient, updated: Lead | undefined, storeKey: string) {
   if (!updated) return;
-  queryClient.setQueriesData<LeadsResponse>({ queryKey: ['leads'] }, (prev) => {
+  queryClient.setQueriesData<LeadsResponse>({ queryKey: tenantKey(storeKey, 'leads') }, (prev) => {
     if (!prev || !Array.isArray(prev.leads)) return prev;
     let changed = false;
     const leads = prev.leads.map((l) => {
@@ -209,11 +210,13 @@ export interface UseLeadsOptions {
 }
 
 export function useLeads(filters: LeadsFilters = {}, options: UseLeadsOptions = {}) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<LeadsResponse>({
-    queryKey: ['leads', filters],
+    queryKey: tenantKey(storeKey, 'leads', filters),
     enabled: options.enabled ?? true,
     // Trocar de período/página/filtro NÃO deve piscar a tela inteira: mantém os
     // dados anteriores visíveis enquanto a nova página carrega (era a principal
@@ -269,7 +272,9 @@ interface UpdateLeadStatusResponse {
 }
 
 export function useUpdateLeadStatus() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -300,8 +305,8 @@ export function useUpdateLeadStatus() {
       return response.data;
     },
     onSuccess: (data) => {
-      patchLeadInCaches(queryClient, data?.lead);
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      patchLeadInCaches(queryClient, data?.lead, storeKey);
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'leads') });
     },
   });
 }
@@ -311,7 +316,9 @@ export function useUpdateLeadStatus() {
  * PATCH /leads/:id/situacao ou /leads/by-token/situacao. Não dispara CAPI.
  */
 export function useUpdateLeadSituacao() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -337,8 +344,8 @@ export function useUpdateLeadSituacao() {
       return response.data;
     },
     onSuccess: (data) => {
-      patchLeadInCaches(queryClient, data?.lead);
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      patchLeadInCaches(queryClient, data?.lead, storeKey);
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'leads') });
     },
   });
 }
@@ -348,7 +355,9 @@ export function useUpdateLeadSituacao() {
  * PATCH /leads/:id/followup com { action: 'mark' | 'undo' }.
  */
 export function useMarkLeadFollowup() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -368,18 +377,20 @@ export function useMarkLeadFollowup() {
       return response.data;
     },
     onSuccess: (data) => {
-      patchLeadInCaches(queryClient, data?.lead);
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      patchLeadInCaches(queryClient, data?.lead, storeKey);
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'leads') });
     },
   });
 }
 
 export function useLeadsStats() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<LeadsStatsResponse>({
-    queryKey: ['leads', 'stats'],
+    queryKey: tenantKey(storeKey, 'leads', 'stats'),
     queryFn: async () => {
       const response = await apiRequest<LeadsStatsResponse>('/leads/stats');
       if (!response.ok) {
@@ -392,7 +403,9 @@ export function useLeadsStats() {
 }
 
 export function useBulkUpdateLeadStatus() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -412,13 +425,15 @@ export function useBulkUpdateLeadStatus() {
       return response.data as BulkStatusResponse;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'leads') });
     },
   });
 }
 
 export function useBulkDisqualifyLeads() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -438,13 +453,15 @@ export function useBulkDisqualifyLeads() {
       return response.data as BulkDisqualifyResponse;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'leads') });
     },
   });
 }
 
 export function useUpdateLeadPhone() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -475,8 +492,8 @@ export function useUpdateLeadPhone() {
       return response.data;
     },
     onSuccess: (data) => {
-      patchLeadInCaches(queryClient, data?.lead);
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      patchLeadInCaches(queryClient, data?.lead, storeKey);
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'leads') });
     },
   });
 }

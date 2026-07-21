@@ -4,7 +4,7 @@ import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People, Cr
 import { KeyRound, Megaphone } from 'lucide-react';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { TaxaCartaoSettings } from './components/TaxaCartaoSettings';
-import { IntegrationSettings } from './components/IntegrationSettings';
+import { IntegrationGrid } from './components/IntegrationGrid';
 import { Loading } from '../../components/common/Loading';
 import { DailyFreightDialog } from '../pedidos/components/DailyFreightDialog';
 import { FreightBySourceDialog } from '../pedidos/components/FreightBySourceDialog';
@@ -170,7 +170,7 @@ export default function SettingsPage() {
           {tabValue === 'batch' && <BatchActionsTab />}
           {!isEntregador && tabValue === 'sources' && <FontesPage />}
           {!isEntregador && tabValue === 'customers' && <CustomersPage />}
-          {isAdmin && tabValue === 'integrations' && <IntegrationSettings />}
+          {isAdmin && tabValue === 'integrations' && <IntegrationGrid />}
           {isAdmin && tabValue === 'nuvemshop' && <NuvemshopPage />}
           {isAdmin && tabValue === 'bling' && <BlingPage />}
           {isAdmin && tabValue === 'marketing' && <MarketingPage />}

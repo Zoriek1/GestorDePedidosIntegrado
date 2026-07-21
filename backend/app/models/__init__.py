@@ -14,6 +14,7 @@ from app.models.catalogo_arranjo import CatalogoArranjo
 from app.models.cliente import Cliente
 from app.models.endereco_cliente import EnderecoCliente
 from app.models.fonte_pedido import FontePedido
+from app.models.integration_validation_log import IntegrationValidationLog
 from app.models.lead import Lead
 from app.models.lead_touchpoint import LeadTouchpoint
 from app.models.ledger_entry import LedgerEntry
@@ -39,6 +40,7 @@ __all__ = [
     "Cliente",
     "EnderecoCliente",
     "FontePedido",
+    "IntegrationValidationLog",
     "Lead",
     "LeadTouchpoint",
     "LedgerEntry",

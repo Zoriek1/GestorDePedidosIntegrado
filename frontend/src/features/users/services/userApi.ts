@@ -4,6 +4,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../../../api/http';
 import { useAuth } from '../../auth/authStore';
+import { tenantKey } from '../../../lib/tenantKey';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,8 +64,10 @@ export interface UpdateUserPayload {
 
 // ---------------------------------------------------------------------------
 function useApi() {
-  const { getAuthHeader } = useAuth();
-  return createApiRequest(getAuthHeader);
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  return { api: createApiRequest(getAuthHeader), storeKey };
 }
 
 // ---------------------------------------------------------------------------
@@ -72,9 +75,9 @@ function useApi() {
 // ---------------------------------------------------------------------------
 
 export function useUsers(enabled = true, includeInactive = false) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<AppUser[]>({
-    queryKey: ['users', { includeInactive }],
+    queryKey: tenantKey(storeKey, 'users', { includeInactive }),
     queryFn: async () => {
       const qs = includeInactive ? '?include_inactive=true' : '';
       const res = await api<{ users: AppUser[] }>(`/users${qs}`);
@@ -87,9 +90,9 @@ export function useUsers(enabled = true, includeInactive = false) {
 }
 
 export function useUserConfig(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   return useQuery<UserConfig>({
-    queryKey: ['user-config', userId],
+    queryKey: tenantKey(storeKey, 'user-config', userId),
     queryFn: async () => {
       const res = await api<UserConfig>(`/users/${userId}/config`);
       if (!res.ok) throw new Error(res.message);
@@ -101,7 +104,7 @@ export function useUserConfig(userId: number) {
 }
 
 export function useCreateUser() {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: CreateUserPayload) => {
@@ -109,12 +112,12 @@ export function useCreateUser() {
       if (!res.ok) throw new Error((res as { message: string }).message);
       return res.data as { user: AppUser };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'users') }),
   });
 }
 
 export function useUpdateUser(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: UpdateUserPayload) => {
@@ -122,62 +125,62 @@ export function useUpdateUser(userId: number) {
       if (!res.ok) throw new Error((res as { message: string }).message);
       return res.data as { user: AppUser };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'users') }),
   });
 }
 
 export function useDeleteCommission(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (configId: number) => {
       const res = await api(`/users/${userId}/commission/${configId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-config', userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'user-config', userId) }),
   });
 }
 
 export function useDeleteUser(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const res = await api(`/users/${userId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'users') }),
   });
 }
 
 /** Apaga definitivamente (anonimiza). Exige usuário já desativado. */
 export function useHardDeleteUser(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const res = await api(`/users/${userId}/hard`, { method: 'DELETE' });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'users') }),
   });
 }
 
 /** Reativa usuário desativado. */
 export function useReactivateUser(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const res = await api(`/users/${userId}/reactivate`, { method: 'POST' });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'users') }),
   });
 }
 
 export function useUpdatePayroll(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (configs: Partial<PayrollConfig>[]) => {
@@ -187,24 +190,24 @@ export function useUpdatePayroll(userId: number) {
       });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-config', userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'user-config', userId) }),
   });
 }
 
 export function useDeletePayroll(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (configId: number) => {
       const res = await api(`/users/${userId}/payroll/${configId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-config', userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'user-config', userId) }),
   });
 }
 
 export function useUpdateCommission(userId: number) {
-  const api = useApi();
+  const { api, storeKey } = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (
@@ -216,6 +219,6 @@ export function useUpdateCommission(userId: number) {
       });
       if (!res.ok) throw new Error((res as { message: string }).message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-config', userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tenantKey(storeKey, 'user-config', userId) }),
   });
 }

@@ -6,6 +6,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { tenantKey } from '../../lib/tenantKey';
 
 // Types
 export interface Customer {
@@ -37,11 +38,13 @@ export interface CustomerSearchResponse {
  * Note: Debounce will be implemented in the component using this hook
  */
 export function useCustomerSearch(query: string, limit = 10) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<CustomerSearchResponse>({
-    queryKey: ['customers.search', { q: query, limit }],
+    queryKey: tenantKey(storeKey, 'customers.search', { q: query, limit }),
     queryFn: async () => {
       if (!query || query.trim().length === 0) {
         // Return empty result if no query
@@ -71,11 +74,13 @@ export function useCustomerSearch(query: string, limit = 10) {
  * Uses GET /api/clientes/:id
  */
 export function useCustomer(id: number | null) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<{ success: boolean; cliente: Customer }>({
-    queryKey: ['customer', id],
+    queryKey: tenantKey(storeKey, 'customer', id),
     queryFn: async () => {
       if (!id) {
         throw new Error('Customer ID is required');
@@ -113,12 +118,14 @@ export interface CustomersFilters {
 }
 
 export function useCustomers(params: CustomersFilters = {}) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const { search = '', page = 1, perPage = 50, includeStats = true, minPedidos, maxPedidos, minLTV, maxLTV, ultimoPedidoApos, ultimoPedidoAntes } = params;
 
   return useQuery<CustomersListResponse>({
-    queryKey: ['customers.list', { search, page, perPage, includeStats, minPedidos, maxPedidos, minLTV, maxLTV, ultimoPedidoApos, ultimoPedidoAntes }],
+    queryKey: tenantKey(storeKey, 'customers.list', { search, page, perPage, includeStats, minPedidos, maxPedidos, minLTV, maxLTV, ultimoPedidoApos, ultimoPedidoAntes }),
     queryFn: async () => {
       const query = new URLSearchParams();
       if (search) query.append('search', search);
@@ -182,11 +189,13 @@ export interface ClienteEnderecosResponse {
  * GET /api/clientes/:id/enderecos — usado no wizard para reusar endereços (#17).
  */
 export function useClienteEnderecos(id?: number | null) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<ClienteEnderecosResponse>({
-    queryKey: ['cliente.enderecos', id],
+    queryKey: tenantKey(storeKey, 'cliente.enderecos', id),
     enabled: !!id,
     queryFn: async () => {
       const response = await apiRequest<ClienteEnderecosResponse>(`/clientes/${id}/enderecos`);
@@ -200,11 +209,13 @@ export function useClienteEnderecos(id?: number | null) {
 }
 
 export function useCustomerOrders(id?: number, limit = 50) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<CustomerOrdersResponse>({
-    queryKey: ['customer.orders', id, limit],
+    queryKey: tenantKey(storeKey, 'customer.orders', id, limit),
     enabled: !!id,
     queryFn: async () => {
       const response = await apiRequest<CustomerOrdersResponse>(`/clientes/${id}/pedidos?limit=${limit}`);

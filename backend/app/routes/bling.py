@@ -5,6 +5,7 @@ import logging
 
 from flask import Blueprint, g, redirect, request
 
+from app import db
 from app.integrations.bling.errors import BlingIntegrationError
 from app.integrations.bling.service import BlingIntegrationService
 from app.integrations.bling.token_service import BlingTokenService
@@ -74,6 +75,29 @@ def bling_oauth_callback():
         return redirect(_front_url("/integracoes/bling?bling=connected"))
     except Exception as exc:
         return _handle_error(exc)
+
+
+@bling_bp.route("/disconnect", methods=["DELETE"])
+@requires_role("admin")
+def bling_disconnect():
+    """Desconecta o Bling localmente (nao revoga no provedor)."""
+    from app.models.bling_credential import BlingCredential
+    from app.models.pedido import datetime_now_brazil
+
+    store_ref_id = getattr(g, "tenant_store_id", None)
+    try:
+        cred = BlingCredential.query.filter_by(store_ref_id=store_ref_id).first()
+        if cred:
+            cred.active = False
+            cred.access_token_encrypted = None
+            cred.refresh_token_encrypted = None
+            cred.updated_at = datetime_now_brazil()
+            db.session.commit()
+        return success_response(message="Bling desconectado")
+    except Exception:
+        db.session.rollback()
+        logger.exception("Erro ao desconectar Bling")
+        return error_response("Erro ao desconectar Bling", 500)
 
 
 @bling_bp.route("/status", methods=["GET"])

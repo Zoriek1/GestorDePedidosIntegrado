@@ -383,6 +383,26 @@ def get_nuvemshop_config():
     return success_response(_serialize_store_config(store))
 
 
+@nuvemshop_bp.route("/disconnect", methods=["DELETE"])
+@requires_role("admin")
+def nuvemshop_disconnect():
+    """Desconecta a Nuvemshop localmente (nao revoga no provedor)."""
+    from app.models.pedido import datetime_now_brazil
+
+    store_ref_id = getattr(g, "tenant_store_id", None)
+    try:
+        ns = NuvemshopStore.query.filter_by(store_ref_id=store_ref_id).first()
+        if ns:
+            ns.active = False
+            ns.uninstalled_at = datetime_now_brazil()
+            db.session.commit()
+        return success_response(message="Nuvemshop desconectado")
+    except Exception:
+        db.session.rollback()
+        logger.exception("Erro ao desconectar Nuvemshop")
+        return error_response("Erro ao desconectar Nuvemshop", 500)
+
+
 @nuvemshop_bp.route("/config", methods=["PUT"])
 @requires_role("admin")
 def update_nuvemshop_config():

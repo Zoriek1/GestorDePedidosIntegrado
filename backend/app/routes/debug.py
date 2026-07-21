@@ -11,7 +11,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from app import db
-from app.middleware import requires_edit_auth
+from app.middleware import requires_edit_auth, requires_role
 from app.models import Cliente, FontePedido, Pedido
 from app.models.pedido import datetime_now_brazil
 from app.utils.backup_helper import (
@@ -31,6 +31,7 @@ from app.utils.backup_helper import (
 
 debug_bp = Blueprint("debug", __name__, url_prefix="/api")
 @debug_bp.route("/debug/geocode", methods=["GET", "POST"])
+@requires_role("admin")
 def debug_geocode():
     """
     Endpoint de debug para testar geocodificação de um endereço.
@@ -195,6 +196,7 @@ def debug_geocode():
 
 
 @debug_bp.route("/debug/limpar-distancias", methods=["POST"])
+@requires_role("admin")
 def debug_limpar_distancias():
     """
     Endpoint de debug para limpar todas as distâncias cacheadas.
@@ -240,6 +242,7 @@ def debug_limpar_distancias():
 
 
 @debug_bp.route("/debug/config-floricultura", methods=["GET"])
+@requires_role("admin")
 def debug_config_floricultura():
     """
     Endpoint de debug para verificar a configuração da floricultura.
@@ -300,6 +303,7 @@ def debug_config_floricultura():
 
 
 @debug_bp.route("/debug/reset-floricultura", methods=["POST"])
+@requires_role("admin")
 def debug_reset_floricultura():
     """
     Força recálculo das coordenadas da floricultura.
@@ -355,6 +359,7 @@ def debug_reset_floricultura():
 
 
 @debug_bp.route("/debug/testar-apis", methods=["GET"])
+@requires_role("admin")
 def debug_testar_apis():
     """
     Testa conectividade com as APIs externas (GraphHopper, OpenRouteService, Nominatim)

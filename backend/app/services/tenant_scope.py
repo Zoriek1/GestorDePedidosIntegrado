@@ -18,7 +18,7 @@ class TenantScoped:
         return Column(
             Integer,
             ForeignKey("stores.id", ondelete="RESTRICT"),
-            nullable=True,
+            nullable=False,
             index=True,
         )
 

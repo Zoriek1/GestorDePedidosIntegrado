@@ -161,7 +161,7 @@ def get_produtos_variantes():
     try:
         client = NuvemshopClient(
             store_id=str(store.store_id),
-            access_token=store.access_token,
+            access_token=store.decrypted_token,
             user_agent=Config.NUVEMSHOP_USER_AGENT,
         )
         products = _fetch_all_products(client)

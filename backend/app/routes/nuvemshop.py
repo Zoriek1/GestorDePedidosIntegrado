@@ -395,6 +395,7 @@ def nuvemshop_disconnect():
         ns = NuvemshopStore.query.filter_by(store_ref_id=store_ref_id).first()
         if ns:
             ns.active = False
+            ns.access_token = ""
             ns.uninstalled_at = datetime_now_brazil()
             db.session.commit()
         return success_response(message="Nuvemshop desconectado")

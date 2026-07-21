@@ -531,6 +531,7 @@ def test_nuvemshop_disconnect_sets_inactive(client, admin, store, nuvemshop_stor
 
     ns = NuvemshopStore.query.filter_by(store_ref_id=store.id).first()
     assert ns.active is False
+    assert ns.access_token == ""
     assert ns.uninstalled_at is not None
 
 

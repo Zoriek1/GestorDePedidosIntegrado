@@ -19,7 +19,6 @@ from contextlib import contextmanager
 from typing import Iterator
 
 _locks: dict[int, threading.Lock] = {}
-_locks_meta: dict[int, threading.Lock] = {}
 _creation_lock = threading.Lock()
 
 

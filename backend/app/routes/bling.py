@@ -48,6 +48,8 @@ def bling_install():
         # State assinado amarra o fluxo à loja autenticada (Fase B). Fallback ao
         # state estático apenas quando não há loja no contexto (single-tenant legado).
         store = getattr(g, "current_store", None)
+        if not store and is_multi_store():
+            return error_response("Contexto de loja obrigatório", 400)
         state = sign_state(store.id, "bling") if store else "gestor-bling"
         url = BlingTokenService.build_authorize_url(state=state)
         if request.args.get("redirect", "").lower() == "true":

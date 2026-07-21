@@ -14,9 +14,11 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, MapPin, XCircle } from 'lucide-react';
 import { usePatchField, useValidateField } from '../hooks/useConfig';
 import { useConfirm } from '../../../components/system/useConfirm';
+import { useCepLookup } from '../../pedidos/useCases/cepLookup';
+import { CepInput } from '../../../components/form';
 import type { ChannelDef } from '../constants';
 import type { IntegrationSettingsConfig } from '../services/configService';
 
@@ -34,8 +36,10 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
   const patchField = usePatchField();
   const validateField = useValidateField();
   const confirm = useConfirm();
+  const { lookupCep, isLoading: isCepLoading, result: cepResult } = useCepLookup();
 
   const [fields, setFields] = useState<FieldState>({});
+  const [cepResolved, setCepResolved] = useState<{ cidade: string; uf: string } | null>(null);
 
   useEffect(() => {
     if (!open || !channel.fields) return;
@@ -46,6 +50,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
       initial[f.key] = { status: 'idle', value: val ?? '' };
     }
     setFields(initial);
+    setCepResolved(null);
   }, [open, channel, config]);
 
   const handleSave = async (fieldKey: string) => {
@@ -125,6 +130,30 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
     }
   };
 
+  const handleCepComplete = async (cep: string) => {
+    if (!open || channel.id !== 'dados_operacionais') return;
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    const result = await lookupCep(cep);
+    if (result && result.cidade && result.uf) {
+      setCepResolved({ cidade: result.cidade, uf: result.uf });
+    } else {
+      setCepResolved(null);
+    }
+  };
+
+  const handleUseAddress = () => {
+    if (!cepResult) return;
+    const parts = [cepResult.rua, cepResult.bairro, cepResult.cidade, cepResult.uf].filter(Boolean);
+    const composed = parts.join(', ');
+    if (composed) {
+      setFields(prev => ({
+        ...prev,
+        endereco_floricultura: { ...prev.endereco_floricultura!, value: composed },
+      }));
+    }
+  };
+
   const statusIcon = (status: FieldStatus) => {
     if (status === 'saved' || status === 'valid') return <CheckCircle color="success" fontSize="small" />;
     if (status === 'invalid' || status === 'error') return <XCircle color="error" fontSize="small" />;
@@ -188,6 +217,29 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
                         </MenuItem>
                       ))}
                     </TextField>
+                  ) : fieldDef.key === 'loja_cep' && channel.id === 'dados_operacionais' ? (
+                    <CepInput
+                      size="small"
+                      fullWidth
+                      label=""
+                      value={state.value as string}
+                      onChange={(v) =>
+                        setFields(prev => ({
+                          ...prev,
+                          [fieldDef.key]: { ...prev[fieldDef.key], value: v },
+                        }))
+                      }
+                      isLoading={isCepLoading}
+                      onComplete={handleCepComplete}
+                      error={state.status === 'invalid' || state.status === 'error'}
+                      helperText={
+                        state.status === 'invalid' || state.status === 'error'
+                          ? state.error
+                          : cepResolved
+                            ? `${cepResolved.cidade}/${cepResolved.uf}`
+                            : undefined
+                      }
+                    />
                   ) : (
                     <TextField
                       size="small"
@@ -242,6 +294,20 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
                     </Button>
                   )}
                 </Stack>
+                {fieldDef.key === 'endereco_floricultura' &&
+                  channel.id === 'dados_operacionais' &&
+                  cepResult &&
+                  cepResult.cidade &&
+                  cepResult.uf && (
+                    <Button
+                      size="small"
+                      startIcon={<MapPin />}
+                      onClick={handleUseAddress}
+                      sx={{ mt: 0.5 }}
+                    >
+                      Usar este endereço
+                    </Button>
+                  )}
               </Box>
             );
           })}

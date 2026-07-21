@@ -744,6 +744,8 @@ def test_importer_idempotent(session):
 
     importer = NuvemshopOrderImporter(store, user_agent="TestApp")
     importer.client.get_order = lambda _: order
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order
 
     assert importer.process_delivery(delivery) is True
 
@@ -842,6 +844,8 @@ def test_importer_applies_default_vendor_to_new_paid_order(session):
 
     importer = NuvemshopOrderImporter(store, user_agent="TestApp")
     importer.client.get_order = lambda _: order
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order
 
     assert importer.process_delivery(delivery) is True
 
@@ -944,6 +948,8 @@ def test_importer_update_existing_paid_order_without_vendor_uses_default_vendor(
 
     importer = NuvemshopOrderImporter(store, user_agent="TestApp")
     importer.client.get_order = lambda _: order
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order
 
     assert importer.process_delivery(delivery) is True
 
@@ -1001,6 +1007,8 @@ def test_manual_override_protection(session):
 
     importer = NuvemshopOrderImporter(store, user_agent="TestApp")
     importer.client.get_order = lambda _: order
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order
 
     # Importar pedido inicial
     assert importer.process_delivery(delivery) is True
@@ -1036,6 +1044,8 @@ def test_manual_override_protection(session):
     order_updated["payment_status"] = "paid"
 
     importer.client.get_order = lambda _: order_updated
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order_updated
     assert importer.process_delivery(delivery_2) is True
 
     # Verificar que status_pagamento NÃO foi sobrescrito (override protege)
@@ -1083,6 +1093,8 @@ def test_external_ref_tracks_agendamento_source(session):
 
     importer = NuvemshopOrderImporter(store, user_agent="TestApp")
     importer.client.get_order = lambda _: order
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order
 
     assert importer.process_delivery(delivery) is True
 
@@ -1232,6 +1244,8 @@ def test_update_fills_empty_fields(session):
 
     importer = NuvemshopOrderImporter(store, user_agent="TestApp")
     importer.client.get_order = lambda _: order_created
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order_created
     assert importer.process_delivery(delivery_1) is True
 
     pedido = Pedido.query.first()
@@ -1276,6 +1290,8 @@ def test_update_fills_empty_fields(session):
     }
 
     importer.client.get_order = lambda _: order_paid
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order_paid
     assert importer.process_delivery(delivery_2) is True
 
     session.refresh(pedido)
@@ -1333,6 +1349,8 @@ def test_update_does_not_overwrite_good_data(session):
 
     importer = NuvemshopOrderImporter(store, user_agent="TestApp")
     importer.client.get_order = lambda _: order_full
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order_full
     assert importer.process_delivery(delivery_1) is True
 
     pedido = Pedido.query.first()
@@ -1362,6 +1380,8 @@ def test_update_does_not_overwrite_good_data(session):
     }
 
     importer.client.get_order = lambda _: order_updated
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: order_updated
     assert importer.process_delivery(delivery_2) is True
 
     session.refresh(pedido)
@@ -1478,6 +1498,8 @@ def test_webhook_created_then_paid_keeps_single_paid_record(session):
     # Evento 1: order/created (pendente)
     d1 = _make_delivery(session, "dup-1", "order/created", 9001)
     importer.client.get_order = lambda _: _order_payload(9001, paid=False)
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: _order_payload(9001, paid=False)
     assert importer.process_delivery(d1) is True
 
     assert Pedido.query.count() == 1
@@ -1486,6 +1508,8 @@ def test_webhook_created_then_paid_keeps_single_paid_record(session):
     # Evento 2: order/paid (pago) — deve ATUALIZAR, não criar outro
     d2 = _make_delivery(session, "dup-1", "order/paid", 9001)
     importer.client.get_order = lambda _: _order_payload(9001, paid=True)
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: _order_payload(9001, paid=True)
     assert importer.process_delivery(d2) is True
 
     assert Pedido.query.count() == 1
@@ -1506,6 +1530,8 @@ def test_webhook_race_create_falls_back_to_update(session, monkeypatch):
     # "Thread A" já criou pedido + ref (order/created, pendente).
     d1 = _make_delivery(session, "dup-2", "order/created", 9002)
     importer.client.get_order = lambda _: _order_payload(9002, paid=False)
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: _order_payload(9002, paid=False)
     assert importer.process_delivery(d1) is True
     assert Pedido.query.count() == 1
 
@@ -1526,6 +1552,8 @@ def test_webhook_race_create_falls_back_to_update(session, monkeypatch):
 
     d2 = _make_delivery(session, "dup-2", "order/paid", 9002)
     importer.client.get_order = lambda _: _order_payload(9002, paid=True)
+    importer.client.get_order_custom_fields = lambda _: []
+    importer._fetch_order_with_cartinha_retry = lambda _: _order_payload(9002, paid=True)
     assert importer.process_delivery(d2) is True
 
     # Nenhum pedido órfão: exatamente 1 pedido e 1 ref, status final Pago.

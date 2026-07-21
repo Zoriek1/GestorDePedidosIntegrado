@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { IntegrationCard } from '../components/IntegrationCard';
 import { OAuthCard } from '../components/OAuthCard';
 import { INTEGRATION_CHANNELS } from '../constants';
+import { ConfirmProvider } from '../../../components/system/ConfirmProvider';
 
 const mockConfig: any = {
   store: { id: 1, name: 'Teste', slug: 'default' },
@@ -29,6 +30,15 @@ const mockConfig: any = {
   endereco_floricultura: '',
   marketing_dispatch_enabled: false,
 };
+
+function renderWithProviders(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <ConfirmProvider>{ui}</ConfirmProvider>
+    </QueryClientProvider>,
+  );
+}
 
 // --- IntegrationCard ---
 
@@ -71,14 +81,9 @@ describe('IntegrationCard', () => {
 
 // --- OAuthCard ---
 
-function renderWithQuery(ui: React.ReactElement) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
-}
-
 describe('OAuthCard', () => {
   it('shows Conectar when not connected', () => {
-    renderWithQuery(
+    renderWithProviders(
       <OAuthCard provider="nuvemshop" label="Nuvemshop" connected={false} onConnect={vi.fn()} onDisconnect={vi.fn()} />,
     );
     expect(screen.getByText('Conectar')).toBeDefined();
@@ -86,7 +91,7 @@ describe('OAuthCard', () => {
   });
 
   it('shows Reconectar and Desconectar when connected', () => {
-    renderWithQuery(
+    renderWithProviders(
       <OAuthCard provider="bling" label="Bling" connected={true} onConnect={vi.fn()} onDisconnect={vi.fn()} />,
     );
     expect(screen.getByText('Conectado')).toBeDefined();
@@ -112,6 +117,20 @@ vi.mock('../../../api/http', () => ({
   createApiRequest: () => vi.fn(),
 }));
 
+vi.mock('../../auth/authStore', () => ({
+  useAuth: () => ({
+    getAuthHeader: () => 'Bearer test',
+    getUser: () => ({ store_slug: 'default', store_ref_id: 1, role: 'admin' }),
+  }),
+}));
+
+vi.mock('../../../components/system/useToast', () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 vi.mock('../hooks/useConfig', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useConfig')>();
   return {
@@ -130,13 +149,10 @@ const { IntegrationGrid } = await import('../components/IntegrationGrid');
 
 describe('IntegrationGrid', () => {
   it('renders all 7 channel cards', () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter>
-          <IntegrationGrid />
-        </MemoryRouter>
-      </QueryClientProvider>,
+    renderWithProviders(
+      <MemoryRouter>
+        <IntegrationGrid />
+      </MemoryRouter>,
     );
     expect(screen.getByText('Meta CAPI')).toBeDefined();
     expect(screen.getByText('Google Analytics 4')).toBeDefined();
@@ -148,13 +164,10 @@ describe('IntegrationGrid', () => {
   });
 
   it('renders the tenant info header', () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter>
-          <IntegrationGrid />
-        </MemoryRouter>
-      </QueryClientProvider>,
+    renderWithProviders(
+      <MemoryRouter>
+        <IntegrationGrid />
+      </MemoryRouter>,
     );
     expect(screen.getByText(/Configuração do tenant/)).toBeDefined();
   });

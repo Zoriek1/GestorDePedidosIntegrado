@@ -367,6 +367,30 @@ def channel_validation_status(channel: str):
         return jsonify({"success": False, "error": "Falha ao ler status do canal"}), 500
 
 
+@config_bp.route("/integrations/tokens-diagnostic", methods=["GET"])
+@requires_role("admin")
+def tokens_diagnostic():
+    """Diagnóstico: retorna os últimos 6 caracteres de cada token salvo no banco.
+
+    Útil para comparar com o token gerado no Meta Events Manager e confirmar
+    se o token no banco é o mesmo que o Meta espera.
+    """
+    store = _current_store()
+    settings = get_settings(store.id)
+    if not settings:
+        return jsonify({"success": False, "error": "Nenhuma configuração encontrada"}), 404
+
+    result = {}
+    for field in SECRET_FIELDS:
+        raw = settings.get_secret(field)
+        result[field] = {
+            "has_value": bool(raw),
+            "tail": raw[-6:] if raw and len(raw) >= 6 else (raw if raw else None),
+            "length": len(raw) if raw else 0,
+        }
+    return jsonify({"success": True, "store": store.slug, "tokens": result})
+
+
 @config_bp.route("/taxa-entrega", methods=["GET"])
 @requires_edit_auth
 def get_taxa_entrega_config():

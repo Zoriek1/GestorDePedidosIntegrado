@@ -105,50 +105,6 @@ class EventsService:
         )
 
     # ------------------------------------------------------------------
-    # Contact
-    # ------------------------------------------------------------------
-    def enqueue_contact(self, lead) -> list[EventsOutbox]:
-        """Enfileira Contact (Meta CAPI) + generate_lead (GA4). Idempotente."""
-        created: list[EventsOutbox] = []
-
-        if is_store_inactive(getattr(lead, "store_ref_id", None)):
-            return created
-
-        event_time = lead.created_at or datetime_now_brazil()
-
-        # Meta CAPI — Contact
-        try:
-            meta_event = self.meta_service.build_contact_event_from_lead(lead)
-            row = self._enqueue_meta(
-                lead=lead,
-                destino="meta_capi",
-                evento="Contact",
-                meta_event=meta_event,
-                event_time=event_time,
-            )
-            if row:
-                created.append(row)
-        except (ValueError, TypeError) as exc:
-            logger.info("events_service.skip_contact_meta lead_id=%s error=%s", lead.id, exc)
-
-        # GA4 — generate_lead
-        row = self._enqueue_ga4(
-            lead=lead,
-            evento="generate_lead",
-            ga4_event_name="generate_lead",
-            params={
-                "event_category": "contact",
-                "lead_id": lead.id,
-                "engagement_time_msec": 1,
-            },
-            event_time=event_time,
-        )
-        if row:
-            created.append(row)
-
-        return created
-
-    # ------------------------------------------------------------------
     # Lead
     # ------------------------------------------------------------------
     def enqueue_lead(self, lead, event_time: datetime | None = None) -> list[EventsOutbox]:

@@ -687,7 +687,6 @@ def criar_lead():
             # New unified outbox
             from app.services.events_service import EventsService
             events_svc = EventsService()
-            events_svc.enqueue_contact(lead)
             if lead.phone:
                 events_svc.enqueue_lead(lead, event_time=datetime_now_brazil())
         return (

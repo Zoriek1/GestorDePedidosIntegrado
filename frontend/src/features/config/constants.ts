@@ -81,6 +81,6 @@ export const INTEGRATION_CHANNELS: ChannelDef[] = [
 ];
 
 export const CHANNEL_EVENTS: Record<string, string[]> = {
-  meta_capi: ['Contact', 'Lead', 'Lead Disqualificado', 'Compra'],
+  meta_capi: ['Lead', 'Lead Disqualificado', 'Compra'],
   ga4: ['Lead', 'Compra', 'Lead Disqualificado'],
 };

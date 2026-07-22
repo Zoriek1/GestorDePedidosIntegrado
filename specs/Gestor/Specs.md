@@ -12,7 +12,11 @@ O primeiro incremento foi revisado e consolidado no commit `00c3cfb` (`feat(inte
 
 As **Fases A, B, C, D, E e F** foram entregues no branch `multi-tenant`: identidade autenticada, OAuth, domínio isolado (C.1–C.4), workers por empresa (D), hardening (F), frontend/offline por tenant (E), validação de integrações e grid de UI. O **Gate 0 (PostgreSQL)** também foi concluído com backup/restore de dados reais de produção, smoke de isolamento e teste de concorrência de `numero_pedido`.
 
-**Status 2026-07-21: implementação completa.** A próxima ação é o **deploy em produção com 1 loja** (Fase 1 do runbook [10-rollout-fases-0-2.md](10-rollout-fases-0-2.md)), seguido da verificação de `store_settings` (Fase 2). Ver [08-estado-atual-e-proximos-passos.md](08-estado-atual-e-proximos-passos.md) para o panorama completo e [11-proximos-passos.md](11-proximos-passos.md) para o roadmap pós-implementação.
+**Status 2026-07-22.** A implementação das fases A–F segue completa, mas a revisão de 22/07 encontrou quatro defeitos que só se manifestam a partir da **segunda loja** — corrigidos em `ae78c4e`..`a5e3e9c` e detalhados no topo de [11-proximos-passos.md](11-proximos-passos.md). Resta uma lacuna que bloqueia a operação multiempresa: **leads públicos ainda caem sempre na loja `default`** (§6 do spec 11).
+
+A próxima ação continua sendo o **deploy em produção com 1 loja** (Fase 1 do runbook [10-rollout-fases-0-2.md](10-rollout-fases-0-2.md)), seguido da verificação de `store_settings` (Fase 2). Ver [08-estado-atual-e-proximos-passos.md](08-estado-atual-e-proximos-passos.md) para o panorama completo e [11-proximos-passos.md](11-proximos-passos.md) para o roadmap.
+
+> **Regra aprendida em 22/07:** trabalho multi-tenant não pode ser dado como concluído com testes de uma loja só — todos os quatro defeitos passavam na suíte de 786 testes. `backend/tests/test_tenant_isolation.py`, que exercita duas lojas, é o piso mínimo para novos incrementos.
 
 ## Índice
 
@@ -47,10 +51,13 @@ guardam as decisões permanentes do sistema.
 10. Frontend/offline por tenant (React Query keys, Dexie, cache purge). ✅ (Fase E, `8c4747f`)
 11. Hardening final (NOT NULL 19 tabelas, env fallback flag, Nuvemshop token criptografado). ✅ (Fase F restante, `dccfdee`)
 12. Validação de integrações (dispatcher por canal, IntegrationValidationLog, UI grid). ✅
-13. Deploy em produção com 1 loja. ⬅ Próxima ação
-14. Verificar `store_settings` e `uses_environment_fallback = false`. ⬅ Após deploy
-15. Ativar 2ª loja com `FORCE_MULTI_TENANT=1`. ⬅ Após verificação
-16. Métricas/alertas por tenant, revisão de segurança, cleanup de débitos. ⬅ Roadmap
+13. Correção das lacunas de 2ª loja: `store_ref_id` nos diagnósticos/dispatcher, índice de nome por loja, tenant resolvido no login por `stores.email_domain`, `flask cli create-store`, `default_store()` fail-closed. ✅ (`ae78c4e`..`a5e3e9c`)
+14. Consolidação da aba Integrações em card + modais. ✅ (`181350c`)
+15. Deploy em produção com 1 loja. ⬅ Próxima ação
+16. Verificar `store_settings` e `uses_environment_fallback = false`. ⬅ Após deploy
+17. Mapear leads públicos → loja (hoje sempre `default`). ⬅ Bloqueia a 2ª loja se ela captar leads
+18. Ativar 2ª loja via `flask cli create-store` — `is_multi_store()` liga sozinho, sem flag. ⬅ Após verificação
+19. Métricas/alertas por tenant, rate limit por tenant, `tsc --noEmit`. ⬅ Roadmap
 
 ## Critério global de conclusão
 

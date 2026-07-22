@@ -587,13 +587,19 @@ def _get_client_ip() -> str:
 def rate_limit(max_per_minute=60, max_per_hour=1000):
     """
     Rate limiting simples por IP
-    Limita requisições para prevenir abuso
+    Limita requisições para prevenir abuso.
+    Desativado quando ENABLE_RATE_LIMIT=false (útil em testes).
     """
+    import os
     from flask import jsonify
+
+    _enabled = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
 
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
+            if not _enabled:
+                return f(*args, **kwargs)
             ip = _get_client_ip()
             now = time.time()
 

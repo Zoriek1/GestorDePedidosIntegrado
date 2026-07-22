@@ -587,13 +587,19 @@ def _get_client_ip() -> str:
 def rate_limit(max_per_minute=60, max_per_hour=1000):
     """
     Rate limiting simples por IP
-    Limita requisições para prevenir abuso
+    Limita requisições para prevenir abuso.
+    Desativado quando ENABLE_RATE_LIMIT=false (útil em testes).
     """
+    import os
     from flask import jsonify
+
+    _enabled = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
 
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
+            if not _enabled:
+                return f(*args, **kwargs)
             ip = _get_client_ip()
             now = time.time()
 
@@ -731,13 +737,16 @@ def setup_security_middleware(app, enable_auth=True, enable_rate_limit=True):
                 )
             else:
                 # Prod: logger estruturado
+                store_ref_id = getattr(g, "tenant_store_id", None)
                 logger = logging.getLogger("request_timing")
                 logger.info(
-                    "%s %s %d %.0fms",
+                    "%s %s %d %.0fms [store=%s]",
                     request.method,
                     request.path,
                     response.status_code,
                     duration_ms,
+                    store_ref_id,
+                    extra={"store_ref_id": store_ref_id},
                 )
 
         # Log de acesso (arquivo)

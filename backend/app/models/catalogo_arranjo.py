@@ -25,11 +25,7 @@ class CatalogoArranjo(db.Model):
         """Sugere nomes do catálogo por similaridade (PG) ou substring (SQLite)."""
         q = (q or "").strip()
         if not q:
-            rows = (
-                CatalogoArranjo.query.order_by(CatalogoArranjo.usos.desc())
-                .limit(limit)
-                .all()
-            )
+            rows = CatalogoArranjo.query.order_by(CatalogoArranjo.usos.desc()).limit(limit).all()
             return [r.nome for r in rows]
 
         if db.engine.dialect.name == "postgresql":
@@ -41,9 +37,7 @@ class CatalogoArranjo(db.Model):
                 "ORDER BY similarity(nome, :q) DESC, usos DESC "
                 "LIMIT :lim"
             )
-            rows = db.session.execute(
-                sql, {"q": q, "like": f"%{q}%", "lim": limit}
-            ).fetchall()
+            rows = db.session.execute(sql, {"q": q, "like": f"%{q}%", "lim": limit}).fetchall()
             return [r[0] for r in rows]
 
         # SQLite/outro: fallback por substring case-insensitive (sem typo tolerance).

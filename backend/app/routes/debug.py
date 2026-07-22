@@ -5,20 +5,11 @@ API completa para o frontend PWA
 """
 from __future__ import annotations
 
-import re
-from datetime import datetime
-
 from flask import Blueprint, jsonify, request
 
 from app import db
-from app.middleware import requires_edit_auth
-from app.models import Cliente, FontePedido, Pedido
-from app.models.pedido import datetime_now_brazil
-from app.utils.backup_helper import (
-    get_backup_stats,
-    get_last_backup_time,
-    has_recent_backup,
-)
+from app.middleware import requires_role
+from app.models import Pedido
 
 # ============================================
 # ENDPOINT DE CRIAÇÃO DE PEDIDO - MIGRADO
@@ -28,9 +19,11 @@ from app.utils.backup_helper import (
 # NOVO LOCAL: app/routes/pedidos.py -> criar_pedido()
 
 
-
 debug_bp = Blueprint("debug", __name__, url_prefix="/api")
+
+
 @debug_bp.route("/debug/geocode", methods=["GET", "POST"])
+@requires_role("admin")
 def debug_geocode():
     """
     Endpoint de debug para testar geocodificação de um endereço.
@@ -195,6 +188,7 @@ def debug_geocode():
 
 
 @debug_bp.route("/debug/limpar-distancias", methods=["POST"])
+@requires_role("admin")
 def debug_limpar_distancias():
     """
     Endpoint de debug para limpar todas as distâncias cacheadas.
@@ -240,6 +234,7 @@ def debug_limpar_distancias():
 
 
 @debug_bp.route("/debug/config-floricultura", methods=["GET"])
+@requires_role("admin")
 def debug_config_floricultura():
     """
     Endpoint de debug para verificar a configuração da floricultura.
@@ -300,6 +295,7 @@ def debug_config_floricultura():
 
 
 @debug_bp.route("/debug/reset-floricultura", methods=["POST"])
+@requires_role("admin")
 def debug_reset_floricultura():
     """
     Força recálculo das coordenadas da floricultura.
@@ -355,6 +351,7 @@ def debug_reset_floricultura():
 
 
 @debug_bp.route("/debug/testar-apis", methods=["GET"])
+@requires_role("admin")
 def debug_testar_apis():
     """
     Testa conectividade com as APIs externas (GraphHopper, OpenRouteService, Nominatim)
@@ -526,5 +523,3 @@ def debug_testar_apis():
 
         traceback.print_exc()
         return jsonify({"error": "Erro ao testar APIs", "detalhes": str(e)}), 500
-
-

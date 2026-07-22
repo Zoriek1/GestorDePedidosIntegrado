@@ -231,7 +231,7 @@ export function OrderCard({
       await printService.print(pedido.id);
       success('Impressão iniciada');
     } catch (err) {
-      showError(err?.message || 'Erro ao imprimir');
+      showError(err instanceof Error ? err.message : 'Erro ao imprimir');
     }
   };
 
@@ -255,7 +255,7 @@ export function OrderCard({
       });
       success('Pagamento marcado como pago');
     } catch (err) {
-      showError(err?.message || 'Erro ao atualizar pagamento');
+      showError(err instanceof Error ? err.message : 'Erro ao atualizar pagamento');
     }
   };
 
@@ -273,7 +273,7 @@ export function OrderCard({
       await deletePedido.mutateAsync(pedido.id);
       success('Pedido deletado');
     } catch (err) {
-      showError(err?.message || 'Erro ao deletar pedido');
+      showError(err instanceof Error ? err.message : 'Erro ao deletar pedido');
     }
   };
 
@@ -324,7 +324,7 @@ export function OrderCard({
         '_blank'
       );
     } catch (err) {
-      showError(err?.message || 'Erro ao gerar link de acompanhamento');
+      showError(err instanceof Error ? err.message : 'Erro ao gerar link de acompanhamento');
     }
   };
 
@@ -344,7 +344,7 @@ export function OrderCard({
         showError('Erro ao copiar acompanhamento');
       }
     } catch (err) {
-      showError(err?.message || 'Erro ao gerar link de acompanhamento');
+      showError(err instanceof Error ? err.message : 'Erro ao gerar link de acompanhamento');
     }
   };
 
@@ -362,7 +362,7 @@ export function OrderCard({
       });
       success(pedido.status === 'agendado' ? 'Produção iniciada' : 'Pedido saiu para entrega');
     } catch (err) {
-      showError(err?.message || 'Erro ao atualizar status');
+      showError(err instanceof Error ? err.message : 'Erro ao atualizar status');
     }
   };
 

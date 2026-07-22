@@ -15,9 +15,9 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
-import { AppButton } from '../../components/common/AppButton';
-import { useListVendedores, useAssignVendorNuvemshop } from '../../api/endpoints/nuvemshop';
-import { useToast } from '../../components/system/useToast';
+import { AppButton } from '../../../components/common/AppButton';
+import { useListVendedores, useAssignVendorNuvemshop } from '../../../api/endpoints/nuvemshop';
+import { useToast } from '../../../components/system/useToast';
 
 interface AssignVendorModalProps {
   open: boolean;

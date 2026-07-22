@@ -448,6 +448,90 @@ def create_admin_command(email, password, name):
             raise click.ClickException(f"Erro ao criar admin: {e}") from e
 
 
+@cli.command("create-store")
+@click.option("--name", prompt="Nome da loja", help="Nome de exibição da loja")
+@click.option("--slug", prompt="Slug", help="Identificador único, ex: floricultura-x")
+@click.option(
+    "--email-domain",
+    prompt="Domínio de e-mail",
+    help="Domínio que resolve o tenant no login, ex: floriculturax.com",
+)
+@click.option("--admin-email", prompt="E-mail do admin", help="Login do admin da loja")
+@click.option(
+    "--admin-password",
+    prompt="Senha do admin",
+    hide_input=True,
+    confirmation_prompt=True,
+    help="Senha do admin (mín. 8 chars)",
+)
+@click.option("--admin-name", default="Admin", help="Nome de exibição do admin (padrão: Admin)")
+def create_store_command(name, slug, email_domain, admin_email, admin_password, admin_name):
+    """Provisiona um tenant novo: loja + configurações + usuário admin.
+
+    Tudo numa transação: se qualquer etapa falhar, nada é gravado.
+
+    Exemplo:
+      flask cli create-store --name "Floricultura X" --slug floricultura-x \\
+        --email-domain floriculturax.com --admin-email dono@floriculturax.com
+    """
+    slug = (slug or "").strip().lower()
+    email_domain = (email_domain or "").strip().lower().lstrip("@")
+    admin_email = (admin_email or "").strip().lower()
+
+    if len(admin_password) < 8:
+        raise click.ClickException("Senha deve ter pelo menos 8 caracteres.")
+    if "@" not in admin_email:
+        raise click.ClickException("--admin-email deve ser um e-mail válido.")
+    # O login resolve a loja pelo domínio; um admin fora do domínio da própria
+    # loja cairia na busca global e não conseguiria entrar de forma previsível.
+    if admin_email.rsplit("@", 1)[-1] != email_domain:
+        raise click.ClickException(
+            f"--admin-email deve pertencer ao domínio da loja (@{email_domain})."
+        )
+
+    from app import create_app
+
+    app = create_app()
+    with app.app_context():
+        from app import db
+        from app.models.store import Store
+        from app.models.user import User
+        from app.services.auth_service import hash_password
+        from app.services.integration_settings_service import get_or_create_settings
+
+        if Store.query.filter_by(slug=slug).first():
+            raise click.ClickException(f"Já existe loja com slug '{slug}'.")
+        if Store.query.filter_by(email_domain=email_domain).first():
+            raise click.ClickException(f"Já existe loja com domínio '{email_domain}'.")
+        if User.query.filter_by(email=admin_email).first():
+            raise click.ClickException(f"Já existe usuário com e-mail '{admin_email}'.")
+
+        try:
+            store = Store(name=name, slug=slug, email_domain=email_domain, active=True)
+            db.session.add(store)
+            db.session.flush()  # precisa do store.id para settings e admin
+
+            get_or_create_settings(store.id)
+
+            admin = User(
+                name=admin_name,
+                email=admin_email,
+                password_hash=hash_password(admin_password),
+                role="admin",
+                is_active=True,
+                store_ref_id=store.id,
+            )
+            db.session.add(admin)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            raise click.ClickException(f"Erro ao criar loja: {e}") from e
+
+        click.echo(f"\n[OK] Loja criada: {name} (id={store.id}, slug={slug})")
+        click.echo(f"[OK] Admin: {admin_email} (id={admin.id})")
+        click.echo(f"[INFO] Logins desta loja usam e-mails @{email_domain}")
+
+
 # Registrar comandos no Flask CLI
 def register_commands(app: Flask):
     """Registra comandos CLI na aplicação"""

@@ -33,5 +33,9 @@ class BlingApiError(BlingRetryableError):
         super().__init__(message, details=details)
         self.status_code = status_code
         self.payload = payload
-        if status_code and 400 <= int(status_code) < 500 and int(status_code) not in (408, 409, 429):
+        if (
+            status_code
+            and 400 <= int(status_code) < 500
+            and int(status_code) not in (408, 409, 429)
+        ):
             self.retryable = False

@@ -43,15 +43,15 @@ export function SalesChannelDonut({ vendas }: SalesChannelDonutProps) {
               innerRadius={60}
               outerRadius={90}
               paddingAngle={2}
-              label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+              label={({ name, percent }) => `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`}
             >
               {data.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number) =>
-                new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+              formatter={(value) =>
+                new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value))
               }
             />
             <Legend />

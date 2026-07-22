@@ -109,6 +109,7 @@ def setup_cors(app):
                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
                 "allow_headers": ["Content-Type", "Authorization"],
                 "supports_credentials": True,
+                "max_age": 3600,
             }
         },
     )
@@ -123,4 +124,5 @@ def setup_cors(app):
             origin = origin.strip()
             if origin in allowed_origins:
                 response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Vary"] = "Origin"
         return response

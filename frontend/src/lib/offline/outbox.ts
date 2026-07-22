@@ -13,7 +13,7 @@ function notifyOutboxChanged() {
   }
 }
 
-export async function enqueue(type: OutboxEntry['type'], payload: unknown): Promise<number> {
+export async function enqueue(type: OutboxEntry['type'], payload: unknown, storeId?: string): Promise<number> {
   // Ensure payload is an object for spread
   const payloadObj = typeof payload === 'object' && payload !== null 
     ? payload as Record<string, unknown>
@@ -21,7 +21,7 @@ export async function enqueue(type: OutboxEntry['type'], payload: unknown): Prom
   
   const entry: OutboxEntry = {
     type,
-    payload: { ...payloadObj, clientTimestamp: Date.now() },
+    payload: { ...payloadObj, clientTimestamp: Date.now(), _storeId: storeId },
     createdAt: Date.now(),
     attempts: 0,
     status: 'PENDING',
@@ -32,8 +32,10 @@ export async function enqueue(type: OutboxEntry['type'], payload: unknown): Prom
   return id as number;
 }
 
-export async function getQueue(): Promise<OutboxEntry[]> {
-  return db.outbox.orderBy('createdAt').toArray();
+export async function getQueue(storeId?: string): Promise<OutboxEntry[]> {
+  const all = await db.outbox.orderBy('createdAt').toArray();
+  if (!storeId) return all;
+  return all.filter(e => (e.payload as Record<string, unknown>)._storeId === storeId);
 }
 
 export interface OutboxStats {

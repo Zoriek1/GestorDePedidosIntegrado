@@ -38,9 +38,7 @@ def add_session_columns():
         for column in to_add:
             print(f"[MIGRATION] Adicionando coluna {column} em {TABLE}...")
             try:
-                db.session.execute(
-                    db.text(f"ALTER TABLE {TABLE} ADD COLUMN {column} TEXT")
-                )
+                db.session.execute(db.text(f"ALTER TABLE {TABLE} ADD COLUMN {column} TEXT"))
                 db.session.commit()
                 print(f"[OK] Coluna '{column}' adicionada")
             except Exception as e:

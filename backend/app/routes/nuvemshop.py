@@ -21,6 +21,7 @@ from app.integrations.nuvemshop import (
     verify_nuvemshop_hmac,
 )
 from app.integrations.nuvemshop.client import NuvemshopClient
+from app.integrations.nuvemshop.token_service import encrypt_token
 from app.middleware import requires_role
 from app.models.nuvemshop_store import NuvemshopStore
 from app.models.nuvemshop_webhook_delivery import NuvemshopWebhookDelivery
@@ -259,11 +260,13 @@ def nuvemshop_oauth_callback():
 
     store = NuvemshopStore.query.filter_by(store_id=str(store_id)).first()
     if store:
-        store.access_token = access_token
+        store.access_token = encrypt_token(access_token)
         store.active = True
         store.uninstalled_at = None
     else:
-        store = NuvemshopStore(store_id=str(store_id), access_token=access_token, active=True)
+        store = NuvemshopStore(
+            store_id=str(store_id), access_token=encrypt_token(access_token), active=True
+        )
         db.session.add(store)
     # Amarra a instalação ao tenant interno resolvido pelo state (Fase B).
     if store_ref_id is not None:
@@ -315,8 +318,9 @@ def nuvemshop_oauth_callback():
             },
         )
 
-    # Redirecionar de volta ao app para o usuário não ficar vendo JSON
-    front_url = _build_public_url("/integracoes/nuvemshop?nuvemshop=connected")
+    # Redirecionar de volta ao app para o usuário não ficar vendo JSON.
+    # A aba Integrações lê ?nuvemshop=connected e exibe o toast de sucesso.
+    front_url = _build_public_url("/configuracoes?nuvemshop=connected")
     return redirect(front_url)
 
 
@@ -341,7 +345,7 @@ def nuvemshop_setup_webhooks():
 
     client = NuvemshopClient(
         store_id=str(store.store_id),
-        access_token=store.access_token,
+        access_token=store.decrypted_token,
         user_agent=Config.NUVEMSHOP_USER_AGENT,
     )
     webhook_url = _build_public_url("/api/integrations/nuvemshop/webhooks")
@@ -381,6 +385,27 @@ def get_nuvemshop_config():
     store_id = request.args.get("store_id")
     store = _resolve_target_store(store_id)
     return success_response(_serialize_store_config(store))
+
+
+@nuvemshop_bp.route("/disconnect", methods=["DELETE"])
+@requires_role("admin")
+def nuvemshop_disconnect():
+    """Desconecta a Nuvemshop localmente (nao revoga no provedor)."""
+    from app.models.pedido import datetime_now_brazil
+
+    store_ref_id = getattr(g, "tenant_store_id", None)
+    try:
+        ns = NuvemshopStore.query.filter_by(store_ref_id=store_ref_id).first()
+        if ns:
+            ns.active = False
+            ns.access_token = ""
+            ns.uninstalled_at = datetime_now_brazil()
+            db.session.commit()
+        return success_response(message="Nuvemshop desconectado")
+    except Exception:
+        db.session.rollback()
+        logger.exception("Erro ao desconectar Nuvemshop")
+        return error_response("Erro ao desconectar Nuvemshop", 500)
 
 
 @nuvemshop_bp.route("/config", methods=["PUT"])
@@ -515,10 +540,7 @@ def nuvemshop_process_pending():
         deliveries_query = deliveries_query.filter_by(store_id=str(installation.store_id))
 
     deliveries = (
-        deliveries_query
-        .order_by(NuvemshopWebhookDelivery.received_at.asc())
-        .limit(limit)
-        .all()
+        deliveries_query.order_by(NuvemshopWebhookDelivery.received_at.asc()).limit(limit).all()
     )
 
     if not deliveries:
@@ -662,7 +684,7 @@ def _enrich_pedido_from_api(pedido: Pedido, ref: PedidoExternalRef) -> bool:
     try:
         client = NuvemshopClient(
             store_id=str(store.store_id),
-            access_token=store.access_token,
+            access_token=store.decrypted_token,
             user_agent=Config.NUVEMSHOP_USER_AGENT,
         )
         order = client.get_order(ref.external_order_id)
@@ -848,7 +870,7 @@ def debug_pedidos_recentes():
     try:
         client = NuvemshopClient(
             store_id=str(store.store_id),
-            access_token=store.access_token,
+            access_token=store.decrypted_token,
             user_agent=Config.NUVEMSHOP_USER_AGENT,
         )
 
@@ -961,7 +983,7 @@ def debug_pedido_especifico(order_id: str):
     try:
         client = NuvemshopClient(
             store_id=str(store.store_id),
-            access_token=store.access_token,
+            access_token=store.decrypted_token,
             user_agent=Config.NUVEMSHOP_USER_AGENT,
         )
 

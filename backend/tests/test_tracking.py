@@ -191,17 +191,18 @@ def test_sugerir_endereco_grava_pendente(client, session, app):
     assert res.status_code == 201
 
     # Não altera o pedido — apenas cria a pendente.
-    listagem = client.get(
-        f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH
-    )
+    listagem = client.get(f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH)
     assert listagem.status_code == 200
     sugestoes = listagem.get_json()["sugestoes"]
     assert len(sugestoes) == 1
     assert sugestoes[0]["status"] == "pendente"
     assert sugestoes[0]["texto"] == "Rua Nova, 456 - Apto 10"
-    assert client.get(f"/api/pedidos/{pedido.id}", headers=_ADMIN_AUTH).get_json()[
-        "pedido"
-    ]["endereco"] == "Rua das Flores, 123"
+    assert (
+        client.get(f"/api/pedidos/{pedido.id}", headers=_ADMIN_AUTH).get_json()["pedido"][
+            "endereco"
+        ]
+        == "Rua das Flores, 123"
+    )
 
 
 def test_sugerir_endereco_valida_texto(client, session, app):
@@ -251,9 +252,7 @@ def test_aplicar_sugestao_atualiza_endereco(client, session, app):
     pedido = _novo_pedido(session)
     with app.app_context():
         token = tt.make_track_token(pedido.id)
-    client.post(
-        f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": "Rua Nova, 456"}
-    )
+    client.post(f"/api/pedidos/track/{token}/sugestao-endereco", json={"texto": "Rua Nova, 456"})
     sugestao_id = client.get(
         f"/api/pedidos/{pedido.id}/sugestoes-endereco", headers=_ADMIN_AUTH
     ).get_json()["sugestoes"][0]["id"]
@@ -266,9 +265,12 @@ def test_aplicar_sugestao_atualiza_endereco(client, session, app):
     assert res.status_code == 200
     assert res.get_json()["sugestao"]["status"] == "aplicada"
     # Agora o pedido reflete o endereço aplicado.
-    assert client.get(f"/api/pedidos/{pedido.id}", headers=_ADMIN_AUTH).get_json()[
-        "pedido"
-    ]["endereco"] == "Rua Nova, 456"
+    assert (
+        client.get(f"/api/pedidos/{pedido.id}", headers=_ADMIN_AUTH).get_json()["pedido"][
+            "endereco"
+        ]
+        == "Rua Nova, 456"
+    )
 
 
 def test_resolver_sugestao_exige_auth(client, session, app):

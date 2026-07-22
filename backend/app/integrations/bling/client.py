@@ -64,9 +64,7 @@ class BlingClient:
             new_token = self.on_unauthorized()
             if new_token:
                 self.access_token = new_token
-            return self._request(
-                method, path, json_body=json_body, params=params, _retried=True
-            )
+            return self._request(method, path, json_body=json_body, params=params, _retried=True)
 
         if response.status_code >= 400:
             raise BlingApiError(

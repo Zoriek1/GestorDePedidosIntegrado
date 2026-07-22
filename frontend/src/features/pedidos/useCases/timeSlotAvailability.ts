@@ -4,10 +4,6 @@
  * Consulta pedidos do dia e calcula slots disponíveis
  */
 
-import { createLogger } from '../../../lib/logger';
-
-const _log = createLogger('TimeSlotAvailability');
-
 import { createApiRequest } from '../../../api/http';
 import type { Pedido, PedidosResponse } from '../../../api/endpoints/pedidos';
 

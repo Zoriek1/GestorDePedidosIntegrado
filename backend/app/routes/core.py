@@ -5,15 +5,13 @@ API completa para o frontend PWA
 """
 from __future__ import annotations
 
-import re
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
 from app import db
 from app.middleware import requires_any_role, requires_edit_auth
-from app.models import Cliente, FontePedido, Pedido
-from app.models.pedido import datetime_now_brazil
+from app.models import Pedido
 from app.utils.backup_helper import (
     get_backup_stats,
     get_last_backup_time,
@@ -28,8 +26,9 @@ from app.utils.backup_helper import (
 # NOVO LOCAL: app/routes/pedidos.py -> criar_pedido()
 
 
-
 core_bp = Blueprint("core", __name__, url_prefix="/api")
+
+
 @core_bp.route("/stats", methods=["GET"])
 @requires_edit_auth
 def obter_estatisticas():
@@ -378,9 +377,7 @@ def calcular_distancias_lote():
 
                 for r in resultados:
                     if r.get("distancia_km") is not None and not r.get("cached"):
-                        enfileirar_calculo_taxa(
-                            r["id"], pedido_store_ids.get(r["id"])
-                        )
+                        enfileirar_calculo_taxa(r["id"], pedido_store_ids.get(r["id"]))
             except Exception:
                 pass
 

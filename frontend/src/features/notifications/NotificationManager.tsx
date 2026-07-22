@@ -13,9 +13,6 @@
 import { useEffect, useRef } from 'react';
 import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
-import { createLogger } from '../../lib/logger';
-
-const _log = createLogger('Push');
 
 /** Converte base64url para Uint8Array (necessário para applicationServerKey). */
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -51,7 +48,7 @@ export function NotificationManager() {
           '/notifications/vapid-public-key',
         );
         if (!resp.ok || !resp.data?.publicKey) {
-          console.warn('[Push] VAPID key não disponível:', resp.message);
+          console.warn('[Push] VAPID key não disponível');
           return;
         }
         const vapidPublicKey = resp.data.publicKey;
@@ -77,7 +74,7 @@ export function NotificationManager() {
         // 5. Inscrever no Push Manager
         const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
         });
 
         // 6. Enviar subscription para o backend

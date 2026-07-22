@@ -71,6 +71,7 @@ def create_app(config=None):
         import app.models as _app_models  # noqa: F401
         from app.models.ledger_entry import LedgerEntry  # noqa: F401
         from app.models.user import User  # noqa: F401
+        from app.routes.admin import admin_bp
         from app.routes.auth import auth_bp
         from app.routes.backup_admin import backup_admin_bp
         from app.routes.bling import bling_bp
@@ -105,6 +106,7 @@ def create_app(config=None):
         app.register_blueprint(core_bp)
         app.register_blueprint(auth_bp)
         app.register_blueprint(config_bp)
+        app.register_blueprint(admin_bp)
         app.register_blueprint(backup_admin_bp)
         app.register_blueprint(nuvemshop_bp)
         app.register_blueprint(bling_bp)

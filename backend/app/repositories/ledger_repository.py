@@ -97,24 +97,17 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         """
         today = today_brazil()
 
-        base_active = (
-            db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0))
-            .filter(
-                LedgerEntry.user_id == user_id,
-                LedgerEntry.type == "CREDIT",
-                LedgerEntry.status == "active",
-                LedgerEntry.voided.is_(False),
-            )
+        base_active = db.session.query(func.coalesce(func.sum(LedgerEntry.amount), 0)).filter(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.type == "CREDIT",
+            LedgerEntry.status == "active",
+            LedgerEntry.voided.is_(False),
         )
 
         active_total = float(base_active.scalar())
 
-        overdue = float(
-            base_active.filter(LedgerEntry.due_date < today).scalar()
-        )
-        due_today = float(
-            base_active.filter(LedgerEntry.due_date == today).scalar()
-        )
+        overdue = float(base_active.filter(LedgerEntry.due_date < today).scalar())
+        due_today = float(base_active.filter(LedgerEntry.due_date == today).scalar())
         upcoming = float(
             base_active.filter(
                 (LedgerEntry.due_date > today) | LedgerEntry.due_date.is_(None)
@@ -207,12 +200,15 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         vendedores = User.query.filter_by(is_active=True).all()
         result = []
         for v in vendedores:
-            bal = balances_by_user.get(v.id, {
-                "total_credits": 0.0,
-                "overdue_credits": 0.0,
-                "total_debits": 0.0,
-                "balance": 0.0,
-            })
+            bal = balances_by_user.get(
+                v.id,
+                {
+                    "total_credits": 0.0,
+                    "overdue_credits": 0.0,
+                    "total_debits": 0.0,
+                    "balance": 0.0,
+                },
+            )
             result.append({"user": v.to_dict(), **bal})
         return result
 
@@ -303,9 +299,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
 
         for row in rows:
             competence_date = (
-                row.due_date
-                or row.week_ref
-                or self._coerce_date(row.created_at, today)
+                row.due_date or row.week_ref or self._coerce_date(row.created_at, today)
             )
             competencia_key = self._competencia_key(competence_date, competencia_tipo)
 
@@ -415,9 +409,7 @@ class LedgerRepository(BaseRepository[LedgerEntry]):
         due_today = [e for e in all_active if e.due_date == today]
         without_due = [e for e in all_active if e.due_date is None]
         future_this_week = [
-            e
-            for e in all_active
-            if e.due_date is not None and today < e.due_date < next_monday
+            e for e in all_active if e.due_date is not None and today < e.due_date < next_monday
         ]
 
         selected = overdue + due_today + without_due + future_this_week

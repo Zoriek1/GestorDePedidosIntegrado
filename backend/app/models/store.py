@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Identidade interna das lojas (tenants) da aplicacao."""
 
+from sqlalchemy import text
+
 from app import db
 from app.models.pedido import datetime_now_brazil
 
@@ -11,6 +13,17 @@ class Store(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     slug = db.Column(db.String(60), nullable=False, unique=True, index=True)
+    # Dominio de e-mail da loja: resolve o tenant no login (maria@floriculturax.com
+    # -> loja X). Nullable enquanto houver loja sem dominio proprio; nesse caso o
+    # login cai na busca global (compat). Sempre gravado em minusculas.
+    email_domain = db.Column(db.String(120), nullable=True, unique=True, index=True)
+    # Modulo de Leads (captacao UTM/WhatsApp) habilitado para esta loja.
+    # Desligado por padrao: a captacao publica ainda resolve sempre a loja default
+    # (`resolve_public_store_id`), entao lead de outra loja cairia na loja errada.
+    # Enquanto o mapeamento dominio->loja nao existir, so a loja 1 opera Leads.
+    leads_enabled = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=text("FALSE")
+    )
     active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime_now_brazil)
     updated_at = db.Column(

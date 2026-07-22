@@ -6,9 +6,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createLogger } from '../../../../lib/logger';
-
-const _log = createLogger('PedidoWizard');
 import {
   Box,
   Stepper,

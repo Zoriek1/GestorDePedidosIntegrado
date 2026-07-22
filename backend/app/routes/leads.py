@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from urllib.parse import unquote
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 
@@ -33,6 +33,55 @@ from app.utils.tracking_token import (
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 logger = logging.getLogger(__name__)
+
+# Endpoints da landing page: não têm sessão nem tenant resolvido e alimentam a
+# captação da loja 1 (`resolve_public_store_id` devolve sempre a default).
+# Ficam de fora do guard, senão a captação pública morreria junto.
+PUBLIC_ENDPOINTS = frozenset({"leads.criar_lead", "leads.marcar_whatsapp_iniciado"})
+
+
+@leads_bp.before_request
+def _require_leads_enabled():
+    """Bloqueia o módulo de Leads em lojas que não o têm habilitado.
+
+    O módulo é opt-in por loja (`stores.leads_enabled`) enquanto a captação
+    pública não souber mapear domínio→loja: hoje todo lead público cai na loja
+    default, então liberar Leads para um segundo tenant misturaria dados.
+
+    Preflight de CORS passa direto; o browser não manda credenciais no OPTIONS.
+    """
+    if request.method == "OPTIONS" or request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+
+    store = getattr(g, "current_store", None)
+
+    # Fallback: se prime_request_tenant não resolveu a loja (ex: exceção
+    # silenciada no try/except), resolve aqui a partir do JWT para que o
+    # guard funcione mesmo quando o middleware de tenant falha.
+    if store is None:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            try:
+                from app.services.auth_service import decode_token, extract_bearer_token
+                from app.services.auth_context import load_request_identity
+
+                token = extract_bearer_token(auth_header)
+                payload = decode_token(token) if token else None
+                if payload:
+                    current_user, error = load_request_identity(payload)
+                    if not error:
+                        store = getattr(g, "current_store", None)
+            except Exception:
+                pass
+
+    if store is None:
+        # Sem loja resolvida o decorator de papel da rota produz o erro correto
+        # (401/403); não é papel deste guard autenticar.
+        return None
+
+    if not getattr(store, "leads_enabled", False):
+        return jsonify({"success": False, "error": "Módulo de Leads indisponível"}), 403
+    return None
 
 # Evento padrão quando nenhum filtro de evento é enviado pelo frontend
 DEFAULT_KEY_EVENTS = ("whatsapp_click",)
@@ -126,7 +175,9 @@ def _parse_brt_day_end(value: str) -> datetime | None:
         return None
     if parsed.tzinfo is None:
         # Date-only: estender para 23:59:59.999999 BRT para incluir o dia inteiro.
-        parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=TIMEZONE_BRASIL)
+        parsed = parsed.replace(
+            hour=23, minute=59, second=59, microsecond=999999, tzinfo=TIMEZONE_BRASIL
+        )
     return parsed
 
 
@@ -407,11 +458,7 @@ def _phone_from_whatsapp_jid(value: object) -> str | None:
 
 
 def _extract_whatsapp_phone(data: dict) -> str | None:
-    key_data = (
-        data.get("data", {}).get("key", {})
-        if isinstance(data.get("data"), dict)
-        else {}
-    )
+    key_data = data.get("data", {}).get("key", {}) if isinstance(data.get("data"), dict) else {}
     remote_jid = key_data.get("remoteJid") if isinstance(key_data, dict) else None
     alternate_jids = []
     if isinstance(key_data, dict):
@@ -546,7 +593,8 @@ def criar_lead():
     existing = None
     if is_whatsapp and token_valido:
         existing = (
-            Lead.query.execution_options(include_all_tenants=True).filter(
+            Lead.query.execution_options(include_all_tenants=True)
+            .filter(
                 Lead.store_ref_id == store_ref_id,
                 Lead.token_rastreio == token_rastreio,
                 Lead.status != "compra_realizada",
@@ -555,10 +603,14 @@ def criar_lead():
             .first()
         )
     if existing is None:
-        existing = Lead.query.execution_options(include_all_tenants=True).filter(
-            Lead.store_ref_id == store_ref_id,
-            Lead.dedup_key == dedup_key,
-        ).first()
+        existing = (
+            Lead.query.execution_options(include_all_tenants=True)
+            .filter(
+                Lead.store_ref_id == store_ref_id,
+                Lead.dedup_key == dedup_key,
+            )
+            .first()
+        )
     if existing is not None:
         _record_touchpoint(existing, tp_fields)
         db.session.commit()
@@ -645,10 +697,14 @@ def criar_lead():
     except IntegrityError:
         # Race: outro request inseriu o mesmo dedup_key entre nosso SELECT e INSERT.
         db.session.rollback()
-        existing = Lead.query.execution_options(include_all_tenants=True).filter(
-            Lead.store_ref_id == store_ref_id,
-            Lead.dedup_key == dedup_key,
-        ).first()
+        existing = (
+            Lead.query.execution_options(include_all_tenants=True)
+            .filter(
+                Lead.store_ref_id == store_ref_id,
+                Lead.dedup_key == dedup_key,
+            )
+            .first()
+        )
         if existing is not None:
             _record_touchpoint(existing, tp_fields)
             db.session.commit()
@@ -780,9 +836,7 @@ def _apply_lead_status_update(lead: Lead, data: dict):
 
     old_status = lead.status
     fire_disqualified = (
-        new_status == "descarte"
-        and is_lead_funnel_enabled()
-        and old_status != "descarte"
+        new_status == "descarte" and is_lead_funnel_enabled() and old_status != "descarte"
     )
     fire_lead_confirmed = (
         new_status == "whatsapp_iniciado"
@@ -1114,9 +1168,7 @@ def listar_leads():
     if status_q:
         query = query.filter(Lead.status == status_q)
     elif hidden_mode == "exclude":
-        query = query.filter(
-            db.or_(Lead.status.is_(None), ~Lead.status.in_(HIDDEN_STATUSES))
-        )
+        query = query.filter(db.or_(Lead.status.is_(None), ~Lead.status.in_(HIDDEN_STATUSES)))
     elif hidden_mode == "only":
         query = query.filter(Lead.status.in_(HIDDEN_STATUSES))
 

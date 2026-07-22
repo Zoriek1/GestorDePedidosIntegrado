@@ -85,7 +85,9 @@ def generate_delivery_credit(
     db.session.flush()
     current_app.logger.info(
         "[TAXA_ENTREGA] Pedido #%s: R$%.2f → entregador %s",
-        pedido.id, taxa, entregador_id,
+        pedido.id,
+        taxa,
+        entregador_id,
     )
 
 
@@ -109,7 +111,9 @@ def void_delivery_credit(pedido, reason: str) -> bool:
     db.session.flush()
     current_app.logger.info(
         "[TAXA_ENTREGA] Pedido #%s: CREDIT R$%.2f voidado (reason=%s)",
-        pedido.id, float(existing.amount), reason,
+        pedido.id,
+        float(existing.amount),
+        reason,
     )
     return True
 

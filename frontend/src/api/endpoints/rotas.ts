@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { tenantKey } from '../../lib/tenantKey';
 
 export interface StepByStepUrl {
   step: number;
@@ -40,11 +41,12 @@ export function useCalcularRotaOtimizada() {
 }
 
 export function useRotaOtimizada(rotaId?: number) {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<RotaOtimizada>({
-    queryKey: ['rota-otimizada', rotaId],
+    queryKey: tenantKey(storeKey, 'rota-otimizada', rotaId),
     enabled: !!rotaId,
     queryFn: async () => {
       const response = await apiRequest<RotaOtimizada>(`/pedidos/rota-otimizada/${rotaId}`);

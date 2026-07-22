@@ -103,7 +103,7 @@ def dedup_whatsapp_click_leads(dry_run: bool = False):
             with_phone = [row for row in group if row.phone]
 
             if with_phone:
-                keep = with_phone[0]   # mais antigo com phone vinculado
+                keep = with_phone[0]  # mais antigo com phone vinculado
                 to_delete = [row for row in group if row.id != keep.id]
                 print(
                     f"  {prefix}[PHONE] {label}: {len(group)} eventos "
@@ -111,7 +111,7 @@ def dedup_whatsapp_click_leads(dry_run: bool = False):
                     f"| deletar ids={[row.id for row in to_delete]}"
                 )
             else:
-                keep = group[0]        # mais antigo (primeiro token gerado)
+                keep = group[0]  # mais antigo (primeiro token gerado)
                 to_delete = group[1:]
                 print(
                     f"  {prefix}[TOKEN] {label}: {len(group)} eventos "

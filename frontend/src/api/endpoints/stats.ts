@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 import { queryFnWithCache } from '../../lib/offline/queryWithCache';
+import { tenantKey } from '../../lib/tenantKey';
 
 export interface Stats {
   total: number;
@@ -36,9 +37,11 @@ export interface StatsResponse {
  * Get statistics
  */
 export function useStats() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
-  const queryKey: readonly unknown[] = ['stats'];
+  const queryKey: readonly unknown[] = tenantKey(storeKey, 'stats');
 
   return useQuery<StatsResponse>({
     queryKey,

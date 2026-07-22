@@ -26,15 +26,6 @@ type FonteMapped = {
   icon: React.ReactNode;
 };
 
-const _matchFonte = (fontes: Array<{ id: number; nome: string }>, ...keywords: string[]) => {
-  const lowerKeywords = keywords.map((k) => k.toLowerCase());
-  const found = fontes.find((f) => {
-    const name = f.nome.toLowerCase();
-    return lowerKeywords.every((k) => name.includes(k));
-  });
-  return found?.id;
-};
-
 export function SourceSelectionModal({ open, onConfirm }: SourceSelectionModalProps) {
   const { data, isLoading } = useFontesPedido(true);
   

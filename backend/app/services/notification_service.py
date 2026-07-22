@@ -241,8 +241,12 @@ def send_push_to_pedido_async(
         with app.app_context():
             try:
                 send_push_to_pedido(
-                    pedido_id=pedido_id, title=title, body=body, url=url, icon=icon
-                    , store_ref_id=store_ref_id
+                    pedido_id=pedido_id,
+                    title=title,
+                    body=body,
+                    url=url,
+                    icon=icon,
+                    store_ref_id=store_ref_id,
                 )
             except Exception:
                 logger.exception("[Push] Erro no envio assíncrono de push (pedido).")

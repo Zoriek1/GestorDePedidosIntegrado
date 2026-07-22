@@ -34,10 +34,13 @@ from app.utils.date_utils import get_monday  # noqa: E402
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def make_user(session, email, password="pass1234", role="vendedor", name=None):
     """Cria e persiste um User com hash bcrypt."""
     # Nome único por padrão (derivado do email) — respeita o índice único users.name.
-    user = User(name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role)
+    user = User(
+        name=name or f"Teste {email}", email=email, password_hash=hash_password(password), role=role
+    )
     session.add(user)
     session.commit()
     return user
@@ -61,6 +64,7 @@ def get_token(client, email, password):
 # ---------------------------------------------------------------------------
 # 1. Autenticação JWT
 # ---------------------------------------------------------------------------
+
 
 class TestAuthJWT:
     """Cenários 1 e 2 da spec."""
@@ -115,6 +119,7 @@ class TestAuthJWT:
 # 2. Controle de Acesso ao Ledger
 # ---------------------------------------------------------------------------
 
+
 class TestLedgerAccess:
     """Cenários 3 e 4 da spec."""
 
@@ -158,9 +163,7 @@ class TestLedgerAccess:
         admin = make_user(session, "admin@test.com", "pass1234", role="admin", name="Admin")
         vendedor = make_user(session, "vendadm@test.com", "pass1234", role="vendedor")
         token = generate_token(admin)
-        resp = client.get(
-            f"/api/ledger/balance?user_id={vendedor.id}", headers=auth_headers(token)
-        )
+        resp = client.get(f"/api/ledger/balance?user_id={vendedor.id}", headers=auth_headers(token))
         assert resp.status_code == 200
         assert resp.get_json()["user_id"] == vendedor.id
 
@@ -168,6 +171,7 @@ class TestLedgerAccess:
 # ---------------------------------------------------------------------------
 # 3. Operações de Ledger (saldo e lançamentos manuais)
 # ---------------------------------------------------------------------------
+
 
 class TestLedgerOperations:
     """Cenário 5 da spec: registrar pagamento via DEBIT."""
@@ -400,7 +404,9 @@ class TestLedgerOperations:
         quitado_ids = [p["pedido_id"] for p in body_hist["quitado"]["pedidos"]]
         assert pedidos[3].id in quitado_ids
 
-    def test_pending_competencia_mensal_filtra_somente_a_receber(self, client, session, monkeypatch):
+    def test_pending_competencia_mensal_filtra_somente_a_receber(
+        self, client, session, monkeypatch
+    ):
         """competencia_tipo=mensal deve filtrar só a seção a_receber."""
         from app.repositories import ledger_repository
 
@@ -438,30 +444,32 @@ class TestLedgerOperations:
         session.add_all([p_fev, p_mar])
         session.flush()
 
-        session.add_all([
-            LedgerEntry(
-                user_id=vendedor.id,
-                type="CREDIT",
-                category="comissao_site",
-                amount=50.0,
-                week_ref=get_monday(date(2025, 2, 20)),
-                due_date=date(2025, 2, 20),
-                status="active",
-                created_by=admin.id,
-                pedido_id=p_fev.id,
-            ),
-            LedgerEntry(
-                user_id=vendedor.id,
-                type="CREDIT",
-                category="comissao_site",
-                amount=70.0,
-                week_ref=get_monday(date(2025, 3, 5)),
-                due_date=date(2025, 3, 5),
-                status="active",
-                created_by=admin.id,
-                pedido_id=p_mar.id,
-            ),
-        ])
+        session.add_all(
+            [
+                LedgerEntry(
+                    user_id=vendedor.id,
+                    type="CREDIT",
+                    category="comissao_site",
+                    amount=50.0,
+                    week_ref=get_monday(date(2025, 2, 20)),
+                    due_date=date(2025, 2, 20),
+                    status="active",
+                    created_by=admin.id,
+                    pedido_id=p_fev.id,
+                ),
+                LedgerEntry(
+                    user_id=vendedor.id,
+                    type="CREDIT",
+                    category="comissao_site",
+                    amount=70.0,
+                    week_ref=get_monday(date(2025, 3, 5)),
+                    due_date=date(2025, 3, 5),
+                    status="active",
+                    created_by=admin.id,
+                    pedido_id=p_mar.id,
+                ),
+            ]
+        )
         session.commit()
 
         resp = client.get(
@@ -504,6 +512,7 @@ class TestLedgerOperations:
 # ---------------------------------------------------------------------------
 # 4. Comissões
 # ---------------------------------------------------------------------------
+
 
 class TestCommission:
     """Cenários 6 e 8 da spec."""
@@ -887,6 +896,7 @@ class TestCommission:
 # 4.1. Lifecycle de comissão e settle idempotente
 # ---------------------------------------------------------------------------
 
+
 class TestCommissionLifecycleAndSettle:
     def test_settle_idempotente_quando_sem_creditos(self, client, session):
         """POST /api/ledger/settle sem créditos elegíveis retorna settled=0 e não cria DEBIT."""
@@ -1004,7 +1014,9 @@ class TestCommissionLifecycleAndSettle:
 
         assert result_create["generated"] is True
         assert pedido_create_paid.paid_at is not None
-        assert LedgerEntry.query.filter_by(pedido_id=pedido_create_paid.id, voided=False).count() == 1
+        assert (
+            LedgerEntry.query.filter_by(pedido_id=pedido_create_paid.id, voided=False).count() == 1
+        )
 
         pedido_update_to_paid = Pedido(
             cliente="Cliente B",
@@ -1031,7 +1043,10 @@ class TestCommissionLifecycleAndSettle:
 
         assert result_update["transitioning_to_paid"] is True
         assert pedido_update_to_paid.paid_at is not None
-        assert LedgerEntry.query.filter_by(pedido_id=pedido_update_to_paid.id, voided=False).count() == 1
+        assert (
+            LedgerEntry.query.filter_by(pedido_id=pedido_update_to_paid.id, voided=False).count()
+            == 1
+        )
 
     def test_estorno_e_recriacao_em_edicao_sensivel(self, session):
         """Mudança sensível em pedido com comissão ativa deve estornar e recriar."""
@@ -1163,7 +1178,9 @@ class TestCommissionLifecycleAndSettle:
         generate_commission(pedido, vendedor.id, reference_date=date(2025, 2, 10))
         session.commit()
 
-        entry = LedgerEntry.query.filter_by(pedido_id=pedido.id, type="CREDIT", voided=False).first()
+        entry = LedgerEntry.query.filter_by(
+            pedido_id=pedido.id, type="CREDIT", voided=False
+        ).first()
         assert entry is not None
         assert entry.due_date == date(2025, 2, 14)
 
@@ -1171,6 +1188,7 @@ class TestCommissionLifecycleAndSettle:
 # ---------------------------------------------------------------------------
 # 5. Créditos Semanais Fixos
 # ---------------------------------------------------------------------------
+
 
 class TestWeeklyCredits:
     """Cenário 7 da spec: idempotência ao gerar semana duplicada."""
@@ -1310,6 +1328,7 @@ class TestWeeklyCredits:
 # 6. Correções da auditoria 2026-04 (bug Site/Nuvemshop + 11 críticos/altos)
 # ---------------------------------------------------------------------------
 
+
 class TestAuditFixes:
     """Cobre as correções aplicadas após a auditoria do sistema de comissão/salário."""
 
@@ -1356,9 +1375,7 @@ class TestAuditFixes:
 
     def test_credit_recebe_snapshot_de_rate_e_source(self, session):
         """generate_commission deve persistir commission_rate e commission_source."""
-        vendedor, pedido = self._setup_pedido_pago_com_comissao(
-            session, source="site", rate=0.07
-        )
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(session, source="site", rate=0.07)
         credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
         assert credit is not None
         assert float(credit.commission_rate) == pytest.approx(0.07, abs=1e-6)
@@ -1373,13 +1390,9 @@ class TestAuditFixes:
             snapshot_commission_fields,
         )
 
-        vendedor, pedido = self._setup_pedido_pago_com_comissao(
-            session, source="balcao", rate=0.05
-        )
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(session, source="balcao", rate=0.05)
         credit_before = LedgerEntry.query.filter_by(pedido_id=pedido.id).first()
-        debits_before = LedgerEntry.query.filter_by(
-            user_id=vendedor.id, type="DEBIT"
-        ).count()
+        debits_before = LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count()
 
         snapshot = snapshot_commission_fields(pedido)
         pedido.status_pagamento = "Pendente"
@@ -1391,9 +1404,7 @@ class TestAuditFixes:
         credit_after = LedgerEntry.query.filter_by(id=credit_before.id).first()
         assert credit_after.voided is True
         assert credit_after.void_reason == "status_regression"
-        debits_after = LedgerEntry.query.filter_by(
-            user_id=vendedor.id, type="DEBIT"
-        ).count()
+        debits_after = LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count()
         assert debits_after == debits_before  # nenhum DEBIT foi criado
 
     # --- Soft delete (Fase 3.2) ---
@@ -1405,9 +1416,7 @@ class TestAuditFixes:
         vendedor, pedido = self._setup_pedido_pago_com_comissao(
             session, source="indicacao", rate=0.03
         )
-        debits_before = LedgerEntry.query.filter_by(
-            user_id=vendedor.id, type="DEBIT"
-        ).count()
+        debits_before = LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count()
 
         ok = void_active_commission(pedido, reason="soft_delete")
         session.commit()
@@ -1416,18 +1425,14 @@ class TestAuditFixes:
         credit = LedgerEntry.query.filter_by(pedido_id=pedido.id).first()
         assert credit.voided is True
         assert credit.void_reason == "soft_delete"
-        debits_after = LedgerEntry.query.filter_by(
-            user_id=vendedor.id, type="DEBIT"
-        ).count()
+        debits_after = LedgerEntry.query.filter_by(user_id=vendedor.id, type="DEBIT").count()
         assert debits_after == debits_before
 
     def test_void_active_commission_ignora_credit_ja_quitado(self, session):
         """Soft delete/status regression não devem voidar crédito já settled."""
         from app.services.commission_service import void_active_commission
 
-        _, pedido = self._setup_pedido_pago_com_comissao(
-            session, source="site", rate=0.04
-        )
+        _, pedido = self._setup_pedido_pago_com_comissao(session, source="site", rate=0.04)
         credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
         credit.status = "settled"
         session.commit()
@@ -1475,9 +1480,7 @@ class TestAuditFixes:
             snapshot_commission_fields,
         )
 
-        vendedor, pedido = self._setup_pedido_pago_com_comissao(
-            session, source="site", rate=0.10
-        )
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(session, source="site", rate=0.10)
         # CREDIT inicial = R$10
         # Edição sensível: muda valor, gera estorno + nova comissão
         snapshot = snapshot_commission_fields(pedido)
@@ -1499,9 +1502,7 @@ class TestAuditFixes:
             snapshot_commission_fields,
         )
 
-        vendedor, pedido = self._setup_pedido_pago_com_comissao(
-            session, source="site", rate=0.10
-        )
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(session, source="site", rate=0.10)
         snapshot = snapshot_commission_fields(pedido)
         pedido.valor = "R$ 300,00"
         apply_commission_lifecycle(pedido, previous=snapshot, actor_id=vendedor.id)
@@ -1606,9 +1607,7 @@ class TestAuditFixes:
         """Regerar comissão não duplica quando já existe CREDIT histórico settled."""
         from app.services.commission_service import generate_commission
 
-        vendedor, pedido = self._setup_pedido_pago_com_comissao(
-            session, source="site", rate=0.06
-        )
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(session, source="site", rate=0.06)
         credit = LedgerEntry.query.filter_by(pedido_id=pedido.id, voided=False).first()
         credit.status = "settled"
         session.commit()
@@ -1628,9 +1627,7 @@ class TestAuditFixes:
 
         admin = make_user(session, "audrestore@test.com", "pass1234", role="admin")
         token = generate_token(admin)
-        vendedor, pedido = self._setup_pedido_pago_com_comissao(
-            session, source="site", rate=0.10
-        )
+        vendedor, pedido = self._setup_pedido_pago_com_comissao(session, source="site", rate=0.10)
 
         assert void_active_commission(pedido, reason="soft_delete") is True
         pedido.soft_delete()
@@ -1748,9 +1745,7 @@ class TestAuditFixes:
         with caplog.at_level("WARNING"):
             generate_commission(pedido, vendedor.id)
 
-        assert any(
-            "sem CommissionConfig" in rec.message for rec in caplog.records
-        )
+        assert any("sem CommissionConfig" in rec.message for rec in caplog.records)
         assert LedgerEntry.query.filter_by(pedido_id=pedido.id).count() == 0
 
     # --- Bug primário Site/Nuvemshop (Fase 2) ---

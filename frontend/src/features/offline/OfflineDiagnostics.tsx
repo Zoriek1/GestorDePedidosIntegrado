@@ -107,7 +107,7 @@ export default function OfflineDiagnostics() {
   // Hooks devem ser chamados incondicionalmente (regra do React)
   const { data: queue, refetch: refetchQueue } = useQuery<OutboxEntry[]>({
     queryKey: ['outbox-queue'],
-    queryFn: getQueue,
+    queryFn: () => getQueue(),
     refetchInterval: DIAGNOSTICS_ENABLED ? 2000 : false,
     enabled: DIAGNOSTICS_ENABLED,
   });

@@ -98,17 +98,9 @@ def add_token_status_to_leads():
         # Remover índice único legado (se existir) e garantir índice não-único.
         try:
             if dialect == "sqlite":
-                db.session.execute(
-                    db.text(
-                        "DROP INDEX IF EXISTS uq_leads_token_rastreio"
-                    )
-                )
+                db.session.execute(db.text("DROP INDEX IF EXISTS uq_leads_token_rastreio"))
             else:
-                db.session.execute(
-                    db.text(
-                        "DROP INDEX IF EXISTS uq_leads_token_rastreio"
-                    )
-                )
+                db.session.execute(db.text("DROP INDEX IF EXISTS uq_leads_token_rastreio"))
             db.session.commit()
             print("[OK] Índice único legado de token_rastreio removido (se existia)")
         except Exception as e:

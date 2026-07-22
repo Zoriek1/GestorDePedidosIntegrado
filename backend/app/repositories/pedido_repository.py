@@ -203,16 +203,12 @@ class PedidoRepository(BaseRepository):
             if search.isdigit():
                 number = int(search)
                 conds.append(Pedido.numero_pedido == number)
-                conds.append(
-                    db.and_(Pedido.numero_pedido.is_(None), Pedido.id == number)
-                )
+                conds.append(db.and_(Pedido.numero_pedido.is_(None), Pedido.id == number))
 
             # Telefone ignorando máscara.
             if digits:
                 if is_postgres:
-                    conds.append(
-                        db.text("telefone_digits LIKE :tel").bindparams(tel=f"%{digits}%")
-                    )
+                    conds.append(db.text("telefone_digits LIKE :tel").bindparams(tel=f"%{digits}%"))
                 else:
                     conds.append(Pedido.telefone_cliente.like(f"%{digits}%"))
 
@@ -302,8 +298,9 @@ class PedidoRepository(BaseRepository):
         novo_sp = update_fields.get("status_pagamento") or pedido.status_pagamento or ""
         novo_sp_lower = novo_sp.strip().lower()
         sp_ant_lower = (status_pagamento_anterior or "").strip().lower()
-        transitando_para_pago = (
-            novo_sp_lower in ("pago", "parcial") and sp_ant_lower not in ("pago", "parcial")
+        transitando_para_pago = novo_sp_lower in ("pago", "parcial") and sp_ant_lower not in (
+            "pago",
+            "parcial",
         )
         if transitando_para_pago and not pedido.paid_at:
             update_fields["paid_at"] = datetime_now_brazil()
@@ -334,8 +331,7 @@ class PedidoRepository(BaseRepository):
         """Verifica se algum campo que afeta comissão foi alterado."""
         sensíveis = {"vendedor_id", "fonte_pedido_id", "valor", "tipo_pedido", "taxa_entrega"}
         return any(
-            k in sensíveis and campos_novos.get(k) != getattr(pedido, k, None)
-            for k in campos_novos
+            k in sensíveis and campos_novos.get(k) != getattr(pedido, k, None) for k in campos_novos
         )
 
     def atualizar_pedido_com_estorno(
@@ -352,9 +348,12 @@ class PedidoRepository(BaseRepository):
             return None
 
         sp_ant_lower = (pedido.status_pagamento or "").strip().lower()
-        novo_sp_lower = (campos.get("status_pagamento") or pedido.status_pagamento or "").strip().lower()
-        transitando_para_pago = (
-            novo_sp_lower in ("pago", "parcial") and sp_ant_lower not in ("pago", "parcial")
+        novo_sp_lower = (
+            (campos.get("status_pagamento") or pedido.status_pagamento or "").strip().lower()
+        )
+        transitando_para_pago = novo_sp_lower in ("pago", "parcial") and sp_ant_lower not in (
+            "pago",
+            "parcial",
         )
 
         if transitando_para_pago and not pedido.paid_at:

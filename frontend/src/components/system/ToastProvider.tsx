@@ -10,6 +10,7 @@ interface ToastContextType {
   success: (message: string) => void;
   error: (message: string) => void;
   info: (message: string) => void;
+  warning: (message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -61,9 +62,10 @@ export function ToastProvider({ children }: ToastProviderProps) {
   const success = useCallback((message: string) => showToast(message, 'success'), [showToast]);
   const error = useCallback((message: string) => showToast(message, 'error'), [showToast]);
   const info = useCallback((message: string) => showToast(message, 'info'), [showToast]);
+  const warning = useCallback((message: string) => showToast(message, 'warning'), [showToast]);
 
   return (
-    <ToastContext.Provider value={{ success, error, info }}>
+    <ToastContext.Provider value={{ success, error, info, warning }}>
       {children}
       {currentToast && (
         <Snackbar

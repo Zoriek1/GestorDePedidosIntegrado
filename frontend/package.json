@@ -17,6 +17,7 @@
     "clean": "powershell -Command \"if (Test-Path dist) { Remove-Item -Recurse -Force dist }; if (Test-Path node_modules/.vite) { Remove-Item -Recurse -Force node_modules/.vite }\"",
     "clean:full": "powershell -Command \"if (Test-Path dist) { Remove-Item -Recurse -Force dist }; if (Test-Path node_modules/.vite) { Remove-Item -Recurse -Force node_modules/.vite }; if (Test-Path node_modules/.cache) { Remove-Item -Recurse -Force node_modules/.cache }\"",
     "type-check": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

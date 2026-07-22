@@ -109,9 +109,7 @@ def _existing_stage_lead_ids(lead_ids, stage):
 
 
 def _backfill_lead_stage(repo, since, until, limit, dry_run, stats):
-    candidates = _query_candidates(
-        LEAD_STAGE_STATUSES, since, until, limit, require_phone=True
-    )
+    candidates = _query_candidates(LEAD_STAGE_STATUSES, since, until, limit, require_phone=True)
     existing = _existing_stage_lead_ids([lead.id for lead in candidates], repo.STAGE_LEAD)
     faltantes = [lead for lead in candidates if lead.id not in existing]
 
@@ -139,12 +137,8 @@ def _backfill_lead_stage(repo, since, until, limit, dry_run, stats):
 
 
 def _backfill_disqualified(repo, since, until, limit, dry_run, stats):
-    candidates = _query_candidates(
-        (DISQUALIFIED_STATUS,), since, until, limit, require_phone=False
-    )
-    existing = _existing_stage_lead_ids(
-        [lead.id for lead in candidates], repo.STAGE_DISQUALIFIED
-    )
+    candidates = _query_candidates((DISQUALIFIED_STATUS,), since, until, limit, require_phone=False)
+    existing = _existing_stage_lead_ids([lead.id for lead in candidates], repo.STAGE_DISQUALIFIED)
     faltantes = [lead for lead in candidates if lead.id not in existing]
 
     print(
@@ -176,9 +170,7 @@ def backfill(only=None, since=None, until=None, limit=None, dry_run=False):
             print("[DRY-RUN] Nenhuma linha será gravada.")
         print(f"[INFO] META_CAPI_LEAD_FUNNEL_ENABLED = {is_lead_funnel_enabled()}")
         print(f"[INFO] janela: since={since} until={until} limit={limit} only={only or 'todos'}")
-        print(
-            "[INFO] Contact NÃO é backfillável (sem meta_event_id_contact histórico) — ignorado."
-        )
+        print("[INFO] Contact NÃO é backfillável (sem meta_event_id_contact histórico) — ignorado.")
         print("-" * 64)
 
         repo = MetaCapiLeadOutboxRepository()

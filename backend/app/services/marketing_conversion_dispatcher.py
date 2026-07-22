@@ -12,7 +12,6 @@ from flask import current_app
 from app import db
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.pedido import datetime_now_brazil
-from app.services.integration_settings_service import runtime_config
 from app.services.tenancy import is_store_inactive
 
 DATAMANAGER_SCOPE = "https://www.googleapis.com/auth/datamanager"
@@ -29,9 +28,9 @@ class MarketingConversionDispatcher:
         self.http = http or requests
 
     def process_cycle(self, limit: int = 50) -> dict:
+        from app.services.secure_config import secure_runtime_config
+
         stats = {"processed": 0, "sent": 0, "submitted": 0, "failed": 0}
-        if not runtime_config().get("MARKETING_DISPATCH_ENABLED"):
-            return stats
 
         rows = (
             MarketingConversionOutbox.query.filter_by(status="pending")
@@ -41,10 +40,17 @@ class MarketingConversionDispatcher:
         )
         for row in rows:
             stats["processed"] += 1
+            store_ref_id = getattr(row, "store_ref_id", None)
             # Empresa inativa: invalida a linha pendente e não envia (política Fase D).
-            if is_store_inactive(getattr(row, "store_ref_id", None)):
+            if is_store_inactive(store_ref_id):
                 self._fail(row, "store_inactive")
                 stats["failed"] += 1
+                continue
+            # Gate por loja: cada tenant liga/desliga o dispatch de forma independente.
+            # A linha fica pendente (não falha) para ser enviada se a loja religar.
+            with secure_runtime_config(store_ref_id) as tenant_config:
+                dispatch_enabled = bool(tenant_config.get("MARKETING_DISPATCH_ENABLED"))
+            if not dispatch_enabled:
                 continue
             try:
                 result = self._send(row)
@@ -77,13 +83,15 @@ class MarketingConversionDispatcher:
         return "failed"
 
     def _send_ga4(self, row: MarketingConversionOutbox) -> str:
-        tenant_config = runtime_config(getattr(row, "store_ref_id", None))
-        measurement_id = tenant_config.get("GA4_MEASUREMENT_ID")
-        api_secret = tenant_config.get("GA4_API_SECRET")
-        if not measurement_id or not api_secret:
-            self._fail(row, "ga4_config_incompleta")
-            return "failed"
-        validate_only = tenant_config.get("GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY", False)
+        from app.services.secure_config import secure_runtime_config
+
+        with secure_runtime_config(getattr(row, "store_ref_id", None)) as tenant_config:
+            measurement_id = tenant_config.get("GA4_MEASUREMENT_ID")
+            api_secret = tenant_config.get("GA4_API_SECRET")
+            if not measurement_id or not api_secret:
+                self._fail(row, "ga4_config_incompleta")
+                return "failed"
+            validate_only = tenant_config.get("GA4_MEASUREMENT_PROTOCOL_VALIDATE_ONLY", False)
         base = (
             "https://www.google-analytics.com/debug/mp/collect"
             if validate_only
@@ -123,8 +131,10 @@ class MarketingConversionDispatcher:
         from google.auth.transport.requests import Request
         from google.oauth2 import service_account
 
-        tenant_config = runtime_config(getattr(row, "store_ref_id", None))
-        raw = tenant_config.get("GOOGLE_DATAMANAGER_CREDENTIALS_JSON")
+        from app.services.secure_config import secure_runtime_config
+
+        with secure_runtime_config(getattr(row, "store_ref_id", None)) as tenant_config:
+            raw = tenant_config.get("GOOGLE_DATAMANAGER_CREDENTIALS_JSON")
         if raw:
             credentials = service_account.Credentials.from_service_account_info(
                 json.loads(raw), scopes=[DATAMANAGER_SCOPE]
@@ -151,14 +161,16 @@ class MarketingConversionDispatcher:
         return self._google_headers(row)
 
     def _send_google_ads(self, row: MarketingConversionOutbox) -> str:
-        tenant_config = runtime_config(getattr(row, "store_ref_id", None))
-        customer_id = "".join(
-            ch for ch in tenant_config.get("GOOGLE_ADS_CUSTOMER_ID", "") if ch.isdigit()
-        )
-        action_id = tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
-        if not customer_id or not action_id:
-            self._fail(row, "datamanager_config_incompleta")
-            return "failed"
+        from app.services.secure_config import secure_runtime_config
+
+        with secure_runtime_config(getattr(row, "store_ref_id", None)) as tenant_config:
+            customer_id = "".join(
+                ch for ch in tenant_config.get("GOOGLE_ADS_CUSTOMER_ID", "") if ch.isdigit()
+            )
+            action_id = tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
+            if not customer_id or not action_id:
+                self._fail(row, "datamanager_config_incompleta")
+                return "failed"
         validate_only = bool(current_app.config.get("GOOGLE_DATAMANAGER_VALIDATE_ONLY", True))
         body = {
             "destinations": [

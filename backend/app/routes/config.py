@@ -1,20 +1,33 @@
 import json
 import os
+import re
 from datetime import date
 
 from flask import Blueprint, g, jsonify, request
 
 from app import db
 from app.middleware import requires_edit_auth, requires_role
+from app.models.integration_validation_log import IntegrationValidationLog
 from app.services.integration_settings_service import (
+    ALLOWED_FIELDS,
+    BOOLEAN_FIELDS,
+    SECRET_FIELDS,
+    STRING_FIELDS,
+    channel_fields,
+    channel_supports_patch,
     default_store,
     get_or_create_settings,
     get_settings,
+    is_known_channel,
+    is_masked,
     serialize_settings,
     update_settings,
 )
+from app.services.integration_validation import validate as validate_field_value
+from app.services.integration_validation.lock import store_lock
 from app.services.taxa_cartao import taxa_cartao_service
 from app.services.taxa_entrega import taxa_entrega_service
+from app.services.tenancy import is_multi_store
 
 config_bp = Blueprint("config", __name__, url_prefix="/api/config")
 
@@ -28,10 +41,16 @@ def _current_store():
     Usa `g.current_store` populado pela resolução de identidade. Só cai em
     `default_store()` como salvaguarda de transição quando não há loja no contexto
     (ex.: caminho legado Basic Auth), nunca para o fluxo JWT normal.
+
+    Com múltiplas lojas ativas o fallback é PROIBIDO: devolver a loja default para
+    uma request sem tenant resolvido exporia credenciais de outro cliente. Nesse
+    caso falha alto, e o handler traduz para 503.
     """
     store = getattr(g, "current_store", None)
     if store is not None:
         return store
+    if is_multi_store():
+        raise RuntimeError("Loja não resolvida para a request; refaça o login.")
     return default_store()
 
 
@@ -58,8 +77,8 @@ def get_integration_settings():
 @requires_role("admin")
 def update_integration_settings():
     """Atualiza configuracoes do tenant sem regravar valores mascarados."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
+    data = _parse_json_body()
+    if data is None:
         return jsonify({"success": False, "error": "Payload JSON invalido"}), 400
     try:
         store = _current_store()
@@ -103,6 +122,249 @@ def _save_meta_faturamento(data: dict) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
+# =============================================================================
+# F6/E0 — Grid de Integracoes: PATCH/validate/GET validation por canal/campo
+# =============================================================================
+
+
+def _validate_field_for_channel(channel: str, field: str) -> str | None:
+    """Retorna None se (channel, field) eh patch-avel; senao mensagem de erro."""
+    if not is_known_channel(channel):
+        return f"Canal desconhecido: {channel}"
+    if not channel_supports_patch(channel):
+        return f"Canal sem campos de configuracao (OAuth): {channel}"
+    if field not in channel_fields(channel):
+        return f"Campo '{field}' nao pertence ao canal '{channel}'"
+    if field not in ALLOWED_FIELDS:
+        return f"Campo nao permitido: {field}"
+    return None
+
+
+def _normalize_field_value(field: str, value) -> tuple[object, str | None]:
+    """Converte o payload bruto no valor a persistir, ou erro de validacao."""
+    if value is None:
+        return None, None
+    if field in BOOLEAN_FIELDS:
+        if not isinstance(value, bool):
+            return None, f"{field} deve ser booleano"
+        return value, None
+    if field in STRING_FIELDS:
+        if not isinstance(value, str):
+            return None, f"{field} deve ser texto ou null"
+        if _has_control_chars(value):
+            return None, f"{field} contém caracteres inválidos"
+        normalized = value.strip() or None
+        if normalized and len(normalized) > STRING_FIELDS[field]:
+            return None, f"{field} excede {STRING_FIELDS[field]} caracteres"
+        if field == "loja_cep" and normalized and not re.fullmatch(r"\d{5}-?\d{3}", normalized):
+            return None, "loja_cep deve estar no formato 00000-000"
+        if field == "loja_cep" and normalized and "-" not in normalized:
+            normalized = f"{normalized[:5]}-{normalized[5:]}"
+        return normalized, None
+    if field in SECRET_FIELDS:
+        if isinstance(value, str) and is_masked(value):
+            # Cliente ecoando a mascara -> sem alteracao.
+            return "__KEEP__", None
+        if not isinstance(value, str):
+            return None, f"{field} deve ser texto ou null"
+        if _has_control_chars(value):
+            return None, f"{field} contém caracteres inválidos"
+        normalized = value.strip() or None
+        return normalized, None
+    return None, f"Campo nao permitido: {field}"
+
+
+def _has_control_chars(value: str) -> bool:
+    """Rejeita bytes de controle (< 0x20) e DEL (0x7f).
+
+    Defesa contra log injection (\\n, \\r) e smuggling. Tabs (\\t) e espaços
+    sao aceitos normalmente.
+    """
+    return any(ord(c) < 32 or ord(c) == 127 for c in value)
+
+
+def _reset_validation_log(store_id: int, channel: str) -> None:
+    """Apaga o historico de validacao de um canal apos PATCH."""
+    IntegrationValidationLog.query.filter_by(store_ref_id=store_id, channel=channel).delete()
+
+
+def _append_validation_log(
+    store_id: int, channel: str, field: str | None, ok: bool, error: str | None
+) -> IntegrationValidationLog:
+    entry = IntegrationValidationLog(
+        store_ref_id=store_id,
+        channel=channel,
+        field=field,
+        ok=ok,
+        error=error,
+    )
+    db.session.add(entry)
+    return entry
+
+
+def _field_saved_value(settings, field: str):
+    """Retorna o valor persistido (secret descriptografado) de um campo."""
+    if field in SECRET_FIELDS:
+        return settings.get_secret(field) if settings else None
+    return getattr(settings, field, None) if settings else None
+
+
+def _parse_json_body() -> dict | None:
+    """Aceita o body como JSON mesmo sem Content-Type: application/json.
+
+    O `fetch()` do browser não seta Content-Type automaticamente quando o body
+    é uma string JSON, então o Flask retorna 400 "Campo 'value' obrigatorio"
+    no PATCH. Como fallback, lemos o body bruto e tentamos parsear como JSON
+    se começar com `{` ou `[`.
+    """
+    data = request.get_json(silent=True)
+    if data is None:
+        raw = (request.get_data(as_text=True) or "").strip()
+        if not raw.startswith("{"):
+            return None
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return None
+    return data if isinstance(data, dict) else None
+
+
+@config_bp.route("/integrations/<channel>/<field>", methods=["PATCH"])
+@requires_role("admin")
+def patch_integration_field(channel: str, field: str):
+    """Grava um unico campo por canal. `null` remove. Reseta `validation_log`."""
+    err = _validate_field_for_channel(channel, field)
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+
+    data = _parse_json_body() or {}
+    if "value" not in data:
+        return jsonify({"success": False, "error": "Campo 'value' obrigatorio"}), 400
+    normalized, norm_err = _normalize_field_value(field, data["value"])
+    if norm_err:
+        return jsonify({"success": False, "error": norm_err}), 400
+
+    store = _current_store()
+    try:
+        with store_lock(store.id):
+            settings = get_or_create_settings(store.id)
+            if normalized == "__KEEP__":
+                # Cliente ecoou mascara: nada a fazer.
+                pass
+            else:
+                if field in SECRET_FIELDS:
+                    settings.set_secret(field, normalized)
+                else:
+                    setattr(settings, field, normalized)
+                _reset_validation_log(store.id, channel)
+            db.session.commit()
+        return jsonify(
+            {
+                "success": True,
+                "message": "Campo atualizado",
+                "config": serialize_settings(store, settings),
+            }
+        )
+    except RuntimeError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:
+        db.session.rollback()
+        return jsonify({"success": False, "error": "Falha ao salvar o campo"}), 500
+
+
+@config_bp.route("/integrations/<channel>/<field>/validate", methods=["POST"])
+@requires_role("admin")
+def validate_integration_field(channel: str, field: str):
+    """Valida um campo isolado (formato e/ou rede). Grava em validation_log."""
+    err = _validate_field_for_channel(channel, field)
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+
+    data = _parse_json_body() or {}
+    raw_value = data.get("value")
+
+    store = _current_store()
+    try:
+        with store_lock(store.id):
+            settings = get_or_create_settings(store.id)
+            # Se cliente nao enviou valor, usa o persistido (secrets descriptografados).
+            if raw_value is None or (isinstance(raw_value, str) and raw_value == ""):
+                raw_value = _field_saved_value(settings, field)
+            if field in SECRET_FIELDS and isinstance(raw_value, str) and is_masked(raw_value):
+                raw_value = _field_saved_value(settings, field)
+
+            ok, error_msg = validate_field_value(channel, field, raw_value)
+            entry = _append_validation_log(store.id, channel, field, ok, error_msg)
+            db.session.commit()
+            return jsonify(
+                {
+                    "success": True,
+                    "ok": ok,
+                    "error": error_msg,
+                    "last_test_at": entry.validated_at.isoformat() if entry.validated_at else None,
+                }
+            )
+    except RuntimeError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:
+        db.session.rollback()
+        return jsonify({"success": False, "error": "Falha ao validar o campo"}), 500
+
+
+@config_bp.route("/integrations/validation", methods=["GET"])
+@requires_role("admin")
+def list_integration_validation():
+    """Lista o ultimo status de validacao por canal para a loja atual."""
+    store = _current_store()
+    channel = request.args.get("channel")
+    try:
+        q = IntegrationValidationLog.query.filter_by(store_ref_id=store.id)
+        if channel:
+            q = q.filter_by(channel=channel)
+        entries = q.order_by(IntegrationValidationLog.validated_at.desc()).limit(100).all()
+        return jsonify(
+            {
+                "success": True,
+                "entries": [e.to_dict() for e in entries],
+            }
+        )
+    except RuntimeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:
+        return jsonify({"success": False, "error": "Falha ao ler validacoes"}), 500
+
+
+@config_bp.route("/integrations/<channel>/status", methods=["GET"])
+@requires_role("admin")
+def channel_validation_status(channel: str):
+    """Atalho: retorna o ultimo `ok` por canal agregado (sem filtrar por campo)."""
+    if not is_known_channel(channel):
+        return jsonify({"success": False, "error": f"Canal desconhecido: {channel}"}), 400
+
+    store = _current_store()
+    try:
+        latest = (
+            IntegrationValidationLog.query.filter_by(store_ref_id=store.id, channel=channel)
+            .order_by(IntegrationValidationLog.validated_at.desc())
+            .first()
+        )
+        return jsonify(
+            {
+                "success": True,
+                "channel": channel,
+                "ok": bool(latest.ok) if latest else None,
+                "last_test_at": latest.validated_at.isoformat() if latest else None,
+                "error": latest.error if latest else None,
+            }
+        )
+    except RuntimeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:
+        return jsonify({"success": False, "error": "Falha ao ler status do canal"}), 500
+
+
 @config_bp.route("/taxa-entrega", methods=["GET"])
 @requires_edit_auth
 def get_taxa_entrega_config():
@@ -120,7 +382,7 @@ def get_taxa_entrega_config():
 def update_taxa_entrega_config():
     """Atualiza a configuração da taxa de entrega"""
     try:
-        data = request.get_json()
+        data = _parse_json_body()
         if not data:
             return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
 
@@ -165,7 +427,7 @@ def get_meta_faturamento():
 def update_meta_faturamento():
     """Atualiza a meta de faturamento para um mês (YYYY-MM)."""
     try:
-        payload = request.get_json() or {}
+        payload = _parse_json_body() or {}
         mes = payload.get("mes")
         valor = payload.get("valor")
         if not mes:
@@ -203,7 +465,7 @@ def get_taxa_cartao_config():
 def update_taxa_cartao_config():
     """Atualiza a configuração da taxa de cartão."""
     try:
-        data = request.get_json() or {}
+        data = _parse_json_body() or {}
 
         if "debito_pct" not in data or "credito" not in data:
             return (

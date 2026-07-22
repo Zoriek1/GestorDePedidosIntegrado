@@ -99,11 +99,21 @@ def test_agrega_por_vendedor_no_periodo(client, session):
     wk = date(2026, 5, 4)  # segunda dentro do período
     fora = date(2026, 4, 6)  # fora do período
 
-    make_commission(session, va.id, 30, wk, category="comissao_whatsapp", status="active", source="whatsapp")
-    make_commission(session, va.id, 20, wk, category="comissao_whatsapp", status="settled", source="whatsapp")
-    make_commission(session, va.id, 50, wk, category="comissao_site", status="active", source="site")
-    make_commission(session, vb.id, 10, wk, category="comissao_whatsapp", status="active", source="whatsapp")
-    make_commission(session, va.id, 999, fora, category="comissao_whatsapp", status="active", source="whatsapp")
+    make_commission(
+        session, va.id, 30, wk, category="comissao_whatsapp", status="active", source="whatsapp"
+    )
+    make_commission(
+        session, va.id, 20, wk, category="comissao_whatsapp", status="settled", source="whatsapp"
+    )
+    make_commission(
+        session, va.id, 50, wk, category="comissao_site", status="active", source="site"
+    )
+    make_commission(
+        session, vb.id, 10, wk, category="comissao_whatsapp", status="active", source="whatsapp"
+    )
+    make_commission(
+        session, va.id, 999, fora, category="comissao_whatsapp", status="active", source="whatsapp"
+    )
 
     resp = client.get(
         "/api/ledger/commissions?date_basis=competencia&from=2026-05-01&to=2026-05-31&detail=true",

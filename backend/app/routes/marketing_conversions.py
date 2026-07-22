@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Status e reprocessamento administrativo das conversões WhatsApp."""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from sqlalchemy import func
 
 from app import db
@@ -14,17 +14,27 @@ marketing_conversions_bp = Blueprint(
 )
 
 
+def _tenant_store_id() -> int | None:
+    """Loja da request, resolvida por `prime_request_tenant`.
+
+    None cai na loja default dentro de `runtime_config` (single-store/bootstrap).
+    """
+    return getattr(g, "tenant_store_id", None)
+
+
 @marketing_conversions_bp.route("/config", methods=["GET"])
 @requires_any_role("admin")
 def config_status():
-    return jsonify({"ok": True, **MarketingDiagnosticsService().config_status()})
+    service = MarketingDiagnosticsService(store_ref_id=_tenant_store_id())
+    return jsonify({"ok": True, **service.config_status()})
 
 
 @marketing_conversions_bp.route("/diagnostics/<destination>", methods=["POST"])
 @requires_any_role("admin")
 def run_diagnostic(destination: str):
     data = request.get_json(silent=True) or {}
-    result = MarketingDiagnosticsService().run(
+    service = MarketingDiagnosticsService(store_ref_id=_tenant_store_id())
+    result = service.run(
         destination,
         meta_test_event_code=str(data.get("meta_test_event_code") or "") or None,
     )

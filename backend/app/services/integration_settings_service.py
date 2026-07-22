@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Leitura, validacao e serializacao das integracoes configuradas por loja."""
 
+import logging
 import re
 from typing import Any
 
@@ -10,6 +11,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import db
 from app.models.store import Store
 from app.models.store_setting import SECRET_FIELDS, StoreSetting
+
+logger = logging.getLogger(__name__)
 
 MASK_PREFIX = "********"
 DEFAULT_STORE_SLUG = "default"
@@ -31,6 +34,63 @@ BOOLEAN_FIELDS = {
     "utmify_is_test",
 }
 ALLOWED_FIELDS = set(STRING_FIELDS) | BOOLEAN_FIELDS | set(SECRET_FIELDS)
+
+
+# =============================================================================
+# F6/E0 — Grid de Integracoes por canal
+# =============================================================================
+# Cada canal agrupa campos do store_settings. O frontend renderiza 1 card por
+# canal com save/validate por campo. Nuvemshop e Bling nao entram aqui porque
+# usam OAuth e resolvem status por outros endpoints.
+CHANNELS: dict[str, dict[str, list[str]]] = {
+    "meta_capi": {
+        "fields": ["meta_pixel_id", "meta_capi_access_token"],
+        "required": ["meta_pixel_id", "meta_capi_access_token"],
+    },
+    "ga4": {
+        "fields": ["ga4_measurement_id", "ga4_api_secret", "ga4_validate_only"],
+        "required": ["ga4_measurement_id", "ga4_api_secret"],
+    },
+    "google_ads": {
+        "fields": [
+            "google_ads_customer_id",
+            "google_ads_conversion_action_id",
+            "google_datamanager_enabled",
+        ],
+        "required": ["google_ads_customer_id", "google_ads_conversion_action_id"],
+    },
+    "utmify": {
+        "fields": ["utmify_api_token", "utmify_platform", "utmify_is_test", "utmify_enabled"],
+        "required": ["utmify_api_token", "utmify_platform"],
+    },
+    "dados_operacionais": {
+        "fields": ["endereco_floricultura", "loja_cep"],
+        "required": ["loja_cep"],
+    },
+}
+
+# Conjunto canonico de channels suportados (inclui OAuth, mas esses nao tem
+# save por campo — o status vem do store OAuth/credential).
+ALL_CHANNELS = set(CHANNELS) | {"nuvemshop", "bling"}
+
+
+def channel_fields(channel: str) -> list[str]:
+    """Lista de campos que pertencem ao canal (vazio se OAuth-only)."""
+    return list(CHANNELS.get(channel, {}).get("fields", []))
+
+
+def channel_required(channel: str) -> list[str]:
+    """Campos obrigatorios para o canal ser considerado configurado."""
+    return list(CHANNELS.get(channel, {}).get("required", []))
+
+
+def is_known_channel(channel: str) -> bool:
+    return channel in ALL_CHANNELS
+
+
+def channel_supports_patch(channel: str) -> bool:
+    """Apenas canais com campos salvos no store_settings aceitam PATCH."""
+    return channel in CHANNELS
 
 
 def default_store() -> Store:
@@ -207,11 +267,10 @@ def runtime_config(store_ref_id: int | None = None) -> dict[str, Any]:
         db.session.rollback()
         return _environment_runtime_config() if store_ref_id is None else _disabled_runtime_config()
     if not settings:
-        return (
-            _environment_runtime_config()
-            if store.slug == DEFAULT_STORE_SLUG
-            else _disabled_runtime_config()
-        )
+        if store.slug == DEFAULT_STORE_SLUG:
+            logger.warning("tenant.env_fallback store=default reason=no_settings")
+            return _environment_runtime_config()
+        return _disabled_runtime_config()
     return {
         "MARKETING_DISPATCH_ENABLED": settings.marketing_dispatch_enabled,
         "META_PIXEL_ID": settings.meta_pixel_id or "",

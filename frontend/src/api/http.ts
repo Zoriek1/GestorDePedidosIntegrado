@@ -136,8 +136,9 @@ export async function request<T = unknown>(
   // Apply options.headers AFTER auth injection (so explicit headers override)
   Object.assign(headers, options.headers as Record<string, string> || {});
 
-  // Content-Type for POST/PUT with body
-  if ((method === 'POST' || method === 'PUT') && options.body) {
+  // Content-Type for POST/PUT/PATCH with body. Sem isso o Flask nao parseia
+  // o JSON e retorna 400 "Campo 'value' obrigatorio" em qualquer PATCH.
+  if ((method === 'POST' || method === 'PUT' || method === 'PATCH') && options.body) {
     headers['Content-Type'] = 'application/json';
   }
 

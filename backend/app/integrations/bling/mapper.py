@@ -87,7 +87,9 @@ class BlingOrderMapper:
 
     def build_financial_plan(self, pedido, total: Decimal) -> List[Dict[str, Any]]:
         status = _payment_status(pedido)
-        created_date = _date_str(getattr(pedido, "paid_at", None) or getattr(pedido, "created_at", None))
+        created_date = _date_str(
+            getattr(pedido, "paid_at", None) or getattr(pedido, "created_at", None)
+        )
         delivery_date = _date_str(getattr(pedido, "dia_entrega", None))
         main_payment = _clean(getattr(pedido, "pagamento", None))
 
@@ -119,7 +121,9 @@ class BlingOrderMapper:
                 raise BlingValidationError("Pedido parcial precisa ter entrada e saldo positivos")
 
             entry_payment = _clean(getattr(pedido, "forma_pagamento_entrada", None)) or main_payment
-            balance_payment = _clean(getattr(pedido, "forma_pagamento_restante", None)) or main_payment
+            balance_payment = (
+                _clean(getattr(pedido, "forma_pagamento_restante", None)) or main_payment
+            )
             if not entry_payment or not balance_payment:
                 raise BlingValidationError("Pedido parcial sem forma de pagamento da entrada/saldo")
 
@@ -194,10 +198,17 @@ class BlingOrderMapper:
         plan: List[Dict[str, Any]],
         mappings: Dict[str, BlingPaymentMapping],
     ) -> Dict[str, Any]:
-        data_pedido = _date_str(getattr(pedido, "created_at", None)) or _date_str(getattr(pedido, "dia_entrega", None))
+        data_pedido = _date_str(getattr(pedido, "created_at", None)) or _date_str(
+            getattr(pedido, "dia_entrega", None)
+        )
         entrega = _date_str(getattr(pedido, "dia_entrega", None)) or data_pedido
         descricao = " | ".join(
-            part for part in [_clean(getattr(pedido, "produto", None)), _clean(getattr(pedido, "flores_cor", None))] if part
+            part
+            for part in [
+                _clean(getattr(pedido, "produto", None)),
+                _clean(getattr(pedido, "flores_cor", None)),
+            ]
+            if part
         )
         if not descricao:
             descricao = "Pedido floricultura"
@@ -255,14 +266,16 @@ class BlingOrderMapper:
         if (_clean(getattr(pedido, "tipo_pedido", None)).lower() or "entrega") == "retirada":
             return None
         return {
-            "nome": _clean(getattr(pedido, "destinatario", None)) or _clean(getattr(pedido, "cliente", None)),
-            "endereco": _clean(getattr(pedido, "rua", None)) or _clean(getattr(pedido, "endereco", None)),
+            "nome": _clean(getattr(pedido, "destinatario", None))
+            or _clean(getattr(pedido, "cliente", None)),
+            "endereco": _clean(getattr(pedido, "rua", None))
+            or _clean(getattr(pedido, "endereco", None)),
             "numero": _clean(getattr(pedido, "numero", None)),
-            "complemento": _clean(getattr(pedido, "complemento", None)) or _clean(getattr(pedido, "apto", None)),
+            "complemento": _clean(getattr(pedido, "complemento", None))
+            or _clean(getattr(pedido, "apto", None)),
             "municipio": _clean(getattr(pedido, "cidade", None)),
             "uf": (
-                _clean(getattr(pedido, "uf", None))
-                or _clean(getattr(pedido, "estado", None))
+                _clean(getattr(pedido, "uf", None)) or _clean(getattr(pedido, "estado", None))
             ).upper(),
             "cep": _clean(getattr(pedido, "cep", None)),
             "bairro": _clean(getattr(pedido, "bairro", None)),

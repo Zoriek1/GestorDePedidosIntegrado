@@ -27,12 +27,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
 import { useStats } from '../../api/endpoints/stats';
-import { useGerarRotaMaps } from '../../api/endpoints/rotas';
 import { OrderList } from './components/OrderList';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
 import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
+import { useStoreKey, tenantKey } from '../../lib/tenantKey';
 import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
 import { OrdersKPIGrid } from './components/OrdersKPIGrid';
@@ -69,9 +69,9 @@ export default function OrdersPage() {
 
   const queryClient = useQueryClient();
   const { getAuthHeader, getUserRole } = useAuth();
+  const storeKey = useStoreKey();
   const { success, error: showError, info } = useToast();
   const confirm = useConfirm();
-  const _gerarRotaMaps = useGerarRotaMaps();
   const printService = usePedidoPrintService();
   
   const userRole = getUserRole() || 'admin'; // Default para admin se não especificado
@@ -101,9 +101,8 @@ export default function OrdersPage() {
   const isFetching = isFetchingPedidos || isFetchingStats;
 
   const handleRefresh = () => {
-    // Use exact: false to invalidate all query variations (including filtered ones)
-    queryClient.invalidateQueries({ queryKey: ['pedidos'], exact: false });
-    queryClient.invalidateQueries({ queryKey: ['stats'], exact: false });
+    queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos'), exact: false });
+    queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'stats'), exact: false });
   };
 
   const handleOrderClick = () => {
@@ -679,12 +678,12 @@ export default function OrdersPage() {
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelectPedido}
           />
-          {pedidosData.total_pages > 1 && (
+          {(pedidosData.total_pages ?? 0) > 1 && (
             <OrdersPagination
               page={filters.page || 1}
               perPage={effectivePerPage ?? 200}
               total={pedidosData.total}
-              totalPages={pedidosData.total_pages}
+              totalPages={pedidosData.total_pages ?? 1}
               onPageChange={(page) => {
                 setFilters((prev) => ({ ...prev, page }));
                 window.scrollTo({ top: 0, behavior: 'smooth' });

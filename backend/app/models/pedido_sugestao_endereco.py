@@ -20,9 +20,7 @@ class PedidoSugestaoEndereco(TenantScoped, db.Model):
     __tablename__ = "pedido_sugestoes_endereco"
 
     id = db.Column(db.Integer, primary_key=True)
-    pedido_id = db.Column(
-        db.Integer, db.ForeignKey("pedidos.id"), index=True, nullable=False
-    )
+    pedido_id = db.Column(db.Integer, db.ForeignKey("pedidos.id"), index=True, nullable=False)
     # Texto livre sugerido pelo cliente (endereço corrigido / instruções).
     texto = db.Column(db.Text, nullable=False)
     status = db.Column(

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
+import { tenantKey } from '../../lib/tenantKey';
 
 export interface PendingScheduleItem {
   pedido_id: number;
@@ -29,11 +30,12 @@ export interface NuvemshopConfig {
 }
 
 export function usePendingSchedules() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<PendingSchedulesResponse>({
-    queryKey: ['nuvemshop', 'pendencias-agendamento'],
+    queryKey: tenantKey(storeKey, 'nuvemshop', 'pendencias-agendamento'),
     queryFn: async () => {
       const response = await apiRequest<PendingSchedulesResponse>(
         '/integrations/nuvemshop/pedidos-pendentes-agendamento'
@@ -47,11 +49,12 @@ export function usePendingSchedules() {
 }
 
 export function useNuvemshopConfig() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<NuvemshopConfig>({
-    queryKey: ['nuvemshop', 'config'],
+    queryKey: tenantKey(storeKey, 'nuvemshop', 'config'),
     queryFn: async () => {
       const response = await apiRequest<NuvemshopConfig>('/integrations/nuvemshop/config');
       if (!response.ok) {
@@ -63,7 +66,8 @@ export function useNuvemshopConfig() {
 }
 
 export function useDefineSchedule() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -83,14 +87,15 @@ export function useDefineSchedule() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nuvemshop', 'pendencias-agendamento'] });
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'nuvemshop', 'pendencias-agendamento') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }
 
 export function useProcessPendingNuvemshop() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -105,8 +110,8 @@ export function useProcessPendingNuvemshop() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nuvemshop', 'pendencias-agendamento'] });
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'nuvemshop', 'pendencias-agendamento') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }
@@ -137,11 +142,12 @@ export interface Vendedor {
 }
 
 export function useListVendedores() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useQuery<Vendedor[]>({
-    queryKey: ['users', 'vendedores'],
+    queryKey: tenantKey(storeKey, 'users', 'vendedores'),
     queryFn: async () => {
       const response = await apiRequest<{ users: Vendedor[] }>('/users');
       if (!response.ok) throw new Error(response.message);
@@ -153,7 +159,8 @@ export function useListVendedores() {
 }
 
 export function useAssignVendorNuvemshop() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -168,7 +175,7 @@ export function useAssignVendorNuvemshop() {
       return response.data as { atribuidos: number };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }
@@ -192,7 +199,8 @@ export function useSetupNuvemshopWebhooks() {
 }
 
 export function useSaveDefaultVendorNuvemshop() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, getUser } = useAuth();
+  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
   const apiRequest = createApiRequest(getAuthHeader);
   const queryClient = useQueryClient();
 
@@ -207,8 +215,8 @@ export function useSaveDefaultVendorNuvemshop() {
       return response.data as NuvemshopConfig;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nuvemshop', 'config'] });
-      queryClient.invalidateQueries({ queryKey: ['pedidos'] });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'nuvemshop', 'config') });
+      queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'pedidos') });
     },
   });
 }

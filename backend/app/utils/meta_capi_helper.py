@@ -148,6 +148,13 @@ def create_outbox_for_new_order(pedido: Pedido) -> bool:
             pass
 
         # Envio assíncrono: o capi-worker faz polling do outbox e envia.
+        # Dual-write: unified events outbox
+        from app.services.events_service import EventsService
+        try:
+            events_svc = EventsService()
+            events_svc.enqueue_purchase(pedido)
+        except Exception as e:
+            logger.exception("events_outbox.dual_write_failed pedido_id=%s error=%s", pedido.id, e)
         return True
     except Exception as e:
         logger.exception(

@@ -102,7 +102,6 @@ export function IntegrationGrid() {
 
   const metaStatus = useChannelValidationStatus('meta_capi');
   const ga4Status = useChannelValidationStatus('ga4');
-  const googleAdsStatus = useChannelValidationStatus('google_ads');
   const utmifyStatus = useChannelValidationStatus('utmify');
   const dadosOpStatus = useChannelValidationStatus('dados_operacionais');
   const nuvemshopStatus = useChannelValidationStatus('nuvemshop');
@@ -112,7 +111,6 @@ export function IntegrationGrid() {
     () => ({
       meta_capi: metaStatus.data,
       ga4: ga4Status.data,
-      google_ads: googleAdsStatus.data,
       utmify: utmifyStatus.data,
       dados_operacionais: dadosOpStatus.data,
       nuvemshop: nuvemshopStatus.data,
@@ -121,7 +119,6 @@ export function IntegrationGrid() {
     [
       metaStatus.data,
       ga4Status.data,
-      googleAdsStatus.data,
       utmifyStatus.data,
       dadosOpStatus.data,
       nuvemshopStatus.data,

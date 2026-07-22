@@ -179,4 +179,11 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
             created.append(row)
         except IntegrityError:
             db.session.rollback()
+    # Dual-write: unified events outbox (GA4 only, Meta CAPI goes via events_service)
+    from app.services.events_service import EventsService
+    try:
+        events_svc = EventsService()
+        events_svc.enqueue_purchase(pedido)
+    except Exception as e:
+        pass  # Non-critical: old outbox still works
     return created

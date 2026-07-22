@@ -25,6 +25,7 @@ python scripts/migrations/add_store_foundation.py
 python scripts/migrations/add_email_domain_to_stores.py
 python scripts/migrations/add_leads_enabled_to_stores.py
 python scripts/migrations/create_store_settings.py
+python scripts/migrations/create_events_outbox.py
 python scripts/migrations/add_store_ref_to_users.py
 python scripts/migrations/add_store_ref_and_numero_to_orders.py
 python scripts/migrations/add_store_ref_to_customers_and_sources.py

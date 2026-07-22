@@ -41,7 +41,6 @@ interface Props {
 const destinations: Array<{ id: MarketingDestination; label: string }> = [
   { id: 'meta', label: 'Meta CAPI' },
   { id: 'ga4', label: 'Google Analytics 4' },
-  { id: 'google_ads', label: 'Google Ads' },
 ];
 
 function resultColor(result?: MarketingDiagnosticResult) {
@@ -65,9 +64,9 @@ function formatDate(value?: string | null) {
 }
 
 /**
- * Diagnóstico das integrações de marketing (Meta CAPI, GA4, Google Ads).
+ * Diagnóstico das integrações de marketing (Meta CAPI, GA4).
  *
- * É o único caminho de teste para GA4 e Google Ads: esses dois canais não têm
+ * É o único caminho de teste para GA4: esse canal não tem
  * validação por campo (`testable: false` em constants.ts), porque só um envio
  * real de payload confirma que a credencial funciona.
  */
@@ -119,7 +118,6 @@ export function MarketingDiagnosticsModal({ open, onClose }: Props) {
   const configured: Record<MarketingDestination, boolean> = {
     meta: Boolean(config?.meta.configured),
     ga4: Boolean(config?.ga4.configured),
-    google_ads: Boolean(config?.google_ads.configured),
   };
 
   return (
@@ -138,14 +136,13 @@ export function MarketingDiagnosticsModal({ open, onClose }: Props) {
             </Typography>
 
             <Alert severity="info">
-              Este diagnóstico confirma a comunicação com as APIs. A atribuição completa do Google
-              Ads ainda exige um clique real no anúncio e um pedido concluído.
+              Este diagnóstico confirma a comunicação com as APIs de marketing.
             </Alert>
 
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' },
                 gap: 2,
               }}
             >

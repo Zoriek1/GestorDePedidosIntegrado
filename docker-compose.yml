@@ -184,7 +184,7 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    entrypoint: ["python", "meta_capi_worker_entrypoint.py"]
+    entrypoint: ["python", "events_worker_entrypoint.py"]
     environment:
       FLASK_ENV: production
       APP_ENV: production

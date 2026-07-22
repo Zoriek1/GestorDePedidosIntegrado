@@ -50,7 +50,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
     for (const f of channel.fields) {
       let val = config[f.key as keyof IntegrationSettingsConfig];
       if (f.type === 'password') val = '';
-      initial[f.key] = { status: 'idle', value: val ?? '' };
+      initial[f.key] = { status: 'idle', value: f.type === 'boolean' ? Boolean(val ?? false) : (val ?? '') };
     }
     setFields(initial);
     setCepResolved(null);
@@ -58,7 +58,9 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
 
   const handleSave = async (fieldKey: string) => {
     const fieldDef = channel.fields!.find(f => f.key === fieldKey)!;
-    let value = fields[fieldKey]?.value;
+    const state = fields[fieldKey];
+    if (!state) return;
+    let value = state.value;
 
     if (fieldDef.type === 'password' && value === '') {
       toast.info(`${fieldDef.label} vazio: nada a salvar`);
@@ -80,7 +82,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
 
     setFields(prev => ({ ...prev, [fieldKey]: { ...prev[fieldKey], status: 'saving' } }));
     try {
-      await patchField.mutateAsync({ channel: channel.id, field: fieldKey, value: value || null });
+      await patchField.mutateAsync({ channel: channel.id, field: fieldKey, value: value ?? null });
       setFields(prev => ({ ...prev, [fieldKey]: { ...prev[fieldKey], status: 'saved' } }));
       toast.success(`${fieldDef.label} salvo`);
     } catch (err) {
@@ -197,6 +199,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <form onSubmit={e => { e.preventDefault(); handleSaveAll(); }}>
       <DialogTitle>{channel.label}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -302,6 +305,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
                   {fieldDef.type !== 'boolean' && (
                     <>
                       <Button
+                        type="button"
                         size="small"
                         variant="outlined"
                         onClick={() => handleSave(fieldDef.key)}
@@ -310,6 +314,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
                         Salvar
                       </Button>
                       <Button
+                        type="button"
                         size="small"
                         variant="outlined"
                         onClick={() => handleValidate(fieldDef.key)}
@@ -321,7 +326,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
                   )}
 
                   {fieldDef.type === 'password' && hasSavedSecret && (
-                    <Button size="small" color="error" onClick={() => handleRemoveSecret(fieldDef.key)}>
+                    <Button type="button" size="small" color="error" onClick={() => handleRemoveSecret(fieldDef.key)}>
                       Remover
                     </Button>
                   )}
@@ -332,6 +337,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
                   cepResult.cidade &&
                   cepResult.uf && (
                     <Button
+                      type="button"
                       size="small"
                       startIcon={<MapPin />}
                       onClick={handleUseAddress}
@@ -346,11 +352,12 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" onClick={handleSaveAll}>
+        <Button type="button" onClick={onClose}>Cancelar</Button>
+        <Button type="submit" variant="contained">
           Salvar e sair
         </Button>
       </DialogActions>
+      </form>
     </Dialog>
   );
 }

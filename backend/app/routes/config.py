@@ -143,6 +143,8 @@ def _validate_field_for_channel(channel: str, field: str) -> str | None:
 def _normalize_field_value(field: str, value) -> tuple[object, str | None]:
     """Converte o payload bruto no valor a persistir, ou erro de validacao."""
     if value is None:
+        if field in BOOLEAN_FIELDS:
+            return None, f"{field} não pode ser nulo"
         return None, None
     if field in BOOLEAN_FIELDS:
         if not isinstance(value, bool):

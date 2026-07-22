@@ -24,8 +24,7 @@ export interface RotaOtimizada {
 }
 
 export function useCalcularRotaOtimizada() {
-  const { getAuthHeader, getUser } = useAuth();
-  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useMutation({
@@ -65,8 +64,7 @@ export interface GerarRotaMapsResult {
 }
 
 export function useGerarRotaMaps() {
-  const { getAuthHeader, getUser } = useAuth();
-  const user = getUser(); const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
 
   return useMutation({

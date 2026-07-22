@@ -4,10 +4,6 @@
  * Parser tolerante: extrai o que for possível e retorna warnings para campos problemáticos.
  */
 
-import { createLogger } from '../../../lib/logger';
-
-const _log = createLogger('QuickEntryParser');
-
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import type { PedidoFormData } from '../schemas';

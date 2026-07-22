@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { 
   Box, 
   Card, 
@@ -110,9 +110,9 @@ export function TaxaEntregaSettings() {
 
           {tipo === 'por_km' && (
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="taxa_base"
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <Controller
+                name="taxa_base"
                   control={control}
                   render={({ field }) => (
                     <TextField
@@ -128,9 +128,9 @@ export function TaxaEntregaSettings() {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="valor_por_km"
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <Controller
+                name="valor_por_km"
                   control={control}
                   render={({ field }) => (
                     <TextField
@@ -189,7 +189,7 @@ export function TaxaEntregaSettings() {
                           type="number"
                           size="small"
                           sx={{ width: { xs: '45%', md: 100 } }}
-                          helperText={field.value === null || field.value === undefined || field.value === '' ? "Infinito" : ""}
+                          helperText={field.value == null ? "Infinito" : ""}
                           placeholder="∞"
                         />
                       )}
@@ -238,7 +238,7 @@ export function TaxaEntregaSettings() {
 
           <Typography variant="subtitle2" gutterBottom>Limites Globais</Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <Controller
                 name="taxa_minima"
                 control={control}
@@ -257,7 +257,7 @@ export function TaxaEntregaSettings() {
                 )}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <Controller
                 name="taxa_maxima"
                 control={control}

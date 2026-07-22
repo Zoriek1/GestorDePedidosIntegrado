@@ -5,6 +5,7 @@
 import { createBrowserRouter, RouterProvider, Outlet, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { RequireAuth } from '../features/auth/RequireAuth';
+import { RequireLeadsEnabled } from '../features/auth/RequireLeadsEnabled';
 import { AppShell } from '../layout/AppShell';
 import LoginPage from '../features/auth/LoginPage';
 import OrdersPage from '../features/pedidos/OrdersPage';
@@ -164,9 +165,11 @@ const router = createBrowserRouter([
         path: '/leads',
         element: (
           <RequireAuth>
-            <Suspense fallback={<Loading />}>
-              <LeadsPage />
-            </Suspense>
+            <RequireLeadsEnabled>
+              <Suspense fallback={<Loading />}>
+                <LeadsPage />
+              </Suspense>
+            </RequireLeadsEnabled>
           </RequireAuth>
         ),
       },

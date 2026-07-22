@@ -35,10 +35,10 @@ export function SalesByHourChart({ vendas }: SalesByHourChartProps) {
             <XAxis dataKey="label" />
             <YAxis />
             <Tooltip
-              formatter={(value: number, name: string) => {
+              formatter={(value, name) => {
                 if (name === 'valor') {
                   return [
-                    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value),
+                    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value)),
                     'Valor',
                   ];
                 }

@@ -190,7 +190,7 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
   // Update otimista direto no cache do React Query (padrão idiomático): o card muda
   // de coluna na hora; a invalidação do onSuccess traz a verdade do servidor depois.
   const applyStatusToCache = (id: number, status: string) => {
-    queryClient.setQueriesData<unknown>({ queryKey: ['pedidos'] }, (old) => {
+    queryClient.setQueriesData<unknown>({ queryKey: ['pedidos'] }, (old: unknown) => {
       if (
         !old ||
         typeof old !== 'object' ||

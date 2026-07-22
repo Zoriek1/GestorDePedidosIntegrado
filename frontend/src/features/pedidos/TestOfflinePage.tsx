@@ -34,7 +34,7 @@ export default function TestOfflinePage() {
 
   const { data: queue } = useQuery<OutboxEntry[]>({
     queryKey: ['outbox-queue'],
-    queryFn: getQueue,
+    queryFn: () => getQueue(),
     refetchInterval: 2000
   });
 

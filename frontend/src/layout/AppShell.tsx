@@ -83,6 +83,9 @@ export function AppShell({ children }: AppShellProps) {
   const isVendedor = userRole === 'vendedor';
   const jwtUser = isJwtUser();
   const canViewLedger = jwtUser && (isAdmin || isVendedor || isEntregador);
+  // Leads é opt-in por loja. Sessões legadas (Basic Auth, sem payload de loja)
+  // mantêm o menu visível — nesses casos só existe a loja default.
+  const canViewLeads = !isEntregador && (currentUser?.leads_enabled ?? !jwtUser);
   const ledgerLabel = isAdmin
     ? 'Funcionários'
     : isEntregador
@@ -230,7 +233,7 @@ export function AppShell({ children }: AppShellProps) {
                   Vendas
                 </MenuItem>
               )}
-              {!isEntregador && (
+              {canViewLeads && (
                 <MenuItem onClick={() => handleNavigate('/leads')} sx={{ color: isActive('/leads') ? BRAND.gold : 'inherit' }}>
                   Leads UTM
                 </MenuItem>
@@ -326,9 +329,11 @@ export function AppShell({ children }: AppShellProps) {
                 <Button disableRipple onClick={() => handleNavigate('/vendas')} sx={navButtonSx('/vendas')}>
                   Vendas
                 </Button>
-                <Button disableRipple onClick={() => handleNavigate('/leads')} sx={navButtonSx('/leads')}>
-                  Leads
-                </Button>
+                {canViewLeads && (
+                  <Button disableRipple onClick={() => handleNavigate('/leads')} sx={navButtonSx('/leads')}>
+                    Leads
+                  </Button>
+                )}
               </>
             )}
             <Button disableRipple onClick={() => handleNavigate(routePath)} sx={navButtonSx(routePath)}>

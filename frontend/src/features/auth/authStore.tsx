@@ -34,6 +34,9 @@ export interface AuthUser {
   // Multi-tenant (Fase A): identidade da loja retornada pelo login/JWT.
   store_ref_id?: number | null;
   store_slug?: string | null;
+  // Módulo de Leads habilitado para a loja. Serve só para navegação (esconder o
+  // menu); quem autoriza de fato é o guard do backend em /api/leads.
+  leads_enabled?: boolean;
 }
 
 interface LegacyCredentials {

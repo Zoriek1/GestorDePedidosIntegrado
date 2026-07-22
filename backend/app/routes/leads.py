@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from urllib.parse import unquote
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 
@@ -33,6 +33,35 @@ from app.utils.tracking_token import (
 
 leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 logger = logging.getLogger(__name__)
+
+# Endpoints da landing page: não têm sessão nem tenant resolvido e alimentam a
+# captação da loja 1 (`resolve_public_store_id` devolve sempre a default).
+# Ficam de fora do guard, senão a captação pública morreria junto.
+PUBLIC_ENDPOINTS = frozenset({"leads.criar_lead", "leads.marcar_whatsapp_iniciado"})
+
+
+@leads_bp.before_request
+def _require_leads_enabled():
+    """Bloqueia o módulo de Leads em lojas que não o têm habilitado.
+
+    O módulo é opt-in por loja (`stores.leads_enabled`) enquanto a captação
+    pública não souber mapear domínio→loja: hoje todo lead público cai na loja
+    default, então liberar Leads para um segundo tenant misturaria dados.
+
+    Preflight de CORS passa direto; o browser não manda credenciais no OPTIONS.
+    """
+    if request.method == "OPTIONS" or request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+
+    store = getattr(g, "current_store", None)
+    if store is None:
+        # Sem loja resolvida o decorator de papel da rota produz o erro correto
+        # (401/403); não é papel deste guard autenticar.
+        return None
+
+    if not getattr(store, "leads_enabled", False):
+        return jsonify({"success": False, "error": "Módulo de Leads indisponível"}), 403
+    return None
 
 # Evento padrão quando nenhum filtro de evento é enviado pelo frontend
 DEFAULT_KEY_EVENTS = ("whatsapp_click",)

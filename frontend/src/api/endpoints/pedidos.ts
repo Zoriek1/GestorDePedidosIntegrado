@@ -365,11 +365,11 @@ export function useUpdatePedido() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & Partial<CreatePedidoPayload>) => {
+    mutationFn: async ({ id, status, ...data }: { id: number; status?: string } & Partial<CreatePedidoPayload>) => {
       if (isOnline) {
         const response = await apiRequest<{ pedido: Pedido }>(`/pedidos/${id}`, {
           method: 'PUT',
-          body: JSON.stringify({ ...data, clientTimestamp: Date.now() }),
+          body: JSON.stringify({ ...data, ...(status !== undefined && { status }), clientTimestamp: Date.now() }),
           headers: { 'Content-Type': 'application/json' }
         });
         if (!response.ok) throw new Error(response.message);

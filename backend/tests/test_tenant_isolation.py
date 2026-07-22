@@ -16,8 +16,16 @@ from app.models.user import User
 from app.services.auth_service import hash_password
 
 
-def _store(session, *, slug: str, domain: str, name: str = "Loja") -> Store:
-    store = Store(name=name, slug=slug, email_domain=domain, active=True)
+def _store(
+    session, *, slug: str, domain: str, name: str = "Loja", leads_enabled: bool = False
+) -> Store:
+    store = Store(
+        name=name,
+        slug=slug,
+        email_domain=domain,
+        active=True,
+        leads_enabled=leads_enabled,
+    )
     session.add(store)
     session.commit()
     return store
@@ -148,3 +156,58 @@ def test_config_de_uma_loja_nunca_devolve_dado_da_outra(client, session):
     assert body["config"]["store"]["slug"] == loja_a.slug
     assert body["config"]["meta_pixel_id"] != "pixel-da-loja-b"
     assert "pixel-da-loja-b" not in response.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Módulo de Leads restrito por loja
+# ---------------------------------------------------------------------------
+# Leads é opt-in (`stores.leads_enabled`) porque a captação pública resolve
+# sempre a loja default: liberar o módulo a um segundo tenant misturaria dados.
+
+
+def test_loja_com_leads_habilitado_acessa_o_modulo(client, session):
+    loja = _store(session, slug="loja-a", domain="lojaa.com", leads_enabled=True)
+    _user(session, loja, name="Admin A", email="admin@lojaa.com")
+
+    token = _login(client, "admin@lojaa.com").get_json()["access_token"]
+    response = client.get("/api/leads", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+
+
+def test_loja_sem_leads_habilitado_recebe_403(client, session):
+    loja = _store(session, slug="loja-b", domain="lojab.com", leads_enabled=False)
+    _user(session, loja, name="Admin B", email="admin@lojab.com")
+
+    token = _login(client, "admin@lojab.com").get_json()["access_token"]
+    response = client.get("/api/leads", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 403
+    assert "Leads" in response.get_json()["error"]
+
+
+def test_login_expoe_leads_enabled_para_a_navegacao(client, session):
+    """O frontend esconde o menu com base nesta flag."""
+    loja_a = _store(session, slug="loja-a", domain="lojaa.com", leads_enabled=True)
+    loja_b = _store(session, slug="loja-b", domain="lojab.com", leads_enabled=False)
+    _user(session, loja_a, name="Admin A", email="admin@lojaa.com")
+    _user(session, loja_b, name="Admin B", email="admin@lojab.com")
+
+    assert _login(client, "admin@lojaa.com").get_json()["user"]["leads_enabled"] is True
+    assert _login(client, "admin@lojab.com").get_json()["user"]["leads_enabled"] is False
+
+
+def test_captacao_publica_de_lead_nao_e_bloqueada(client, session):
+    """A landing page da loja 1 não pode morrer junto com o guard.
+
+    O POST público não tem sessão nem tenant resolvido — se o guard não isentasse
+    esses endpoints, toda a captação pararia.
+    """
+    _store(session, slug="default", domain="lojaa.com", leads_enabled=True)
+
+    response = client.post(
+        "/api/leads",
+        json={"event": "whatsapp_click", "utm_source": "google"},
+    )
+
+    assert response.status_code != 403

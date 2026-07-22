@@ -3,10 +3,6 @@
  * Uses modern Clipboard API with fallback to execCommand for older browsers
  */
 
-import { createLogger } from '../logger';
-
-const _log = createLogger('clipboard');
-
 /**
  * Copies text to clipboard
  * @param text - Text to copy

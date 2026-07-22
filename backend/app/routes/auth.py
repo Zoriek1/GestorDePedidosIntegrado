@@ -126,6 +126,11 @@ def login():
                     **db_user.to_dict(),
                     "store_ref_id": store.id if store else db_user.store_ref_id,
                     "store_slug": store.slug if store else None,
+                    # Só define a navegação do frontend (esconder o menu de Leads).
+                    # A autorização real é o guard do leads_bp, que lê do banco a
+                    # cada request — por isso a flag fica fora do JWT: virá-la no
+                    # banco não exige reemitir tokens, basta um novo login.
+                    "leads_enabled": bool(getattr(store, "leads_enabled", False)),
                 }
                 return success_response(
                     {

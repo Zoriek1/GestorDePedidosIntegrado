@@ -315,24 +315,35 @@ def _ensure_runtime_columns():
 
 
 def _ensure_user_name_unique_index():
-    """Cria índice ÚNICO PARCIAL (só usuários ativos), case-insensitive, em users.name.
+    """Índice ÚNICO PARCIAL (só ativos), case-insensitive, em (store_ref_id, name).
 
     Motivação: o login aceita e-mail OU nome; sem unicidade, dois usuários com o
     mesmo nome tornam o login por nome ambíguo (poderia entrar na conta errada).
 
     Decisões:
+      - Escopo POR LOJA: no multi-tenant é esperado que duas lojas tenham uma
+        "Maria" cada. Unicidade global bloquearia o cadastro da segunda. Quando o
+        nome existe em mais de uma loja, o login por nome já recusa e pede o
+        e-mail (routes/auth.py), então nunca se entra na conta errada.
       - Parcial (WHERE is_active): soft-deletes/anonimizados (is_active=0) não colidem
         e nomes podem ser reusados após desativação (igual ao comportamento de e-mail).
       - Case-insensitive: casa com o login que compara lower(name).
-      - Fail-safe: se já houver nomes duplicados entre ativos, apenas AVISA e NÃO cria
+      - Fail-safe: se já houver nomes duplicados na mesma loja, apenas AVISA e NÃO cria
         o índice (não quebra o boot). Resolva os duplicados e reinicie para aplicar.
+
+    O índice global antigo (`ux_users_name_active_ci`) é removido pela migration
+    `scripts/migrations/scope_user_name_unique_to_store.py`.
     """
-    index_name = "ux_users_name_active_ci"
+    index_name = "ux_users_store_name_active_ci"
     try:
         from sqlalchemy import inspect
 
         inspector = inspect(db.engine)
         if "users" not in inspector.get_table_names():
+            return
+        columns = {col.get("name") for col in inspector.get_columns("users")}
+        if "store_ref_id" not in columns:
+            # Base anterior à fundação multi-tenant; a migration de store cria a coluna.
             return
         existing_indexes = {ix.get("name") for ix in inspector.get_indexes("users")}
         if index_name in existing_indexes:
@@ -342,34 +353,34 @@ def _ensure_user_name_unique_index():
         # Predicado booleano portável (Postgres não aceita `is_active = 1`).
         active_pred = "is_active" if is_postgres else "is_active = 1"
 
-        # Pré-checagem: existem nomes duplicados entre usuários ativos?
+        # Pré-checagem: existem nomes duplicados DENTRO da mesma loja?
         dups = db.session.execute(
             text(
-                "SELECT LOWER(name) AS n, COUNT(*) AS c FROM users "
-                f"WHERE {active_pred} GROUP BY LOWER(name) HAVING COUNT(*) > 1"
+                "SELECT store_ref_id, LOWER(name) AS n, COUNT(*) AS c FROM users "
+                f"WHERE {active_pred} GROUP BY store_ref_id, LOWER(name) HAVING COUNT(*) > 1"
             )
         ).fetchall()
         if dups:
-            nomes = ", ".join(str(row[0]) for row in dups)
+            nomes = ", ".join(f"loja {row[0]}: {row[1]}" for row in dups)
             print(
                 "[DB] AVISO: índice único de nome NÃO criado — há nomes duplicados "
-                f"entre usuários ativos: {nomes}. Resolva e reinicie para aplicar."
+                f"na mesma loja: {nomes}. Resolva e reinicie para aplicar."
             )
             return
 
         if is_postgres:
             stmt = (
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
-                f"ON users (LOWER(name)) WHERE {active_pred}"
+                f"ON users (store_ref_id, LOWER(name)) WHERE {active_pred}"
             )
         else:
             stmt = (
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
-                f"ON users (name COLLATE NOCASE) WHERE {active_pred}"
+                f"ON users (store_ref_id, name COLLATE NOCASE) WHERE {active_pred}"
             )
         db.session.execute(text(stmt))
         db.session.commit()
-        print(f"[OK] Índice único de nome criado: {index_name}")
+        print(f"[OK] Índice único de nome por loja criado: {index_name}")
     except Exception as e:
         print(f"[DB] AVISO: _ensure_user_name_unique_index falhou: {e}")
         try:

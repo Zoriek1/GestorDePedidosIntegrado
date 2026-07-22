@@ -27,6 +27,7 @@ from app.services.integration_validation import validate as validate_field_value
 from app.services.integration_validation.lock import store_lock
 from app.services.taxa_cartao import taxa_cartao_service
 from app.services.taxa_entrega import taxa_entrega_service
+from app.services.tenancy import is_multi_store
 
 config_bp = Blueprint("config", __name__, url_prefix="/api/config")
 
@@ -40,10 +41,16 @@ def _current_store():
     Usa `g.current_store` populado pela resolução de identidade. Só cai em
     `default_store()` como salvaguarda de transição quando não há loja no contexto
     (ex.: caminho legado Basic Auth), nunca para o fluxo JWT normal.
+
+    Com múltiplas lojas ativas o fallback é PROIBIDO: devolver a loja default para
+    uma request sem tenant resolvido exporia credenciais de outro cliente. Nesse
+    caso falha alto, e o handler traduz para 503.
     """
     store = getattr(g, "current_store", None)
     if store is not None:
         return store
+    if is_multi_store():
+        raise RuntimeError("Loja não resolvida para a request; refaça o login.")
     return default_store()
 
 

@@ -16,6 +16,29 @@ logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
+def _store_by_email_domain(email: str):
+    """Resolve o tenant pelo domínio do e-mail (maria@floriculturax.com -> loja X).
+
+    Retorna None quando o identificador não é e-mail, quando nenhuma loja reivindica
+    aquele domínio, ou se a consulta falhar. Nesses casos o login cai na busca
+    global (compat com bases single-tenant e com usuários de e-mail pessoal).
+    """
+    if "@" not in email:
+        return None
+    domain = email.rsplit("@", 1)[-1].strip().lower()
+    if not domain:
+        return None
+    try:
+        from app.models.store import Store
+
+        return Store.query.filter_by(email_domain=domain).first()
+    except Exception:
+        from app import db as _db
+
+        _db.session.rollback()
+        return None
+
+
 # ---------------------------------------------------------------------------
 # POST /api/auth/login
 # Aceita {username, password} (Basic/legado) ou {email, password} (JWT/DB)
@@ -42,15 +65,30 @@ def login():
             from app.models.user import User
             from app.services.auth_service import generate_token, verify_password
 
-            # Aceita email (único) ou nome (case-insensitive). O nome é único entre
-            # usuários ativos, mas caso existam duplicados legados não adivinhamos:
-            # pedimos o e-mail em vez de logar na conta errada.
-            db_user = User.query.filter_by(email=email, is_active=True).first()
+            # Multi-tenant: o domínio do e-mail resolve a loja ANTES de buscar o
+            # usuário. Sem isso, dois tenants com o mesmo e-mail fariam o `.first()`
+            # entrar na conta errada em silêncio. Domínio não reivindicado por
+            # nenhuma loja mantém o comportamento antigo (busca global).
+            login_store = _store_by_email_domain(email)
+            if login_store is not None and not login_store.active:
+                log_debug("Login em loja inativa", {"email": email, "store": login_store.slug})
+                return error_response("Loja inativa. Contate o administrador.", 403)
+
+            # Aceita email ou nome (case-insensitive). O nome é único apenas DENTRO
+            # da loja, então entre lojas pode haver duas "Maria": nesse caso não
+            # adivinhamos, pedimos o e-mail em vez de logar na conta errada.
+            user_query = User.query.filter_by(email=email, is_active=True)
+            if login_store is not None:
+                user_query = user_query.filter_by(store_ref_id=login_store.id)
+            db_user = user_query.first()
             if not db_user:
-                name_matches = User.query.filter(
+                name_query = User.query.filter(
                     _db.func.lower(User.name) == email.lower(),
                     User.is_active == True,  # noqa: E712
-                ).all()
+                )
+                if login_store is not None:
+                    name_query = name_query.filter(User.store_ref_id == login_store.id)
+                name_matches = name_query.all()
                 if len(name_matches) == 1:
                     db_user = name_matches[0]
                 elif len(name_matches) > 1:

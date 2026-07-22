@@ -112,3 +112,6 @@ backend/scripts/ssl/mkcert.exe
 *.deb
 *.bak.*
 *.bad.*
+
+# Dumps de banco (dados reais de cliente)
+*.dump

@@ -318,6 +318,13 @@ class SendDailyPurchasesToMetaCommand:
             batch: Lista de MetaCapiOutbox (mesmo store_ref_id) para enviar
             stats: Dicionário de estatísticas (atualizado in-place)
         """
+        token_tail = service.access_token[-6:] if service.access_token else "VAZIO"
+        print(
+            f"[META_CAPI] Token pixel={service.pixel_id} "
+            f"token=***{token_tail} "
+            f"gateway={service.use_gateway} base_url={service.base_url}",
+            flush=True,
+        )
         # Reconstruir eventos a partir do payload_json
         events = []
         outbox_map = {}  # Mapear event_id -> outbox_entry
@@ -536,6 +543,13 @@ class SendDailyPurchasesToMetaCommand:
             self._send_lead_batch_group(self._service_for(store_ref_id), entries, stats)
 
     def _send_lead_batch_group(self, service, batch: list, stats: dict):
+        token_tail = service.access_token[-6:] if service.access_token else "VAZIO"
+        print(
+            f"[META_CAPI] Lead token pixel={service.pixel_id} "
+            f"token=***{token_tail} "
+            f"gateway={service.use_gateway} base_url={service.base_url}",
+            flush=True,
+        )
         events = []
         outbox_map = {}
 

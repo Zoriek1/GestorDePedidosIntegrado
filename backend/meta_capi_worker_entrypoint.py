@@ -168,6 +168,35 @@ def main() -> None:
         flush=True,
     )
 
+    # Validação rápida do token Meta no startup
+    try:
+        with app.app_context():
+            from app.models.store import Store
+            from app.services.integration_settings_service import (
+                get_settings,
+                runtime_config,
+            )
+
+            stores = Store.query.filter_by(active=True).all()
+            for store in stores:
+                cfg = runtime_config(store.id)
+                pixel = cfg.get("META_PIXEL_ID", "")
+                token = cfg.get("META_CAPI_ACCESS_TOKEN", "")
+                token_tail = token[-6:] if token else "VAZIO"
+                print(
+                    f"[CAPI_WORKER] Store #{store.id} ({store.slug}): "
+                    f"pixel={pixel or 'VAZIO'} token=***{token_tail}",
+                    flush=True,
+                )
+                if not pixel or not token:
+                    print(
+                        f"[CAPI_WORKER] AVISO: Store #{store.id} ({store.slug}) "
+                        f"sem pixel ou token configurado!",
+                        flush=True,
+                    )
+    except Exception as exc:
+        print(f"[CAPI_WORKER] Erro na validacao de token: {exc}", flush=True)
+
     last_run_date = None
     last_payroll_date = None
 

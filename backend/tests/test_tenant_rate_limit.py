@@ -11,7 +11,7 @@ import pytest
 
 def _pedido(session, numero: int = 1):
     """Cria um Pedido mínimo para satisfazer FKs."""
-    from app.models.pedido import Pedido, datetime_now_brazil
+    from app.models.pedido import Pedido
 
     p = Pedido(
         numero_pedido=numero,
@@ -121,13 +121,19 @@ class TestBlingProcessPendingPerStore:
         for p in pedidos_a:
             bling_session.add(
                 BlingOutbox(
-                    pedido_id=p.id, store_ref_id=store_a.id, operation="send_order", status="pending"
+                    pedido_id=p.id,
+                    store_ref_id=store_a.id,
+                    operation="send_order",
+                    status="pending",
                 )
             )
         for p in pedidos_b:
             bling_session.add(
                 BlingOutbox(
-                    pedido_id=p.id, store_ref_id=store_b.id, operation="send_order", status="pending"
+                    pedido_id=p.id,
+                    store_ref_id=store_b.id,
+                    operation="send_order",
+                    status="pending",
                 )
             )
         bling_session.commit()
@@ -189,9 +195,10 @@ class TestMetaCapiRepositoriesPerStore:
         now = datetime.now()
 
         for i in range(3):
+            pedido = _pedido(meta_session, i)
             meta_session.add(
                 MetaCapiOutbox(
-                    order_id=i,
+                    order_id=pedido.id,
                     store_ref_id=store_a.id,
                     event_id=f"e{i}",
                     event_time=now,
@@ -200,9 +207,10 @@ class TestMetaCapiRepositoriesPerStore:
                 )
             )
         for i in range(3, 6):
+            pedido = _pedido(meta_session, i)
             meta_session.add(
                 MetaCapiOutbox(
-                    order_id=i,
+                    order_id=pedido.id,
                     store_ref_id=store_b.id,
                     event_id=f"e{i}",
                     event_time=now,
@@ -231,9 +239,10 @@ class TestMetaCapiRepositoriesPerStore:
         now = datetime.now()
 
         for i in range(5):
+            pedido = _pedido(meta_session, i)
             meta_session.add(
                 MetaCapiOutbox(
-                    order_id=i,
+                    order_id=pedido.id,
                     store_ref_id=store.id,
                     event_id=f"e{i}",
                     event_time=now,
@@ -254,12 +263,14 @@ class TestMetaCapiRepositoriesPerStore:
         from app.repositories.meta_capi_outbox_repository import MetaCapiOutboxRepository
 
         store = self._store(meta_session, "Loja", "loja")
+        outra_store = self._store(meta_session, "Outra Loja", "outra-loja")
         now = datetime.now()
 
         for i in range(3):
+            pedido = _pedido(meta_session, i)
             meta_session.add(
                 MetaCapiOutbox(
-                    order_id=i,
+                    order_id=pedido.id,
                     store_ref_id=store.id,
                     event_id=f"e{i}",
                     event_time=now,
@@ -269,10 +280,11 @@ class TestMetaCapiRepositoriesPerStore:
                     attempts=1,
                 )
             )
+        pedido_outro = _pedido(meta_session, 99)
         meta_session.add(
             MetaCapiOutbox(
-                order_id=99,
-                store_ref_id=999,
+                order_id=pedido_outro.id,
+                store_ref_id=outra_store.id,
                 event_id="e99",
                 event_time=now,
                 payload_json="{}",
@@ -312,9 +324,10 @@ class TestSendDailyPurchasesToMetaCommandPerStore:
         now = datetime.now()
 
         for i in range(3):
+            pedido = _pedido(meta_session, i)
             meta_session.add(
                 MetaCapiOutbox(
-                    order_id=i,
+                    order_id=pedido.id,
                     store_ref_id=store_a.id,
                     event_id=f"e{i}",
                     event_time=now,
@@ -323,9 +336,10 @@ class TestSendDailyPurchasesToMetaCommandPerStore:
                 )
             )
         for i in range(3, 6):
+            pedido = _pedido(meta_session, i)
             meta_session.add(
                 MetaCapiOutbox(
-                    order_id=i,
+                    order_id=pedido.id,
                     store_ref_id=store_b.id,
                     event_id=f"e{i}",
                     event_time=now,

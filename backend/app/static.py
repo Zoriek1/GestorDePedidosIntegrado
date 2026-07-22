@@ -45,7 +45,12 @@ def add_security_headers(response):
         "img-src 'self' data: https:; "
         "connect-src 'self' https://gestaopedidos.planteumaflor.online https://fonts.googleapis.com https://fonts.gstatic.com https://maps.googleapis.com https://maps.gstatic.com; "
         "worker-src 'self' blob:; "
-        "manifest-src 'self';"
+        "manifest-src 'self'; "
+        # Anti-clickjacking para navegadores modernos (complementa X-Frame-Options),
+        # trava o alvo de <form> e impede reescrita da base via <base href>.
+        "frame-ancestors 'none'; "
+        "form-action 'self'; "
+        "base-uri 'self';"
     )
     response.headers["Content-Security-Policy"] = csp
 
@@ -75,6 +80,11 @@ def register_static_routes(app):
     Args:
         app: Instância da aplicação Flask
     """
+
+    # Headers de segurança em TODAS as respostas (inclusive /api/*), e nao apenas
+    # nas rotas estaticas. Fonte unica: nao duplicar esta CSP em outro after_request,
+    # senao o ultimo registrado sobrescreve a allowlist (Maps/Fonts) silenciosamente.
+    app.after_request(add_security_headers)
 
     @app.route("/")
     @app.route("/<path:path>")
@@ -140,8 +150,7 @@ def register_static_routes(app):
             if file_path.exists() and file_path.is_file():
                 response = send_from_directory(str(frontend_dir), path)
 
-                # Adicionar headers de segurança
-                response = add_security_headers(response)
+                # Headers de segurança vêm do after_request registrado acima.
 
                 # Service Worker, index.html e manifest devem ser servidos com no-cache
                 # para garantir que sempre busquem a versão mais recente
@@ -165,7 +174,6 @@ def register_static_routes(app):
 
             # Caso contrário, serve o index.html (SPA routing)
             response = send_from_directory(str(frontend_dir), "index.html")
-            response = add_security_headers(response)
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
@@ -182,7 +190,6 @@ def register_static_routes(app):
                 else:
                     frontend_dir = Path(frontend_dir)
                 response = send_from_directory(str(frontend_dir), "index.html")
-                response = add_security_headers(response)
                 response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
                 response.headers["Pragma"] = "no-cache"
                 response.headers["Expires"] = "0"

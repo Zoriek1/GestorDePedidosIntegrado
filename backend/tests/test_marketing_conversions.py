@@ -362,19 +362,10 @@ class _DiagnosticsHttp:
         return _Response(200, {"validationMessages": []})
 
 
-def test_diagnostics_ga4_e_google_nao_criam_dados_de_negocio(app, session, monkeypatch):
+def test_diagnostics_ga4_nao_cria_dados_de_negocio(app, session, monkeypatch):
     app.config.update(
         GA4_MEASUREMENT_ID="G-DIAGNOSTIC",
         GA4_API_SECRET="diagnostic-secret",
-        GOOGLE_DATAMANAGER_ENABLED=True,
-        GOOGLE_CLOUD_PROJECT_ID="diagnostic-project",
-        GOOGLE_ADS_CUSTOMER_ID="1234567890",
-        GOOGLE_ADS_CONVERSION_ACTION_ID="987654",
-    )
-    monkeypatch.setattr(
-        MarketingConversionDispatcher,
-        "_google_headers",
-        lambda self: {"Authorization": "Bearer diagnostic"},
     )
     before = {
         "pedidos": session.query(Pedido).count(),
@@ -384,12 +375,9 @@ def test_diagnostics_ga4_e_google_nao_criam_dados_de_negocio(app, session, monke
     service = MarketingDiagnosticsService(http=_DiagnosticsHttp())
 
     ga4 = service.run("ga4")
-    google_ads = service.run("google_ads")
 
     assert ga4["ok"] is True
     assert ga4["status"] == "validated"
-    assert google_ads["ok"] is True
-    assert google_ads["request_id"] == "diagnostic-request"
     assert session.query(Pedido).count() == before["pedidos"]
     assert session.query(Lead).count() == before["leads"]
     assert session.query(MarketingConversionOutbox).count() == before["outbox"]

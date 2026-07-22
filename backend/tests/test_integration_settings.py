@@ -101,6 +101,46 @@ def test_admin_can_save_mask_and_clear_secrets(client, session):
     assert settings.get_secret("meta_capi_access_token") is None
 
 
+def test_patch_field_accepts_body_without_content_type(client, session):
+    """O fetch() do browser nao seta Content-Type ao mandar uma string JSON.
+
+    Sem o fallback de _parse_json_body o Flask nao parseia o body e o PATCH
+    responde 400 "Campo 'value' obrigatorio". Este teste fixa o contrato: body
+    JSON valido sem Content-Type ainda grava o campo.
+
+    Cuidado ao reproduzir com a lib `requests`: ela seta Content-Type sozinha
+    quando se usa `json=`, o que mascara a regressao.
+    """
+    store = _store(session)
+    admin = _user(session, "admin")
+
+    response = client.patch(
+        "/api/config/integrations/meta_capi/meta_pixel_id",
+        headers=_headers(admin),
+        data='{"value": "pixel-sem-content-type"}',
+        content_type=None,
+    )
+
+    assert response.status_code == 200
+    settings = StoreSetting.query.filter_by(store_ref_id=store.id).one()
+    assert settings.meta_pixel_id == "pixel-sem-content-type"
+
+
+def test_patch_field_rejects_control_chars(client, session):
+    """Bytes de controle abrem espaco para log injection e smuggling."""
+    _store(session)
+    admin = _user(session, "admin")
+
+    response = client.patch(
+        "/api/config/integrations/meta_capi/meta_pixel_id",
+        headers=_headers(admin),
+        json={"value": "pixel\r\ninjetado"},
+    )
+
+    assert response.status_code == 400
+    assert "inválidos" in response.get_json()["error"]
+
+
 def test_integration_settings_reject_non_admin(client, session):
     _store(session)
     viewer = _user(session, "viewer")

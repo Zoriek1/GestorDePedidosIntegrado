@@ -70,8 +70,8 @@ def get_integration_settings():
 @requires_role("admin")
 def update_integration_settings():
     """Atualiza configuracoes do tenant sem regravar valores mascarados."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
+    data = _parse_json_body()
+    if data is None:
         return jsonify({"success": False, "error": "Payload JSON invalido"}), 400
     try:
         store = _current_store()
@@ -144,6 +144,8 @@ def _normalize_field_value(field: str, value) -> tuple[object, str | None]:
     if field in STRING_FIELDS:
         if not isinstance(value, str):
             return None, f"{field} deve ser texto ou null"
+        if _has_control_chars(value):
+            return None, f"{field} contém caracteres inválidos"
         normalized = value.strip() or None
         if normalized and len(normalized) > STRING_FIELDS[field]:
             return None, f"{field} excede {STRING_FIELDS[field]} caracteres"
@@ -158,9 +160,20 @@ def _normalize_field_value(field: str, value) -> tuple[object, str | None]:
             return "__KEEP__", None
         if not isinstance(value, str):
             return None, f"{field} deve ser texto ou null"
+        if _has_control_chars(value):
+            return None, f"{field} contém caracteres inválidos"
         normalized = value.strip() or None
         return normalized, None
     return None, f"Campo nao permitido: {field}"
+
+
+def _has_control_chars(value: str) -> bool:
+    """Rejeita bytes de controle (< 0x20) e DEL (0x7f).
+
+    Defesa contra log injection (\\n, \\r) e smuggling. Tabs (\\t) e espaços
+    sao aceitos normalmente.
+    """
+    return any(ord(c) < 32 or ord(c) == 127 for c in value)
 
 
 def _reset_validation_log(store_id: int, channel: str) -> None:
@@ -189,6 +202,26 @@ def _field_saved_value(settings, field: str):
     return getattr(settings, field, None) if settings else None
 
 
+def _parse_json_body() -> dict | None:
+    """Aceita o body como JSON mesmo sem Content-Type: application/json.
+
+    O `fetch()` do browser não seta Content-Type automaticamente quando o body
+    é uma string JSON, então o Flask retorna 400 "Campo 'value' obrigatorio"
+    no PATCH. Como fallback, lemos o body bruto e tentamos parsear como JSON
+    se começar com `{` ou `[`.
+    """
+    data = request.get_json(silent=True)
+    if data is None:
+        raw = (request.get_data(as_text=True) or "").strip()
+        if not raw.startswith("{"):
+            return None
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return None
+    return data if isinstance(data, dict) else None
+
+
 @config_bp.route("/integrations/<channel>/<field>", methods=["PATCH"])
 @requires_role("admin")
 def patch_integration_field(channel: str, field: str):
@@ -197,7 +230,7 @@ def patch_integration_field(channel: str, field: str):
     if err:
         return jsonify({"success": False, "error": err}), 400
 
-    data = request.get_json(silent=True) or {}
+    data = _parse_json_body() or {}
     if "value" not in data:
         return jsonify({"success": False, "error": "Campo 'value' obrigatorio"}), 400
     normalized, norm_err = _normalize_field_value(field, data["value"])
@@ -241,7 +274,7 @@ def validate_integration_field(channel: str, field: str):
     if err:
         return jsonify({"success": False, "error": err}), 400
 
-    data = request.get_json(silent=True) or {}
+    data = _parse_json_body() or {}
     raw_value = data.get("value")
 
     store = _current_store()
@@ -342,7 +375,7 @@ def get_taxa_entrega_config():
 def update_taxa_entrega_config():
     """Atualiza a configuração da taxa de entrega"""
     try:
-        data = request.get_json()
+        data = _parse_json_body()
         if not data:
             return jsonify({"success": False, "error": "Dados não fornecidos"}), 400
 
@@ -387,7 +420,7 @@ def get_meta_faturamento():
 def update_meta_faturamento():
     """Atualiza a meta de faturamento para um mês (YYYY-MM)."""
     try:
-        payload = request.get_json() or {}
+        payload = _parse_json_body() or {}
         mes = payload.get("mes")
         valor = payload.get("valor")
         if not mes:
@@ -425,7 +458,7 @@ def get_taxa_cartao_config():
 def update_taxa_cartao_config():
     """Atualiza a configuração da taxa de cartão."""
     try:
-        data = request.get_json() or {}
+        data = _parse_json_body() or {}
 
         if "debito_pct" not in data or "credito" not in data:
             return (

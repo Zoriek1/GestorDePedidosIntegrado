@@ -31,9 +31,6 @@ class MarketingConversionDispatcher:
         from app.services.secure_config import secure_runtime_config
 
         stats = {"processed": 0, "sent": 0, "submitted": 0, "failed": 0}
-        with secure_runtime_config() as tenant_config:
-            if not tenant_config.get("MARKETING_DISPATCH_ENABLED"):
-                return stats
 
         rows = (
             MarketingConversionOutbox.query.filter_by(status="pending")
@@ -43,10 +40,17 @@ class MarketingConversionDispatcher:
         )
         for row in rows:
             stats["processed"] += 1
+            store_ref_id = getattr(row, "store_ref_id", None)
             # Empresa inativa: invalida a linha pendente e não envia (política Fase D).
-            if is_store_inactive(getattr(row, "store_ref_id", None)):
+            if is_store_inactive(store_ref_id):
                 self._fail(row, "store_inactive")
                 stats["failed"] += 1
+                continue
+            # Gate por loja: cada tenant liga/desliga o dispatch de forma independente.
+            # A linha fica pendente (não falha) para ser enviada se a loja religar.
+            with secure_runtime_config(store_ref_id) as tenant_config:
+                dispatch_enabled = bool(tenant_config.get("MARKETING_DISPATCH_ENABLED"))
+            if not dispatch_enabled:
                 continue
             try:
                 result = self._send(row)

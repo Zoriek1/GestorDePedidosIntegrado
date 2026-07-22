@@ -19,13 +19,16 @@ from app.services.meta_capi import MetaConversionsApiService
 
 
 class MarketingDiagnosticsService:
-    def __init__(self, http=None):
+    def __init__(self, http=None, store_ref_id: int | None = None):
         self.http = http or requests
+        # Loja cujas credenciais serao lidas. As rotas passam o tenant da request;
+        # None cai na loja default (bootstrap/single-store), como runtime_config ja faz.
+        self.store_ref_id = store_ref_id
 
     def config_status(self) -> dict:
         from app.services.secure_config import secure_runtime_config
 
-        with secure_runtime_config() as tenant_config:
+        with secure_runtime_config(self.store_ref_id) as tenant_config:
             result = {
                 "dispatch_enabled": bool(tenant_config.get("MARKETING_DISPATCH_ENABLED")),
                 "meta": {
@@ -90,7 +93,7 @@ class MarketingDiagnosticsService:
         return result
 
     def _meta(self, test_event_code: str | None) -> dict:
-        service = MetaConversionsApiService()
+        service = MetaConversionsApiService(self.store_ref_id)
         code = (test_event_code or service.test_event_code or "").strip()
         if not service.pixel_id or not service.access_token:
             return {"ok": False, "status": "failed", "error": "meta_config_incompleta"}
@@ -137,7 +140,7 @@ class MarketingDiagnosticsService:
     def _ga4(self) -> dict:
         from app.services.secure_config import secure_runtime_config
 
-        with secure_runtime_config() as tenant_config:
+        with secure_runtime_config(self.store_ref_id) as tenant_config:
             measurement_id = tenant_config.get("GA4_MEASUREMENT_ID")
             api_secret = tenant_config.get("GA4_API_SECRET")
             if not measurement_id or not api_secret:
@@ -184,7 +187,7 @@ class MarketingDiagnosticsService:
     def _google_ads(self) -> dict:
         from app.services.secure_config import secure_runtime_config
 
-        with secure_runtime_config() as tenant_config:
+        with secure_runtime_config(self.store_ref_id) as tenant_config:
             customer_id = "".join(
                 ch for ch in tenant_config.get("GOOGLE_ADS_CUSTOMER_ID", "") if ch.isdigit()
             )

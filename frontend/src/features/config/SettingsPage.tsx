@@ -1,7 +1,7 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
-import { LocalShipping, Build, Payment, Calculate, Group, Storefront, People, CreditCard, BarChart } from '@mui/icons-material';
-import { KeyRound, Megaphone } from 'lucide-react';
+import { LocalShipping, Build, Payment, Calculate, Group, People, CreditCard, BarChart } from '@mui/icons-material';
+import { KeyRound } from 'lucide-react';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { TaxaCartaoSettings } from './components/TaxaCartaoSettings';
 import { IntegrationGrid } from './components/IntegrationGrid';
@@ -13,9 +13,6 @@ import { useAuth } from '../auth/authStore';
 import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
 import CustomersPage from '../customers/CustomersPage';
-import NuvemshopPage from '../integrations/NuvemshopPage';
-import BlingPage from '../integrations/BlingPage';
-import MarketingPage from '../integrations/MarketingPage';
 import FontesPage from '../fontes/FontesPage';
 import UserListPage from '../users/components/UserListPage';
 
@@ -156,9 +153,6 @@ export default function SettingsPage() {
           {!isEntregador && <Tab value="sources" icon={<Build />} label="Fontes" iconPosition="start" />}
           {!isEntregador && <Tab value="customers" icon={<Group />} label="Clientes" iconPosition="start" />}
           {isAdmin && <Tab value="integrations" icon={<KeyRound />} label="Integrações" iconPosition="start" />}
-          {isAdmin && <Tab value="nuvemshop" icon={<Storefront />} label="Nuvemshop" iconPosition="start" />}
-          {isAdmin && <Tab value="bling" icon={<Payment />} label="Bling" iconPosition="start" />}
-          {isAdmin && <Tab value="marketing" icon={<Megaphone />} label="Marketing" iconPosition="start" />}
           {isAdmin && <Tab value="users" icon={<People />} label="Funcionários" iconPosition="start" />}
         </Tabs>
       </Paper>
@@ -171,9 +165,6 @@ export default function SettingsPage() {
           {!isEntregador && tabValue === 'sources' && <FontesPage />}
           {!isEntregador && tabValue === 'customers' && <CustomersPage />}
           {isAdmin && tabValue === 'integrations' && <IntegrationGrid />}
-          {isAdmin && tabValue === 'nuvemshop' && <NuvemshopPage />}
-          {isAdmin && tabValue === 'bling' && <BlingPage />}
-          {isAdmin && tabValue === 'marketing' && <MarketingPage />}
           {isAdmin && tabValue === 'users' && <UserListPage />}
         </Suspense>
       </Box>

@@ -318,8 +318,9 @@ def nuvemshop_oauth_callback():
             },
         )
 
-    # Redirecionar de volta ao app para o usuário não ficar vendo JSON
-    front_url = _build_public_url("/integracoes/nuvemshop?nuvemshop=connected")
+    # Redirecionar de volta ao app para o usuário não ficar vendo JSON.
+    # A aba Integrações lê ?nuvemshop=connected e exibe o toast de sucesso.
+    front_url = _build_public_url("/configuracoes?nuvemshop=connected")
     return redirect(front_url)
 
 

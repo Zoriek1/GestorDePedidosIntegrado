@@ -19,8 +19,6 @@ const SalesPage = lazy(() => import('../features/sales/SalesPage'));
 const RoutePage = lazy(() => import('../features/rotas/RoutePage'));
 const TestOfflinePage = lazy(() => import('../features/pedidos/TestOfflinePage'));
 const OfflineDiagnostics = lazy(() => import('../features/offline/OfflineDiagnostics'));
-const NuvemshopPage = lazy(() => import('../features/integrations/NuvemshopPage'));
-const BlingPage = lazy(() => import('../features/integrations/BlingPage'));
 const SettingsPage = lazy(() => import('../features/config/SettingsPage'));
 const LeadsPage = lazy(() => import('../features/leads/LeadsPage'));
 const LedgerPage = lazy(() => import('../features/ledger/LedgerPage'));
@@ -142,25 +140,15 @@ const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      // As telas dedicadas de integração foram consolidadas na aba Integrações
+      // de /configuracoes. Mantemos o redirect para não quebrar links antigos.
       {
         path: '/integracoes/nuvemshop',
-        element: (
-          <RequireAuth>
-            <Suspense fallback={<Loading />}>
-              <NuvemshopPage />
-            </Suspense>
-          </RequireAuth>
-        ),
+        element: <Navigate to="/configuracoes" replace />,
       },
       {
         path: '/integracoes/bling',
-        element: (
-          <RequireAuth>
-            <Suspense fallback={<Loading />}>
-              <BlingPage />
-            </Suspense>
-          </RequireAuth>
-        ),
+        element: <Navigate to="/configuracoes" replace />,
       },
       {
         path: '/configuracoes',

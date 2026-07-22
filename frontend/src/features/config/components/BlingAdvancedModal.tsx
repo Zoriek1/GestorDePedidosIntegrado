@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   ListSubheader,
@@ -20,18 +21,22 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import { ExternalLink, RefreshCw, Save } from 'lucide-react';
+import { RefreshCw, Save } from 'lucide-react';
 import {
   useBlingConfig,
-  useBlingInstall,
   useBlingStatus,
   useSaveBlingMapping,
   useSyncBlingConfig,
-} from '../../api/endpoints/bling';
-import type { BlingOption, BlingPaymentMapping } from '../../api/endpoints/bling';
-import { Loading } from '../../components/common/Loading';
-import { ErrorState } from '../../components/common/ErrorState';
-import { useToast } from '../../components/system/useToast';
+} from '../../../api/endpoints/bling';
+import type { BlingOption, BlingPaymentMapping } from '../../../api/endpoints/bling';
+import { Loading } from '../../../components/common/Loading';
+import { ErrorState } from '../../../components/common/ErrorState';
+import { useToast } from '../../../components/system/useToast';
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+}
 
 type MappingDraft = {
   bling_payment_method_id: number | '';
@@ -107,51 +112,28 @@ function groupedOptionItems(options: BlingOption[] | undefined, emptyLabel: stri
   ];
 }
 
-export default function BlingPage() {
+/**
+ * Configuração avançada do Bling: mapeamento financeiro por forma de pagamento.
+ *
+ * Conectar/desconectar ficam no OAuthCard; aqui fica o que depende dos cadastros
+ * sincronizados do Bling (formas, portadores e categorias).
+ */
+export function BlingAdvancedModal({ open, onClose }: Props) {
   const statusQuery = useBlingStatus();
   const configQuery = useBlingConfig();
-  const install = useBlingInstall();
   const syncConfig = useSyncBlingConfig();
   const saveMapping = useSaveBlingMapping();
   const { success, error: showError } = useToast();
   const [drafts, setDrafts] = useState<Record<number, MappingDraft>>({});
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const mappings = useMemo(() => configQuery.data?.mappings ?? [], [configQuery.data?.mappings]);
-
-  // O draft de cada linha e derivado sob demanda no render/save via
-  // `drafts[id] ?? draftFromMapping(mapping)`, entao nao pre-populamos drafts
-  // num effect (evita setState em effect e renders em cascata).
-
-  useEffect(() => {
-    if (searchParams.get('bling') !== 'connected') return;
-    success('Bling conectado');
-    setSearchParams((prev) => {
-      prev.delete('bling');
-      return prev;
-    }, { replace: true });
-  }, [searchParams, setSearchParams, success]);
-
-  if (statusQuery.isLoading || configQuery.isLoading) return <Loading />;
-  if (statusQuery.isError || configQuery.isError) {
-    return (
-      <ErrorState
-        message={
-          statusQuery.error?.message ||
-          configQuery.error?.message ||
-          'Erro ao carregar integracao Bling'
-        }
-        onRetry={() => {
-          statusQuery.refetch();
-          configQuery.refetch();
-        }}
-      />
-    );
-  }
 
   const status = statusQuery.data;
   const config = configQuery.data;
 
+  // O draft de cada linha e derivado sob demanda no render/save via
+  // `drafts[id] ?? draftFromMapping(mapping)`, entao nao pre-populamos drafts
+  // num effect (evita setState em effect e renders em cascata).
   const updateDraft = <K extends keyof MappingDraft>(
     mappingId: number,
     key: K,
@@ -169,15 +151,6 @@ export default function BlingPage() {
         [key]: value,
       },
     }));
-  };
-
-  const handleInstall = async () => {
-    try {
-      const url = await install.mutateAsync();
-      window.location.href = url;
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Erro ao iniciar OAuth Bling');
-    }
   };
 
   const handleSync = async () => {
@@ -205,66 +178,67 @@ export default function BlingPage() {
     }
   };
 
+  const isLoading = statusQuery.isLoading || configQuery.isLoading;
+  const isError = statusQuery.isError || configQuery.isError;
+
   return (
-    <Box>
-      <Stack spacing={2} sx={{ mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>
-          Integracao Bling
-        </Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-          <Chip label={status?.enabled ? 'Habilitada' : 'Desabilitada'} color={status?.enabled ? 'success' : 'default'} />
-          <Chip label={status?.connected ? 'Conectada' : 'Nao conectada'} color={status?.connected ? 'success' : 'warning'} />
-          {status?.counts?.outbox_pending ? (
-            <Chip label={`${status.counts.outbox_pending} pendente(s)`} color="info" />
-          ) : null}
-        </Stack>
-
-        {!status?.enabled && (
-          <Alert severity="info">
-            BLING_ENABLED esta desativado. O envio fica bloqueado ate habilitar o ambiente.
-          </Alert>
-        )}
-
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-          <Button
-            variant="outlined"
-            startIcon={<ExternalLink size={16} />}
-            onClick={handleInstall}
-            disabled={install.isPending}
-          >
-            Conectar / reconectar
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<RefreshCw size={16} />}
-            onClick={handleSync}
-            disabled={syncConfig.isPending || !status?.connected}
-          >
-            Sincronizar cadastros
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={() => {
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle>Bling — mapeamento financeiro</DialogTitle>
+      <DialogContent>
+        {isLoading ? (
+          <Loading />
+        ) : isError ? (
+          <ErrorState
+            message={
+              statusQuery.error?.message ||
+              configQuery.error?.message ||
+              'Erro ao carregar integracao Bling'
+            }
+            onRetry={() => {
               statusQuery.refetch();
               configQuery.refetch();
             }}
-          >
-            Atualizar
-          </Button>
-        </Stack>
-      </Stack>
+          />
+        ) : (
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+            >
+              <Chip
+                label={status?.enabled ? 'Habilitada' : 'Desabilitada'}
+                color={status?.enabled ? 'success' : 'default'}
+                size="small"
+              />
+              <Chip
+                label={status?.connected ? 'Conectada' : 'Nao conectada'}
+                color={status?.connected ? 'success' : 'warning'}
+                size="small"
+              />
+              {status?.counts?.outbox_pending ? (
+                <Chip label={`${status.counts.outbox_pending} pendente(s)`} color="info" size="small" />
+              ) : null}
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<RefreshCw size={16} />}
+                onClick={handleSync}
+                disabled={syncConfig.isPending || !status?.connected}
+              >
+                Sincronizar cadastros
+              </Button>
+            </Stack>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Box>
-              <Typography variant="subtitle1" fontWeight={700}>
-                Mapeamento financeiro
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Forma Gestor para forma Bling, portador e categoria usados nas parcelas e baixas.
-              </Typography>
-            </Box>
+            {!status?.enabled && (
+              <Alert severity="info">
+                BLING_ENABLED esta desativado. O envio fica bloqueado ate habilitar o ambiente.
+              </Alert>
+            )}
+
+            <Typography variant="body2" color="text.secondary">
+              Forma Gestor para forma Bling, portador e categoria usados nas parcelas e baixas.
+            </Typography>
 
             <Box sx={{ overflowX: 'auto' }}>
               <Table size="small">
@@ -382,8 +356,11 @@ export default function BlingPage() {
               </Table>
             </Box>
           </Stack>
-        </CardContent>
-      </Card>
-    </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Fechar</Button>
+      </DialogActions>
+    </Dialog>
   );
 }

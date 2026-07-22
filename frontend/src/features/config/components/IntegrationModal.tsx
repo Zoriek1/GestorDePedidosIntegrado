@@ -17,10 +17,12 @@ import {
 import { CheckCircle, MapPin, XCircle } from 'lucide-react';
 import { usePatchField, useValidateField } from '../hooks/useConfig';
 import { useConfirm } from '../../../components/system/useConfirm';
+import { useToast } from '../../../components/system/useToast';
 import { useCepLookup } from '../../pedidos/useCases/cepLookup';
 import { CepInput } from '../../../components/form';
 import type { ChannelDef } from '../constants';
 import type { IntegrationSettingsConfig } from '../services/configService';
+import { fieldSchema } from '../schemas';
 
 interface Props {
   open: boolean;
@@ -36,6 +38,7 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
   const patchField = usePatchField();
   const validateField = useValidateField();
   const confirm = useConfirm();
+  const toast = useToast();
   const { lookupCep, isLoading: isCepLoading, result: cepResult } = useCepLookup();
 
   const [fields, setFields] = useState<FieldState>({});
@@ -57,22 +60,44 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
     const fieldDef = channel.fields!.find(f => f.key === fieldKey)!;
     let value = fields[fieldKey]?.value;
 
-    if (fieldDef.type === 'password' && value === '') return;
+    if (fieldDef.type === 'password' && value === '') {
+      toast.info(`${fieldDef.label} vazio: nada a salvar`);
+      return;
+    }
     if (fieldDef.type === 'boolean') value = Boolean(value);
     if (fieldKey === 'loja_cep' && typeof value === 'string' && value && !value.includes('-')) {
       value = `${value.slice(0, 5)}-${value.slice(5)}`;
+    }
+
+    const validationError = validateLocal(fieldKey, value);
+    if (validationError) {
+      setFields(prev => ({
+        ...prev,
+        [fieldKey]: { ...prev[fieldKey], status: 'error', error: validationError },
+      }));
+      return;
     }
 
     setFields(prev => ({ ...prev, [fieldKey]: { ...prev[fieldKey], status: 'saving' } }));
     try {
       await patchField.mutateAsync({ channel: channel.id, field: fieldKey, value: value || null });
       setFields(prev => ({ ...prev, [fieldKey]: { ...prev[fieldKey], status: 'saved' } }));
+      toast.success(`${fieldDef.label} salvo`);
     } catch (err) {
       setFields(prev => ({
         ...prev,
         [fieldKey]: { ...prev[fieldKey], status: 'error', error: (err as Error).message },
       }));
+      toast.error(`${fieldDef.label}: ${(err as Error).message}`);
     }
+  };
+
+  const validateLocal = (fieldKey: string, value: unknown): string | null => {
+    const schema = fieldSchema(fieldKey);
+    const result = schema.safeParse(value ?? '');
+    if (result.success) return null;
+    const issue = result.error.issues[0];
+    return issue ? issue.message : 'Valor inválido';
   };
 
   const handleValidate = async (fieldKey: string) => {
@@ -96,6 +121,11 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
           error: result.error ?? undefined,
         },
       }));
+      if (result.ok) {
+        toast.success(`${fieldDef.label} validado`);
+      } else {
+        toast.error(`${fieldDef.label}: ${result.error ?? 'falhou'}`);
+      }
     } catch (err) {
       setFields(prev => ({
         ...prev,
@@ -106,8 +136,10 @@ export function IntegrationModal({ open, channel, config, onClose }: Props) {
 
   const handleSaveAll = async () => {
     const promises = channel.fields!.map(f => handleSave(f.key));
-    await Promise.allSettled(promises);
-    onClose();
+    const results = await Promise.allSettled(promises);
+    const hasError = results.some(r => r.status === 'rejected')
+      || Object.values(fields).some(s => s.status === 'error');
+    if (!hasError) onClose();
   };
 
   const handleRemoveSecret = async (fieldKey: string) => {

@@ -87,6 +87,9 @@ export default defineConfig(({ mode }) => {
           // Forçar atualização imediata quando nova versão for detectada
           skipWaiting: true,
           clientsClaim: true,
+          // Descarta precaches de builds anteriores. Sem isso o bundle antigo
+          // continua sendo servido pelo SW mesmo depois de um deploy novo.
+          cleanupOutdatedCaches: true,
           // Excluir rotas do backend - devem ir direto para o Flask (não SPA shell)
           // IMPORTANTE: OAuth callback da Nuvemshop é navegação para /api/... e o SW não pode interceptar.
           navigateFallbackDenylist: [/^\/api\//, /^\/capig/, /^\/meta-gateway/],

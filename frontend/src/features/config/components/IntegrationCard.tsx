@@ -1,5 +1,14 @@
-import { Card, CardContent, Chip, IconButton, Stack, Typography } from '@mui/material';
-import { Settings } from 'lucide-react';
+import {
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  IconButton,
+  Stack,
+  Typography,
+} from '@mui/material';
+import { Settings, Zap } from 'lucide-react';
 import type { ChannelDef } from '../constants';
 import type { IntegrationSettingsConfig, ChannelStatus } from '../services/configService';
 
@@ -8,6 +17,8 @@ interface Props {
   config: IntegrationSettingsConfig;
   status: ChannelStatus | null | undefined;
   onOpenModal: () => void;
+  onTest?: () => Promise<boolean> | void;
+  testing?: boolean;
 }
 
 function resolveFieldStatus(config: IntegrationSettingsConfig, channel: ChannelDef): {
@@ -45,7 +56,7 @@ function resolveStatusChip(
   return { label: 'Falhou', color: 'default' as const, bgcolor: '#ffebee' };
 }
 
-export function IntegrationCard({ channel, config, status, onOpenModal }: Props) {
+export function IntegrationCard({ channel, config, status, onOpenModal, onTest, testing }: Props) {
   const fieldStatus = resolveFieldStatus(config, channel);
   const { label, color, bgcolor } = resolveStatusChip(status, fieldStatus);
 
@@ -62,27 +73,51 @@ export function IntegrationCard({ channel, config, status, onOpenModal }: Props)
       onClick={onOpenModal}
     >
       <CardContent>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="subtitle1" fontWeight={600}>
-            {channel.label}
-          </Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Chip
-              label={label}
-              color={color}
-              size="small"
-              variant={color === 'default' ? 'outlined' : 'filled'}
-            />
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenModal();
-              }}
-            >
-              <Settings fontSize="small" />
-            </IconButton>
+        <Stack spacing={1.5}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="subtitle1" fontWeight={600}>
+              {channel.label}
+            </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Chip
+                label={label}
+                color={color}
+                size="small"
+                variant={color === 'default' ? 'outlined' : 'filled'}
+              />
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenModal();
+                }}
+              >
+                <Settings fontSize="small" />
+              </IconButton>
+            </Stack>
           </Stack>
+
+          {channel.testable && onTest && (
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={testing ? <CircularProgress size={14} /> : <Zap size={14} />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onTest();
+                }}
+                disabled={testing}
+              >
+                Testar
+              </Button>
+              {testing && (
+                <Typography variant="caption" color="text.secondary">
+                  Validando credenciais…
+                </Typography>
+              )}
+            </Stack>
+          )}
         </Stack>
       </CardContent>
     </Card>

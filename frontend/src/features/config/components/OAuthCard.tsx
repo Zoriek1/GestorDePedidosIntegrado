@@ -1,5 +1,15 @@
-import { Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material';
-import { Link2, RefreshCw, Unlink } from 'lucide-react';
+import {
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  IconButton,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import { Link2, RefreshCw, Settings, Unlink, Zap } from 'lucide-react';
 import { useConfirm } from '../../../components/system/useConfirm';
 
 interface Props {
@@ -8,9 +18,21 @@ interface Props {
   connected: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onTest?: () => Promise<boolean> | void;
+  testing?: boolean;
+  /** Abre a configuração avançada do provedor (vendedor padrão, mapeamento etc). */
+  onOpenAdvanced?: () => void;
 }
 
-export function OAuthCard({ label, connected, onConnect, onDisconnect }: Props) {
+export function OAuthCard({
+  label,
+  connected,
+  onConnect,
+  onDisconnect,
+  onTest,
+  testing,
+  onOpenAdvanced,
+}: Props) {
   const confirm = useConfirm();
 
   const handleDisconnect = async () => {
@@ -31,12 +53,21 @@ export function OAuthCard({ label, connected, onConnect, onDisconnect }: Props) 
             <Typography variant="subtitle1" fontWeight={600}>
               {label}
             </Typography>
-            <Chip
-              label={connected ? 'Conectado' : 'Não conectado'}
-              color={connected ? 'success' : 'default'}
-              size="small"
-              variant={connected ? 'filled' : 'outlined'}
-            />
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Chip
+                label={connected ? 'Conectado' : 'Não conectado'}
+                color={connected ? 'success' : 'default'}
+                size="small"
+                variant={connected ? 'filled' : 'outlined'}
+              />
+              {onOpenAdvanced && (
+                <Tooltip title="Configuração avançada">
+                  <IconButton size="small" onClick={onOpenAdvanced} aria-label="Configuração avançada">
+                    <Settings size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Stack>
           </Stack>
           <Stack direction="row" spacing={1} flexWrap="wrap">
             {!connected ? (
@@ -58,6 +89,17 @@ export function OAuthCard({ label, connected, onConnect, onDisconnect }: Props) 
                   Desconectar
                 </Button>
               </>
+            )}
+            {connected && onTest && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={testing ? <CircularProgress size={14} /> : <Zap size={14} />}
+                onClick={() => void onTest()}
+                disabled={testing}
+              >
+                Testar
+              </Button>
             )}
           </Stack>
         </Stack>

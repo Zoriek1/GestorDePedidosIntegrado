@@ -9,7 +9,6 @@ import {
   IntegrationSettingsService,
   TaxaEntregaConfig,
   TaxaCartaoConfig,
-  type ValidationResult,
   type ChannelStatus,
 } from '../services/configService';
 
@@ -121,14 +120,59 @@ export function usePatchField() {
 }
 
 export function useValidateField() {
-  const { getAuthHeader, getUser } = useAuth();
+  const { getAuthHeader } = useAuth();
   const apiRequest = createApiRequest(getAuthHeader);
-  const user = getUser();
-  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
 
   return useMutation({
     mutationFn: ({ channel, field, value }: { channel: string; field: string; value?: string }) =>
       IntegrationFieldService.validateChannelField(apiRequest, channel, field, value),
+  });
+}
+
+export function useTestChannel(channelId: string) {
+  const { getUser } = useAuth();
+  const queryClient = useQueryClient();
+  const user = getUser();
+  const storeKey = user?.store_slug ?? String(user?.store_ref_id ?? 'default');
+  const validate = useValidateField();
+
+  return useMutation({
+    mutationFn: async ({ fields }: { fields: Array<{ key: string; type: string }> }) => {
+      const targets = fields.filter(f => f.type !== 'boolean');
+      const results = await Promise.allSettled(
+        targets.map(field =>
+          validate.mutateAsync({
+            channel: channelId,
+            field: field.key,
+            value: undefined,
+          }),
+        ),
+      );
+
+      let allOk = true;
+      const errors: string[] = [];
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          const value = r.value as { ok?: boolean; error?: string };
+          if (!value?.ok) {
+            allOk = false;
+            if (value?.error) errors.push(value.error);
+          }
+        } else {
+          allOk = false;
+          if (r.reason instanceof Error) errors.push(r.reason.message);
+        }
+      }
+      return { ok: allOk, errors };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: tenantKey(storeKey, 'config', 'integration-validation'),
+      });
+      queryClient.invalidateQueries({
+        queryKey: tenantKey(storeKey, 'config', 'integration-status', channelId),
+      });
+    },
   });
 }
 

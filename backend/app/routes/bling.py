@@ -74,7 +74,8 @@ def bling_oauth_callback():
 
     try:
         BlingTokenService.exchange_code(code, store_ref_id=store_ref_id)
-        return redirect(_front_url("/integracoes/bling?bling=connected"))
+        # A aba Integrações lê ?bling=connected e exibe o toast de sucesso.
+        return redirect(_front_url("/configuracoes?bling=connected"))
     except Exception as exc:
         return _handle_error(exc)
 

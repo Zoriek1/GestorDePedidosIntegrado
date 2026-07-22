@@ -658,8 +658,9 @@ class TestMetaCapiServiceSendEvents:
         assert result["fbtrace_id"] == "abc123"
         assert result["_status_code"] == 200
         request_kwargs = mock_post.call_args.kwargs
-        assert request_kwargs["params"] == {}
-        assert request_kwargs["headers"]["Authorization"] == "Bearer test_token_abc"
+        # Direct Graph API: access_token goes as query param (not Authorization header)
+        assert request_kwargs["params"] == {"access_token": "test_token_abc"}
+        assert "Authorization" not in request_kwargs["headers"]
 
     @patch("app.services.meta_capi.requests.post")
     def test_send_events_failure(self, mock_post, service):

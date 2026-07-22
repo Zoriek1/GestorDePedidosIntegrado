@@ -28,15 +28,15 @@ from app import create_app, db  # noqa: E402
 def _preview_outbox(connection, table: str, days_back: int = 2) -> list[dict]:
     """List 'sent' entries from the last N days without modifying anything."""
     cutoff = datetime.utcnow() - timedelta(days=days_back)
+    # Use * to handle both meta_capi_outbox (order_id) and meta_capi_lead_outbox (lead_id)
     rows = connection.execute(
         text(
-            f"SELECT id, event_id, order_id, event_time, sent_at, attempts "
-            f"FROM {table} WHERE status = 'sent' AND sent_at >= :cutoff "
+            f"SELECT * FROM {table} WHERE status = 'sent' AND sent_at >= :cutoff "
             f"ORDER BY sent_at DESC"
         ),
         {"cutoff": cutoff},
     ).fetchall()
-    return [dict(row) for row in rows]
+    return [row._asdict() for row in rows]
 
 
 def _reset_outbox(connection, table: str, days_back: int = 2) -> int:
@@ -66,7 +66,7 @@ def run() -> None:
                 print(f"[PREVIEW] meta_capi_outbox: {len(purchases)} entries serao resetadas")
                 for row in purchases:
                     print(
-                        f"  id={row['id']} order_id={row['order_id']} "
+                        f"  id={row['id']} order_id={row.get('order_id', '')} "
                         f"event_id={row['event_id']} "
                         f"sent_at={row['sent_at']} attempts={row['attempts']}"
                     )
@@ -75,7 +75,7 @@ def run() -> None:
                 print(f"\n[PREVIEW] meta_capi_lead_outbox: {len(leads)} entries serao resetadas")
                 for row in leads:
                     print(
-                        f"  id={row['id']} lead_id={row.get('order_id', 'N/A')} "
+                        f"  id={row['id']} lead_id={row.get('lead_id', '')} "
                         f"event_id={row['event_id']} "
                         f"sent_at={row['sent_at']} attempts={row['attempts']}"
                     )

@@ -8,6 +8,10 @@ silently dropped. This script resets those entries to pending so the worker
 re-sends them with the correct auth.
 
 Idempotent: running multiple times is safe (only affects 'sent' entries).
+
+Usage:
+  python scripts/migrations/reenqueue_capi_outboxes.py --dry-run   # preview only
+  python scripts/migrations/reenqueue_capi_outboxes.py             # apply
 """
 import sys
 from datetime import datetime, timedelta
@@ -19,6 +23,20 @@ backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app import create_app, db  # noqa: E402
+
+
+def _preview_outbox(connection, table: str, days_back: int = 2) -> list[dict]:
+    """List 'sent' entries from the last N days without modifying anything."""
+    cutoff = datetime.utcnow() - timedelta(days=days_back)
+    rows = connection.execute(
+        text(
+            f"SELECT id, event_id, order_id, event_time, sent_at, attempts "
+            f"FROM {table} WHERE status = 'sent' AND sent_at >= :cutoff "
+            f"ORDER BY sent_at DESC"
+        ),
+        {"cutoff": cutoff},
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _reset_outbox(connection, table: str, days_back: int = 2) -> int:
@@ -37,15 +55,40 @@ def _reset_outbox(connection, table: str, days_back: int = 2) -> int:
 
 
 def run() -> None:
+    dry_run = "--dry-run" in sys.argv
     app = create_app()
     with app.app_context():
         with db.engine.begin() as conn:
-            purchase_count = _reset_outbox(conn, "meta_capi_outbox")
-            lead_count = _reset_outbox(conn, "meta_capi_lead_outbox")
+            if dry_run:
+                print("=== DRY RUN — nenhuma alteracao sera feita ===\n")
 
-        print(f"[RE-ENQUEUE] meta_capi_outbox: {purchase_count} entries reset to pending")
-        print(f"[RE-ENQUEUE] meta_capi_lead_outbox: {lead_count} entries reset to pending")
-        print(f"[SUCCESS] Re-enqueue completo. O worker ira reenviar nos proximos ciclos.")
+                purchases = _preview_outbox(conn, "meta_capi_outbox")
+                print(f"[PREVIEW] meta_capi_outbox: {len(purchases)} entries serao resetadas")
+                for row in purchases:
+                    print(
+                        f"  id={row['id']} order_id={row['order_id']} "
+                        f"event_id={row['event_id']} "
+                        f"sent_at={row['sent_at']} attempts={row['attempts']}"
+                    )
+
+                leads = _preview_outbox(conn, "meta_capi_lead_outbox")
+                print(f"\n[PREVIEW] meta_capi_lead_outbox: {len(leads)} entries serao resetadas")
+                for row in leads:
+                    print(
+                        f"  id={row['id']} lead_id={row.get('order_id', 'N/A')} "
+                        f"event_id={row['event_id']} "
+                        f"sent_at={row['sent_at']} attempts={row['attempts']}"
+                    )
+
+                print(f"\nTotal: {len(purchases) + len(leads)} entries.")
+                print("Para aplicar, rode sem --dry-run.")
+            else:
+                purchase_count = _reset_outbox(conn, "meta_capi_outbox")
+                lead_count = _reset_outbox(conn, "meta_capi_lead_outbox")
+
+                print(f"[RE-ENQUEUE] meta_capi_outbox: {purchase_count} entries reset to pending")
+                print(f"[RE-ENQUEUE] meta_capi_lead_outbox: {lead_count} entries reset to pending")
+                print(f"[SUCCESS] Re-enqueue completo. O worker ira reenviar nos proximos ciclos.")
 
 
 if __name__ == "__main__":

@@ -940,17 +940,17 @@ class MetaConversionsApiService:
         # Headers
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.access_token}",
         }
 
-        # Gateway and direct Graph requests both use bearer authentication.
+        # Gateway and direct Graph requests use different auth mechanisms.
         if self.use_gateway:
             # Gateway: access_token vai no header Authorization
             headers["Authorization"] = f"Bearer {self.access_token}"
             params = {}
         else:
-            # Direct Graph API request; keep the query string free of credentials.
-            params = {}
+            # Direct Graph API: access_token vai como query parameter
+            # (Meta Graph API não suporta Authorization header para este endpoint)
+            params = {"access_token": self.access_token}
 
         self._debug_log(
             "[META_CAPI] Enviando eventos.",

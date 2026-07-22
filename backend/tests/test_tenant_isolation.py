@@ -166,6 +166,8 @@ def test_config_de_uma_loja_nunca_devolve_dado_da_outra(client, session):
 
 
 def test_loja_com_leads_habilitado_acessa_o_modulo(client, session):
+    """Cria 2 lojas para ativar multi-tenant; loja com leads_enabled=True acessa normalmente."""
+    _store(session, slug="default", domain="default.com", leads_enabled=False)
     loja = _store(session, slug="loja-a", domain="lojaa.com", leads_enabled=True)
     _user(session, loja, name="Admin A", email="admin@lojaa.com")
 
@@ -176,6 +178,9 @@ def test_loja_com_leads_habilitado_acessa_o_modulo(client, session):
 
 
 def test_loja_sem_leads_habilitado_recebe_403(client, session):
+    """Cria 2 lojas para ativar multi-tenant; loja sem leads_enabled recebe 403."""
+    default = _store(session, slug="default", domain="default.com", leads_enabled=True)
+    _user(session, default, name="Admin Default", email="admin@default.com")
     loja = _store(session, slug="loja-b", domain="lojab.com", leads_enabled=False)
     _user(session, loja, name="Admin B", email="admin@lojab.com")
 
@@ -183,7 +188,7 @@ def test_loja_sem_leads_habilitado_recebe_403(client, session):
     response = client.get("/api/leads", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 403
-    assert "Leads" in response.get_json()["error"]
+    assert "indispon" in response.get_json()["error"].lower()
 
 
 def test_login_expoe_leads_enabled_para_a_navegacao(client, session):

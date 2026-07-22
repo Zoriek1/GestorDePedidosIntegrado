@@ -54,6 +54,26 @@ def _require_leads_enabled():
         return None
 
     store = getattr(g, "current_store", None)
+
+    # Fallback: se prime_request_tenant não resolveu a loja (ex: exceção
+    # silenciada no try/except), resolve aqui a partir do JWT para que o
+    # guard funcione mesmo quando o middleware de tenant falha.
+    if store is None:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            try:
+                from app.services.auth_service import decode_token, extract_bearer_token
+                from app.services.auth_context import load_request_identity
+
+                token = extract_bearer_token(auth_header)
+                payload = decode_token(token) if token else None
+                if payload:
+                    current_user, error = load_request_identity(payload)
+                    if not error:
+                        store = getattr(g, "current_store", None)
+            except Exception:
+                pass
+
     if store is None:
         # Sem loja resolvida o decorator de papel da rota produz o erro correto
         # (401/403); não é papel deste guard autenticar.

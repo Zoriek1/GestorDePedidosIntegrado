@@ -7,8 +7,9 @@ import { IntegrationCard } from '../components/IntegrationCard';
 import { OAuthCard } from '../components/OAuthCard';
 import { INTEGRATION_CHANNELS } from '../constants';
 import { ConfirmProvider } from '../../../components/system/ConfirmProvider';
+import type { IntegrationSettingsConfig } from '../services/configService';
 
-const mockConfig: any = {
+const mockConfig: IntegrationSettingsConfig = {
   store: { id: 1, name: 'Teste', slug: 'default' },
   configured: true,
   has_meta_capi_access_token: true,
@@ -191,8 +192,8 @@ describe('Store switch isolation', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(tenantKey('store-a', 'pedidos'), [{ id: 1 }]);
     client.setQueryData(tenantKey('store-b', 'pedidos'), [{ id: 2 }]);
-    const storeA = client.getQueryData(tenantKey('store-a', 'pedidos')) as any[];
-    const storeB = client.getQueryData(tenantKey('store-b', 'pedidos')) as any[];
+    const storeA = client.getQueryData(tenantKey('store-a', 'pedidos')) as Array<{ id: number }>;
+    const storeB = client.getQueryData(tenantKey('store-b', 'pedidos')) as Array<{ id: number }>;
     expect(storeA[0].id).toBe(1);
     expect(storeB[0].id).toBe(2);
     expect(storeA).not.toEqual(storeB);

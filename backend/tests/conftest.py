@@ -19,6 +19,9 @@ if str(backend_dir) not in sys.path:
 if os.environ.get("PYTEST_KEEP_ADMIN_PASSWORD") != "1":
     os.environ["ADMIN_PASSWORD"] = "testpass"
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+# Desabilitar rate limiting em testes para evitar 429 quando múltiplos testes
+# chamam POST /api/auth/login em sequência rápida.
+os.environ.setdefault("ENABLE_RATE_LIMIT", "false")
 
 from app import create_app, db  # noqa: E402
 

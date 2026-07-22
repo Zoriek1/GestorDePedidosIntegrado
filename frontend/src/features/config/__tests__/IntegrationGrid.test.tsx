@@ -81,8 +81,8 @@ describe('IntegrationCard', () => {
     render(
       <IntegrationCard channel={channel} config={mockConfig} status={null} onOpenModal={() => {}} />,
     );
-    expect(screen.getByText('Contact')).toBeDefined();
     expect(screen.getByText('Lead')).toBeDefined();
+    expect(screen.getByText('Lead Disqualificado')).toBeDefined();
     expect(screen.getByText('Compra')).toBeDefined();
   });
 });

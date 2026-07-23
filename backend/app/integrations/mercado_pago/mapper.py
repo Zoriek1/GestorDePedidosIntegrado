@@ -3,7 +3,6 @@
 
 from decimal import Decimal, InvalidOperation
 
-
 CENT = Decimal("0.01")
 
 CONTACT_NAME = "Mercado Pago [Maquininha]"

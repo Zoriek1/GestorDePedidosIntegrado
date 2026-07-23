@@ -20,6 +20,9 @@ def _ensure_columns() -> None:
 
     Cobre deploys onde a tabela já existia de uma versão anterior sem certas
     colunas (ex: mercado_pago_*, taxa_cartao_*, endereco_floricultura, loja_cep).
+
+    IMPORTANTE: cada ALTER TABLE é commitado imediatamente para liberar o
+    AccessExclusiveLock do PostgreSQL antes de qualquer inspeção subsequente.
     """
     from sqlalchemy import inspect, text
 
@@ -53,11 +56,11 @@ def _ensure_columns() -> None:
                         parts.append("DEFAULT 0")
             ddl = f"ALTER TABLE {table_name} {' '.join(parts)}"
             db.session.execute(text(ddl))
+            db.session.commit()
             added += 1
             print(f"[MIGRATE] {table_name}.{col.name} adicionada")
 
     if added:
-        db.session.commit()
         print(f"[MIGRATE] {table_name}: {added} coluna(s) adicionada(s)")
 
 

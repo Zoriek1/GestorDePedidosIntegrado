@@ -67,6 +67,7 @@ def create_bling_integration():
     with app.app_context():
         try:
             db.create_all()
+            db.session.commit()
             pedido_columns = [
                 ("regra_pagamento", "VARCHAR(30)"),
                 ("percentual_entrada", "FLOAT"),
@@ -87,9 +88,9 @@ def create_bling_integration():
                     print(f"[SKIP] pedidos.{column}")
                     continue
                 db.session.execute(db.text(f"ALTER TABLE pedidos ADD COLUMN {column} {definition}"))
+                db.session.commit()
                 added += 1
                 print(f"[ADD] pedidos.{column}")
-            db.session.commit()
             ensure_outbox_unique()
             print(f"[SUCCESS] Bling migration concluida: {added} colunas, {skipped} skips")
         except Exception as exc:

@@ -37,10 +37,10 @@ def add_taxa_cartao_columns():
                 db.session.execute(
                     db.text(f"ALTER TABLE store_settings ADD COLUMN {col_name} {definition}")
                 )
+                db.session.commit()
                 added += 1
                 print(f"[ADD] store_settings.{col_name}")
 
-            db.session.commit()
             print(
                 f"[SUCCESS] Taxa Cartao migration concluida: "
                 f"{added} colunas adicionadas, {skipped} skips"

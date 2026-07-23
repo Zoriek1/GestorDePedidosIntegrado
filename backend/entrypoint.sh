@@ -22,6 +22,7 @@ python scripts/migrations/add_search_trgm_unaccent.py
 python scripts/migrations/create_catalogo_arranjos.py
 python scripts/migrations/create_bling_integration.py
 python scripts/migrations/create_mercado_pago_integration.py
+python scripts/migrations/add_mercado_pago_client_credentials.py
 python scripts/migrations/add_taxa_cartao_to_store_settings.py
 python scripts/migrations/add_store_foundation.py
 python scripts/migrations/add_email_domain_to_stores.py

@@ -93,19 +93,38 @@ class MercadoPagoService:
         return current_app.config.get("MERCADO_PAGO_WEBHOOK_SECRET") or None
 
     def _ensure_enabled(self) -> None:
-        if not current_app.config.get("MERCADO_PAGO_ENABLED"):
-            raise MercadoPagoConfigError(
-                "Integracao Mercado Pago Point desabilitada (MERCADO_PAGO_ENABLED=false)"
-            )
+        try:
+            from app.services.integration_settings_service import runtime_config
+
+            cfg = runtime_config(self.store_ref_id)
+            if not cfg.get("MERCADO_PAGO_ENABLED"):
+                raise MercadoPagoConfigError(
+                    "Integracao Mercado Pago Point desabilitada (MERCADO_PAGO_ENABLED=false)"
+                )
+        except MercadoPagoConfigError:
+            raise
+        except Exception:
+            if not current_app.config.get("MERCADO_PAGO_ENABLED"):
+                raise MercadoPagoConfigError(
+                    "Integracao Mercado Pago Point desabilitada (MERCADO_PAGO_ENABLED=false)"
+                )
 
     # ------------------------------------------------------------------
     # Status
     # ------------------------------------------------------------------
 
     def status(self) -> Dict[str, Any]:
-        token = self._resolve_access_token(self.store_ref_id)
+        try:
+            from app.services.integration_settings_service import runtime_config
+
+            cfg = runtime_config(self.store_ref_id)
+            enabled = bool(cfg.get("MERCADO_PAGO_ENABLED"))
+            token = cfg.get("MERCADO_PAGO_ACCESS_TOKEN")
+        except Exception:
+            enabled = bool(current_app.config.get("MERCADO_PAGO_ENABLED"))
+            token = self._resolve_access_token(self.store_ref_id)
         return {
-            "enabled": bool(current_app.config.get("MERCADO_PAGO_ENABLED")),
+            "enabled": enabled,
             "connected": bool(token),
             "counts": {
                 "pending": MercadoPagoOutbox.query.filter_by(status="pending").count(),

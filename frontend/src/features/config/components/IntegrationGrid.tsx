@@ -104,6 +104,7 @@ export function IntegrationGrid() {
   const ga4Status = useChannelValidationStatus('ga4');
   const utmifyStatus = useChannelValidationStatus('utmify');
   const dadosOpStatus = useChannelValidationStatus('dados_operacionais');
+  const mercadoPagoStatus = useChannelValidationStatus('mercado_pago');
   const nuvemshopStatus = useChannelValidationStatus('nuvemshop');
   const blingStatusChannel = useChannelValidationStatus('bling');
 
@@ -113,6 +114,7 @@ export function IntegrationGrid() {
       ga4: ga4Status.data,
       utmify: utmifyStatus.data,
       dados_operacionais: dadosOpStatus.data,
+      mercado_pago: mercadoPagoStatus.data,
       nuvemshop: nuvemshopStatus.data,
       bling: blingStatusChannel.data,
     }),
@@ -121,6 +123,7 @@ export function IntegrationGrid() {
       ga4Status.data,
       utmifyStatus.data,
       dadosOpStatus.data,
+      mercadoPagoStatus.data,
       nuvemshopStatus.data,
       blingStatusChannel.data,
     ],

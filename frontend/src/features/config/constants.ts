@@ -78,6 +78,18 @@ export const INTEGRATION_CHANNELS: ChannelDef[] = [
     type: 'oauth',
     testable: true,
   },
+  {
+    id: 'mercado_pago',
+    label: 'Mercado Pago Point',
+    icon: 'CreditCard',
+    type: 'field',
+    testable: false,
+    fields: [
+      { key: 'mercado_pago_access_token', label: 'Access Token', type: 'password', required: true },
+      { key: 'mercado_pago_public_key', label: 'Public Key', type: 'password' },
+      { key: 'mercado_pago_webhook_secret', label: 'Webhook Secret', type: 'password' },
+    ],
+  },
 ];
 
 export const CHANNEL_EVENTS: Record<string, string[]> = {

@@ -172,6 +172,12 @@ export function BlingAdvancedModal({ open, onClose }: Props) {
         bling_category_id: toApiValue(draft.bling_category_id),
         active: draft.active,
       });
+      // Limpa o draft para forçar re-leitura do servidor na próxima renderização
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[mapping.id];
+        return next;
+      });
       success('Mapeamento salvo');
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao salvar mapeamento');
@@ -236,9 +242,21 @@ export function BlingAdvancedModal({ open, onClose }: Props) {
               </Alert>
             )}
 
+            {config && config.payment_methods.length === 0 && mappings.length > 0 && (
+              <Alert severity="info">
+                Sincronize os cadastros do Bling para habilitar os dropdowns de mapeamento.
+              </Alert>
+            )}
+
             <Typography variant="body2" color="text.secondary">
               Forma Gestor para forma Bling, portador e categoria usados nas parcelas e baixas.
             </Typography>
+
+            {mappings.length > 0 && config && config.payment_methods.length > 0 && (
+              <Typography variant="caption" color="text.secondary">
+                Selecione a Forma Bling, Portador e Categoria para cada forma de pagamento, depois clique Salvar.
+              </Typography>
+            )}
 
             <Box sx={{ overflowX: 'auto' }}>
               <Table size="small">

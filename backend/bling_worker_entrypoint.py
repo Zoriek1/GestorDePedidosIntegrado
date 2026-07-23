@@ -13,7 +13,9 @@ from datetime import datetime
 
 from app import create_app
 from app.integrations.bling.service import BlingIntegrationService
+from app.integrations.mercado_pago.service import MercadoPagoService
 from app.models.bling_outbox import BlingOutbox
+from app.models.mercado_pago_outbox import MercadoPagoOutbox
 from app.models.store import Store
 
 
@@ -32,7 +34,11 @@ def _status_tag(status: str) -> str:
 
 
 def _count_pending() -> int:
-    return BlingOutbox.query.filter(BlingOutbox.status.in_(["pending", "failed_retryable"])).count()
+    bling = BlingOutbox.query.filter(BlingOutbox.status.in_(["pending", "failed_retryable"])).count()
+    mp = MercadoPagoOutbox.query.filter(
+        MercadoPagoOutbox.status.in_(["pending", "failed_retryable"])
+    ).count()
+    return bling + mp
 
 
 def _log_results(result: dict) -> None:
@@ -60,10 +66,11 @@ def main() -> None:
 
     with app.app_context():
         enabled = bool(app.config.get("BLING_ENABLED"))
+        mp_enabled = bool(app.config.get("MERCADO_PAGO_ENABLED"))
         api = app.config.get("BLING_API_BASE_URL") or "?"
     print(
         f"[BLING_WORKER {_ts()}] iniciado | intervalo={interval}s | limite={limit} | "
-        f"BLING_ENABLED={enabled} | api={api}",
+        f"BLING_ENABLED={enabled} | MERCADO_PAGO_ENABLED={mp_enabled} | api={api}",
         flush=True,
     )
 
@@ -108,7 +115,33 @@ def main() -> None:
                             )
                 except Exception as exc:  # noqa: BLE001 - worker nao pode morrer
                     print(
-                        f"[BLING_WORKER {_ts()}] ERRO no ciclo: {type(exc).__name__}: {exc}",
+                        f"[BLING_WORKER {_ts()}] ERRO no ciclo Bling: {type(exc).__name__}: {exc}",
+                        flush=True,
+                    )
+                    traceback.print_exc()
+
+            # --- Mercado Pago Point ---
+            if app.config.get("MERCADO_PAGO_ENABLED"):
+                try:
+                    mp_active = Store.query.filter_by(active=True).all()
+                    if not mp_active:
+                        mp_active = [None]
+                    mp_per_store = max(1, limit // max(len(mp_active), 1))
+                    mp_total = 0
+                    for store in mp_active:
+                        sid = store.id if store else None
+                        mp_result = MercadoPagoService(store_ref_id=sid).process_pending(
+                            limit=mp_per_store, store_ref_id=sid
+                        )
+                        mp_total += mp_result.get("processed", 0)
+                    if mp_total > 0:
+                        print(
+                            f"[MP_WORKER {_ts()}] processados: {mp_total}",
+                            flush=True,
+                        )
+                except Exception as exc:
+                    print(
+                        f"[MP_WORKER {_ts()}] ERRO no ciclo: {type(exc).__name__}: {exc}",
                         flush=True,
                     )
                     traceback.print_exc()

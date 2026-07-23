@@ -10,6 +10,9 @@ SECRET_FIELDS = {
     "meta_capi_access_token": "meta_capi_access_token_encrypted",
     "ga4_api_secret": "ga4_api_secret_encrypted",
     "utmify_api_token": "utmify_api_token_encrypted",
+    "mercado_pago_access_token": "mercado_pago_access_token_encrypted",
+    "mercado_pago_public_key": "mercado_pago_public_key_encrypted",
+    "mercado_pago_webhook_secret": "mercado_pago_webhook_secret_encrypted",
 }
 
 
@@ -44,6 +47,14 @@ class StoreSetting(db.Model):
     utmify_api_token_encrypted = db.Column(db.Text, nullable=True)
     utmify_platform = db.Column(db.String(80), nullable=True)
     utmify_is_test = db.Column(db.Boolean, nullable=False, default=False)
+
+    mercado_pago_access_token_encrypted = db.Column(db.Text, nullable=True)
+    mercado_pago_public_key_encrypted = db.Column(db.Text, nullable=True)
+    mercado_pago_webhook_secret_encrypted = db.Column(db.Text, nullable=True)
+    mercado_pago_enabled = db.Column(db.Boolean, nullable=False, default=False)
+
+    taxa_cartao_debito_pct = db.Column(db.Float, nullable=False, default=0)
+    taxa_cartao_credito_json = db.Column(db.Text, nullable=True)  # JSON: [{"parcelas":1,"taxa_pct":0}, ...]
 
     endereco_floricultura = db.Column(db.String(255), nullable=True)
     loja_cep = db.Column(db.String(9), nullable=True)

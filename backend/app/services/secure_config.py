@@ -3,7 +3,14 @@ from typing import Any, Iterator
 
 from app.services.integration_settings_service import runtime_config
 
-SECRET_KEYS = {"META_CAPI_ACCESS_TOKEN", "GA4_API_SECRET", "UTMIFY_API_TOKEN"}
+SECRET_KEYS = {
+    "META_CAPI_ACCESS_TOKEN",
+    "GA4_API_SECRET",
+    "UTMIFY_API_TOKEN",
+    "MERCADO_PAGO_ACCESS_TOKEN",
+    "MERCADO_PAGO_PUBLIC_KEY",
+    "MERCADO_PAGO_WEBHOOK_SECRET",
+}
 
 
 @contextmanager

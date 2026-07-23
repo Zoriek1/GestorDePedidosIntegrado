@@ -32,6 +32,7 @@ BOOLEAN_FIELDS = {
     "google_datamanager_enabled",
     "utmify_enabled",
     "utmify_is_test",
+    "mercado_pago_enabled",
 }
 ALLOWED_FIELDS = set(STRING_FIELDS) | BOOLEAN_FIELDS | set(SECRET_FIELDS)
 
@@ -67,11 +68,19 @@ CHANNELS: dict[str, dict[str, list[str]]] = {
         "fields": ["endereco_floricultura", "loja_cep"],
         "required": ["loja_cep"],
     },
+    "mercado_pago": {
+        "fields": [
+            "mercado_pago_access_token",
+            "mercado_pago_public_key",
+            "mercado_pago_webhook_secret",
+        ],
+        "required": ["mercado_pago_access_token"],
+    },
 }
 
 # Conjunto canonico de channels suportados (inclui OAuth, mas esses nao tem
 # save por campo — o status vem do store OAuth/credential).
-ALL_CHANNELS = set(CHANNELS) | {"nuvemshop", "bling"}
+ALL_CHANNELS = set(CHANNELS) | {"nuvemshop", "bling", "mercado_pago"}
 
 
 def channel_fields(channel: str) -> list[str]:
@@ -201,8 +210,12 @@ def settings_from_environment(store_ref_id: int) -> StoreSetting:
         "meta_capi_access_token": "META_CAPI_ACCESS_TOKEN",
         "ga4_api_secret": "GA4_API_SECRET",
         "utmify_api_token": "UTMIFY_API_TOKEN",
+        "mercado_pago_access_token": "MERCADO_PAGO_ACCESS_TOKEN",
+        "mercado_pago_public_key": "MERCADO_PAGO_PUBLIC_KEY",
+        "mercado_pago_webhook_secret": "MERCADO_PAGO_WEBHOOK_SECRET",
     }.items():
         settings.set_secret(field, current_app.config.get(config_key) or None)
+    settings.mercado_pago_enabled = bool(current_app.config.get("MERCADO_PAGO_ENABLED"))
     return settings
 
 
@@ -226,6 +239,10 @@ def _environment_runtime_config() -> dict[str, Any]:
             "UTMIFY_IS_TEST",
             "ENDERECO_FLORICULTURA",
             "LOJA_CEP",
+            "MERCADO_PAGO_ENABLED",
+            "MERCADO_PAGO_ACCESS_TOKEN",
+            "MERCADO_PAGO_PUBLIC_KEY",
+            "MERCADO_PAGO_WEBHOOK_SECRET",
         )
     }
 
@@ -238,6 +255,7 @@ def _disabled_runtime_config() -> dict[str, Any]:
         "GOOGLE_DATAMANAGER_ENABLED",
         "UTMIFY_ENABLED",
         "UTMIFY_IS_TEST",
+        "MERCADO_PAGO_ENABLED",
     ):
         config[key] = False
     for key in (
@@ -250,6 +268,9 @@ def _disabled_runtime_config() -> dict[str, Any]:
         "UTMIFY_API_TOKEN",
         "ENDERECO_FLORICULTURA",
         "LOJA_CEP",
+        "MERCADO_PAGO_ACCESS_TOKEN",
+        "MERCADO_PAGO_PUBLIC_KEY",
+        "MERCADO_PAGO_WEBHOOK_SECRET",
     ):
         config[key] = ""
     config["UTMIFY_PLATFORM"] = "WhatsAppManual"
@@ -292,6 +313,10 @@ def runtime_config(store_ref_id: int | None = None) -> dict[str, Any]:
         "UTMIFY_IS_TEST": settings.utmify_is_test,
         "ENDERECO_FLORICULTURA": settings.endereco_floricultura or "",
         "LOJA_CEP": settings.loja_cep or "",
+        "MERCADO_PAGO_ENABLED": getattr(settings, "mercado_pago_enabled", False),
+        "MERCADO_PAGO_ACCESS_TOKEN": settings.get_secret("mercado_pago_access_token") or "",
+        "MERCADO_PAGO_PUBLIC_KEY": settings.get_secret("mercado_pago_public_key") or "",
+        "MERCADO_PAGO_WEBHOOK_SECRET": settings.get_secret("mercado_pago_webhook_secret") or "",
     }
 
 

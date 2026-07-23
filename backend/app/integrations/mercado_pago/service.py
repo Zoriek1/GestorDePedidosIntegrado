@@ -107,7 +107,7 @@ class MercadoPagoService:
             if not current_app.config.get("MERCADO_PAGO_ENABLED"):
                 raise MercadoPagoConfigError(
                     "Integracao Mercado Pago Point desabilitada (MERCADO_PAGO_ENABLED=false)"
-                )
+                ) from None
 
     # ------------------------------------------------------------------
     # Status

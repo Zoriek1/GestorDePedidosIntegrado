@@ -591,6 +591,7 @@ def rate_limit(max_per_minute=60, max_per_hour=1000):
     Desativado quando ENABLE_RATE_LIMIT=false (útil em testes).
     """
     import os
+
     from flask import jsonify
 
     _enabled = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"

@@ -10,7 +10,6 @@ import json
 import logging
 from datetime import datetime
 
-from app import db
 from app.models.events_outbox import EventsOutbox
 from app.models.pedido import Pedido, datetime_now_brazil
 from app.repositories.events_outbox_repository import EventsOutboxRepository
@@ -246,7 +245,6 @@ class EventsService:
 
         # GA4 — whatsapp_purchase
         if lead:
-            from app.utils.tracking_token import normalize_tracking_token
 
             transaction_id = f"GESTOR-WA-{pedido.id}"
             value = round(float(pedido.total_pago() or 0), 2)

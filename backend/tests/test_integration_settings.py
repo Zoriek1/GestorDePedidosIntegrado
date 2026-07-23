@@ -1,3 +1,5 @@
+import sqlalchemy as sa
+
 from app import db
 from app.models.store import Store
 from app.models.store_setting import StoreSetting
@@ -6,8 +8,6 @@ from app.services.auth_service import generate_token, hash_password
 from app.services.integration_settings_service import runtime_config
 from app.utils.crypto import decrypt_secret, encrypt_secret
 from scripts.migrations.create_store_settings import migrate
-
-import sqlalchemy as sa
 
 
 def _store(session) -> Store:

@@ -185,7 +185,6 @@ def main() -> None:
         with app.app_context():
             from app.models.store import Store
             from app.services.integration_settings_service import (
-                get_settings,
                 runtime_config,
             )
 

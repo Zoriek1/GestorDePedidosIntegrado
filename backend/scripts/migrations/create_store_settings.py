@@ -27,6 +27,7 @@ def _ensure_columns() -> None:
     inspector = inspect(db.engine)
     existing = {col["name"] for col in inspector.get_columns(table_name)}
 
+    added = 0
     for col in StoreSetting.__table__.columns:
         if col.name not in existing:
             # Determina DEFAULT SQL a partir do Python default
@@ -52,7 +53,12 @@ def _ensure_columns() -> None:
                         parts.append("DEFAULT 0")
             ddl = f"ALTER TABLE {table_name} {' '.join(parts)}"
             db.session.execute(text(ddl))
+            added += 1
             print(f"[MIGRATE] {table_name}.{col.name} adicionada")
+
+    if added:
+        db.session.commit()
+        print(f"[MIGRATE] {table_name}: {added} coluna(s) adicionada(s)")
 
 
 def migrate() -> None:

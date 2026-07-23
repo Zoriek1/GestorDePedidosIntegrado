@@ -126,5 +126,3 @@ def setup_cors(app):
                 response.headers["Access-Control-Allow-Origin"] = origin
                 response.headers["Vary"] = "Origin"
         return response
-
-    print(f"[SEGURANCA] OK CORS restrito a: {len(allowed_origins)} origens permitidas")

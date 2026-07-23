@@ -9,6 +9,7 @@ import {
   Typography,
 } from '@mui/material';
 import { Settings, Zap } from 'lucide-react';
+import { CHANNEL_EVENTS } from '../constants';
 import type { ChannelDef } from '../constants';
 import type { IntegrationSettingsConfig, ChannelStatus } from '../services/configService';
 
@@ -96,6 +97,20 @@ export function IntegrationCard({ channel, config, status, onOpenModal, onTest, 
               </IconButton>
             </Stack>
           </Stack>
+
+          {CHANNEL_EVENTS[channel.id] && (
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+              {CHANNEL_EVENTS[channel.id].map((evt) => (
+                <Chip
+                  key={evt}
+                  label={evt}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.7rem', height: 22 }}
+                />
+              ))}
+            </Stack>
+          )}
 
           {channel.testable && onTest && (
             <Stack direction="row" spacing={1} alignItems="center">

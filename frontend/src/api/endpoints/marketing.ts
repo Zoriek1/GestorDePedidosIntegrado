@@ -3,7 +3,7 @@ import { createApiRequest } from '../http';
 import { useAuth } from '../../features/auth/authStore';
 import { tenantKey } from '../../lib/tenantKey';
 
-export type MarketingDestination = 'meta' | 'ga4' | 'google_ads';
+export type MarketingDestination = 'meta' | 'ga4';
 
 export interface MarketingDiagnosticResult {
   destination: MarketingDestination;
@@ -21,13 +21,6 @@ export interface MarketingConfigStatus {
   dispatch_enabled: boolean;
   meta: { configured: boolean; test_mode: boolean };
   ga4: { configured: boolean; validate_only: boolean; measurement_id?: string | null };
-  google_ads: {
-    configured: boolean;
-    enabled: boolean;
-    validate_only: boolean;
-    customer_id?: string | null;
-    conversion_action_id?: string | null;
-  };
 }
 
 export interface MarketingOutboxItem {

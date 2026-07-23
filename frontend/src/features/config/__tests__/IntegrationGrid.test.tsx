@@ -19,9 +19,6 @@ const mockConfig: IntegrationSettingsConfig = {
   ga4_measurement_id: '',
   ga4_api_secret: '',
   ga4_validate_only: false,
-  google_datamanager_enabled: false,
-  google_ads_customer_id: '',
-  google_ads_conversion_action_id: '',
   has_utmify_api_token: false,
   utmify_api_token: '',
   utmify_platform: '',
@@ -77,6 +74,16 @@ describe('IntegrationCard', () => {
       <IntegrationCard channel={channel} config={mockConfig} status={status} onOpenModal={() => {}} />,
     );
     expect(screen.getByText('Falhou')).toBeDefined();
+  });
+
+  it('renders event chips for meta_capi', () => {
+    const channel = INTEGRATION_CHANNELS.find(c => c.id === 'meta_capi')!;
+    render(
+      <IntegrationCard channel={channel} config={mockConfig} status={null} onOpenModal={() => {}} />,
+    );
+    expect(screen.getByText('Lead')).toBeDefined();
+    expect(screen.getByText('Lead Disqualificado')).toBeDefined();
+    expect(screen.getByText('Compra')).toBeDefined();
   });
 });
 
@@ -149,7 +156,7 @@ vi.mock('../hooks/useConfig', async (importOriginal) => {
 const { IntegrationGrid } = await import('../components/IntegrationGrid');
 
 describe('IntegrationGrid', () => {
-  it('renders all 7 channel cards', () => {
+  it('renders all 6 channel cards', () => {
     renderWithProviders(
       <MemoryRouter>
         <IntegrationGrid />
@@ -157,7 +164,6 @@ describe('IntegrationGrid', () => {
     );
     expect(screen.getByText('Meta CAPI')).toBeDefined();
     expect(screen.getByText('Google Analytics 4')).toBeDefined();
-    expect(screen.getByText('Google Ads')).toBeDefined();
     expect(screen.getByText('UTMify')).toBeDefined();
     expect(screen.getByText('Dados Operacionais')).toBeDefined();
     expect(screen.getByText('Nuvemshop')).toBeDefined();

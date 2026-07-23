@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Meta CAPI Worker — processo independente para Docker.
+Events Worker — processo independente para Docker.
 
-Faz polling contínuo do outbox (Purchase + Lead/Contact) e envia os eventos para
-a Meta Conversions API em segundo plano. O request da API apenas enfileira o
-outbox e responde rápido — o envio acontece aqui, de forma assíncrona.
+Replaces meta_capi_worker_entrypoint.py. Processes the unified events_outbox
+table and drains old outbox tables (dual-write).
 
-Além do polling rápido, mantém dois jobs diários herdados do antigo scheduler:
+Mantém polling rápido do outbox unificado + jobs diários herdados:
   - Safety-net Meta às HOUR:MINUTE (busca purchases do dia que não enfileiraram).
   - Autopagamento semanal (payroll) às PAYROLL_HOUR:PAYROLL_MINUTE.
 
-Uso: python meta_capi_worker_entrypoint.py
+Uso: python events_worker_entrypoint.py
 
 Variáveis de ambiente:
   META_CAPI_WORKER_INTERVAL_SECONDS — intervalo do polling (default: 5)
@@ -65,7 +64,11 @@ PAYROLL_MINUTE = int(os.environ.get("PAYROLL_AUTO_MINUTE", 0))
 
 
 def run_outbox_cycle() -> None:
-    """Ciclo de polling: envia pendentes + failed-retryable (Purchase e Lead).
+    """Ciclo de polling: envia pendentes + failed-retryable de todas as outboxes.
+
+    1. Outbox unificado (events_outbox) — Meta CAPI + GA4.
+    2. Marketing conversion outbox (marketing_conversion_outbox) — drain legado.
+    3. Meta CAPI purchase + lead outboxes — drain legado.
 
     Itera sobre lojas ativas com limite por loja para evitar que uma loja
     consuma todo o lote e paralise as demais.
@@ -78,18 +81,23 @@ def run_outbox_cycle() -> None:
                 SendDailyPurchasesToMetaCommand,
             )
             from app.models.store import Store
+            from app.services.events_dispatcher import EventsDispatcher
+            from app.services.marketing_conversion_dispatcher import (
+                MarketingConversionDispatcher,
+            )
 
             active_stores = Store.query.filter_by(active=True).all()
             if not active_stores:
                 active_stores = [None]  # fallback: processamento global
             per_store_limit = max(1, 50 // max(len(active_stores), 1))
 
-            from app.services.marketing_conversion_dispatcher import (
-                MarketingConversionDispatcher,
-            )
+            # 1. Outbox unificado (Meta CAPI + GA4)
+            unified_stats = EventsDispatcher().process_cycle(limit=50)
 
+            # 2. Marketing conversion outbox — drain legado
             marketing_stats = MarketingConversionDispatcher().process_cycle(limit=50)
 
+            # 3. Meta CAPI purchase + lead outboxes — drain legado
             total_touched = 0
             for store in active_stores:
                 store_ref_id = store.id if store else None
@@ -107,19 +115,23 @@ def run_outbox_cycle() -> None:
                 )
                 total_touched += touched
 
-            if total_touched:
+            unified_touched = unified_stats.get("processed", 0)
+            if unified_touched or total_touched or marketing_stats.get("processed", 0):
                 print(
-                    "[CAPI_WORKER] Ciclo — "
-                    f"Purchase ok={stats.get('sent_success', 0)} falha={stats.get('sent_failed', 0)} | "
-                    f"Lead ok={stats.get('lead_sent_success', 0)} "
+                    "[EVENTS_WORKER] Ciclo — "
+                    f"Unificado ok={unified_stats.get('sent', 0)} "
+                    f"falha={unified_stats.get('failed', 0)} | "
+                    f"Purchase legado ok={stats.get('sent_success', 0)} "
+                    f"falha={stats.get('sent_failed', 0)} | "
+                    f"Lead legado ok={stats.get('lead_sent_success', 0)} "
                     f"falha={stats.get('lead_sent_failed', 0)} | "
-                    f"Marketing ok={marketing_stats.get('sent', 0)} "
+                    f"Marketing legado ok={marketing_stats.get('sent', 0)} "
                     f"submetido={marketing_stats.get('submitted', 0)} "
                     f"falha={marketing_stats.get('failed', 0)}",
                     flush=True,
                 )
     except Exception as exc:
-        print(f"[CAPI_WORKER] Erro no ciclo de outbox: {exc}", flush=True)
+        print(f"[EVENTS_WORKER] Erro no ciclo de outbox: {exc}", flush=True)
 
 
 def run_daily_send() -> None:
@@ -131,15 +143,15 @@ def run_daily_send() -> None:
 
             result = SendDailyPurchasesToMetaCommand().execute()
             print(
-                "[CAPI_WORKER] Safety-net diário — "
+                "[EVENTS_WORKER] Safety-net diário — "
                 f"Purchase ok={result.get('sent_success', 0)} falha={result.get('sent_failed', 0)} | "
                 f"Lead funil ok={result.get('lead_sent_success', 0)} "
                 f"falha={result.get('lead_sent_failed', 0)}",
                 flush=True,
             )
-            print(f"[CAPI_WORKER] Stats completas: {result}", flush=True)
+            print(f"[EVENTS_WORKER] Stats completas: {result}", flush=True)
     except Exception as exc:
-        print(f"[CAPI_WORKER] Erro no safety-net diário: {exc}", flush=True)
+        print(f"[EVENTS_WORKER] Erro no safety-net diário: {exc}", flush=True)
 
 
 def run_payroll_auto_today() -> None:
@@ -161,7 +173,7 @@ def run_payroll_auto_today() -> None:
 def main() -> None:
     now_brt = datetime.datetime.now(BRAZIL_TZ)
     print(
-        f"[CAPI_WORKER] Processo ativo desde {now_brt.isoformat()} — "
+        f"[EVENTS_WORKER] Processo ativo desde {now_brt.isoformat()} — "
         f"polling do outbox a cada {INTERVAL}s (backoff retry {RETRY_BACKOFF}s); "
         f"safety-net Meta às {HOUR:02d}:{MINUTE:02d} BRT, "
         f"payroll às {PAYROLL_HOUR:02d}:{PAYROLL_MINUTE:02d} BRT.",
@@ -184,18 +196,18 @@ def main() -> None:
                 token = cfg.get("META_CAPI_ACCESS_TOKEN", "")
                 token_tail = token[-6:] if token else "VAZIO"
                 print(
-                    f"[CAPI_WORKER] Store #{store.id} ({store.slug}): "
+                    f"[EVENTS_WORKER] Store #{store.id} ({store.slug}): "
                     f"pixel={pixel or 'VAZIO'} token=***{token_tail}",
                     flush=True,
                 )
                 if not pixel or not token:
                     print(
-                        f"[CAPI_WORKER] AVISO: Store #{store.id} ({store.slug}) "
+                        f"[EVENTS_WORKER] AVISO: Store #{store.id} ({store.slug}) "
                         f"sem pixel ou token configurado!",
                         flush=True,
                     )
     except Exception as exc:
-        print(f"[CAPI_WORKER] Erro na validacao de token: {exc}", flush=True)
+        print(f"[EVENTS_WORKER] Erro na validacao de token: {exc}", flush=True)
 
     last_run_date = None
     last_payroll_date = None
@@ -210,7 +222,7 @@ def main() -> None:
         if now.hour == HOUR and now.minute == MINUTE and last_run_date != today:
             last_run_date = today
             print(
-                f"[CAPI_WORKER] Disparando safety-net diário às {now.strftime('%H:%M')} BRT",
+                f"[EVENTS_WORKER] Disparando safety-net diário às {now.strftime('%H:%M')} BRT",
                 flush=True,
             )
             run_daily_send()
@@ -230,5 +242,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[CAPI_WORKER] Encerrado.", flush=True)
+        print("\n[EVENTS_WORKER] Encerrado.", flush=True)
         sys.exit(0)

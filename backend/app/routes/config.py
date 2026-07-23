@@ -143,6 +143,8 @@ def _validate_field_for_channel(channel: str, field: str) -> str | None:
 def _normalize_field_value(field: str, value) -> tuple[object, str | None]:
     """Converte o payload bruto no valor a persistir, ou erro de validacao."""
     if value is None:
+        if field in BOOLEAN_FIELDS:
+            return None, f"{field} não pode ser nulo"
         return None, None
     if field in BOOLEAN_FIELDS:
         if not isinstance(value, bool):
@@ -365,6 +367,30 @@ def channel_validation_status(channel: str):
         return jsonify({"success": False, "error": "Falha ao ler status do canal"}), 500
 
 
+@config_bp.route("/integrations/tokens-diagnostic", methods=["GET"])
+@requires_role("admin")
+def tokens_diagnostic():
+    """Diagnóstico: retorna os últimos 6 caracteres de cada token salvo no banco.
+
+    Útil para comparar com o token gerado no Meta Events Manager e confirmar
+    se o token no banco é o mesmo que o Meta espera.
+    """
+    store = _current_store()
+    settings = get_settings(store.id)
+    if not settings:
+        return jsonify({"success": False, "error": "Nenhuma configuração encontrada"}), 404
+
+    result = {}
+    for field in SECRET_FIELDS:
+        raw = settings.get_secret(field)
+        result[field] = {
+            "has_value": bool(raw),
+            "tail": raw[-6:] if raw and len(raw) >= 6 else (raw if raw else None),
+            "length": len(raw) if raw else 0,
+        }
+    return jsonify({"success": True, "store": store.slug, "tokens": result})
+
+
 @config_bp.route("/taxa-entrega", methods=["GET"])
 @requires_edit_auth
 def get_taxa_entrega_config():
@@ -452,10 +478,13 @@ def update_meta_faturamento():
 @config_bp.route("/taxa-cartao", methods=["GET"])
 @requires_edit_auth
 def get_taxa_cartao_config():
-    """Retorna a configuração atual da taxa de cartão (débito + crédito)."""
+    """Retorna a configuracao atual da taxa de cartao (debito + credito)."""
     try:
-        taxa_cartao_service.recarregar()
-        return jsonify({"success": True, "config": taxa_cartao_service.config})
+        from flask import g
+
+        store_ref_id = getattr(g, "tenant_store_id", None)
+        config = taxa_cartao_service.load_from_store(store_ref_id)
+        return jsonify({"success": True, "config": config})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -463,8 +492,11 @@ def get_taxa_cartao_config():
 @config_bp.route("/taxa-cartao", methods=["POST"])
 @requires_edit_auth
 def update_taxa_cartao_config():
-    """Atualiza a configuração da taxa de cartão."""
+    """Atualiza a configuracao da taxa de cartao."""
     try:
+        from flask import g
+
+        store_ref_id = getattr(g, "tenant_store_id", None)
         data = _parse_json_body() or {}
 
         if "debito_pct" not in data or "credito" not in data:
@@ -472,7 +504,7 @@ def update_taxa_cartao_config():
                 jsonify(
                     {
                         "success": False,
-                        "error": "Campos 'debito_pct' e 'credito' obrigatórios",
+                        "error": "Campos 'debito_pct' e 'credito' obrigatorios",
                     }
                 ),
                 400,
@@ -481,7 +513,7 @@ def update_taxa_cartao_config():
         try:
             debito_pct = float(data["debito_pct"])
         except (TypeError, ValueError):
-            return jsonify({"success": False, "error": "debito_pct inválido"}), 400
+            return jsonify({"success": False, "error": "debito_pct invalido"}), 400
         if debito_pct < 0 or debito_pct > 100:
             return (
                 jsonify({"success": False, "error": "debito_pct fora do intervalo 0-100"}),
@@ -491,7 +523,7 @@ def update_taxa_cartao_config():
         credito_raw = data["credito"]
         if not isinstance(credito_raw, list) or not credito_raw:
             return (
-                jsonify({"success": False, "error": "credito deve ser uma lista não-vazia"}),
+                jsonify({"success": False, "error": "credito deve ser uma lista nao-vazia"}),
                 400,
             )
 
@@ -525,12 +557,8 @@ def update_taxa_cartao_config():
         credito_validado.sort(key=lambda f: f["parcelas"])
         novo = {"debito_pct": debito_pct, "credito": credito_validado}
 
-        os.makedirs(os.path.dirname(taxa_cartao_service.config_path), exist_ok=True)
-        with open(taxa_cartao_service.config_path, "w", encoding="utf-8") as f:
-            json.dump(novo, f, indent=4, ensure_ascii=False)
+        taxa_cartao_service.save_to_store(novo, store_ref_id)
 
-        taxa_cartao_service.recarregar()
-
-        return jsonify({"success": True, "message": "Configuração atualizada", "config": novo})
+        return jsonify({"success": True, "message": "Configuracao atualizada", "config": novo})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

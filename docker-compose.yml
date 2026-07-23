@@ -169,6 +169,11 @@ services:
       GOOGLE_CREDENTIALS_JSON: ${GOOGLE_CREDENTIALS_JSON:-}
       # Google Maps Platform (geocodificação e rotas)
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      # Mercado Pago Point (pagamentos presenciais -> Bling)
+      MERCADO_PAGO_ENABLED: ${MERCADO_PAGO_ENABLED:-false}
+      MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN:-}
+      MERCADO_PAGO_PUBLIC_KEY: ${MERCADO_PAGO_PUBLIC_KEY:-}
+      MERCADO_PAGO_WEBHOOK_SECRET: ${MERCADO_PAGO_WEBHOOK_SECRET:-}
     volumes:
       - ./backend:/app/backend
     ports:
@@ -184,7 +189,7 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    entrypoint: ["python", "meta_capi_worker_entrypoint.py"]
+    entrypoint: ["python", "events_worker_entrypoint.py"]
     environment:
       FLASK_ENV: production
       APP_ENV: production
@@ -231,6 +236,11 @@ services:
       BLING_STORE_ID: ${BLING_STORE_ID:-default}
       BLING_WORKER_INTERVAL_SECONDS: ${BLING_WORKER_INTERVAL_SECONDS:-10}
       BLING_WORKER_LIMIT: ${BLING_WORKER_LIMIT:-20}
+      # Mercado Pago Point
+      MERCADO_PAGO_ENABLED: ${MERCADO_PAGO_ENABLED:-false}
+      MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN:-}
+      MERCADO_PAGO_PUBLIC_KEY: ${MERCADO_PAGO_PUBLIC_KEY:-}
+      MERCADO_PAGO_WEBHOOK_SECRET: ${MERCADO_PAGO_WEBHOOK_SECRET:-}
     volumes:
       - ./backend:/app/backend
 

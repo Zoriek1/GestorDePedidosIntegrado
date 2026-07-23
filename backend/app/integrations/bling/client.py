@@ -145,6 +145,9 @@ class BlingClient:
     def create_product(self, payload: Dict[str, Any]) -> Any:
         return self.post("/produtos", payload)
 
+    def create_receivable(self, payload: Dict[str, Any]) -> Any:
+        return self.post("/contas/receber", payload)
+
     def search_contacts(self, params: Optional[Dict[str, Any]] = None) -> Any:
         return self.get("/contatos", params=params or {})
 

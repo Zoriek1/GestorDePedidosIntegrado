@@ -147,18 +147,6 @@ def init_extensions(app):
     # Configurar PRAGMAs via event hook (apenas SQLite)
     configure_sqlite_pragmas()
 
-    if _is_sqlite(app.config.get("SQLALCHEMY_DATABASE_URI", "")):
-        foreign_keys_status = (
-            "ON"
-            if os.environ.get("SQLITE_FOREIGN_KEYS", "ON").upper() in ("ON", "1", "TRUE", "YES")
-            else "OFF"
-        )
-        print(
-            f"[DB] PRAGMAs configurados via event hook: WAL, synchronous, foreign_keys={foreign_keys_status}, busy_timeout"
-        )
-    else:
-        print("[DB] PostgreSQL detectado - PRAGMAs não aplicados")
-
 
 def init_database(app):
     """
@@ -178,19 +166,6 @@ def init_database(app):
 
         if _is_sqlite(uri):
             db_path = _get_sqlite_path(uri, app)
-            print(f"[DB] Caminho absoluto: {db_path.resolve()}")
-            print(f"[DB] Arquivo existe: {db_path.exists()}")
-
-            if db_path.exists():
-                from datetime import datetime
-
-                stat = db_path.stat()
-                size_kb = stat.st_size / 1024
-                mtime = datetime.fromtimestamp(stat.st_mtime)
-                print(f"[DB] Tamanho: {size_kb:.2f} KB")
-                print(f"[DB] Modificado: {mtime}")
-            else:
-                print("[DB] AVISO: Arquivo não existe!")
 
             if (
                 is_production
@@ -210,12 +185,10 @@ def init_database(app):
 
             should_create = not db_path.exists() or allow_bootstrap
         else:
-            # PostgreSQL: verificar conexão
-            print("[DB] PostgreSQL - verificando conexão...")
+            # PostgreSQL: verificar conexão (falha fecha em produção)
             try:
                 db.session.execute(text("SELECT 1"))
                 db.session.commit()
-                print("[DB] Conexão OK")
             except Exception as e:
                 if is_production and not allow_bootstrap:
                     print(f"[ERRO] Falha ao conectar ao PostgreSQL: {e}")
@@ -227,9 +200,6 @@ def init_database(app):
         if should_create:
             db.create_all()
             print("[OK] Banco de dados inicializado")
-            print(f"[OK] Tabelas criadas: {list(db.metadata.tables.keys())}")
-        else:
-            print("[OK] Banco de dados verificado")
 
         # Garante colunas adicionadas em versões posteriores sem migration manual.
         _ensure_runtime_columns()

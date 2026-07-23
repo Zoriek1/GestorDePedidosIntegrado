@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from . import dados_operacionais, ga4, google_ads, meta_capi, utmify
+from . import dados_operacionais, ga4, meta_capi, utmify
 
 HttpGet = Callable[[str, float], tuple[int, dict | str]]
 
@@ -39,11 +39,6 @@ def validate(
             return ga4.validate_ga4_measurement_id(value)
         if field == "ga4_api_secret":
             return ga4.validate_ga4_api_secret(value, http_get=http_get)
-    elif channel == "google_ads":
-        if field == "google_ads_customer_id":
-            return google_ads.validate_google_ads_customer_id(value)
-        if field == "google_ads_conversion_action_id":
-            return google_ads.validate_google_ads_conversion_action_id(value)
     elif channel == "utmify":
         if field == "utmify_api_token":
             return utmify.validate_utmify_api_token(value)

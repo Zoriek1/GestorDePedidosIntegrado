@@ -7,6 +7,7 @@ from sqlalchemy import func
 from app import db
 from app.middleware import requires_any_role
 from app.models.marketing_conversion_outbox import MarketingConversionOutbox
+from app.models.events_outbox import EventsOutbox
 from app.services.marketing_diagnostics_service import MarketingDiagnosticsService
 
 marketing_conversions_bp = Blueprint(
@@ -56,6 +57,32 @@ def list_status():
     except ValueError:
         limit = 100
     rows = query.order_by(MarketingConversionOutbox.created_at.desc()).limit(limit).all()
+    # Also query unified events_outbox
+    events_query = EventsOutbox.query
+    if destino:
+        events_query = events_query.filter_by(destino=destino)
+    if status:
+        events_query = events_query.filter_by(status=status)
+    events_rows = events_query.order_by(EventsOutbox.created_at.desc()).limit(limit).all()
+
+    # Merge: convert events_outbox rows to same format
+    all_items = [row.to_dict() for row in rows]
+    for er in events_rows:
+        all_items.append({
+            "id": er.id,
+            "pedido_id": er.pedido_id,
+            "destino": er.destino,
+            "evento": er.evento,
+            "status": er.status,
+            "last_http_status": None,
+            "last_error": er.last_error,
+            "request_id": None,
+            "next_status_check_at": None,
+            "created_at": er.created_at.isoformat() if er.created_at else None,
+        })
+    # Sort by created_at desc and limit
+    all_items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    all_items = all_items[:limit]
     counts = (
         db.session.query(
             MarketingConversionOutbox.destino,
@@ -71,7 +98,7 @@ def list_status():
             "counts": [
                 {"destino": item[0], "status": item[1], "total": item[2]} for item in counts
             ],
-            "items": [row.to_dict() for row in rows],
+            "items": all_items,
         }
     )
 

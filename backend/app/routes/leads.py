@@ -676,6 +676,7 @@ def criar_lead():
         db.session.commit()
         # Enfileira no outbox; o capi-worker envia de forma assíncrona.
         if is_lead_funnel_enabled() and is_whatsapp and meta_event_id_contact:
+            # Dual-write: old Meta CAPI outbox (draining)
             repo = MetaCapiLeadOutboxRepository()
             repo.create_contact_from_lead(lead)
             if lead.phone:
@@ -683,6 +684,11 @@ def criar_lead():
                     lead.meta_event_id_lead = str(uuid.uuid4())
                     db.session.commit()
                 repo.create_lead_stage_from_lead(lead, event_time=datetime_now_brazil())
+            # New unified outbox
+            from app.services.events_service import EventsService
+            events_svc = EventsService()
+            if lead.phone:
+                events_svc.enqueue_lead(lead, event_time=datetime_now_brazil())
         return (
             jsonify(
                 {
@@ -862,6 +868,12 @@ def _apply_lead_status_update(lead: Lead, data: dict):
             repo.create_lead_stage_from_lead(lead, event_time=now_brt)
         if fire_disqualified:
             repo.create_disqualified_from_lead(lead, event_time=now_brt)
+        from app.services.events_service import EventsService
+        events_svc = EventsService()
+        if fire_lead_confirmed:
+            events_svc.enqueue_lead(lead, event_time=now_brt)
+        if fire_disqualified:
+            events_svc.enqueue_disqualified(lead, event_time=now_brt)
 
     return jsonify({"ok": True, "lead": _serialize_lead(lead)}), 200
 
@@ -1373,6 +1385,12 @@ def atualizar_status_leads_em_lote():
             repo.create_lead_stage_from_lead(lead, event_time=now_brt)
         for lead in transitioned_to_descarte:
             repo.create_disqualified_from_lead(lead, event_time=now_brt)
+        from app.services.events_service import EventsService
+        events_svc = EventsService()
+        for lead in transitioned_to_confirmed:
+            events_svc.enqueue_lead(lead, event_time=now_brt)
+        for lead in transitioned_to_descarte:
+            events_svc.enqueue_disqualified(lead, event_time=now_brt)
 
     return jsonify(
         {
@@ -1465,6 +1483,10 @@ def desqualificar_leads_em_lote():
         now_brt = datetime_now_brazil()
         for lead in transitioned:
             repo.create_disqualified_from_lead(lead, event_time=now_brt)
+        from app.services.events_service import EventsService
+        events_svc = EventsService()
+        for lead in transitioned:
+            events_svc.enqueue_disqualified(lead, event_time=now_brt)
 
     return jsonify(
         {

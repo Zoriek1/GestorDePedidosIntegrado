@@ -11,10 +11,6 @@ from datetime import datetime, timezone
 import requests
 from flask import current_app
 
-from app.services.marketing_conversion_dispatcher import (
-    DATAMANAGER_INGEST_URL,
-    MarketingConversionDispatcher,
-)
 from app.services.meta_capi import MetaConversionsApiService
 
 
@@ -48,22 +44,6 @@ class MarketingDiagnosticsService:
                     ),
                     "measurement_id": tenant_config.get("GA4_MEASUREMENT_ID") or None,
                 },
-                "google_ads": {
-                    "configured": bool(
-                        tenant_config.get("GOOGLE_DATAMANAGER_ENABLED")
-                        and current_app.config.get("GOOGLE_CLOUD_PROJECT_ID")
-                        and tenant_config.get("GOOGLE_ADS_CUSTOMER_ID")
-                        and tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
-                    ),
-                    "enabled": bool(tenant_config.get("GOOGLE_DATAMANAGER_ENABLED")),
-                    "validate_only": bool(
-                        current_app.config.get("GOOGLE_DATAMANAGER_VALIDATE_ONLY", True)
-                    ),
-                    "customer_id": tenant_config.get("GOOGLE_ADS_CUSTOMER_ID") or None,
-                    "conversion_action_id": (
-                        tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID") or None
-                    ),
-                },
             }
         return result
 
@@ -74,8 +54,6 @@ class MarketingDiagnosticsService:
                 result = self._meta(meta_test_event_code)
             elif destination == "ga4":
                 result = self._ga4()
-            elif destination == "google_ads":
-                result = self._google_ads()
             else:
                 result = {
                     "ok": False,
@@ -183,67 +161,3 @@ class MarketingDiagnosticsService:
                 "error": f"ga4_validation:{','.join(errors[:5])}",
             }
         return {"ok": True, "status": "validated", "http_status": response.status_code}
-
-    def _google_ads(self) -> dict:
-        from app.services.secure_config import secure_runtime_config
-
-        with secure_runtime_config(self.store_ref_id) as tenant_config:
-            customer_id = "".join(
-                ch for ch in tenant_config.get("GOOGLE_ADS_CUSTOMER_ID", "") if ch.isdigit()
-            )
-            action_id = tenant_config.get("GOOGLE_ADS_CONVERSION_ACTION_ID")
-            if not tenant_config.get("GOOGLE_DATAMANAGER_ENABLED"):
-                return {"ok": False, "status": "failed", "error": "datamanager_desabilitado"}
-            if not customer_id or not action_id:
-                return {"ok": False, "status": "failed", "error": "datamanager_config_incompleta"}
-        dispatcher = MarketingConversionDispatcher(http=self.http)
-        diagnostic_id = uuid.uuid4().hex
-        response = self.http.post(
-            DATAMANAGER_INGEST_URL,
-            headers=dispatcher._google_headers(),
-            json={
-                "destinations": [
-                    {
-                        "operatingAccount": {
-                            "accountType": "GOOGLE_ADS",
-                            "accountId": customer_id,
-                        },
-                        "productDestinationId": str(action_id),
-                    }
-                ],
-                "events": [
-                    {
-                        "transactionId": f"GESTOR-DIAG-{diagnostic_id}",
-                        "eventTimestamp": datetime.now(timezone.utc).isoformat(),
-                        "conversionValue": 0.01,
-                        "currency": "BRL",
-                        "eventSource": "WEB",
-                        "adIdentifiers": {"gclid": f"diagnostic-{diagnostic_id}"},
-                    }
-                ],
-                "encoding": "HEX",
-                "validateOnly": True,
-            },
-            timeout=20,
-        )
-        if response.status_code < 200 or response.status_code >= 300:
-            return {
-                "ok": False,
-                "status": "failed",
-                "http_status": response.status_code,
-                "error": f"datamanager_http_{response.status_code}",
-            }
-        request_id = response.json().get("requestId")
-        if not request_id:
-            return {
-                "ok": False,
-                "status": "failed",
-                "http_status": response.status_code,
-                "error": "datamanager_sem_request_id",
-            }
-        return {
-            "ok": True,
-            "status": "validated",
-            "http_status": response.status_code,
-            "request_id": str(request_id),
-        }

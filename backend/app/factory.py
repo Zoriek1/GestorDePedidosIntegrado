@@ -84,6 +84,7 @@ def create_app(config=None):
         from app.routes.leads import leads_bp
         from app.routes.ledger_routes import ledger_bp
         from app.routes.marketing_conversions import marketing_conversions_bp
+        from app.routes.mercado_pago import mercado_pago_bp
         from app.routes.meta_gateway import meta_gateway_bp
         from app.routes.notifications import notifications_bp
         from app.routes.nuvemshop import nuvemshop_bp
@@ -120,6 +121,7 @@ def create_app(config=None):
         # Meta Gateway (antes das rotas estáticas)
         app.register_blueprint(meta_gateway_bp)
         app.register_blueprint(marketing_conversions_bp)
+        app.register_blueprint(mercado_pago_bp)
 
         # Storefront: endpoints públicos para scripts Nuvemshop (CORS *)
         app.register_blueprint(storefront_bp)
@@ -144,7 +146,6 @@ def create_app(config=None):
         from app.openapi import init_openapi
 
         init_openapi(app)
-        print("[OPENAPI] Swagger UI disponível em /docs/swagger")
     except ImportError:
         # flask-smorest não instalado, continuar sem documentação
         print("[AVISO] flask-smorest não instalado. Swagger UI não estará disponível.")
@@ -256,7 +257,6 @@ def setup_security(app):
     from app.middleware import setup_security_middleware
 
     ENABLE_RATE_LIMIT = os.environ.get("ENABLE_RATE_LIMIT", "true").lower() == "true"
-    ENABLE_DEBUG_ENDPOINTS = os.environ.get("ENABLE_DEBUG_ENDPOINTS", "false").lower() == "true"
 
     try:
         setup_security_middleware(
@@ -264,15 +264,6 @@ def setup_security(app):
             enable_auth=False,  # Autenticação global desativada - apenas rotas específicas
             enable_rate_limit=ENABLE_RATE_LIMIT,
         )
-        print("[SEGURANCA] OK Autenticacao seletiva ATIVADA")
-        print(
-            "[SEGURANCA]   Visualizacao livre - Apenas criar/deletar pedidos requerem autenticacao"
-        )
-        print("[SEGURANCA]   Usuario: admin")
-        if ENABLE_RATE_LIMIT:
-            print("[SEGURANCA] OK Rate Limiting ATIVADO (60/min, 1000/hora)")
-        if not ENABLE_DEBUG_ENDPOINTS:
-            print("[SEGURANCA] OK Endpoints de Debug DESATIVADOS")
     except ImportError:
         print("[AVISO] Middleware de segurança não encontrado.")
     except Exception as e:

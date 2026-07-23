@@ -33,23 +33,11 @@ export const INTEGRATION_CHANNELS: ChannelDef[] = [
     label: 'Google Analytics 4',
     icon: 'BarChart3',
     type: 'field',
-    testable: false,
+    testable: true,
     fields: [
       { key: 'ga4_measurement_id', label: 'Measurement ID', type: 'text', placeholder: 'G-XXXXXXXXXX', required: true },
       { key: 'ga4_api_secret', label: 'API Secret', type: 'password', required: true },
       { key: 'ga4_validate_only', label: 'Somente validação', type: 'boolean' },
-    ],
-  },
-  {
-    id: 'google_ads',
-    label: 'Google Ads',
-    icon: 'Megaphone',
-    type: 'field',
-    testable: false,
-    fields: [
-      { key: 'google_ads_customer_id', label: 'Customer ID', type: 'text', placeholder: '123-456-7890', required: true },
-      { key: 'google_ads_conversion_action_id', label: 'Conversion Action ID', type: 'text', placeholder: '12345678901', required: true },
-      { key: 'google_datamanager_enabled', label: 'Data Manager ativo', type: 'boolean' },
     ],
   },
   {
@@ -90,4 +78,21 @@ export const INTEGRATION_CHANNELS: ChannelDef[] = [
     type: 'oauth',
     testable: true,
   },
+  {
+    id: 'mercado_pago',
+    label: 'Mercado Pago Point',
+    icon: 'CreditCard',
+    type: 'field',
+    testable: false,
+    fields: [
+      { key: 'mercado_pago_access_token', label: 'Access Token', type: 'password', required: true },
+      { key: 'mercado_pago_public_key', label: 'Public Key', type: 'password' },
+      { key: 'mercado_pago_webhook_secret', label: 'Webhook Secret', type: 'password' },
+    ],
+  },
 ];
+
+export const CHANNEL_EVENTS: Record<string, string[]> = {
+  meta_capi: ['Lead', 'Lead Disqualificado', 'Compra'],
+  ga4: ['Lead', 'Compra', 'Lead Disqualificado'],
+};

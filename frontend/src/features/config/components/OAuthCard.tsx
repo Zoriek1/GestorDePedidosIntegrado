@@ -22,6 +22,8 @@ interface Props {
   testing?: boolean;
   /** Abre a configuração avançada do provedor (vendedor padrão, mapeamento etc). */
   onOpenAdvanced?: () => void;
+  /** Texto secundário exibido abaixo do label (ex: info da loja conectada). */
+  subtitle?: string;
 }
 
 export function OAuthCard({
@@ -32,6 +34,7 @@ export function OAuthCard({
   onTest,
   testing,
   onOpenAdvanced,
+  subtitle,
 }: Props) {
   const confirm = useConfirm();
 
@@ -50,9 +53,16 @@ export function OAuthCard({
       <CardContent>
         <Stack spacing={2}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="subtitle1" fontWeight={600}>
-              {label}
-            </Typography>
+            <Stack spacing={0}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {label}
+              </Typography>
+              {subtitle && (
+                <Typography variant="caption" color="text.secondary">
+                  {subtitle}
+                </Typography>
+              )}
+            </Stack>
             <Stack direction="row" spacing={0.5} alignItems="center">
               <Chip
                 label={connected ? 'Conectado' : 'Não conectado'}

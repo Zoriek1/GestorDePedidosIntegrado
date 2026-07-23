@@ -49,6 +49,8 @@ services:
       HOST: 0.0.0.0
       PORT: "5000"
       ENABLE_DEBUG_ENDPOINTS: "true"
+      # Mercado Pago Point (dev - desabilitado por padrão)
+      MERCADO_PAGO_ENABLED: "false"
     volumes:
       - ./backend:/app/backend                # código quente: edita e recarrega
     ports:

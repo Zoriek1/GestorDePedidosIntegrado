@@ -161,6 +161,15 @@ class BaseConfig:
     # Teto de paginas ao varrer /contas/receber procurando as contas do pedido.
     BLING_RECEIVABLE_SEARCH_PAGES = int(os.environ.get("BLING_RECEIVABLE_SEARCH_PAGES") or 10)
 
+    # Mercado Pago Point (pagamentos presenciais -> Bling)
+    MERCADO_PAGO_ENABLED = os.environ.get("MERCADO_PAGO_ENABLED", "false").lower() == "true"
+    MERCADO_PAGO_ACCESS_TOKEN = os.environ.get("MERCADO_PAGO_ACCESS_TOKEN") or ""
+    MERCADO_PAGO_PUBLIC_KEY = os.environ.get("MERCADO_PAGO_PUBLIC_KEY") or ""
+    MERCADO_PAGO_WEBHOOK_SECRET = os.environ.get("MERCADO_PAGO_WEBHOOK_SECRET") or ""
+    MERCADO_PAGO_API_BASE_URL = os.environ.get(
+        "MERCADO_PAGO_API_BASE_URL", "https://api.mercadopago.com"
+    )
+
     # Multi-tenant: força o modo estrito (OAuth state/callback por loja, sem
     # fallbacks single-tenant) mesmo com uma única loja. Por padrão o modo é
     # data-driven (ativa sozinho quando existe mais de uma loja ATIVA); este flag

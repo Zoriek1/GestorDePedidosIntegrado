@@ -45,7 +45,7 @@ Camadas: `routes/` → `services/` → `repositories/` → `models/`. Routes val
 
 ### Blueprints ([backend/app/factory.py](backend/app/factory.py))
 
-`pedidos_bp` `/api/pedidos/*` · `rotas_bp` `/api/pedidos/rota-otimizada` · `clientes_bp` `/api/clientes/*` · `fontes_bp` `/api/fontes-pedido/*` · `core_bp` (`/api/health`, `/api/cep/<cep>`, `/api/stats`, `/api/cleanup`, distâncias/taxas, export leads) · `auth_bp` `/api/auth/*` · `config_bp` `/api/config/*` · `backup_admin_bp` `/api/admin/backup/*` · `nuvemshop_bp` `/api/integrations/nuvemshop/*` · `notifications_bp` `/api/notifications/*` (VAPID) · `leads_bp` `/api/leads/*` · `users_bp` `/api/users/*` (CRUD + payroll + comissão) · `ledger_bp` `/api/ledger/*` · `meta_gateway_bp` `/capig/*` · `storefront_bp` `/storefront/*` · `debug_bp` `/api/debug/*` (só se `ENABLE_DEBUG_ENDPOINTS=true`).
+`pedidos_bp` `/api/pedidos/*` · `rotas_bp` `/api/pedidos/rota-otimizada` · `clientes_bp` `/api/clientes/*` · `fontes_bp` `/api/fontes-pedido/*` · `core_bp` (`/api/health`, `/api/cep/<cep>`, `/api/stats`, `/api/cleanup`, distâncias/taxas, export leads) · `auth_bp` `/api/auth/*` · `config_bp` `/api/config/*` · `backup_admin_bp` `/api/admin/backup/*` · `nuvemshop_bp` `/api/integrations/nuvemshop/*` · `notifications_bp` `/api/notifications/*` (VAPID) · `leads_bp` `/api/leads/*` · `users_bp` `/api/users/*` (CRUD + payroll + comissão) · `ledger_bp` `/api/ledger/*` · `meta_gateway_bp` `/capig/*` · `storefront_bp` `/storefront/*` · `debug_bp` `/api/debug/*` (só se `ENABLE_DEBUG_ENDPOINTS=true`) · `mercado_pago_bp` `/api/integrations/mercadopago/*` (Point → Bling).
 
 ### Roles
 

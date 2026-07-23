@@ -38,6 +38,8 @@ python scripts/migrations/convert_pedidos_fbc_seconds_to_ms.py
 python scripts/migrations/create_integration_validation_log.py
 python scripts/migrations/enforce_store_ref_not_null.py
 python scripts/migrations/scope_user_name_unique_to_store.py
+python scripts/migrations/create_mercado_pago_integration.py
+python scripts/migrations/add_taxa_cartao_to_store_settings.py
 
 # Backfills que consultam via ORM devem rodar DEPOIS das migrations de schema
 # tenant (numero_pedido/store_ref_id em pedidos/fontes_pedido). Se rodarem antes,

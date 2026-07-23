@@ -252,3 +252,54 @@ Como usar no Ads Manager:
 3. Meta passa a evitar mostrar anúncio para lookalikes dos desqualificados
 
 Em 2-3 semanas, a métrica "% de leads desqualificados" deve cair se a exclusão estiver pegando.
+
+---
+
+## Mercado Pago Point (pagamentos presenciais → Bling)
+
+Quando um pagamento presencial é aprovado na maquininha Mercado Pago Point, o sistema recebe um webhook, enfileira na `mercado_pago_outbox`, e o worker cria uma conta a receber no Bling (tipo "Recebimento", contato "Mercado Pago [Maquininha]", categoria "Vendas", conta financeira "Mercado Pago Point") já baixada (quitada), usando o valor líquido.
+
+### Fluxo
+
+1. Pagamento aprovado na maquininha Point
+2. Mercado Pago envia webhook (`payment.updated`) para `/api/integrations/mercadopago/webhook`
+3. Sistema valida HMAC, extrai `payment_id`, insere na `mercado_pago_outbox`
+4. Worker (extensão do `bling-worker`) processa a fila:
+   - Busca detalhes do pagamento via `GET /v1/payments/:id`
+   - Filtra: só `status=approved` + `payment_type_id=point_of_sale`
+   - Cria/busca contato "Mercado Pago [Maquininha]" no Bling
+   - Cria conta a receber (Recebimento, Vendas, Mercado Pago Point)
+   - Baixa a conta a receber
+
+### Configuração
+
+**Variáveis de ambiente:**
+```env
+MERCADO_PAGO_ENABLED=false
+MERCADO_PAGO_ACCESS_TOKEN=APP_USR-...
+MERCADO_PAGO_PUBLIC_KEY=APP_USR-...
+MERCADO_PAGO_WEBHOOK_SECRET=seu-secret-aqui
+```
+
+**Ou configure via interface:** Configurações > Mercado Pago Point
+
+**Setup automático:** `POST /api/integrations/mercadopago/setup` cria o webhook no MP e garante o contato no Bling.
+
+### Pré-requisitos no Bling
+
+- Categoria "Vendas" deve existir (padrão do Bling)
+- Conta financeira "Mercado Pago Point" será criada automaticamente se necessário
+- Contato "Mercado Pago [Maquininha]" será criado automaticamente na primeira venda
+
+### Endpoints
+
+| Método | Rota | Auth | Descrição |
+|--------|------|------|-----------|
+| POST | `/api/integrations/mercadopago/webhook` | público (HMAC) | Recebe webhook do MP |
+| GET | `/api/integrations/mercadopago/status` | admin | Status da integração |
+| POST | `/api/integrations/mercadopago/setup` | admin | Cria webhook + contato |
+| GET | `/api/integrations/mercadopago/config` | admin | Configurações mascaradas |
+| POST | `/api/integrations/mercadopago/process-pending` | admin | Processa fila manualmente |
+| POST | `/api/integrations/mercadopago/outbox/:id/retry` | admin | Retry de entrada |
+| GET | `/api/integrations/mercadopago/outbox/:id/logs` | admin/atendente | Logs de uma entrada |
+| GET | `/api/integrations/mercadopago/outbox` | admin/atendente | Lista outbox |

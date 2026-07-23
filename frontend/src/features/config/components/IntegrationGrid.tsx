@@ -237,6 +237,15 @@ export function IntegrationGrid() {
           onTest={() => handleOAuthTest('nuvemshop', 'Nuvemshop')}
           testing={false}
           onOpenAdvanced={() => setAdvancedModal('nuvemshop')}
+          subtitle={
+            nuvemshopConfig.data?.connected
+              ? `Loja #${nuvemshopConfig.data.store_id}${
+                  nuvemshopConfig.data.default_vendedor_name
+                    ? ` · ${nuvemshopConfig.data.default_vendedor_name}`
+                    : ''
+                }`
+              : undefined
+          }
         />
         <OAuthCard
           provider="bling"

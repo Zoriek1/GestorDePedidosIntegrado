@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
 """Testes da integracao Mercado Pago Point."""
 
-from datetime import datetime
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.integrations.mercado_pago.errors import (
     MercadoPagoApiError,
-    MercadoPagoConfigError,
     MercadoPagoValidationError,
 )
 from app.integrations.mercado_pago.mapper import (
@@ -144,9 +141,7 @@ class TestMapperBuildSettlePayload:
             "date_approved": "2026-07-23T10:30:00.000-03:00",
             "description": "Venda Point #12345678",
         }
-        payload = self.mapper.build_bling_settle_payload(
-            info, "fa_789", "cat_456"
-        )
+        payload = self.mapper.build_bling_settle_payload(info, "fa_789", "cat_456")
 
         assert payload["portador"] == {"id": "fa_789"}
         assert payload["categoria"] == {"id": "cat_456"}

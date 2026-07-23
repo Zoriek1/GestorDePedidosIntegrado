@@ -14,8 +14,6 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from flask import current_app
-
 CREDITO_LABEL = "Cartão de Crédito"
 DEBITO_LABEL = "Cartão de Débito"
 

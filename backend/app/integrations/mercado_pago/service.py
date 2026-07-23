@@ -2,7 +2,6 @@
 """Servico de orquestracao da integracao Mercado Pago Point -> Bling."""
 
 import logging
-import time
 from datetime import timedelta
 from typing import Any, Dict, Optional
 
@@ -56,29 +55,19 @@ class MercadoPagoService:
         )
         return MercadoPagoClient(access_token=token, base_url=base_url)
 
-    def bling_client(
-        self, store_ref_id: Optional[int] = None
-    ) -> BlingClient:
+    def bling_client(self, store_ref_id: Optional[int] = None) -> BlingClient:
         resolved = store_ref_id if store_ref_id is not None else self.store_ref_id
-        access_token = BlingTokenService.get_valid_access_token(
-            store_ref_id=resolved
-        )
+        access_token = BlingTokenService.get_valid_access_token(store_ref_id=resolved)
         return BlingClient(
             access_token=access_token,
             base_url=current_app.config["BLING_API_BASE_URL"],
-            timeout_seconds=int(
-                current_app.config.get("BLING_TIMEOUT_SECONDS") or 20
-            ),
+            timeout_seconds=int(current_app.config.get("BLING_TIMEOUT_SECONDS") or 20),
             on_unauthorized=lambda: BlingTokenService.decrypt(
-                BlingTokenService.refresh_access_token(
-                    store_ref_id=resolved
-                ).access_token_encrypted
+                BlingTokenService.refresh_access_token(store_ref_id=resolved).access_token_encrypted
             ),
         )
 
-    def _resolve_access_token(
-        self, store_ref_id: Optional[int]
-    ) -> Optional[str]:
+    def _resolve_access_token(self, store_ref_id: Optional[int]) -> Optional[str]:
         """Busca access token via integration_settings_service (DB-first, env-fallback)."""
         try:
             from app.services.integration_settings_service import runtime_config
@@ -91,9 +80,7 @@ class MercadoPagoService:
             pass
         return current_app.config.get("MERCADO_PAGO_ACCESS_TOKEN") or None
 
-    def _resolve_webhook_secret(
-        self, store_ref_id: Optional[int]
-    ) -> Optional[str]:
+    def _resolve_webhook_secret(self, store_ref_id: Optional[int]) -> Optional[str]:
         try:
             from app.services.integration_settings_service import runtime_config
 
@@ -121,15 +108,11 @@ class MercadoPagoService:
             "enabled": bool(current_app.config.get("MERCADO_PAGO_ENABLED")),
             "connected": bool(token),
             "counts": {
-                "pending": MercadoPagoOutbox.query.filter_by(
-                    status="pending"
-                ).count(),
+                "pending": MercadoPagoOutbox.query.filter_by(status="pending").count(),
                 "failed": MercadoPagoOutbox.query.filter(
                     MercadoPagoOutbox.status.in_(["failed_retryable", "failed_final"])
                 ).count(),
-                "completed": MercadoPagoOutbox.query.filter_by(
-                    status="completed"
-                ).count(),
+                "completed": MercadoPagoOutbox.query.filter_by(status="completed").count(),
             },
         }
 
@@ -186,9 +169,7 @@ class MercadoPagoService:
     # Webhook handling
     # ------------------------------------------------------------------
 
-    def handle_webhook(
-        self, raw_body: bytes, headers: Dict[str, str]
-    ) -> Dict[str, Any]:
+    def handle_webhook(self, raw_body: bytes, headers: Dict[str, str]) -> Dict[str, Any]:
         import json
 
         from flask import g
@@ -200,8 +181,8 @@ class MercadoPagoService:
 
         try:
             body = json.loads(raw_body)
-        except Exception:
-            raise MercadoPagoValidationError("Body JSON invalido")
+        except Exception as exc:
+            raise MercadoPagoValidationError("Body JSON invalido") from exc
 
         event_type = body.get("type", "")
         data = body.get("data", {})
@@ -242,16 +223,18 @@ class MercadoPagoService:
     def process_pending(
         self, limit: int = 20, store_ref_id: Optional[int] = None
     ) -> Dict[str, Any]:
-        from datetime import datetime
-
         now = datetime_now_brazil()
-        query = MercadoPagoOutbox.query.filter(
-            MercadoPagoOutbox.status.in_(["pending", "failed_retryable"]),
-            db.or_(
-                MercadoPagoOutbox.next_retry_at.is_(None),
-                MercadoPagoOutbox.next_retry_at <= now,
-            ),
-        ).order_by(MercadoPagoOutbox.created_at.asc()).limit(limit)
+        query = (
+            MercadoPagoOutbox.query.filter(
+                MercadoPagoOutbox.status.in_(["pending", "failed_retryable"]),
+                db.or_(
+                    MercadoPagoOutbox.next_retry_at.is_(None),
+                    MercadoPagoOutbox.next_retry_at <= now,
+                ),
+            )
+            .order_by(MercadoPagoOutbox.created_at.asc())
+            .limit(limit)
+        )
 
         outboxes = query.all()
         processed = 0
@@ -265,9 +248,7 @@ class MercadoPagoService:
                 processed += 1
             except Exception:
                 errors += 1
-                logger.exception(
-                    "Erro processando outbox MP %s", outbox.mp_payment_id
-                )
+                logger.exception("Erro processando outbox MP %s", outbox.mp_payment_id)
 
         return {"processed": processed, "errors": errors, "total": len(outboxes)}
 
@@ -334,9 +315,7 @@ class MercadoPagoService:
                 info, contact_id, category_id, fa_id
             )
             resp = bc.post("/contas/receber", payload)
-            receivable_id = str(
-                (resp.get("data") if isinstance(resp, dict) else resp) or {}
-            )
+            receivable_id = str((resp.get("data") if isinstance(resp, dict) else resp) or {})
             # O Bling retorna o id no campo data.id
             if isinstance(resp, dict):
                 data = resp.get("data") or resp
@@ -354,9 +333,7 @@ class MercadoPagoService:
             # Step 5: Baixar (quitar)
             outbox.step = "settling_receivable"
             db.session.commit()
-            settle_payload = self.mapper.build_bling_settle_payload(
-                info, fa_id, category_id
-            )
+            settle_payload = self.mapper.build_bling_settle_payload(info, fa_id, category_id)
             bc.settle_receivable(receivable_id, settle_payload)
             self._log(
                 outbox,
@@ -394,8 +371,7 @@ class MercadoPagoService:
         for item in data:
             if (
                 isinstance(item, dict)
-                and str(item.get("nome") or "").strip().lower()
-                == CONTACT_NAME.lower()
+                and str(item.get("nome") or "").strip().lower() == CONTACT_NAME.lower()
                 and item.get("id")
             ):
                 return str(item["id"])
@@ -423,14 +399,11 @@ class MercadoPagoService:
         for cat in data:
             if (
                 isinstance(cat, dict)
-                and str(cat.get("descricao") or "").strip().lower()
-                == CATEGORY_NAME.lower()
+                and str(cat.get("descricao") or "").strip().lower() == CATEGORY_NAME.lower()
                 and cat.get("id")
             ):
                 return str(cat["id"])
-        raise MercadoPagoConfigError(
-            f"Categoria '{CATEGORY_NAME}' nao encontrada no Bling"
-        )
+        raise MercadoPagoConfigError(f"Categoria '{CATEGORY_NAME}' nao encontrada no Bling")
 
     def _ensure_bling_financial_account(self, client: BlingClient) -> str:
         """Busca ou cria conta financeira 'Mercado Pago Point' no Bling."""
@@ -476,17 +449,10 @@ class MercadoPagoService:
             )
         db.session.refresh(outbox)
 
-    def _mark_failed(
-        self, outbox: MercadoPagoOutbox, retryable: bool, error_message: str
-    ) -> None:
-        if (
-            retryable
-            and outbox.attempts < outbox.max_attempts
-        ):
+    def _mark_failed(self, outbox: MercadoPagoOutbox, retryable: bool, error_message: str) -> None:
+        if retryable and outbox.attempts < outbox.max_attempts:
             outbox.status = "failed_retryable"
-            outbox.next_retry_at = datetime_now_brazil() + timedelta(
-                minutes=RETRY_BACKOFF_MINUTES
-            )
+            outbox.next_retry_at = datetime_now_brazil() + timedelta(minutes=RETRY_BACKOFF_MINUTES)
         else:
             outbox.status = "failed_final"
             outbox.finished_at = datetime_now_brazil()

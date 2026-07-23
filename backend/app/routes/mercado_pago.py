@@ -16,18 +16,14 @@ from app.models.mercado_pago_integration_log import MercadoPagoIntegrationLog
 from app.models.mercado_pago_outbox import MercadoPagoOutbox
 from app.schemas.common import error_response, success_response
 
-mercado_pago_bp = Blueprint(
-    "mercado_pago", __name__, url_prefix="/api/integrations/mercadopago"
-)
+mercado_pago_bp = Blueprint("mercado_pago", __name__, url_prefix="/api/integrations/mercadopago")
 logger = logging.getLogger(__name__)
 
 
 def _service() -> MercadoPagoService:
     from flask import g
 
-    return MercadoPagoService(
-        store_ref_id=getattr(g, "tenant_store_id", None)
-    )
+    return MercadoPagoService(store_ref_id=getattr(g, "tenant_store_id", None))
 
 
 def _handle_error(exc: Exception):
@@ -38,9 +34,7 @@ def _handle_error(exc: Exception):
     if isinstance(exc, MercadoPagoError):
         return error_response(str(exc), 502, details=exc.details)
     logger.exception("Erro inesperado na integracao Mercado Pago")
-    return error_response(
-        f"Erro na integracao Mercado Pago: {type(exc).__name__}", 500
-    )
+    return error_response(f"Erro na integracao Mercado Pago: {type(exc).__name__}", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +122,6 @@ def mp_retry_outbox(outbox_id: int):
         outbox = MercadoPagoOutbox.query.get_or_404(outbox_id)
         outbox.status = "pending"
         outbox.step = "pending"
-        from app.models.pedido import datetime_now_brazil
 
         outbox.next_retry_at = None
         outbox.error_message = None

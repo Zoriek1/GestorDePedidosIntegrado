@@ -1,3 +1,4 @@
+from app import db
 from app.models.store import Store
 from app.models.store_setting import StoreSetting
 from app.models.user import User
@@ -5,6 +6,8 @@ from app.services.auth_service import generate_token, hash_password
 from app.services.integration_settings_service import runtime_config
 from app.utils.crypto import decrypt_secret, encrypt_secret
 from scripts.migrations.create_store_settings import migrate
+
+import sqlalchemy as sa
 
 
 def _store(session) -> Store:
@@ -192,3 +195,93 @@ def test_runtime_config_prefers_database_and_falls_back_to_environment(app, sess
     assert runtime_config(store.id)["META_CAPI_ACCESS_TOKEN"] == ""
     assert runtime_config(other_store.id)["META_PIXEL_ID"] == ""
     assert runtime_config(other_store.id)["META_CAPI_ACCESS_TOKEN"] == ""
+
+
+def test_migration_adds_missing_columns_to_existing_table(app, session):
+    """Simula deploy antigo: tabela store_settings existe mas sem colunas novas.
+
+    Cenario de producao: a tabela foi criada por uma versao anterior do ORM
+    que nao tinha mercado_pago_*, taxa_cartao_*, endereco_floricultura, loja_cep.
+    O migration deve detectar e adicionar as colunas faltantes.
+    """
+    store = Store(name="Plante uma Flor", slug="default", active=True)
+    session.add(store)
+    session.commit()
+
+    # 1) Dropa a tabela completa que db.create_all() criou
+    StoreSetting.__table__.drop(bind=db.engine, checkfirst=True)
+
+    # 2) Recria SO com as colunas originais (simula deploy antigo)
+    session.execute(sa.text(
+        "CREATE TABLE store_settings ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  store_ref_id INTEGER NOT NULL,"
+        "  marketing_dispatch_enabled BOOLEAN NOT NULL DEFAULT 0,"
+        "  meta_pixel_id VARCHAR(50),"
+        "  meta_capi_access_token_encrypted TEXT,"
+        "  ga4_measurement_id VARCHAR(30),"
+        "  ga4_api_secret_encrypted TEXT,"
+        "  ga4_validate_only BOOLEAN NOT NULL DEFAULT 0,"
+        "  google_datamanager_enabled BOOLEAN NOT NULL DEFAULT 0,"
+        "  google_ads_customer_id VARCHAR(30),"
+        "  google_ads_conversion_action_id VARCHAR(80),"
+        "  utmify_enabled BOOLEAN NOT NULL DEFAULT 0,"
+        "  utmify_api_token_encrypted TEXT,"
+        "  utmify_platform VARCHAR(80),"
+        "  utmify_is_test BOOLEAN NOT NULL DEFAULT 0,"
+        "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        ")"
+    ))
+    session.commit()
+
+    # Confirma que as colunas novas NAO existem
+    inspector = sa.inspect(db.engine)
+    cols_before = {c["name"] for c in inspector.get_columns("store_settings")}
+    assert "mercado_pago_access_token_encrypted" not in cols_before
+    assert "taxa_cartao_debito_pct" not in cols_before
+    assert "endereco_floricultura" not in cols_before
+    assert "loja_cep" not in cols_before
+
+    # 3) Roda o migration — deve adicionar as colunas faltantes
+    migrate()
+
+    # 4) Confirma que as colunas agora existem (usa PRAGMA para bypass do cache do inspector)
+    rows = session.execute(sa.text("PRAGMA table_info(store_settings)")).fetchall()
+    cols_after = {row[1] for row in rows}
+    assert "mercado_pago_access_token_encrypted" in cols_after
+    assert "mercado_pago_public_key_encrypted" in cols_after
+    assert "mercado_pago_webhook_secret_encrypted" in cols_after
+    assert "mercado_pago_enabled" in cols_after
+    assert "taxa_cartao_debito_pct" in cols_after
+    assert "taxa_cartao_credito_json" in cols_after
+    assert "endereco_floricultura" in cols_after
+    assert "loja_cep" in cols_after
+
+    # 5) ORM consegue consultar a tabela sem erro
+    loaded = StoreSetting.query.filter_by(store_ref_id=store.id).one()
+    assert loaded.mercado_pago_enabled is False
+    assert loaded.taxa_cartao_debito_pct == 0
+    assert loaded.endereco_floricultura is None
+    assert loaded.loja_cep is None
+
+
+def test_migration_is_idempotent_on_already_complete_table(app, session):
+    """Se a tabela ja tem todas as colunas, o migration nao quebra nem duplica."""
+    store = Store(name="Plante uma Flor", slug="default", active=True)
+    session.add(store)
+    session.commit()
+
+    # Cria tabela COMPLETA (colunas todas presentes)
+    StoreSetting.__table__.create(bind=db.engine, checkfirst=True)
+    settings = StoreSetting(store_ref_id=store.id, meta_pixel_id="pixel-full")
+    session.add(settings)
+    session.commit()
+
+    # Roda o migration — deve ser idempotente
+    migrate()
+
+    # Dados preservados, sem duplicacao
+    loaded = StoreSetting.query.filter_by(store_ref_id=store.id).one()
+    assert loaded.meta_pixel_id == "pixel-full"
+    assert StoreSetting.query.filter_by(store_ref_id=store.id).count() == 1

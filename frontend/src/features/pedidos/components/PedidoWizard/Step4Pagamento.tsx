@@ -108,7 +108,7 @@ export function Step4Pagamento() {
             <TextField
               {...field}
               label="Observações Gerais"
-              placeholder="Observações adicionais sobre o pedido..."
+              placeholder="Observações adicionais sobre o pedido…"
               multiline
               rows={2}
               fullWidth
@@ -156,7 +156,7 @@ export function Step4Pagamento() {
                 Produto:
               </Typography>
               <Typography variant="body2" sx={{ maxWidth: '60%', textAlign: 'right' }}>
-                {produto ? (produto.length > 50 ? `${produto.slice(0, 50)}...` : produto) : '-'}
+                {produto ? (produto.length > 50 ? `${produto.slice(0, 50)}…` : produto) : '-'}
               </Typography>
             </Box>
 

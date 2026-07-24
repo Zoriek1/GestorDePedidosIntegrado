@@ -36,7 +36,7 @@ export function CustomerSearch({
   onChange,
   onSelect,
   limit = 10,
-  placeholder = 'Buscar cliente...',
+  placeholder = 'Buscar cliente…',
 }: CustomerSearchProps) {
   const debouncedQuery = useDebouncedValue(value.trim(), 300);
   const parentRef = useRef<HTMLDivElement>(null);

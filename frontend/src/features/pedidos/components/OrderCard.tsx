@@ -942,7 +942,7 @@ export function OrderCard({
                   disabled={calcDistancia.isPending}
                   sx={{ minWidth: 'auto', whiteSpace: 'nowrap' }}
                 >
-                  {calcDistancia.isPending ? '...' : 'Recalcular'}
+                  {calcDistancia.isPending ? '…' : 'Recalcular'}
                 </Button>
               </Box>
               <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
@@ -957,7 +957,7 @@ export function OrderCard({
                   disabled={calcTaxa.isPending}
                   sx={{ minWidth: 'auto', whiteSpace: 'nowrap' }}
                 >
-                  {calcTaxa.isPending ? '...' : 'Recalcular'}
+                  {calcTaxa.isPending ? '…' : 'Recalcular'}
                 </Button>
               </Box>
             </Stack>

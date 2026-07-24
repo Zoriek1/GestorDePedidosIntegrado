@@ -365,7 +365,7 @@ export default function LoginPage() {
                 transition: 'all 0.2s ease',
               }}
             >
-              {loading ? 'Entrando...' : 'Entrar'}
+              {loading ? 'Entrando…' : 'Entrar'}
             </AppButton>
           </form>
         </Box>

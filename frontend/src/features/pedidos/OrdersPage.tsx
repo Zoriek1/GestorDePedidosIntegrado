@@ -138,7 +138,7 @@ export default function OrdersPage() {
   const handleExportSheet = async () => {
     try {
       const apiRequest = createApiRequest(getAuthHeader);
-      info('Exportando planilha...');
+      info('Exportando planilha…');
       const response = await apiRequest<{ success: boolean; message?: string }>('/pedidos/exportar-planilha', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -435,7 +435,7 @@ export default function OrdersPage() {
                     disabled={ocultarConcluidos.isPending}
                   >
                     <DeleteSweep sx={{ mr: 1.5 }} />
-                    {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                    {ocultarConcluidos.isPending ? 'Ocultando…' : 'Ocultar concluídos'}
                   </MenuItem>
                 )}
               </Menu>
@@ -473,7 +473,7 @@ export default function OrdersPage() {
                       disabled={ocultarConcluidos.isPending}
                       color="secondary"
                     >
-                      {ocultarConcluidos.isPending ? 'Ocultando...' : 'Ocultar concluídos'}
+                      {ocultarConcluidos.isPending ? 'Ocultando…' : 'Ocultar concluídos'}
                     </Button>
                   </span>
                 </Tooltip>
@@ -503,6 +503,8 @@ export default function OrdersPage() {
             emRota: statsData.stats.emRota,
             atrasados: statsData.stats.atrasados,
           }}
+          activeStatus={filters.status || ''}
+          onFilterByStatus={(status) => updateFilters({ status: status || undefined })}
         />
       )}
 
@@ -545,7 +547,7 @@ export default function OrdersPage() {
                     disabled={calcDistanciasLote.isPending || selectedIds.size === 0}
                     fullWidth={isMobile}
                   >
-                    {calcDistanciasLote.isPending ? 'Calculando...' : 'Calcular distâncias'}
+                    {calcDistanciasLote.isPending ? 'Calculando…' : 'Calcular distâncias'}
                   </Button>
                   <Button
                     size="small"

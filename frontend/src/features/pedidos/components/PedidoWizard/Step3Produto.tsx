@@ -77,7 +77,7 @@ export function Step3Produto() {
             <TextField
               {...field}
               label="Mensagem do Cartão"
-              placeholder="Digite a dedicatória que irá no cartão..."
+              placeholder="Digite a dedicatória que irá no cartão…"
               multiline
               minRows={3}
               maxRows={8}

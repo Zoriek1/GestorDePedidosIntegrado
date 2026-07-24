@@ -172,7 +172,7 @@ export function StepPagamento() {
             Produto:
           </Typography>
           <Typography variant="body2" sx={{ maxWidth: '60%', textAlign: 'right' }}>
-            {produto ? (produto.length > 40 ? `${produto.slice(0, 40)}...` : produto) : '-'}
+            {produto ? (produto.length > 40 ? `${produto.slice(0, 40)}…` : produto) : '-'}
           </Typography>
         </Box>
 
@@ -454,7 +454,7 @@ export function StepPagamento() {
                 <TextField
                   {...field}
                   label="Observações Gerais"
-                  placeholder="Observações adicionais sobre o pedido..."
+                  placeholder="Observações adicionais sobre o pedido…"
                   multiline
                   rows={2}
                   fullWidth

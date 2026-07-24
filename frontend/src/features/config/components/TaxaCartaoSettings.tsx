@@ -179,7 +179,7 @@ export function TaxaCartaoSettings() {
               startIcon={<Save />}
               disabled={isUpdating}
             >
-              {isUpdating ? 'Salvando...' : 'Salvar taxas'}
+              {isUpdating ? 'Salvando…' : 'Salvar taxas'}
             </Button>
           </Box>
         </form>

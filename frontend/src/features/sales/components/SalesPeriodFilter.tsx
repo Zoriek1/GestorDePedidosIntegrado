@@ -129,7 +129,7 @@ export function SalesPeriodFilter({
             setCompareDialogOpen(true);
           }}
         >
-          {compareEnabled ? 'Editar comparação' : 'Comparar com...'}
+          {compareEnabled ? 'Editar comparação' : 'Comparar com…'}
         </Button>
         {compareEnabled && (
           <Button

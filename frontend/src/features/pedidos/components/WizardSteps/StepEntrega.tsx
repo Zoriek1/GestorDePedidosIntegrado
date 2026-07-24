@@ -245,7 +245,7 @@ export function StepEntrega() {
                     <TextField
                       {...field}
                       label="Complemento"
-                      placeholder="Apto, Bloco..."
+                      placeholder="Apto, Bloco…"
                       fullWidth
                       error={!!errors.complemento}
                       helperText={errors.complemento?.message}

@@ -36,24 +36,12 @@ import { NotificationManager } from '../features/notifications/NotificationManag
 import { useOffline } from '../lib/offline/useOffline';
 import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
 import { BrandLogo } from './BrandLogo';
+import { BottomNav } from './BottomNav';
+import { BRAND } from '../app/theme';
 
 interface AppShellProps {
   children: ReactNode;
 }
-
-const BRAND = {
-  green: '#143d28',
-  greenMuted: '#0a2818',
-  gold: '#d4af7a',
-  goldMuted: 'rgba(212, 175, 122, 0.5)',
-  goldBorder: 'rgba(212, 175, 122, 0.18)',
-  textNeutral: '#d4d4cc',
-  textBright: '#f5f1e8',
-  onlineBg: 'rgba(151, 196, 89, 0.12)',
-  onlineText: '#b3d77a',
-  onlineDot: '#97c459',
-  offlineBg: 'rgba(255, 255, 255, 0.08)',
-} as const;
 
 export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
@@ -607,6 +595,8 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Modal de Entrada Rápida */}
       <QuickEntryModal open={quickEntryOpen} onClose={handleQuickEntryClose} />
+
+      {authenticated && <BottomNav role={userRole} />}
 
       <Container
         maxWidth={isOrderWizardPage ? false : 'xl'}

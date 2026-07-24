@@ -124,7 +124,7 @@ export function PickupDeliveriesPanel({ onClose }: Props) {
             onClick={handleSubmit}
             disabled={selected.size === 0 || atribuir.isPending}
           >
-            {atribuir.isPending ? 'Confirmando...' : 'Confirmar'}
+            {atribuir.isPending ? 'Confirmando…' : 'Confirmar'}
           </Button>
         </Paper>
       )}

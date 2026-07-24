@@ -8,6 +8,9 @@
 
 import { useState, useEffect } from 'react';
 
+const prefersReducedMotion = typeof window !== 'undefined'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export function useAnimateOnMount(
   animation: string = 'fadeIn',
   delay: number = 0
@@ -24,6 +27,8 @@ export function useAnimateOnMount(
       return () => clearTimeout(timer);
     }
   }, [delay]);
+
+  if (prefersReducedMotion) return '';
 
   if (!isMounted) {
     return '';

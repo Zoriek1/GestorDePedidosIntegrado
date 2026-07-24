@@ -1,4 +1,5 @@
 import { Grid, Card, CardContent, Typography } from '@mui/material';
+import { SEMANTIC } from '../../../app/theme';
 
 interface SalesKPIs {
   quantidade: number;
@@ -43,7 +44,7 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
       key: 'quantidade',
       title: 'Quantidade de Pedidos', 
       value: kpis.quantidade, 
-      color: '#2563eb',
+      color: SEMANTIC.info,
       isCurrency: false,
       isText: false
     },
@@ -51,7 +52,7 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
       key: 'totalVendasBruto',
       title: 'Total de Vendas no Mês', 
       value: formatMoney(kpis.totalVendasBruto), 
-      color: '#16a34a',
+      color: SEMANTIC.success,
       isCurrency: false, // Já formatado como string
       isText: true
     },
@@ -60,7 +61,7 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
           key: 'projecaoFaturamento',
           title: 'Projeção de Faturamento',
           value: formatMoney(kpis.projecaoFaturamento),
-          color: '#0ea5e9',
+          color: SEMANTIC.sky,
           isCurrency: false,
           isText: true
         }]
@@ -69,7 +70,7 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
       key: 'totalRecebido',
       title: 'Total Recebido', 
       value: formatMoney(kpis.totalRecebido), 
-      color: '#f59e0b',
+      color: SEMANTIC.warning,
       isCurrency: false, // Já formatado como string
       isText: true
     },
@@ -77,7 +78,7 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
       key: 'totalEfetivo',
       title: 'Total Efetivo', 
       value: formatMoney(kpis.totalEfetivo), 
-      color: '#8b5cf6',
+      color: SEMANTIC.purple,
       isCurrency: false, // Já formatado como string
       isText: true
     },
@@ -85,7 +86,7 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
       key: 'ticketMedioEfetivo',
       title: 'Ticket Médio',
       value: formatMoney(kpis.ticketMedioEfetivo),
-      color: '#22c55e',
+      color: SEMANTIC.success,
       isCurrency: false,
       isText: true
     },
@@ -116,8 +117,8 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
                       comparativo[item.key as keyof KPIComparativo] === undefined
                         ? 'text.secondary'
                         : (comparativo[item.key as keyof KPIComparativo] as number) >= 0
-                          ? '#16a34a'
-                          : '#dc2626',
+                          ? SEMANTIC.success
+                          : SEMANTIC.error,
                     display: 'block',
                     mt: 0.5,
                   }}

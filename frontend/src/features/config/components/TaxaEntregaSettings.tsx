@@ -286,7 +286,7 @@ export function TaxaEntregaSettings() {
               startIcon={<Save />}
               disabled={isUpdating}
             >
-              {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
+              {isUpdating ? 'Salvando…' : 'Salvar Alterações'}
             </Button>
           </Box>
         </form>

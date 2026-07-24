@@ -91,7 +91,7 @@ export function FonteDialog({ open, fonte, onClose, onSubmit, isLoading }: Fonte
             Cancelar
           </Button>
           <Button type="submit" variant="contained" disabled={isLoading}>
-            {isLoading ? 'Salvando...' : fonte ? 'Atualizar' : 'Criar'}
+            {isLoading ? 'Salvando…' : fonte ? 'Atualizar' : 'Criar'}
           </Button>
         </DialogActions>
       </form>

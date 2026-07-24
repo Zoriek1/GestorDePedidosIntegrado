@@ -111,11 +111,10 @@ a:hover {
   color: var(--color-primary-hover);
 }
 
-button {
+button.MuiButton-root {
   font-family: var(--font-family);
-  /* Melhorar touch targets em mobile (mínimo 44x44px) */
+  /* Melhorar touch targets em mobile (mínimo 44px height) */
   min-height: 44px;
-  min-width: 44px;
 }
 
 /* Utilitários gerais */
@@ -145,7 +144,7 @@ h6 { font-size: var(--font-size-sm); }
 /* Melhorias para mobile */
 @media (max-width: 600px) {
   /* Aumentar espaçamento entre elementos interativos */
-  button, a, [role="button"] {
+  .MuiButton-root, .MuiIconButton-root {
     min-height: 44px;
     padding: var(--spacing-sm) var(--spacing-md);
   }

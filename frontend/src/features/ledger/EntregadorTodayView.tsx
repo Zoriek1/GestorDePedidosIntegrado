@@ -196,7 +196,7 @@ export function EntregadorTodayView() {
               sx={{
                 px: 2,
                 py: 1.5,
-                bgcolor: 'grey.100',
+                bgcolor: 'action.hover',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',

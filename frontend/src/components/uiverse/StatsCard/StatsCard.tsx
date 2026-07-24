@@ -5,12 +5,14 @@ import styles from './StatsCard.module.css';
 export interface StatsCardProps {
   title: string;
   value: ReactNode;
+  helperText?: string;
   icon: ReactNode;
-  index: number; // Para calcular delay de animação
+  index?: number;
+  iconBg?: string;
+  iconColor?: string;
 }
 
-export function StatsCard({ title, value, icon, index }: StatsCardProps) {
-  // Delay baseado no index: 0ms, 100ms, 200ms, etc.
+export function StatsCard({ title, value, helperText, icon, index = 0, iconBg, iconColor }: StatsCardProps) {
   const animationDelay = index * 100;
   const animationClass = useAnimateOnMount('fadeInUp', animationDelay);
 
@@ -18,9 +20,15 @@ export function StatsCard({ title, value, icon, index }: StatsCardProps) {
     <div className={`${styles.card} ${animationClass}`}>
       <div className={styles.cardBorderTop} />
       <div className={styles.cardContent}>
-        <div className={styles.cardIcon}>{icon}</div>
+        <div
+          className={styles.cardIcon}
+          style={iconBg ? { background: iconBg, color: iconColor } : undefined}
+        >
+          {icon}
+        </div>
         <div className={styles.cardTitle}>{title}</div>
         <div className={styles.cardValue}>{value}</div>
+        {helperText && <div className={styles.cardTitle} style={{ textTransform: 'none', letterSpacing: 0 }}>{helperText}</div>}
       </div>
     </div>
   );

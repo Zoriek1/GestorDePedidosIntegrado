@@ -71,6 +71,10 @@ export function BottomNav({ role }: BottomNavProps) {
           '& .MuiBottomNavigationAction-root': {
             minWidth: 0,
             py: 1,
+            color: 'text.secondary',
+          },
+          '& .Mui-selected': {
+            color: 'primary.main',
           },
         }}
       >

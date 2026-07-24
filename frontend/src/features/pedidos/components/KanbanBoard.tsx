@@ -133,9 +133,23 @@ function Column({
         <DraggableCard key={p.id} pedido={p} sellerNameById={sellerNameById} />
       ))}
       {pedidos.length === 0 && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', py: 2 }}>
-          Sem pedidos
-        </Typography>
+        <Box
+          sx={{
+            border: '2px dashed',
+            borderColor: 'divider',
+            borderRadius: 1,
+            p: 2,
+            textAlign: 'center',
+            minHeight: 80,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            Arraste pedidos aqui
+          </Typography>
+        </Box>
       )}
     </Paper>
   );

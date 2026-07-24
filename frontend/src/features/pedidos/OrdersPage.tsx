@@ -23,7 +23,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Refresh, DeleteSweep, FileDownload, FilterList, Route, Print, ViewList, ViewKanban } from '@mui/icons-material';
+import { Refresh, DeleteSweep, FileDownload, FilterList, Route, Print, ViewList, ViewKanban, SearchOff } from '@mui/icons-material';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePedidos, useCalcularDistanciasLote, useOcultarPedidosConcluidos } from '../../api/endpoints/pedidos';
 import type { PedidosFilters } from '../../api/endpoints/pedidos';
@@ -700,12 +700,18 @@ export default function OrdersPage() {
       ) : (
         <Box
           display="flex"
-          justifyContent="center"
+          flexDirection="column"
           alignItems="center"
+          justifyContent="center"
           minHeight="200px"
+          gap={1}
         >
-          <Typography variant="body1" color="text.secondary">
+          <SearchOff sx={{ fontSize: 48, color: 'text.disabled' }} />
+          <Typography variant="h6" color="text.secondary">
             Nenhum pedido encontrado
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Tente ajustar os filtros ou crie um novo pedido
           </Typography>
         </Box>
       )}

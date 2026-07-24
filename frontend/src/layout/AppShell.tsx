@@ -18,10 +18,10 @@ import {
   SpeedDialAction,
   SpeedDialIcon,
   Fab,
+  Avatar,
 } from '@mui/material';
 import {
   Logout,
-  Person,
   Menu as MenuIcon,
   NotificationsNone,
   Add as AddIcon,
@@ -469,7 +469,9 @@ export function AppShell({ children }: AppShellProps) {
                   '&:hover': { color: BRAND.gold },
                 }}
               >
-                <Person sx={{ fontSize: 22 }} />
+                <Avatar sx={{ width: 34, height: 34, bgcolor: BRAND.gold, color: BRAND.green, fontSize: 14, fontWeight: 600 }}>
+                  {username?.[0]?.toUpperCase() || '?'}
+                </Avatar>
               </IconButton>
               <Menu
                 anchorEl={anchorEl}

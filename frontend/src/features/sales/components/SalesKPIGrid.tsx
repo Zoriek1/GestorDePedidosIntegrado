@@ -1,4 +1,11 @@
-import { Grid, Card, CardContent, Typography } from '@mui/material';
+import { Grid, Typography, useTheme } from '@mui/material';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import PaidIcon from '@mui/icons-material/Paid';
+import ReceiptIcon from '@mui/icons-material/Receipt';
+import { StatsCard } from '../../../components/uiverse/StatsCard/StatsCard';
 import { SEMANTIC } from '../../../app/theme';
 
 interface SalesKPIs {
@@ -26,10 +33,13 @@ interface SalesKPIGridProps {
 }
 
 export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGridProps) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+
   const formatMoney = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', { 
-      style: 'currency', 
-      currency: 'BRL' 
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
     }).format(value);
   };
 
@@ -39,95 +49,85 @@ export function SalesKPIGrid({ kpis, comparativo, comparativoLabel }: SalesKPIGr
     return `${sign}${value.toFixed(1).replace('.', ',')}%`;
   };
 
+  const resolveIconBg = (token: { light: string; dark: string }) => isDark ? token.dark : token.light;
+
+  const comparativoHelper = (key: keyof KPIComparativo): string | undefined => {
+    if (!comparativoLabel || !comparativo) return undefined;
+    const val = comparativo[key];
+    if (val === null || val === undefined) return undefined;
+    return `${formatPercent(val)} vs. ${comparativoLabel}`;
+  };
+
   const items = [
-    { 
-      key: 'quantidade',
-      title: 'Quantidade de Pedidos', 
-      value: kpis.quantidade, 
-      color: SEMANTIC.info,
-      isCurrency: false,
-      isText: false
+    {
+      key: 'quantidade' as const,
+      title: 'Quantidade de Pedidos',
+      value: kpis.quantidade,
+      icon: <ShoppingCartIcon fontSize="inherit" />,
+      iconBg: resolveIconBg(SEMANTIC.iconBgBlue),
+      iconColor: SEMANTIC.info,
     },
-    { 
-      key: 'totalVendasBruto',
-      title: 'Total de Vendas no Mês', 
-      value: formatMoney(kpis.totalVendasBruto), 
-      color: SEMANTIC.success,
-      isCurrency: false, // Já formatado como string
-      isText: true
+    {
+      key: 'totalVendasBruto' as const,
+      title: 'Total de Vendas no Mês',
+      value: formatMoney(kpis.totalVendasBruto),
+      icon: <AttachMoneyIcon fontSize="inherit" />,
+      iconBg: resolveIconBg(SEMANTIC.iconBgGreen),
+      iconColor: SEMANTIC.success,
     },
     ...(kpis.projecaoFaturamento !== undefined
       ? [{
-          key: 'projecaoFaturamento',
+          key: 'projecaoFaturamento' as const,
           title: 'Projeção de Faturamento',
           value: formatMoney(kpis.projecaoFaturamento),
-          color: SEMANTIC.sky,
-          isCurrency: false,
-          isText: true
+          icon: <TrendingUpIcon fontSize="inherit" />,
+          iconBg: resolveIconBg(SEMANTIC.iconBgPurple),
+          iconColor: SEMANTIC.sky,
         }]
       : []),
-    { 
-      key: 'totalRecebido',
-      title: 'Total Recebido', 
-      value: formatMoney(kpis.totalRecebido), 
-      color: SEMANTIC.warning,
-      isCurrency: false, // Já formatado como string
-      isText: true
-    },
-    { 
-      key: 'totalEfetivo',
-      title: 'Total Efetivo', 
-      value: formatMoney(kpis.totalEfetivo), 
-      color: SEMANTIC.purple,
-      isCurrency: false, // Já formatado como string
-      isText: true
+    {
+      key: 'totalRecebido' as const,
+      title: 'Total Recebido',
+      value: formatMoney(kpis.totalRecebido),
+      icon: <AccountBalanceWalletIcon fontSize="inherit" />,
+      iconBg: resolveIconBg(SEMANTIC.iconBgYellow),
+      iconColor: SEMANTIC.warning,
     },
     {
-      key: 'ticketMedioEfetivo',
+      key: 'totalEfetivo' as const,
+      title: 'Total Efetivo',
+      value: formatMoney(kpis.totalEfetivo),
+      icon: <PaidIcon fontSize="inherit" />,
+      iconBg: resolveIconBg(SEMANTIC.iconBgPurple),
+      iconColor: SEMANTIC.purple,
+    },
+    {
+      key: 'ticketMedioEfetivo' as const,
       title: 'Ticket Médio',
       value: formatMoney(kpis.ticketMedioEfetivo),
-      color: SEMANTIC.success,
-      isCurrency: false,
-      isText: true
+      icon: <ReceiptIcon fontSize="inherit" />,
+      iconBg: resolveIconBg(SEMANTIC.iconBgGreen),
+      iconColor: SEMANTIC.success,
     },
   ];
 
   return (
     <Grid container spacing={2} sx={{ mb: 3 }}>
-      {items.map((item) => (
+      {items.map((item, index) => (
         <Grid size={{ xs: 12, sm: 6, md: 3 }} key={item.title}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                {item.title}
+          <StatsCard
+            title={item.title}
+            value={
+              <Typography variant="h5" fontWeight="bold" sx={{ color: item.iconColor }}>
+                {item.value}
               </Typography>
-              <Typography 
-                variant="h5" 
-                fontWeight="bold" 
-                sx={{ color: item.color }}
-              >
-                {item.isText ? item.value : (item.isCurrency ? formatMoney(item.value as number) : item.value)}
-              </Typography>
-              {comparativoLabel && comparativo && (
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color:
-                      comparativo[item.key as keyof KPIComparativo] === null ||
-                      comparativo[item.key as keyof KPIComparativo] === undefined
-                        ? 'text.secondary'
-                        : (comparativo[item.key as keyof KPIComparativo] as number) >= 0
-                          ? SEMANTIC.success
-                          : SEMANTIC.error,
-                    display: 'block',
-                    mt: 0.5,
-                  }}
-                >
-                  {formatPercent(comparativo[item.key as keyof KPIComparativo])} vs. {comparativoLabel}
-                </Typography>
-              )}
-            </CardContent>
-          </Card>
+            }
+            helperText={comparativoHelper(item.key)}
+            icon={item.icon}
+            index={index}
+            iconBg={item.iconBg}
+            iconColor={item.iconColor}
+          />
         </Grid>
       ))}
     </Grid>

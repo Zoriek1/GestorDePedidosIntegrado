@@ -79,7 +79,7 @@ export function createAppTheme(_mode: 'light' | 'dark') {
       },
     },
     shape: {
-      borderRadius: 10,
+      borderRadius: 12,
     },
     typography: {
       fontFamily: '"Jost", "Inter", "Roboto", "Helvetica", "Arial", sans-serif',
@@ -91,20 +91,6 @@ export function createAppTheme(_mode: 'light' | 'dark') {
       h6: { fontFamily: '"Jost", "Inter", sans-serif', fontWeight: 600 },
     },
     components: {
-      MuiPaper: {
-        styleOverrides: {
-          root: {
-            borderRadius: 12,
-          },
-        },
-      },
-      MuiCard: {
-        styleOverrides: {
-          root: {
-            borderRadius: 12,
-          },
-        },
-      },
       MuiContainer: {
         styleOverrides: {
           root: {

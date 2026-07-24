@@ -23,10 +23,10 @@ import RouteIcon from '@mui/icons-material/Route';
 import {
   GoogleMap,
   useJsApiLoader,
-  Marker,
   InfoWindow,
   Polyline,
 } from '@react-google-maps/api';
+import { AdvancedMarkerWrapper } from './components/AdvancedMarkerWrapper';
 import dayjs from 'dayjs';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -42,46 +42,18 @@ import { PickupDeliveriesPanel } from '../entregas/PickupDeliveriesPanel';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
-// Cores de marcador por status
-const STATUS_COLORS: Record<string, string> = {
-  agendado: '#4285F4',
-  em_producao: '#FF9800',
-  pronto_entrega: '#4CAF50',
-  pronto_retirada: '#4CAF50',
-  em_rota: '#9C27B0',
-  atrasado: '#F44336',
-  concluido: '#9E9E9E',
-};
-
-function getMarkerIcon(status: string, selected: boolean) {
-  const color = selected
-    ? (STATUS_COLORS[status] || '#4285F4')
-    : (STATUS_COLORS[status] || '#757575');
-  return {
-    path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-    fillColor: color,
-    // ROT-02: "fora da rota" fica visivelmente apagado; selecionado fica sólido.
-    fillOpacity: selected ? 1 : 0.5,
-    strokeColor: '#fff',
-    strokeWeight: selected ? 2 : 1.5,
-    scale: selected ? 2.2 : 1.8,
-    anchor: { x: 12, y: 22 } as google.maps.Point,
-    // VIS-04: empurra o rótulo (horário) para baixo do pino.
-    labelOrigin: { x: 12, y: 30 } as google.maps.Point,
-  };
-}
-
-const ORIGIN_ICON = {
-  path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-  fillColor: '#E91E63',
-  fillOpacity: 1,
-  strokeColor: '#fff',
-  strokeWeight: 2,
-  scale: 2.6,
-  anchor: { x: 12, y: 22 } as google.maps.Point,
-};
-
 const MAP_CONTAINER_STYLE = { height: '100%', width: '100%' };
+
+const darkMapStyles: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
+];
 
 // Componente SortableItem para cada pedido na lista
 interface SortableItemProps {
@@ -131,6 +103,7 @@ function SortableItem({ id, compact, children }: SortableItemProps) {
 
 export default function RoutePage() {
   const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { getUser, getUserRole } = useAuth();
@@ -421,93 +394,87 @@ export default function RoutePage() {
             streetViewControl: false,
             mapTypeControl: false,
             fullscreenControl: true,
+            styles: isDark ? darkMapStyles : undefined,
           }}
         >
           {rotaData?.origem && (
-            <Marker
+            <AdvancedMarkerWrapper
               position={{ lat: rotaData.origem.lat, lng: rotaData.origem.lon }}
-              icon={ORIGIN_ICON}
               title="Floricultura (Origem)"
               onClick={() => setActiveInfoWindow(-1)}
+            />
+          )}
+
+          {activeInfoWindow === -1 && rotaData?.origem && (
+            <InfoWindow
+              position={{ lat: rotaData.origem.lat, lng: rotaData.origem.lon }}
+              onCloseClick={() => setActiveInfoWindow(null)}
             >
-              {activeInfoWindow === -1 && (
-                <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
-                  <div><strong>Origem (Floricultura)</strong></div>
-                </InfoWindow>
-              )}
-            </Marker>
+              <div><strong>Origem (Floricultura)</strong></div>
+            </InfoWindow>
           )}
 
           {pedidosOrdenados
             .filter((p) => p.coords_lat && p.coords_lon)
-            .map((pedido, idx) => {
-              const isSelected = selectedPedidoIds.has(pedido.id);
-              // VIS-04: horário sob o pino (slot_inicio quando houver, senão horario).
-              const horaMarcador = pedido.slot_inicio || pedido.horario || '';
-              const labelText = isSelected
-                ? (horaMarcador ? `${idx + 1} · ${horaMarcador}` : String(idx + 1))
-                : horaMarcador;
-              return (
-                <Marker
+            .map((pedido) => (
+                <AdvancedMarkerWrapper
                   key={`pedido-${pedido.id}`}
                   position={{ lat: pedido.coords_lat!, lng: pedido.coords_lon! }}
-                  icon={getMarkerIcon(pedido.status, isSelected)}
-                  label={labelText ? {
-                    text: labelText,
-                    color: '#202124',
-                    fontSize: '11px',
-                    fontWeight: 'bold',
-                  } : undefined}
                   title={`#${pedidoDisplayNumber(pedido)} - ${pedido.destinatario || pedido.cliente}`}
-                  // ROT-02: clicar no pino apenas INSPECIONA (abre o InfoWindow);
-                  // a seleção entra/sai por controle explícito (chip / checkbox da lista).
                   onClick={() => setActiveInfoWindow(pedido.id)}
-                >
-                  {activeInfoWindow === pedido.id && (
-                    <InfoWindow onCloseClick={() => setActiveInfoWindow(null)}>
-                      <div style={{ maxWidth: 230 }}>
-                        <strong>Pedido #{pedidoDisplayNumber(pedido)}</strong>
-                        <br />
-                        <strong>Buquê:</strong> {pedido.produto || '—'}
-                        <br />
-                        <strong>Horário:</strong> {pedido.slot_inicio || pedido.horario || '—'}
-                        <br />
-                        <strong>Destinatário:</strong> {pedido.destinatario || '—'}
-                        {pedido.cliente && (
-                          <>
-                            <br />
-                            <span style={{ color: '#666' }}>De: {pedido.cliente}</span>
-                          </>
-                        )}
-                        <br />
-                        <strong>Endereço:</strong> {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
-                        <br />
-                        <strong>Status:</strong> {pedido.status}
-                        {pedido.distancia_km && (
-                          <>
-                            <br />
-                            <strong>Distância:</strong> {pedido.distancia_km.toFixed(2)} km
-                          </>
-                        )}
-                        <br />
-                        <Chip
-                          label={isSelected ? '✓ Na rota · remover' : '+ Adicionar à rota'}
-                          size="small"
-                          color={isSelected ? 'success' : 'default'}
-                          onClick={() => togglePedido(pedido.id)}
-                          sx={{ mt: 0.5, cursor: 'pointer' }}
-                        />
-                      </div>
-                    </InfoWindow>
+                />
+            ))}
+
+          {activeInfoWindow && activeInfoWindow !== -1 && (() => {
+            const pedido = pedidosOrdenados.find((p) => p.id === activeInfoWindow);
+            if (!pedido || !pedido.coords_lat || !pedido.coords_lon) return null;
+            const isSelected = selectedPedidoIds.has(pedido.id);
+            return (
+              <InfoWindow
+                position={{ lat: pedido.coords_lat, lng: pedido.coords_lon }}
+                onCloseClick={() => setActiveInfoWindow(null)}
+              >
+                <div style={{ maxWidth: 230 }}>
+                  <strong>Pedido #{pedidoDisplayNumber(pedido)}</strong>
+                  <br />
+                  <strong>Buquê:</strong> {pedido.produto || '—'}
+                  <br />
+                  <strong>Horário:</strong> {pedido.slot_inicio || pedido.horario || '—'}
+                  <br />
+                  <strong>Destinatário:</strong> {pedido.destinatario || '—'}
+                  {pedido.cliente && (
+                    <>
+                      <br />
+                      <span style={{ color: theme.palette.text.secondary }}>De: {pedido.cliente}</span>
+                    </>
                   )}
-                </Marker>
-              );
-            })}
+                  <br />
+                  <strong>Endereço:</strong> {pedido.endereco || `${pedido.rua || ''} ${pedido.numero || ''}`.trim()}
+                  <br />
+                  <strong>Status:</strong> {pedido.status}
+                  {pedido.distancia_km && (
+                    <>
+                      <br />
+                      <strong>Distância:</strong> {pedido.distancia_km.toFixed(2)} km
+                    </>
+                  )}
+                  <br />
+                  <Chip
+                    label={isSelected ? '✓ Na rota · remover' : '+ Adicionar à rota'}
+                    size="small"
+                    color={isSelected ? 'success' : 'default'}
+                    onClick={() => togglePedido(pedido.id)}
+                    sx={{ mt: 0.5, cursor: 'pointer' }}
+                  />
+                </div>
+              </InfoWindow>
+            );
+          })()}
 
           {routePath.length > 1 && (
             <Polyline
               path={routePath}
-              options={{ strokeColor: '#4CAF50', strokeWeight: 4, strokeOpacity: 0.8 }}
+              options={{ strokeColor: isDark ? '#4ade80' : '#4CAF50', strokeWeight: 4, strokeOpacity: 0.8 }}
             />
           )}
         </GoogleMap>
@@ -570,7 +537,7 @@ export default function RoutePage() {
           disabled={calcLote.isPending || isLoading || selectedPedidoIds.size === 0}
           sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
         >
-          {calcLote.isPending ? 'Calculando...' : 'Distâncias'}
+          {calcLote.isPending ? 'Calculando…' : 'Distâncias'}
         </Button>
         <Button
           variant="contained"
@@ -579,7 +546,7 @@ export default function RoutePage() {
           disabled={calcRota.isPending || selectedPedidoIds.size < 2}
           sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
         >
-          {calcRota.isPending ? 'Otimizando...' : 'Otimizar'}
+          {calcRota.isPending ? 'Otimizando…' : 'Otimizar'}
         </Button>
         <Button
           variant="contained"
@@ -590,7 +557,7 @@ export default function RoutePage() {
           disabled={gerarRotaMaps.isPending || selectedPedidoIds.size < 2}
           sx={{ fontSize: isMobile ? '0.7rem' : undefined, px: isMobile ? 1 : undefined }}
         >
-          {gerarRotaMaps.isPending ? 'Gerando...' : `Rota (${selectedPedidoIds.size})`}
+          {gerarRotaMaps.isPending ? 'Gerando…' : `Rota (${selectedPedidoIds.size})`}
         </Button>
         {isMobile && (
           <Button

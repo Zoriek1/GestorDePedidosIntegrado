@@ -8,6 +8,9 @@
 
 import { useState, useEffect } from 'react';
 
+const prefersReducedMotion = typeof window !== 'undefined'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export function useAnimateOnMount(
   animation: string = 'fadeIn',
   delay: number = 0
@@ -25,27 +28,11 @@ export function useAnimateOnMount(
     }
   }, [delay]);
 
+  if (prefersReducedMotion) return '';
+
   if (!isMounted) {
     return '';
   }
 
   return `animate__animated animate__${animation}`;
-}
-
-/**
- * Hook para aplicar animação com controle manual
- */
-export function useAnimate(initialAnimation?: string) {
-  const [animation, setAnimation] = useState<string | undefined>(initialAnimation);
-
-  const trigger = (anim: string) => {
-    setAnimation(undefined); // Reset first
-    setTimeout(() => setAnimation(anim), 10);
-  };
-
-  const className = animation 
-    ? `animate__animated animate__${animation}` 
-    : '';
-
-  return { className, trigger };
 }

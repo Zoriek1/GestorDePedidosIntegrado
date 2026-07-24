@@ -1,6 +1,6 @@
 import React, { Suspense, useState } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Stack, Button } from '@mui/material';
-import { LocalShipping, Build, Payment, Calculate, Group, People, CreditCard, BarChart } from '@mui/icons-material';
+import { LocalShipping, Build, Payment, Calculate, CreditCard, BarChart } from '@mui/icons-material';
 import { KeyRound } from 'lucide-react';
 import { TaxaEntregaSettings } from './components/TaxaEntregaSettings';
 import { TaxaCartaoSettings } from './components/TaxaCartaoSettings';
@@ -12,9 +12,7 @@ import { createApiRequest } from '../../api/http';
 import { useAuth } from '../auth/authStore';
 import { useToast } from '../../components/system/useToast';
 import { useConfirm } from '../../components/system/useConfirm';
-import CustomersPage from '../customers/CustomersPage';
 import FontesPage from '../fontes/FontesPage';
-import UserListPage from '../users/components/UserListPage';
 
 function BatchActionsTab() {
   const { getAuthHeader } = useAuth();
@@ -151,9 +149,7 @@ export default function SettingsPage() {
           {isAdmin && <Tab value="card" icon={<CreditCard />} label="Taxa de Cartão" iconPosition="start" />}
           <Tab value="batch" icon={<Build />} label="Ações em Lote" iconPosition="start" />
           {!isEntregador && <Tab value="sources" icon={<Build />} label="Fontes" iconPosition="start" />}
-          {!isEntregador && <Tab value="customers" icon={<Group />} label="Clientes" iconPosition="start" />}
           {isAdmin && <Tab value="integrations" icon={<KeyRound />} label="Integrações" iconPosition="start" />}
-          {isAdmin && <Tab value="users" icon={<People />} label="Funcionários" iconPosition="start" />}
         </Tabs>
       </Paper>
 
@@ -163,9 +159,7 @@ export default function SettingsPage() {
           {isAdmin && tabValue === 'card' && <TaxaCartaoSettings />}
           {tabValue === 'batch' && <BatchActionsTab />}
           {!isEntregador && tabValue === 'sources' && <FontesPage />}
-          {!isEntregador && tabValue === 'customers' && <CustomersPage />}
           {isAdmin && tabValue === 'integrations' && <IntegrationGrid />}
-          {isAdmin && tabValue === 'users' && <UserListPage />}
         </Suspense>
       </Box>
     </Box>

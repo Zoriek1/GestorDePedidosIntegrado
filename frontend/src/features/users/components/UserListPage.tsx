@@ -8,6 +8,7 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  TableContainer,
   Chip,
   IconButton,
   Dialog,
@@ -20,6 +21,10 @@ import {
   Tooltip,
   CircularProgress,
   Alert,
+  Paper,
+  Grid,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -140,6 +145,8 @@ function roleColor(role: string): 'error' | 'primary' | 'success' | 'warning' | 
 export default function UserListPage() {
   const toast = useToast();
   const confirm = useConfirm();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   // Sempre inclui inativos — admin precisa ver pra reativar/apagar definitivamente
   const { data: users, isLoading, error } = useUsers(true, true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -245,56 +252,102 @@ export default function UserListPage() {
         <Box display="flex" justifyContent="center" py={6}>
           <CircularProgress />
         </Box>
-      ) : (
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Nome</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Perfil</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell align="right">Ações</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(users ?? []).map((user) => (
-              <TableRow key={user.id} hover>
-                <TableCell>{user.name}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>
-                  <Chip label={user.role} size="small" color={roleColor(user.role)} />
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={user.is_active ? 'Ativo' : 'Inativo'}
-                    size="small"
-                    color={user.is_active ? 'success' : 'default'}
-                    variant="outlined"
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  <Tooltip title="Configurar remuneração / comissão">
-                    <IconButton
+      ) : isMobile ? (
+        <Grid container spacing={1.5}>
+          {(users ?? []).map((user) => (
+            <Grid size={12} key={user.id}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack spacing={1}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2" fontWeight="bold" noWrap>
+                        {user.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap display="block">
+                        {user.email}
+                      </Typography>
+                    </Box>
+                    <Tooltip title="Configurar remuneração / comissão">
+                      <IconButton size="small" onClick={() => setConfigUser(user)} color="primary">
+                        <SettingsIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                    <Chip label={user.role} size="small" color={roleColor(user.role)} />
+                    <Chip
+                      label={user.is_active ? 'Ativo' : 'Inativo'}
                       size="small"
-                      onClick={() => setConfigUser(user)}
-                      color="primary"
-                    >
-                      <SettingsIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  {user.is_active ? (
-                    <DeactivateBtn user={user} />
-                  ) : (
-                    <>
-                      <ReactivateBtn user={user} />
-                      <HardDeleteBtn user={user} />
-                    </>
-                  )}
-                </TableCell>
+                      color={user.is_active ? 'success' : 'default'}
+                      variant="outlined"
+                    />
+                    <Box sx={{ flex: 1 }} />
+                    {user.is_active ? (
+                      <DeactivateBtn user={user} />
+                    ) : (
+                      <Stack direction="row" spacing={0.5}>
+                        <ReactivateBtn user={user} />
+                        <HardDeleteBtn user={user} />
+                      </Stack>
+                    )}
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Nome</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Perfil</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="right">Ações</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {(users ?? []).map((user) => (
+                <TableRow key={user.id} hover>
+                  <TableCell>{user.name}</TableCell>
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>
+                    <Chip label={user.role} size="small" color={roleColor(user.role)} />
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={user.is_active ? 'Ativo' : 'Inativo'}
+                      size="small"
+                      color={user.is_active ? 'success' : 'default'}
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <Tooltip title="Configurar remuneração / comissão">
+                      <IconButton
+                        size="small"
+                        onClick={() => setConfigUser(user)}
+                        color="primary"
+                      >
+                        <SettingsIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    {user.is_active ? (
+                      <DeactivateBtn user={user} />
+                    ) : (
+                      <>
+                        <ReactivateBtn user={user} />
+                        <HardDeleteBtn user={user} />
+                      </>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
       <CreateUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />

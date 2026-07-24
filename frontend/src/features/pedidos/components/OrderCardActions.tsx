@@ -205,7 +205,7 @@ export function OrderCardActions({ pedido, showRecalcButtons = false, compact = 
           disabled={isDeleting}
           fullWidth
         >
-          {isDeleting ? 'Deletando...' : 'Deletar'}
+          {isDeleting ? 'Deletando…' : 'Deletar'}
         </Button>
       )}
     </Stack>

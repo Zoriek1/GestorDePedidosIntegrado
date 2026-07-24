@@ -283,7 +283,7 @@ export function PedidoWizard({
                   )
                 }
               >
-                {isSubmitting ? 'Salvando...' : 'Salvar Pedido'}
+                {isSubmitting ? 'Salvando…' : 'Salvar Pedido'}
               </Button>
             ) : (
               <Button
@@ -321,7 +321,7 @@ export function PedidoWizard({
                     ) : null
                   }
                 >
-                  {isSubmitting ? '...' : 'Salvar'}
+                  {isSubmitting ? '…' : 'Salvar'}
                 </Button>
               ) : (
                 <Button size="small" onClick={handleNext}>

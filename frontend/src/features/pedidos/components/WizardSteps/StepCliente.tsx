@@ -210,7 +210,7 @@ export function StepCliente() {
                 }
               }}
               loading={isFetching}
-              loadingText="Buscando..."
+              loadingText="Buscando…"
               noOptionsText={
                 debouncedQuery.length >= 3 
                   ? "Nenhum cliente encontrado. Digite para criar novo."
@@ -220,7 +220,7 @@ export function StepCliente() {
                 <TextField
                   {...params}
                   label="Nome do Cliente"
-                  placeholder="Digite para buscar ou criar..."
+                  placeholder="Digite para buscar ou criar…"
                   required
                   error={!!errors.cliente}
                   helperText={errors.cliente?.message}

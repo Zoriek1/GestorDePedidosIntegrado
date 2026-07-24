@@ -208,7 +208,7 @@ export function StepClienteNovo() {
               </label>
               {origemAnuncio && (
                 <Field label="Facebook Click ID (fbclid)" req hint="Cole o fbclid da mensagem do WhatsApp" error={errors.fbclid?.message}>
-                  <input className={`pw-in${errors.fbclid ? ' err' : ''}`} {...register('fbclid')} placeholder="Ex.: AbCdEf..." />
+                  <input className={`pw-in${errors.fbclid ? ' err' : ''}`} {...register('fbclid')} placeholder="Ex.: AbCdEf…" />
                 </Field>
               )}
             </>

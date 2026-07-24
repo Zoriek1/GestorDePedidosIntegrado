@@ -70,20 +70,21 @@ export function LeadActions({
             target="_blank"
             rel="noopener noreferrer"
             disabled={loadingWhatsAppId === lead.id}
+            aria-label="Chamar no WhatsApp"
           >
             <WhatsAppIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       ) : actions.includes('capture_phone') ? (
         <Tooltip title="Capturar telefone do lead">
-          <IconButton size="small" color="success" onClick={() => onCapturePhone(lead)}>
+          <IconButton size="small" color="success" onClick={() => onCapturePhone(lead)} aria-label="Capturar telefone do lead">
             <WhatsAppIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       ) : (
         <Tooltip title="Sem telefone">
           <span>
-            <IconButton size="small" disabled>
+            <IconButton size="small" disabled aria-label="Sem telefone">
               <WhatsAppIcon fontSize="small" />
             </IconButton>
           </span>
@@ -142,21 +143,21 @@ export function LeadActions({
       {/* 4. Ver / Criar pedido (universal) */}
       {lead.pedido_id ? (
         <Tooltip title="Visualizar pedido vinculado">
-          <IconButton size="small" color="secondary" onClick={() => onViewOrder(lead.pedido_id!)}>
+          <IconButton size="small" color="secondary" onClick={() => onViewOrder(lead.pedido_id!)} aria-label="Visualizar pedido vinculado">
             <VisibilityIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       ) : lead.status === 'compra_realizada' ? (
         <Tooltip title="Compra realizada — pedido não localizado">
           <span>
-            <IconButton size="small" disabled>
+            <IconButton size="small" disabled aria-label="Compra realizada — pedido não localizado">
               <VisibilityIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
       ) : (
         <Tooltip title="Criar pedido a partir deste lead">
-          <IconButton size="small" color="primary" onClick={(e) => onCreateOrder(e, lead)}>
+          <IconButton size="small" color="primary" onClick={(e) => onCreateOrder(e, lead)} aria-label="Criar pedido a partir deste lead">
             <AddShoppingCartIcon fontSize="small" />
           </IconButton>
         </Tooltip>

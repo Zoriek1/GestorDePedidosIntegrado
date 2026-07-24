@@ -1,5 +1,5 @@
 import React, { ReactNode, useCallback, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, NavLink } from 'react-router-dom';
 import {
   AppBar,
   Toolbar,
@@ -29,31 +29,23 @@ import {
   AddShoppingCart as AddShoppingCartIcon,
   LocalShipping as LocalShippingIcon,
   Settings,
+  LightMode,
+  DarkMode,
+  Brightness7 as AutoIcon,
 } from '@mui/icons-material';
 
 import { useAuth } from '../features/auth/authStore';
+import { useThemeMode } from '../app/useThemeMode';
 import { NotificationManager } from '../features/notifications/NotificationManager';
 import { useOffline } from '../lib/offline/useOffline';
 import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
 import { BrandLogo } from './BrandLogo';
+import { BottomNav } from './BottomNav';
+import { BRAND } from '../app/theme';
 
 interface AppShellProps {
   children: ReactNode;
 }
-
-const BRAND = {
-  green: '#143d28',
-  greenMuted: '#0a2818',
-  gold: '#d4af7a',
-  goldMuted: 'rgba(212, 175, 122, 0.5)',
-  goldBorder: 'rgba(212, 175, 122, 0.18)',
-  textNeutral: '#d4d4cc',
-  textBright: '#f5f1e8',
-  onlineBg: 'rgba(151, 196, 89, 0.12)',
-  onlineText: '#b3d77a',
-  onlineDot: '#97c459',
-  offlineBg: 'rgba(255, 255, 255, 0.08)',
-} as const;
 
 export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
@@ -74,6 +66,7 @@ export function AppShell({ children }: AppShellProps) {
   const isOrdersPage = location.pathname === '/';
 
   const authenticated = isAuthenticated();
+  const { mode: themeMode, resolvedMode, setMode: setThemeMode } = useThemeMode();
   const currentUser = authenticated ? getUser() : null;
   const credentials = authenticated ? getCredentials() : null;
   const username = currentUser?.name ?? currentUser?.email ?? credentials?.username;
@@ -82,19 +75,13 @@ export function AppShell({ children }: AppShellProps) {
   const isAdmin = userRole === 'admin';
   const isVendedor = userRole === 'vendedor';
   const jwtUser = isJwtUser();
-  const canViewLedger = jwtUser && (isAdmin || isVendedor || isEntregador);
   // Leads é opt-in por loja. Sessões legadas (Basic Auth, sem payload de loja)
   // mantêm o menu visível — nesses casos só existe a loja default.
   const canViewLeads = !isEntregador && (currentUser?.leads_enabled ?? !jwtUser);
-  const ledgerLabel = isAdmin
-    ? 'Funcionários'
-    : isEntregador
-      ? 'Recebíveis Hoje'
-      : 'Recebíveis';
+  const canViewEquipe = isAdmin || isVendedor;
 
   const routePath = isEntregador ? '/entregador/mapa' : '/rota-entrega';
   const routeLabel = isEntregador ? 'Minhas entregas' : 'Rota';
-
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -129,11 +116,6 @@ export function AppShell({ children }: AppShellProps) {
   }, []);
   const handleQuickEntryClose = useCallback(() => setQuickEntryOpen(false), []);
 
-  const handleNavigate = (path: string) => {
-    navigate(path);
-    handleNavMenuClose();
-  };
-
   const handleLogoutClick = () => {
     handleLogout();
     handleMenuClose();
@@ -146,9 +128,9 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   // Estilo dos botões de navegação desktop (aba ativa em dourado com sublinhado)
-  const navButtonSx = (path: string) => ({
-    color: isActive(path) ? BRAND.gold : BRAND.textNeutral,
-    fontWeight: isActive(path) ? 500 : 400,
+  const navButtonSx = (active: boolean) => ({
+    color: active ? BRAND.gold : BRAND.textNeutral,
+    fontWeight: active ? 500 : 400,
     fontSize: 14,
     fontFamily: '"Jost", "Inter", sans-serif',
     textTransform: 'none' as const,
@@ -158,7 +140,7 @@ export function AppShell({ children }: AppShellProps) {
     minHeight: 32,
     borderRadius: 0,
     position: 'relative' as const,
-    '&::after': isActive(path)
+    '&::after': active
       ? {
           content: '""',
           position: 'absolute',
@@ -225,30 +207,78 @@ export function AppShell({ children }: AppShellProps) {
                 },
               }}
             >
-              <MenuItem onClick={() => handleNavigate('/')} sx={{ color: isActive('/') ? BRAND.gold : 'inherit' }}>
+              <MenuItem
+                component={NavLink}
+                to="/"
+                end
+                onClick={handleNavMenuClose}
+                sx={{ color: isActive('/') ? BRAND.gold : 'inherit' }}
+              >
                 Pedidos
               </MenuItem>
               {!isEntregador && (
-                <MenuItem onClick={() => handleNavigate('/vendas')} sx={{ color: isActive('/vendas') ? BRAND.gold : 'inherit' }}>
+                <MenuItem
+                  component={NavLink}
+                  to="/clientes"
+                  onClick={handleNavMenuClose}
+                  sx={{ color: isActive('/clientes') ? BRAND.gold : 'inherit' }}
+                >
+                  Clientes
+                </MenuItem>
+              )}
+              {!isEntregador && (
+                <MenuItem
+                  component={NavLink}
+                  to="/vendas"
+                  onClick={handleNavMenuClose}
+                  sx={{ color: isActive('/vendas') ? BRAND.gold : 'inherit' }}
+                >
                   Vendas
                 </MenuItem>
               )}
               {canViewLeads && (
-                <MenuItem onClick={() => handleNavigate('/leads')} sx={{ color: isActive('/leads') ? BRAND.gold : 'inherit' }}>
+                <MenuItem
+                  component={NavLink}
+                  to="/leads"
+                  onClick={handleNavMenuClose}
+                  sx={{ color: isActive('/leads') ? BRAND.gold : 'inherit' }}
+                >
                   Leads UTM
                 </MenuItem>
               )}
-              <MenuItem onClick={() => handleNavigate(routePath)} sx={{ color: isActive(routePath) ? BRAND.gold : 'inherit' }}>
+              <MenuItem
+                component={NavLink}
+                to={routePath}
+                onClick={handleNavMenuClose}
+                sx={{ color: isActive(routePath) ? BRAND.gold : 'inherit' }}
+              >
                 {routeLabel}
               </MenuItem>
-              {canViewLedger && (
-                <MenuItem onClick={() => handleNavigate('/recebiveis')} sx={{ color: isActive('/recebiveis') ? BRAND.gold : 'inherit' }}>
-                  {ledgerLabel}
+              {canViewEquipe && (
+                <MenuItem
+                  component={NavLink}
+                  to="/equipe"
+                  onClick={handleNavMenuClose}
+                  sx={{ color: isActive('/equipe') ? BRAND.gold : 'inherit' }}
+                >
+                  Equipe
+                </MenuItem>
+              )}
+              {isEntregador && (
+                <MenuItem
+                  component={NavLink}
+                  to="/recebiveis"
+                  onClick={handleNavMenuClose}
+                  sx={{ color: isActive('/recebiveis') ? BRAND.gold : 'inherit' }}
+                >
+                  Recebíveis
                 </MenuItem>
               )}
               <Divider sx={{ borderColor: BRAND.goldBorder, my: 0.5 }} />
               <MenuItem
-                onClick={() => handleNavigate('/configuracoes')}
+                component={NavLink}
+                to="/configuracoes"
+                onClick={handleNavMenuClose}
                 sx={{ color: isActive('/configuracoes') ? BRAND.gold : 'inherit' }}
               >
                 <Settings sx={{ mr: 1, fontSize: 18 }} />
@@ -321,28 +351,38 @@ export function AppShell({ children }: AppShellProps) {
               ml: 4,
             }}
           >
-            <Button disableRipple onClick={() => handleNavigate('/')} sx={navButtonSx('/')}>
-              Pedidos
-            </Button>
+            <NavLink to="/" end>{({ isActive }) => (
+              <Button disableRipple sx={navButtonSx(isActive)}>Pedidos</Button>
+            )}</NavLink>
+            {!isEntregador && (
+              <NavLink to="/clientes">{({ isActive }) => (
+                <Button disableRipple sx={navButtonSx(isActive)}>Clientes</Button>
+              )}</NavLink>
+            )}
             {!isEntregador && (
               <>
-                <Button disableRipple onClick={() => handleNavigate('/vendas')} sx={navButtonSx('/vendas')}>
-                  Vendas
-                </Button>
+                <NavLink to="/vendas">{({ isActive }) => (
+                  <Button disableRipple sx={navButtonSx(isActive)}>Vendas</Button>
+                )}</NavLink>
                 {canViewLeads && (
-                  <Button disableRipple onClick={() => handleNavigate('/leads')} sx={navButtonSx('/leads')}>
-                    Leads
-                  </Button>
+                  <NavLink to="/leads">{({ isActive }) => (
+                    <Button disableRipple sx={navButtonSx(isActive)}>Leads</Button>
+                  )}</NavLink>
                 )}
               </>
             )}
-            <Button disableRipple onClick={() => handleNavigate(routePath)} sx={navButtonSx(routePath)}>
-              {routeLabel}
-            </Button>
-            {canViewLedger && (
-              <Button disableRipple onClick={() => handleNavigate('/recebiveis')} sx={navButtonSx('/recebiveis')}>
-                {ledgerLabel}
-              </Button>
+            <NavLink to={routePath}>{({ isActive }) => (
+              <Button disableRipple sx={navButtonSx(isActive)}>{routeLabel}</Button>
+            )}</NavLink>
+            {canViewEquipe && (
+              <NavLink to="/equipe">{({ isActive }) => (
+                <Button disableRipple sx={navButtonSx(isActive)}>Equipe</Button>
+              )}</NavLink>
+            )}
+            {isEntregador && (
+              <NavLink to="/recebiveis">{({ isActive }) => (
+                <Button disableRipple sx={navButtonSx(isActive)}>Recebíveis</Button>
+              )}</NavLink>
             )}
           </Box>
 
@@ -465,6 +505,22 @@ export function AppShell({ children }: AppShellProps) {
                   Configurações
                 </MenuItem>
                 <MenuItem
+                  onClick={() => {
+                    const next = themeMode === 'light' ? 'dark' : themeMode === 'dark' ? 'system' : 'light';
+                    setThemeMode(next);
+                  }}
+                  sx={{ color: BRAND.textNeutral, '&:hover': { color: BRAND.gold, bgcolor: 'rgba(212, 175, 122, 0.06)' } }}
+                >
+                  {resolvedMode === 'dark' ? (
+                    <DarkMode sx={{ mr: 1, fontSize: 18 }} />
+                  ) : themeMode === 'system' ? (
+                    <AutoIcon sx={{ mr: 1, fontSize: 18 }} />
+                  ) : (
+                    <LightMode sx={{ mr: 1, fontSize: 18 }} />
+                  )}
+                  {themeMode === 'light' ? 'Claro' : themeMode === 'dark' ? 'Escuro' : 'Sistema'}
+                </MenuItem>
+                <MenuItem
                   disabled
                   sx={{
                     opacity: '1 !important',
@@ -560,6 +616,8 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Modal de Entrada Rápida */}
       <QuickEntryModal open={quickEntryOpen} onClose={handleQuickEntryClose} />
+
+      {authenticated && <BottomNav role={userRole} />}
 
       <Container
         maxWidth={isOrderWizardPage ? false : 'xl'}

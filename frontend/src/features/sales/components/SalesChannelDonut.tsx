@@ -1,15 +1,20 @@
-import { Box, Paper, Typography } from '@mui/material';
+import { Box, Paper, Typography, useTheme } from '@mui/material';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import { agruparPorCanal } from '../utils/salesAnalytics';
 
-const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7'];
+const LIGHT_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7'];
+const DARK_COLORS = ['#818cf8', '#4ade80', '#fbbf24', '#f87171', '#22d3ee', '#c084fc'];
 
 interface SalesChannelDonutProps {
   vendas: Pedido[];
 }
 
 export function SalesChannelDonut({ vendas }: SalesChannelDonutProps) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const COLORS = isDark ? DARK_COLORS : LIGHT_COLORS;
+
   const data = agruparPorCanal(vendas).map((item) => ({
     name: item.canal,
     value: item.total,
@@ -53,6 +58,11 @@ export function SalesChannelDonut({ vendas }: SalesChannelDonutProps) {
               formatter={(value) =>
                 new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value))
               }
+              contentStyle={{
+                backgroundColor: theme.palette.background.paper,
+                color: theme.palette.text.primary,
+                border: `1px solid ${theme.palette.divider}`,
+              }}
             />
             <Legend />
           </PieChart>

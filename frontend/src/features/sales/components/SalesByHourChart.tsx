@@ -1,4 +1,4 @@
-import { Box, Paper, Typography } from '@mui/material';
+import { Box, Paper, Typography, useTheme } from '@mui/material';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Pedido } from '../../../api/endpoints/pedidos';
 import { agruparPorHora } from '../utils/salesAnalytics';
@@ -8,6 +8,8 @@ interface SalesByHourChartProps {
 }
 
 export function SalesByHourChart({ vendas }: SalesByHourChartProps) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const data = agruparPorHora(vendas);
 
   if (data.length === 0) {
@@ -31,10 +33,15 @@ export function SalesByHourChart({ vendas }: SalesByHourChartProps) {
       <Box sx={{ width: '100%', height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="label" />
-            <YAxis />
+            <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
+            <XAxis dataKey="label" tick={{ fill: theme.palette.text.secondary }} />
+            <YAxis tick={{ fill: theme.palette.text.secondary }} />
             <Tooltip
+              contentStyle={{
+                backgroundColor: theme.palette.background.paper,
+                color: theme.palette.text.primary,
+                border: `1px solid ${theme.palette.divider}`,
+              }}
               formatter={(value, name) => {
                 if (name === 'valor') {
                   return [
@@ -45,7 +52,7 @@ export function SalesByHourChart({ vendas }: SalesByHourChartProps) {
                 return [value, 'Quantidade'];
               }}
             />
-            <Bar dataKey="quantidade" fill="#22c55e" name="Quantidade" />
+            <Bar dataKey="quantidade" fill={isDark ? '#4ade80' : '#22c55e'} name="Quantidade" />
           </BarChart>
         </ResponsiveContainer>
       </Box>

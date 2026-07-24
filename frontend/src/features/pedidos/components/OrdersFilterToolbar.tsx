@@ -40,7 +40,7 @@ export function OrdersFilterToolbar({
       <TextField
         fullWidth
         label="Buscar pedidos"
-        placeholder="Cliente, destinatário, produto..."
+        placeholder="Cliente, destinatário, produto…"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         size="small"

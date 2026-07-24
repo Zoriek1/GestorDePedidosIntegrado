@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Box, Typography, Stack, TextField, Grid } from '@mui/material';
+import { Box, Typography, Stack, TextField, Grid, useMediaQuery, useTheme } from '@mui/material';
+import { SalesCard } from './components/SalesCard';
 import { usePedidos } from '../../api/endpoints/pedidos';
 import { Loading } from '../../components/common/Loading';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -23,8 +24,8 @@ export default function SalesPage() {
   // Calcular primeiro e último dia do mês atual (inclusive)
   // Backend vai adicionar 1 dia ao último dia para tornar fim_exclusivo
   const now = dayjs();
-  const [startDate, setStartDate] = useState(now.startOf('month').format('YYYY-MM-DD'));
-  const [endDate, setEndDate] = useState(now.endOf('month').format('YYYY-MM-DD'));
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [compareStartDate, setCompareStartDate] = useState(
@@ -214,17 +215,35 @@ export default function SalesPage() {
             compareLabel={compareEnabled ? 'Período comparado' : undefined}
           />
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid size={{ xs: 12, md: 6 }} sx={{ minWidth: 0 }}>
               <SalesChannelDonut vendas={vendas} />
             </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid size={{ xs: 12, md: 6 }} sx={{ minWidth: 0 }}>
               <SalesTopProducts vendas={vendas} />
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12 }} sx={{ minWidth: 0 }}>
               <SalesByHourChart vendas={vendas} />
             </Grid>
           </Grid>
-          <SalesTable vendas={vendas} />
+          {isMobile ? (
+            <Grid container spacing={1.5}>
+              {vendas.length === 0 ? (
+                <Grid size={12}>
+                  <Typography variant="body2" color="text.secondary" textAlign="center" py={4}>
+                    Nenhuma venda encontrada para este mês
+                  </Typography>
+                </Grid>
+              ) : (
+                vendas.map((venda) => (
+                  <Grid size={{ xs: 12, sm: 6 }} key={venda.id}>
+                    <SalesCard venda={venda} />
+                  </Grid>
+                ))
+              )}
+            </Grid>
+          ) : (
+            <SalesTable vendas={vendas} />
+          )}
         </>
       )}
     </Box>

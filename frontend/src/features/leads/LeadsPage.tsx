@@ -939,7 +939,7 @@ export default function LeadsPage() {
       >
         <Stack direction="row" alignItems="center" spacing={1}>
           <CampaignIcon color="primary" />
-          <Typography variant="h5" fontWeight={600}>
+          <Typography variant="h5" component="h1" fontWeight={600}>
             Leads UTM
           </Typography>
         </Stack>

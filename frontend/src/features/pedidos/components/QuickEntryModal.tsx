@@ -258,7 +258,7 @@ export function QuickEntryModal({ open, onClose, lead }: QuickEntryModalProps) {
               multiline
               rows={8}
               fullWidth
-              placeholder="Cole aqui o texto do cliente com as informações do pedido..."
+              placeholder="Cole aqui o texto do cliente com as informações do pedido…"
               value={text}
               onChange={(e) => setText(e.target.value)}
               variant="outlined"

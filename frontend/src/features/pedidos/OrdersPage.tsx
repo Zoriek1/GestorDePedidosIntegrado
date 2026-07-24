@@ -2,8 +2,8 @@
  * Orders Page - Main orders list view
  */
 
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -52,22 +52,38 @@ export default function OrdersPage() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  
-  const [filters, setFilters] = useState<PedidosFilters>({
-    status: '',
-    search: '',
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const filters: PedidosFilters = useMemo(() => ({
+    status: searchParams.get('status') || '',
+    search: searchParams.get('search') || '',
+    data_inicio: searchParams.get('data_inicio') || undefined,
+    data_fim: searchParams.get('data_fim') || undefined,
     sort_by: 'dia_entrega',
-    sort_order: 'asc', // Mais próximos primeiro (asc = datas mais próximas primeiro: hoje antes de amanhã)
-    page: 1,
-    // Sem per_page no estado inicial: o valor é derivado de `effectivePerPage` (ver
-    // abaixo). Modo operação (filtro ativo) carrega o conjunto inteiro; só a visão
-    // global "Tudo" mantém um teto de segurança.
-  });
+    sort_order: 'asc',
+    page: Number(searchParams.get('page')) || 1,
+    per_page: Number(searchParams.get('per_page')) || undefined,
+  }), [searchParams]);
+
+  const viewMode: ViewMode = (searchParams.get('view') as ViewMode) || 'lista';
+
+  const updateFilters = useCallback((patch: Record<string, string | number | undefined>) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      Object.entries(patch).forEach(([k, v]) => {
+        if (v === undefined || v === '' || v === null) next.delete(k);
+        else next.set(k, String(v));
+      });
+      if (!('page' in patch)) next.set('page', '1');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const [selectionMode, setSelectionMode] = useState<null | 'route' | 'print'>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [printLayout, setPrintLayout] = useState<PrintLayout>(4);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('lista');
 
   const queryClient = useQueryClient();
   const { getAuthHeader, getUserRole } = useAuth();
@@ -337,7 +353,7 @@ export default function OrdersPage() {
             size="small"
             onChange={(_e, v: ViewMode | null) => {
               if (v) {
-                setViewMode(v);
+                updateFilters({ view: v === 'lista' ? undefined : v });
                 setMode(null); // sai de seleção de rota/impressão ao trocar de visão
               }
             }}
@@ -645,11 +661,9 @@ export default function OrdersPage() {
         <OrdersFilterToolbar
           search={filters.search || ''}
           status={filters.status || ''}
-          onSearchChange={(val) => setFilters((prev) => ({ ...prev, search: val }))}
-          onStatusChange={(status) => {
-            setFilters((prev) => ({ ...prev, status: status || undefined }));
-          }}
-          onDateRangeChange={(start, end) => setFilters((prev) => ({ ...prev, data_inicio: start, data_fim: end }))}
+          onSearchChange={(val) => updateFilters({ search: val })}
+          onStatusChange={(status) => updateFilters({ status: status || undefined })}
+          onDateRangeChange={(start, end) => updateFilters({ data_inicio: start, data_fim: end })}
         />
       </Paper>
 
@@ -686,11 +700,11 @@ export default function OrdersPage() {
               total={pedidosData.total}
               totalPages={pedidosData.total_pages ?? 1}
               onPageChange={(page) => {
-                setFilters((prev) => ({ ...prev, page }));
+                updateFilters({ page });
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               onPerPageChange={(perPage) => {
-                setFilters((prev) => ({ ...prev, per_page: perPage, page: 1 }));
+                updateFilters({ per_page: perPage, page: 1 });
               }}
             />
           )}

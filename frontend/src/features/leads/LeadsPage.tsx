@@ -3,7 +3,7 @@
  */
 
 import { Fragment, useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Accordion,
   AccordionDetails,
@@ -333,7 +333,40 @@ export default function LeadsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { success, error: showError } = useToast();
-  const [filters, setFilters] = useState<LeadsFilters>(loadPersistedFilters);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const filters: LeadsFilters = useMemo(() => {
+    const urlHasParams = searchParams.toString().length > 0;
+    const fallback = urlHasParams ? {} as LeadsFilters : loadPersistedFilters();
+    return {
+      ...fallback,
+      page: Number(searchParams.get('page')) || fallback.page || 1,
+      per_page: Number(searchParams.get('per_page')) || fallback.per_page || 25,
+      event: searchParams.get('event') || fallback.event || 'whatsapp_click',
+      period: (searchParams.get('period') as LeadsPeriod | undefined) || fallback.period || 'today',
+      hidden: (searchParams.get('hidden') as LeadsHiddenMode | undefined) || fallback.hidden || 'exclude',
+      status: searchParams.get('status') || fallback.status,
+      situacao: searchParams.get('situacao') || fallback.situacao,
+      utm_source: searchParams.get('utm_source') || fallback.utm_source,
+      utm_campaign: searchParams.get('utm_campaign') || fallback.utm_campaign,
+      date_from: searchParams.get('date_from') || fallback.date_from,
+      date_to: searchParams.get('date_to') || fallback.date_to,
+      token_rastreio: searchParams.get('token_rastreio') || fallback.token_rastreio,
+      pending_followup_days: Number(searchParams.get('pending_followup_days')) || fallback.pending_followup_days,
+    };
+  }, [searchParams]);
+
+  const updateFilters = useCallback((patch: Record<string, string | number | undefined>) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      Object.entries(patch).forEach(([k, v]) => {
+        if (v === undefined || v === '' || v === null) next.delete(k);
+        else next.set(k, String(v));
+      });
+      if (!('page' in patch)) next.set('page', '1');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [manualPhone, setManualPhone] = useState('');
   const [respondeuPrimeiraMensagem, setRespondeuPrimeiraMensagem] = useState(false);
@@ -382,15 +415,13 @@ export default function LeadsPage() {
   }, [filters]);
 
   const setPeriod = useCallback((period: LeadsPeriod) => {
-    setFilters((prev) => {
-      const next: LeadsFilters = { ...prev, period, page: 1 };
-      if (period !== 'custom') {
-        delete next.date_from;
-        delete next.date_to;
-      }
-      return next;
-    });
-  }, []);
+    const patch: Record<string, string | undefined> = { period };
+    if (period !== 'custom') {
+      patch.date_from = undefined;
+      patch.date_to = undefined;
+    }
+    updateFilters(patch);
+  }, [updateFilters]);
 
   const handleViewOrder = useCallback((pedidoId: number) => {
     navigate(`/pedidos/${pedidoId}`);
@@ -998,13 +1029,7 @@ export default function LeadsPage() {
                   return;
                 }
                 if (v === 'yesterday') {
-                  setFilters((f) => ({
-                    ...f,
-                    period: 'custom',
-                    date_from: yesterdayIso,
-                    date_to: yesterdayIso,
-                    page: 1,
-                  }));
+                  updateFilters({ period: 'custom', date_from: yesterdayIso, date_to: yesterdayIso });
                   return;
                 }
                 setPeriod(v);
@@ -1047,7 +1072,7 @@ export default function LeadsPage() {
                 slotProps={{ inputLabel: { shrink: true } }}
                 value={filters.date_from ?? ''}
                 onChange={(e) =>
-                  setFilters((f) => ({ ...f, date_from: e.target.value || undefined, page: 1 }))
+                  updateFilters({ date_from: e.target.value || undefined })
                 }
               />
               <TextField
@@ -1057,7 +1082,7 @@ export default function LeadsPage() {
                 slotProps={{ inputLabel: { shrink: true } }}
                 value={filters.date_to ?? ''}
                 onChange={(e) =>
-                  setFilters((f) => ({ ...f, date_to: e.target.value || undefined, page: 1 }))
+                  updateFilters({ date_to: e.target.value || undefined })
                 }
               />
             </Stack>
@@ -1078,12 +1103,7 @@ export default function LeadsPage() {
                     label="Evento"
                     onChange={(e) => {
                       const v = e.target.value;
-                      setFilters((prev) => {
-                        const next: LeadsFilters = { ...prev, page: 1 };
-                        delete next.events;
-                        next.event = v;
-                        return next;
-                      });
+                      updateFilters({ event: v, events: undefined });
                     }}
                   >
                     <MenuItem value="whatsapp_click">{EVENT_LABELS.whatsapp_click}</MenuItem>
@@ -1098,7 +1118,7 @@ export default function LeadsPage() {
                     value={filters.status ?? ''}
                     label="Status"
                     onChange={(e) =>
-                      setFilters((f) => ({ ...f, status: e.target.value || undefined, page: 1 }))
+                      updateFilters({ status: e.target.value || undefined })
                     }
                   >
                     <MenuItem value="">Todos</MenuItem>
@@ -1117,7 +1137,7 @@ export default function LeadsPage() {
                     value={filters.utm_source ?? ''}
                     label="Origem"
                     onChange={(e) =>
-                      setFilters((f) => ({ ...f, utm_source: e.target.value || undefined, page: 1 }))
+                      updateFilters({ utm_source: e.target.value || undefined })
                     }
                   >
                     <MenuItem value="">Todas</MenuItem>
@@ -1132,7 +1152,7 @@ export default function LeadsPage() {
                   label="Campanha"
                   value={filters.utm_campaign ?? ''}
                   onChange={(e) =>
-                    setFilters((f) => ({ ...f, utm_campaign: e.target.value || undefined, page: 1 }))
+                    updateFilters({ utm_campaign: e.target.value || undefined })
                   }
                 />
 
@@ -1142,11 +1162,7 @@ export default function LeadsPage() {
                   placeholder="ex.: A3F9B7K20K"
                   value={filters.token_rastreio ?? ''}
                   onChange={(e) =>
-                    setFilters((f) => ({
-                      ...f,
-                      token_rastreio: e.target.value.trim() || undefined,
-                      page: 1,
-                    }))
+                    updateFilters({ token_rastreio: e.target.value.trim() || undefined })
                   }
                   sx={{ minWidth: 160 }}
                 />
@@ -1438,10 +1454,10 @@ export default function LeadsPage() {
               component="div"
               count={total}
               page={(filters.page ?? 1) - 1}
-              onPageChange={(_e, newPage) => setFilters((f) => ({ ...f, page: newPage + 1 }))}
+              onPageChange={(_e, newPage) => updateFilters({ page: newPage + 1 })}
               rowsPerPage={filters.per_page ?? 25}
               onRowsPerPageChange={(e) =>
-                setFilters((f) => ({ ...f, per_page: parseInt(e.target.value, 10), page: 1 }))
+                updateFilters({ per_page: parseInt(e.target.value, 10) })
               }
               rowsPerPageOptions={[10, 25, 50, 100]}
               labelRowsPerPage="Por página"
@@ -1724,10 +1740,10 @@ export default function LeadsPage() {
           component="div"
           count={total}
           page={(filters.page ?? 1) - 1}
-          onPageChange={(_e, newPage) => setFilters((f) => ({ ...f, page: newPage + 1 }))}
+          onPageChange={(_e, newPage) => updateFilters({ page: newPage + 1 })}
           rowsPerPage={filters.per_page ?? 25}
           onRowsPerPageChange={(e) =>
-            setFilters((f) => ({ ...f, per_page: parseInt(e.target.value, 10), page: 1 }))
+            updateFilters({ per_page: parseInt(e.target.value, 10) })
           }
           rowsPerPageOptions={[10, 25, 50, 100]}
           labelRowsPerPage="Por página"
@@ -1921,13 +1937,7 @@ export default function LeadsPage() {
           onClose={() => setDayPickerOpen(false)}
           onConfirm={(d) => {
             const iso = d.format('YYYY-MM-DD');
-            setFilters((f) => ({
-              ...f,
-              period: 'custom',
-              date_from: iso,
-              date_to: iso,
-              page: 1,
-            }));
+            updateFilters({ period: 'custom', date_from: iso, date_to: iso });
             setDayPickerOpen(false);
           }}
         />

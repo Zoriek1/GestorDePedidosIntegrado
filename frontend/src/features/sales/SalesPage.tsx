@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Box, Typography, Stack, TextField, Grid } from '@mui/material';
 import { usePedidos } from '../../api/endpoints/pedidos';
 import { Loading } from '../../components/common/Loading';
@@ -20,19 +21,25 @@ import 'dayjs/locale/pt-br';
 dayjs.locale('pt-br');
 
 export default function SalesPage() {
-  // Calcular primeiro e último dia do mês atual (inclusive)
-  // Backend vai adicionar 1 dia ao último dia para tornar fim_exclusivo
   const now = dayjs();
-  const [startDate, setStartDate] = useState(now.startOf('month').format('YYYY-MM-DD'));
-  const [endDate, setEndDate] = useState(now.endOf('month').format('YYYY-MM-DD'));
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [compareEnabled, setCompareEnabled] = useState(false);
-  const [compareStartDate, setCompareStartDate] = useState(
-    now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD')
-  );
-  const [compareEndDate, setCompareEndDate] = useState(
-    now.subtract(1, 'month').endOf('month').format('YYYY-MM-DD')
-  );
+  const startDate = searchParams.get('inicio') || now.startOf('month').format('YYYY-MM-DD');
+  const endDate = searchParams.get('fim') || now.endOf('month').format('YYYY-MM-DD');
+  const compareEnabled = searchParams.get('comparar') === '1';
+  const compareStartDate = searchParams.get('comp_inicio') || now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD');
+  const compareEndDate = searchParams.get('comp_fim') || now.subtract(1, 'month').endOf('month').format('YYYY-MM-DD');
+
+  const updatePeriod = useCallback((patch: Record<string, string | undefined>) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      Object.entries(patch).forEach(([k, v]) => {
+        if (v === undefined) next.delete(k);
+        else next.set(k, v);
+      });
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const [searchValue, setSearchValue] = useState('');
   const debouncedSearch = useDebouncedValue(searchValue, 400);
@@ -185,13 +192,17 @@ export default function SalesPage() {
           compareStartDate={compareStartDate}
           compareEndDate={compareEndDate}
           onChange={(start, end) => {
-            setStartDate(start);
-            setEndDate(end);
+            updatePeriod({ inicio: start, fim: end });
           }}
-          onCompareToggle={(enabled) => setCompareEnabled(enabled)}
+          onCompareToggle={(enabled) => {
+            updatePeriod({
+              comparar: enabled ? '1' : undefined,
+              comp_inicio: enabled ? now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD') : undefined,
+              comp_fim: enabled ? now.subtract(1, 'month').endOf('month').format('YYYY-MM-DD') : undefined,
+            });
+          }}
           onCompareChange={(start, end) => {
-            setCompareStartDate(start);
-            setCompareEndDate(end);
+            updatePeriod({ comp_inicio: start, comp_fim: end });
           }}
         />
       </Box>

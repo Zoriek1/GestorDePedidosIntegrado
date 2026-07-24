@@ -55,6 +55,7 @@ export function Providers({ children }: ProvidersProps) {
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', resolvedMode);
+    root.setAttribute('data-mui-color-scheme', resolvedMode);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
       meta.setAttribute('content', resolvedMode === 'dark' ? '#121212' : '#143d28');

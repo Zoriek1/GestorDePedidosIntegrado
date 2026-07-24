@@ -342,9 +342,9 @@ export default function OrderDetailsPage() {
                   sx={{
                     mt: 1,
                     p: 1.5,
-                    bgcolor: (theme) => alpha(theme.palette.info.light, 0.15),
+                    bgcolor: (theme) => alpha(theme.palette.success.light, 0.15),
                     borderLeft: '3px solid',
-                    borderColor: 'info.main',
+                    borderColor: 'success.main',
                     borderRadius: 1,
                   }}
                 >

@@ -28,6 +28,8 @@ export default function SalesPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [compareEnabled, setCompareEnabled] = useState(false);
+  const [startDate, setStartDate] = useState(now.startOf('month').format('YYYY-MM-DD'));
+  const [endDate, setEndDate] = useState(now.endOf('month').format('YYYY-MM-DD'));
   const [compareStartDate, setCompareStartDate] = useState(
     now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD')
   );

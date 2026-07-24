@@ -8,6 +8,7 @@ import {
   Stack,
   Tooltip,
   Typography,
+  useTheme,
 } from '@mui/material';
 import { Link2, RefreshCw, Settings, Unlink, Zap } from 'lucide-react';
 import { useConfirm } from '../../../components/system/useConfirm';
@@ -37,6 +38,8 @@ export function OAuthCard({
   subtitle,
 }: Props) {
   const confirm = useConfirm();
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
 
   const handleDisconnect = async () => {
     const confirmed = await confirm({
@@ -49,7 +52,7 @@ export function OAuthCard({
   };
 
   return (
-    <Card variant="outlined" sx={{ height: '100%', bgcolor: connected ? '#e8f5e9' : '#f5f5f5' }}>
+    <Card variant="outlined" sx={{ height: '100%', bgcolor: connected ? (isDark ? '#143d28' : '#e8f5e9') : (isDark ? '#2a2a2a' : '#f5f5f5') }}>
       <CardContent>
         <Stack spacing={2}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">

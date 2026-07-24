@@ -14,6 +14,7 @@ import OrderDetailsPage from '../features/pedidos/OrderDetailsPage';
 import FontesPage from '../features/fontes/FontesPage';
 import EditOrderPage from '../features/pedidos/EditOrderPage';
 import { Loading } from '../components/common/Loading';
+import { useAuth } from '../features/auth/authStore';
 
 const CustomersPage = lazy(() => import('../features/customers/CustomersPage'));
 const SalesPage = lazy(() => import('../features/sales/SalesPage'));
@@ -23,6 +24,7 @@ const OfflineDiagnostics = lazy(() => import('../features/offline/OfflineDiagnos
 const SettingsPage = lazy(() => import('../features/config/SettingsPage'));
 const LeadsPage = lazy(() => import('../features/leads/LeadsPage'));
 const LedgerPage = lazy(() => import('../features/ledger/LedgerPage'));
+const EquipePage = lazy(() => import('../features/equipe/EquipePage'));
 const MinhasEntregasMapaPage = lazy(() => import('../features/entregas/MinhasEntregasMapaPage'));
 const TrackingPage = lazy(() => import('../features/tracking/TrackingPage'));
 
@@ -30,6 +32,21 @@ const TrackingPage = lazy(() => import('../features/tracking/TrackingPage'));
 // Essas rotas são processadas pelo backend Flask
 function BackendRoute() {
   return null;
+}
+
+// Redirect: admin/vendedor vão para /equipe?tab=recebiveis; entregador vê LedgerPage diretamente
+function RecebiveisRedirect() {
+  const { getUserRole } = useAuth();
+  if (getUserRole() === 'entregador') {
+    return (
+      <RequireAuth>
+        <Suspense fallback={<Loading />}>
+          <LedgerPage />
+        </Suspense>
+      </RequireAuth>
+    );
+  }
+  return <Navigate to="/equipe?tab=recebiveis" replace />;
 }
 
 // Layout route that wraps protected routes with AppShell
@@ -185,10 +202,14 @@ const router = createBrowserRouter([
       },
       {
         path: '/recebiveis',
+        element: <RecebiveisRedirect />,
+      },
+      {
+        path: '/equipe',
         element: (
           <RequireAuth>
             <Suspense fallback={<Loading />}>
-              <LedgerPage />
+              <EquipePage />
             </Suspense>
           </RequireAuth>
         ),

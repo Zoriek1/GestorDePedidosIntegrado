@@ -53,6 +53,8 @@ export function Providers({ children }: ProvidersProps) {
   }, [mode]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-theme', resolvedMode);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
       meta.setAttribute('content', resolvedMode === 'dark' ? '#121212' : '#143d28');

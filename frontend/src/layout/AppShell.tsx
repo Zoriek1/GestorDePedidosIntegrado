@@ -73,12 +73,12 @@ export function AppShell({ children }: AppShellProps) {
   const userRole = currentUser?.role ?? credentials?.role ?? 'admin';
   const isEntregador = userRole === 'entregador';
   const isAdmin = userRole === 'admin';
-  const isVendedor = userRole === 'vendedor';
+  const _isVendedor = userRole === 'vendedor';
   const jwtUser = isJwtUser();
   // Leads é opt-in por loja. Sessões legadas (Basic Auth, sem payload de loja)
   // mantêm o menu visível — nesses casos só existe a loja default.
   const canViewLeads = !isEntregador && (currentUser?.leads_enabled ?? !jwtUser);
-  const canViewEquipe = isAdmin || isVendedor;
+  const canViewEquipe = isAdmin;
 
   const routePath = isEntregador ? '/entregador/mapa' : '/rota-entrega';
   const routeLabel = isEntregador ? 'Minhas entregas' : 'Rota';

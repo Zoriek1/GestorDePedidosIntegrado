@@ -178,7 +178,7 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
             <Collapse in={isExpanded} timeout="auto">
               <Grid container spacing={2}>
                 {grupo.pedidos.map((pedido) => (
-                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={pedido.id}>
+                  <Grid size={{ xs: 12, sm: 6, md: 6, lg: 4 }} key={pedido.id}>
                     <OrderCard
                       pedido={pedido}
                       sellerNameById={sellerNameById}

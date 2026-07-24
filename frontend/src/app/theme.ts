@@ -51,9 +51,10 @@ export function resolveThemeMode(mode: ThemeMode): 'light' | 'dark' {
   return mode === 'system' ? getSystemTheme() : mode;
 }
 
-export function createAppTheme(_mode: 'light' | 'dark') {
+export function createAppTheme(mode: 'light' | 'dark') {
   return createTheme({
     cssVariables: true,
+    palette: { mode },
     colorSchemes: {
       light: {
         palette: {

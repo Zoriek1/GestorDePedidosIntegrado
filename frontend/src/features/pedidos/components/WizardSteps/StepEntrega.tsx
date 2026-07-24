@@ -212,7 +212,7 @@ export function StepEntrega() {
                         },
                       }}
                       sx={{
-                        bgcolor: isAddressLocked ? 'grey.100' : 'inherit',
+                        bgcolor: isAddressLocked ? 'action.hover' : 'inherit',
                       }}
                     />
                   )}
@@ -272,7 +272,7 @@ export function StepEntrega() {
                         },
                       }}
                       sx={{
-                        bgcolor: isAddressLocked ? 'grey.100' : 'inherit',
+                        bgcolor: isAddressLocked ? 'action.hover' : 'inherit',
                       }}
                     />
                   )}
@@ -300,7 +300,7 @@ export function StepEntrega() {
                         },
                       }}
                       sx={{
-                        bgcolor: isAddressLocked ? 'grey.100' : 'inherit',
+                        bgcolor: isAddressLocked ? 'action.hover' : 'inherit',
                       }}
                     />
                   )}

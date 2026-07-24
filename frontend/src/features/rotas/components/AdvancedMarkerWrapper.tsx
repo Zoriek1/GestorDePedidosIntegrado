@@ -15,6 +15,7 @@ export function AdvancedMarkerWrapper({ position, title, onClick, content }: Adv
 
   useEffect(() => {
     if (!map || !containerRef.current) return;
+    if (!google.maps.marker?.AdvancedMarkerElement) return;
 
     const marker = new google.maps.marker.AdvancedMarkerElement({
       map,

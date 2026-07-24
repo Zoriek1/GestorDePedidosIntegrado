@@ -8,6 +8,7 @@ import {
   Button,
   Chip,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { pedidoDisplayNumber, usePedido } from '../../api/endpoints/pedidos';
@@ -266,7 +267,7 @@ export default function OrderDetailsPage() {
             mb: 2,
             border: '2px dashed',
             borderColor: 'warning.light',
-            backgroundColor: '#fff8e1',
+            backgroundColor: (theme) => alpha(theme.palette.warning.light, 0.15),
           }}
         >
           {sectionTitle('Mensagem do cartão')}
@@ -341,7 +342,7 @@ export default function OrderDetailsPage() {
                   sx={{
                     mt: 1,
                     p: 1.5,
-                    bgcolor: '#e3f2fd',
+                    bgcolor: (theme) => alpha(theme.palette.info.light, 0.15),
                     borderLeft: '3px solid',
                     borderColor: 'info.main',
                     borderRadius: 1,
@@ -389,7 +390,7 @@ export default function OrderDetailsPage() {
               sx={{
                 mt: 1,
                 p: 1.5,
-                bgcolor: 'grey.100',
+                bgcolor: 'action.hover',
                 borderRadius: 1,
               }}
             >

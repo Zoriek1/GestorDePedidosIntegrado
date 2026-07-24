@@ -320,6 +320,7 @@ export default function RoutePage() {
   // --- Google Maps ---
   const { isLoaded: mapsLoaded } = useJsApiLoader({
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: ['marker'],
   });
 
   const mapCenter = useMemo(() => {

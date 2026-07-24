@@ -114,7 +114,7 @@ export function StepPagamento() {
       variant="outlined"
       sx={{
         p: 2,
-        bgcolor: 'grey.50',
+        bgcolor: 'action.hover',
         borderColor: 'primary.main',
         borderWidth: 2,
         position: isMobile ? 'static' : 'sticky',

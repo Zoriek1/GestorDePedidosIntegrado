@@ -90,6 +90,15 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
             <Paper
               elevation={isExpanded ? 3 : 1}
               onClick={() => toggleGroup(grupo.label)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isExpanded}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleGroup(grupo.label);
+                }
+              }}
               sx={{
                 p: 2,
                 mb: isExpanded ? 2 : 1,
@@ -99,7 +108,6 @@ export function OrderList({ pedidos, onOrderClick, selectionMode = false, select
                 transition: 'all 0.2s ease-in-out',
                 '&:hover': {
                   backgroundColor: isExpanded ? 'primary.dark' : 'action.selected',
-                  elevation: 4,
                   transform: 'translateY(-1px)',
                 },
                 display: 'flex',

@@ -31,21 +31,3 @@ export function useAnimateOnMount(
 
   return `animate__animated animate__${animation}`;
 }
-
-/**
- * Hook para aplicar animação com controle manual
- */
-export function useAnimate(initialAnimation?: string) {
-  const [animation, setAnimation] = useState<string | undefined>(initialAnimation);
-
-  const trigger = (anim: string) => {
-    setAnimation(undefined); // Reset first
-    setTimeout(() => setAnimation(anim), 10);
-  };
-
-  const className = animation 
-    ? `animate__animated animate__${animation}` 
-    : '';
-
-  return { className, trigger };
-}

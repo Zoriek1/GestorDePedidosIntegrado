@@ -3,6 +3,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -48,6 +49,7 @@ type ViewMode = 'lista' | 'quadro';
 const MAX_BATCH_PRINT = 100;
 
 export default function OrdersPage() {
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -105,9 +107,8 @@ export default function OrdersPage() {
     queryClient.invalidateQueries({ queryKey: tenantKey(storeKey, 'stats'), exact: false });
   };
 
-  const handleOrderClick = () => {
-    // TODO: Navigate to order details
-    // Log removido em produção
+  const handleOrderClick = (pedido: { id: number }) => {
+    navigate(`/pedidos/${pedido.id}`);
   };
 
   const visiblePedidos = useMemo(() => {

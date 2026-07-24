@@ -30,6 +30,7 @@ export function SalesChart({
   compareLabel = 'Período comparado',
 }: SalesChartProps) {
   const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const isCompareMode = Boolean(compareVendas && compareStartDate && compareEndDate);
@@ -84,20 +85,25 @@ export function SalesChart({
       <Box sx={{ width: '100%', height: 300, mt: 2, minWidth: 0, minHeight: 300 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout={isMobile ? 'vertical' : 'horizontal'}>
-            <CartesianGrid strokeDasharray="3 3" />
+            <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
             {isMobile ? (
               <>
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="label" width={60} />
+                <XAxis type="number" tick={{ fill: theme.palette.text.secondary }} />
+                <YAxis type="category" dataKey="label" width={60} tick={{ fill: theme.palette.text.secondary }} />
               </>
             ) : (
               <>
-                <XAxis dataKey="label" />
-                <YAxis yAxisId="left" orientation="left" />
-                {!isCompareMode && <YAxis yAxisId="right" orientation="right" />}
+                <XAxis dataKey="label" tick={{ fill: theme.palette.text.secondary }} />
+                <YAxis yAxisId="left" orientation="left" tick={{ fill: theme.palette.text.secondary }} />
+                {!isCompareMode && <YAxis yAxisId="right" orientation="right" tick={{ fill: theme.palette.text.secondary }} />}
               </>
             )}
             <Tooltip
+              contentStyle={{
+                backgroundColor: theme.palette.background.paper,
+                color: theme.palette.text.primary,
+                border: `1px solid ${theme.palette.divider}`,
+              }}
               formatter={(value: number | undefined, name: string | undefined) => {
                 // O name vem do prop 'name' do Bar component
                 const numValue = typeof value === 'number' ? value : parseFloat(String(value || 0));
@@ -113,13 +119,13 @@ export function SalesChart({
             <Legend />
             {isCompareMode ? (
               <>
-                <Bar yAxisId={isMobile ? undefined : 'left'} dataKey="valor" fill="#8884d8" name="Período atual" />
-                <Bar yAxisId={isMobile ? undefined : 'left'} dataKey="valorComparado" fill="#82ca9d" name={compareLabel} />
+                <Bar yAxisId={isMobile ? undefined : 'left'} dataKey="valor" fill={isDark ? '#818cf8' : '#8884d8'} name="Período atual" />
+                <Bar yAxisId={isMobile ? undefined : 'left'} dataKey="valorComparado" fill={isDark ? '#4ade80' : '#82ca9d'} name={compareLabel} />
               </>
             ) : (
               <>
-                <Bar yAxisId={isMobile ? undefined : 'left'} dataKey="valor" fill="#8884d8" name="Valor (R$)" />
-                {!isMobile && <Bar yAxisId="right" dataKey="quantidade" fill="#82ca9d" name="Quantidade" />}
+                <Bar yAxisId={isMobile ? undefined : 'left'} dataKey="valor" fill={isDark ? '#818cf8' : '#8884d8'} name="Valor (R$)" />
+                {!isMobile && <Bar yAxisId="right" dataKey="quantidade" fill={isDark ? '#4ade80' : '#82ca9d'} name="Quantidade" />}
               </>
             )}
           </BarChart>

@@ -44,6 +44,17 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 const MAP_CONTAINER_STYLE = { height: '100%', width: '100%' };
 
+const darkMapStyles: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
+];
+
 // Componente SortableItem para cada pedido na lista
 interface SortableItemProps {
   id: number;
@@ -92,6 +103,7 @@ function SortableItem({ id, compact, children }: SortableItemProps) {
 
 export default function RoutePage() {
   const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { getUser, getUserRole } = useAuth();
@@ -382,6 +394,7 @@ export default function RoutePage() {
             streetViewControl: false,
             mapTypeControl: false,
             fullscreenControl: true,
+            styles: isDark ? darkMapStyles : undefined,
           }}
         >
           {rotaData?.origem && (
@@ -432,7 +445,7 @@ export default function RoutePage() {
                   {pedido.cliente && (
                     <>
                       <br />
-                      <span style={{ color: '#666' }}>De: {pedido.cliente}</span>
+                      <span style={{ color: theme.palette.text.secondary }}>De: {pedido.cliente}</span>
                     </>
                   )}
                   <br />
@@ -461,7 +474,7 @@ export default function RoutePage() {
           {routePath.length > 1 && (
             <Polyline
               path={routePath}
-              options={{ strokeColor: '#4CAF50', strokeWeight: 4, strokeOpacity: 0.8 }}
+              options={{ strokeColor: isDark ? '#4ade80' : '#4CAF50', strokeWeight: 4, strokeOpacity: 0.8 }}
             />
           )}
         </GoogleMap>

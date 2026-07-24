@@ -7,6 +7,7 @@ import {
   IconButton,
   Stack,
   Typography,
+  useTheme,
 } from '@mui/material';
 import { Settings, Zap } from 'lucide-react';
 import { CHANNEL_EVENTS } from '../constants';
@@ -22,12 +23,12 @@ interface Props {
   testing?: boolean;
 }
 
-function resolveFieldStatus(config: IntegrationSettingsConfig, channel: ChannelDef): {
+function resolveFieldStatus(config: IntegrationSettingsConfig, channel: ChannelDef, isDark: boolean): {
   label: string;
   color: 'default' | 'success' | 'warning';
   bgcolor: string;
 } {
-  if (!channel.fields) return { label: 'Não configurado', color: 'default', bgcolor: '#f5f5f5' };
+  if (!channel.fields) return { label: 'Não configurado', color: 'default', bgcolor: isDark ? '#2a2a2a' : '#f5f5f5' };
 
   const allRequiredFilled = channel.fields
     .filter(f => f.required)
@@ -40,26 +41,29 @@ function resolveFieldStatus(config: IntegrationSettingsConfig, channel: ChannelD
     });
 
   if (!allRequiredFilled) {
-    return { label: 'Não configurado', color: 'default', bgcolor: '#f5f5f5' };
+    return { label: 'Não configurado', color: 'default', bgcolor: isDark ? '#2a2a2a' : '#f5f5f5' };
   }
 
-  return { label: 'Pendente', color: 'warning', bgcolor: '#fff8e1' };
+  return { label: 'Pendente', color: 'warning', bgcolor: isDark ? '#3d3520' : '#fff8e1' };
 }
 
 function resolveStatusChip(
   status: ChannelStatus | null | undefined,
   fieldStatus: { label: string; color: 'default' | 'success' | 'warning'; bgcolor: string },
+  isDark: boolean,
 ) {
   if (!status || status.ok === null) return fieldStatus;
   if (status.ok) {
-    return { label: 'Validado', color: 'success' as const, bgcolor: '#e8f5e9' };
+    return { label: 'Validado', color: 'success' as const, bgcolor: isDark ? '#143d28' : '#e8f5e9' };
   }
-  return { label: 'Falhou', color: 'default' as const, bgcolor: '#ffebee' };
+  return { label: 'Falhou', color: 'default' as const, bgcolor: isDark ? '#5c1a1a' : '#ffebee' };
 }
 
 export function IntegrationCard({ channel, config, status, onOpenModal, onTest, testing }: Props) {
-  const fieldStatus = resolveFieldStatus(config, channel);
-  const { label, color, bgcolor } = resolveStatusChip(status, fieldStatus);
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const fieldStatus = resolveFieldStatus(config, channel, isDark);
+  const { label, color, bgcolor } = resolveStatusChip(status, fieldStatus, isDark);
 
   return (
     <Card

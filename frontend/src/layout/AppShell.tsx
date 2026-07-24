@@ -29,9 +29,13 @@ import {
   AddShoppingCart as AddShoppingCartIcon,
   LocalShipping as LocalShippingIcon,
   Settings,
+  LightMode,
+  DarkMode,
+  Brightness7 as AutoIcon,
 } from '@mui/icons-material';
 
 import { useAuth } from '../features/auth/authStore';
+import { useThemeMode } from '../app/useThemeMode';
 import { NotificationManager } from '../features/notifications/NotificationManager';
 import { useOffline } from '../lib/offline/useOffline';
 import { QuickEntryModal } from '../features/pedidos/components/QuickEntryModal';
@@ -62,6 +66,7 @@ export function AppShell({ children }: AppShellProps) {
   const isOrdersPage = location.pathname === '/';
 
   const authenticated = isAuthenticated();
+  const { mode: themeMode, resolvedMode, setMode: setThemeMode } = useThemeMode();
   const currentUser = authenticated ? getUser() : null;
   const credentials = authenticated ? getCredentials() : null;
   const username = currentUser?.name ?? currentUser?.email ?? credentials?.username;
@@ -498,6 +503,22 @@ export function AppShell({ children }: AppShellProps) {
                 >
                   <Settings sx={{ mr: 1, fontSize: 18 }} />
                   Configurações
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    const next = themeMode === 'light' ? 'dark' : themeMode === 'dark' ? 'system' : 'light';
+                    setThemeMode(next);
+                  }}
+                  sx={{ color: BRAND.textNeutral, '&:hover': { color: BRAND.gold, bgcolor: 'rgba(212, 175, 122, 0.06)' } }}
+                >
+                  {resolvedMode === 'dark' ? (
+                    <DarkMode sx={{ mr: 1, fontSize: 18 }} />
+                  ) : themeMode === 'system' ? (
+                    <AutoIcon sx={{ mr: 1, fontSize: 18 }} />
+                  ) : (
+                    <LightMode sx={{ mr: 1, fontSize: 18 }} />
+                  )}
+                  {themeMode === 'light' ? 'Claro' : themeMode === 'dark' ? 'Escuro' : 'Sistema'}
                 </MenuItem>
                 <MenuItem
                   disabled

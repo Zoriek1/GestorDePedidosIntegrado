@@ -45,6 +45,10 @@ const fieldSchemas: Record<string, z.ZodTypeAny> = {
   utmify_is_test: z.boolean(),
   loja_cep: cepSchema,
   endereco_floricultura: z.string().max(255).or(z.literal('')),
+  mercado_pago_access_token: tokenSchema('Access Token', 20),
+  mercado_pago_public_key: z.string().min(10, 'Public Key muito curta').or(z.literal('')),
+  mercado_pago_client_id: z.string().min(10, 'Client ID muito curto').or(z.literal('')),
+  mercado_pago_client_secret: z.string().min(10, 'Client Secret muito curto').or(z.literal('')),
 };
 
 export function fieldSchema(fieldKey: string): z.ZodTypeAny {

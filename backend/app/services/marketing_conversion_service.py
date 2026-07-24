@@ -184,6 +184,6 @@ def enqueue_whatsapp_purchase(pedido: Pedido) -> list[MarketingConversionOutbox]
     try:
         events_svc = EventsService()
         events_svc.enqueue_purchase(pedido)
-    except Exception as e:
+    except Exception:
         pass  # Non-critical: old outbox still works
     return created

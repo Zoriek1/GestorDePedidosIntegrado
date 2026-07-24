@@ -83,11 +83,12 @@ export const INTEGRATION_CHANNELS: ChannelDef[] = [
     label: 'Mercado Pago Point',
     icon: 'CreditCard',
     type: 'field',
-    testable: false,
+    testable: true,
     fields: [
       { key: 'mercado_pago_access_token', label: 'Access Token', type: 'password', required: true },
       { key: 'mercado_pago_public_key', label: 'Public Key', type: 'password' },
-      { key: 'mercado_pago_webhook_secret', label: 'Webhook Secret', type: 'password' },
+      { key: 'mercado_pago_client_id', label: 'Client ID', type: 'password' },
+      { key: 'mercado_pago_client_secret', label: 'Client Secret', type: 'password' },
     ],
   },
 ];

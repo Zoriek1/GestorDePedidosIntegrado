@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from . import dados_operacionais, ga4, meta_capi, utmify
+from . import dados_operacionais, ga4, mercado_pago, meta_capi, utmify
 
 HttpGet = Callable[[str, float], tuple[int, dict | str]]
 
@@ -49,6 +49,15 @@ def validate(
             return dados_operacionais.validate_loja_cep(value, http_get=http_get)
         if field == "endereco_floricultura":
             return dados_operacionais.validate_endereco_floricultura(value)
+    elif channel == "mercado_pago":
+        if field == "mercado_pago_access_token":
+            return mercado_pago.validate_mercado_pago_access_token(value, http_get=http_get)
+        if field == "mercado_pago_public_key":
+            return mercado_pago.validate_mercado_pago_public_key(value, http_get=http_get)
+        if field == "mercado_pago_client_id":
+            return mercado_pago.validate_mercado_pago_client_id(value, http_get=http_get)
+        if field == "mercado_pago_client_secret":
+            return mercado_pago.validate_mercado_pago_client_secret(value, http_get=http_get)
 
     return False, f"Campo nao validavel: {channel}.{field}"
 

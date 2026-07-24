@@ -61,6 +61,39 @@ Camadas: `routes/` → `services/` → `repositories/` → `models/`. Routes val
 
 Scripts Python idempotentes em [backend/scripts/migrations/](backend/scripts/migrations/) — **não** Alembic. [entrypoint.sh](backend/entrypoint.sh) roda os essenciais no boot. Template em [docs/database.md](docs/database.md).
 
+**⚠️ Armadilha conhecida: AccessExclusiveLock deadlock em DDL loops**
+
+Cada migration script chama `create_app()` no module level, criando pool de conexões próprio. O padrão problemático é:
+
+1. `db.session.execute("ALTER TABLE ...")` → abre transação, segura `AccessExclusiveLock` na tabela
+2. `column_exists()` → usa `db.inspect(db.engine)` (conexão **diferente** do pool) para ler `pg_catalog.pg_attribute`
+3. A leitura fica bloqueada pelo lock da própria sessão → **deadlock infinito**
+
+**Regra obrigatória:** sempre `db.session.commit()` **após cada** `ALTER TABLE`, antes de qualquer `column_exists()` ou `inspector.get_columns()`. Nunca acumular DDLs em uma única transação.
+
+```python
+# ❌ ERRADO — deadlock se column_exists() precisar ler a mesma tabela
+for col_name, definition in columns:
+    if column_exists("store_settings", col_name):
+        continue
+    db.session.execute(text(f"ALTER TABLE ... ADD COLUMN {col_name} {definition}"))
+db.session.commit()  # lock mantido durante todo o loop
+
+# ✅ CORRETO — commit libera o lock antes da próxima inspeção
+for col_name, definition in columns:
+    if column_exists("store_settings", col_name):
+        continue
+    db.session.execute(text(f"ALTER TABLE ... ADD COLUMN {col_name} {definition}"))
+    db.session.commit()  # lock liberado imediatamente
+```
+
+**Dica de diagnóstico:** se o container trava no entrypoint sem erro visível, verifique locks no PG:
+```sql
+SELECT pid, state, query, wait_event_type, wait_event
+FROM pg_stat_activity WHERE datname = current_database();
+```
+Procurar por `idle in transaction` com `ALTER TABLE` + outros processos em `Lock | relation` na mesma tabela.
+
 ### SPA servido pelo backend
 
 Em runtime o Flask serve a SPA de `frontend/dist` (ou `FRONTEND_DIST_PATH`) via [static.py](backend/app/static.py). `backend/static/` **não** é usado e é gitignored.

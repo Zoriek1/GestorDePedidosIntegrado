@@ -85,6 +85,15 @@ export interface IntegrationSettingsConfig {
   utmify_is_test: boolean;
   endereco_floricultura: string | null;
   loja_cep: string | null;
+  mercado_pago_enabled: boolean;
+  mercado_pago_access_token: string | null;
+  has_mercado_pago_access_token: boolean;
+  mercado_pago_public_key: string | null;
+  has_mercado_pago_public_key: boolean;
+  mercado_pago_client_id: string | null;
+  has_mercado_pago_client_id: boolean;
+  mercado_pago_client_secret: string | null;
+  has_mercado_pago_client_secret: boolean;
 }
 
 export type IntegrationSettingsPayload = Omit<

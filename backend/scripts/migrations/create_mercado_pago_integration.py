@@ -24,6 +24,7 @@ def create_mercado_pago_integration():
     with app.app_context():
         try:
             db.create_all()
+            db.session.commit()
 
             # Adicionar colunas em store_settings
             added = 0
@@ -42,10 +43,10 @@ def create_mercado_pago_integration():
                 db.session.execute(
                     db.text(f"ALTER TABLE store_settings ADD COLUMN {col_name} {definition}")
                 )
+                db.session.commit()
                 added += 1
                 print(f"[ADD] store_settings.{col_name}")
 
-            db.session.commit()
             print(
                 f"[SUCCESS] Mercado Pago migration concluida: "
                 f"{added} colunas adicionadas, {skipped} skips"

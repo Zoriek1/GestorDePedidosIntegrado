@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Migration idempotente: adiciona colunas de taxa de cartao em store_settings."""
+"""Migration idempotente: adiciona client_id e client_secret ao Mercado Pago."""
 
 import sys
 from pathlib import Path
@@ -20,14 +20,17 @@ def column_exists(table_name: str, column_name: str) -> bool:
     return column_name in columns
 
 
-def add_taxa_cartao_columns():
+def add_mercado_pago_client_credentials():
     with app.app_context():
         try:
+            db.create_all()
+            db.session.commit()
+
             added = 0
             skipped = 0
             columns = [
-                ("taxa_cartao_debito_pct", "FLOAT DEFAULT 0"),
-                ("taxa_cartao_credito_json", "TEXT"),
+                ("mercado_pago_client_id_encrypted", "TEXT"),
+                ("mercado_pago_client_secret_encrypted", "TEXT"),
             ]
             for col_name, definition in columns:
                 if column_exists("store_settings", col_name):
@@ -42,14 +45,14 @@ def add_taxa_cartao_columns():
                 print(f"[ADD] store_settings.{col_name}")
 
             print(
-                f"[SUCCESS] Taxa Cartao migration concluida: "
+                f"[SUCCESS] Mercado Pago client credentials migration concluida: "
                 f"{added} colunas adicionadas, {skipped} skips"
             )
         except Exception as exc:
             db.session.rollback()
-            print(f"[ERROR] Migration Taxa Cartao falhou: {exc}")
+            print(f"[ERROR] Migration Mercado Pago client credentials falhou: {exc}")
             raise
 
 
 if __name__ == "__main__":
-    add_taxa_cartao_columns()
+    add_mercado_pago_client_credentials()

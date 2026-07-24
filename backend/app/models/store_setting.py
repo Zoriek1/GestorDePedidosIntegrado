@@ -12,6 +12,8 @@ SECRET_FIELDS = {
     "utmify_api_token": "utmify_api_token_encrypted",
     "mercado_pago_access_token": "mercado_pago_access_token_encrypted",
     "mercado_pago_public_key": "mercado_pago_public_key_encrypted",
+    "mercado_pago_client_id": "mercado_pago_client_id_encrypted",
+    "mercado_pago_client_secret": "mercado_pago_client_secret_encrypted",
     "mercado_pago_webhook_secret": "mercado_pago_webhook_secret_encrypted",
 }
 
@@ -50,6 +52,8 @@ class StoreSetting(db.Model):
 
     mercado_pago_access_token_encrypted = db.Column(db.Text, nullable=True)
     mercado_pago_public_key_encrypted = db.Column(db.Text, nullable=True)
+    mercado_pago_client_id_encrypted = db.Column(db.Text, nullable=True)
+    mercado_pago_client_secret_encrypted = db.Column(db.Text, nullable=True)
     mercado_pago_webhook_secret_encrypted = db.Column(db.Text, nullable=True)
     mercado_pago_enabled = db.Column(db.Boolean, nullable=False, default=False)
 

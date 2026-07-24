@@ -88,7 +88,7 @@ def run() -> None:
 
                 print(f"[RE-ENQUEUE] meta_capi_outbox: {purchase_count} entries reset to pending")
                 print(f"[RE-ENQUEUE] meta_capi_lead_outbox: {lead_count} entries reset to pending")
-                print(f"[SUCCESS] Re-enqueue completo. O worker ira reenviar nos proximos ciclos.")
+                print("[SUCCESS] Re-enqueue completo. O worker ira reenviar nos proximos ciclos.")
 
 
 if __name__ == "__main__":

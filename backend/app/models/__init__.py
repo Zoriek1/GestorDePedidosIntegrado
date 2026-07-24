@@ -18,9 +18,9 @@ from app.models.integration_validation_log import IntegrationValidationLog
 from app.models.lead import Lead
 from app.models.lead_touchpoint import LeadTouchpoint
 from app.models.ledger_entry import LedgerEntry
+from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.mercado_pago_integration_log import MercadoPagoIntegrationLog
 from app.models.mercado_pago_outbox import MercadoPagoOutbox
-from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.meta_capi_lead_outbox import MetaCapiLeadOutbox
 from app.models.meta_capi_outbox import MetaCapiOutbox
 from app.models.nuvemshop_store import NuvemshopStore

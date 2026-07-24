@@ -79,8 +79,15 @@ class BlingIntegrationService:
             credential = BlingTokenService.get_credential(store_ref_id=self.store_ref_id)
         except BlingIntegrationError:
             pass
+        try:
+            from app.services.integration_settings_service import runtime_config
+
+            cfg = runtime_config(self.store_ref_id)
+            enabled = bool(cfg.get("BLING_ENABLED", current_app.config.get("BLING_ENABLED")))
+        except Exception:
+            enabled = bool(current_app.config.get("BLING_ENABLED"))
         return {
-            "enabled": bool(current_app.config.get("BLING_ENABLED")),
+            "enabled": enabled,
             "connected": bool(credential and credential.refresh_token_encrypted),
             "credential": credential.to_dict() if credential else None,
             "counts": {

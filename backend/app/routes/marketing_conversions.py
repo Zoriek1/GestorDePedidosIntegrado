@@ -6,8 +6,8 @@ from sqlalchemy import func
 
 from app import db
 from app.middleware import requires_any_role
-from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.models.events_outbox import EventsOutbox
+from app.models.marketing_conversion_outbox import MarketingConversionOutbox
 from app.services.marketing_diagnostics_service import MarketingDiagnosticsService
 
 marketing_conversions_bp = Blueprint(

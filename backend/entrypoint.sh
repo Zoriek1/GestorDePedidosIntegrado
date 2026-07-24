@@ -22,6 +22,7 @@ python scripts/migrations/add_search_trgm_unaccent.py
 python scripts/migrations/create_catalogo_arranjos.py
 python scripts/migrations/create_bling_integration.py
 python scripts/migrations/create_mercado_pago_integration.py
+python scripts/migrations/add_mercado_pago_client_credentials.py
 python scripts/migrations/add_taxa_cartao_to_store_settings.py
 python scripts/migrations/add_store_foundation.py
 python scripts/migrations/add_email_domain_to_stores.py
@@ -40,14 +41,6 @@ python scripts/migrations/convert_pedidos_fbc_seconds_to_ms.py
 python scripts/migrations/create_integration_validation_log.py
 python scripts/migrations/enforce_store_ref_not_null.py
 python scripts/migrations/scope_user_name_unique_to_store.py
-python scripts/migrations/create_mercado_pago_integration.py
-python scripts/migrations/add_taxa_cartao_to_store_settings.py
-
-# Backfills que consultam via ORM devem rodar DEPOIS das migrations de schema
-# tenant (numero_pedido/store_ref_id em pedidos/fontes_pedido). Se rodarem antes,
-# o SELECT do modelo Pedido referencia colunas ainda inexistentes num upgrade de
-# base pré-tenant e o entrypoint aborta (incidente de rollout em 2026-07-20).
-python scripts/migrations/backfill_slot_inicio_from_horario.py
 
 # Backfills que consultam via ORM devem rodar DEPOIS das migrations de schema
 # tenant (numero_pedido/store_ref_id em pedidos/fontes_pedido). Se rodarem antes,

@@ -62,8 +62,8 @@ def _require_leads_enabled():
         auth_header = request.headers.get("Authorization", "")
         if auth_header.lower().startswith("bearer "):
             try:
-                from app.services.auth_service import decode_token, extract_bearer_token
                 from app.services.auth_context import load_request_identity
+                from app.services.auth_service import decode_token, extract_bearer_token
 
                 token = extract_bearer_token(auth_header)
                 payload = decode_token(token) if token else None

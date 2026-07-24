@@ -129,7 +129,7 @@ function LedgerPageDefault() {
         mb={3}
         gap={1}
       >
-        <Typography variant="h5" fontWeight={700}>
+        <Typography variant="h5" component="h1" fontWeight={700}>
           Recebíveis
         </Typography>
 

@@ -72,7 +72,8 @@ CHANNELS: dict[str, dict[str, list[str]]] = {
         "fields": [
             "mercado_pago_access_token",
             "mercado_pago_public_key",
-            "mercado_pago_webhook_secret",
+            "mercado_pago_client_id",
+            "mercado_pago_client_secret",
         ],
         "required": ["mercado_pago_access_token"],
     },
@@ -212,6 +213,8 @@ def settings_from_environment(store_ref_id: int) -> StoreSetting:
         "utmify_api_token": "UTMIFY_API_TOKEN",
         "mercado_pago_access_token": "MERCADO_PAGO_ACCESS_TOKEN",
         "mercado_pago_public_key": "MERCADO_PAGO_PUBLIC_KEY",
+        "mercado_pago_client_id": "MERCADO_PAGO_CLIENT_ID",
+        "mercado_pago_client_secret": "MERCADO_PAGO_CLIENT_SECRET",
         "mercado_pago_webhook_secret": "MERCADO_PAGO_WEBHOOK_SECRET",
     }.items():
         settings.set_secret(field, current_app.config.get(config_key) or None)
@@ -242,6 +245,8 @@ def _environment_runtime_config() -> dict[str, Any]:
             "MERCADO_PAGO_ENABLED",
             "MERCADO_PAGO_ACCESS_TOKEN",
             "MERCADO_PAGO_PUBLIC_KEY",
+            "MERCADO_PAGO_CLIENT_ID",
+            "MERCADO_PAGO_CLIENT_SECRET",
             "MERCADO_PAGO_WEBHOOK_SECRET",
         )
     }
@@ -270,6 +275,8 @@ def _disabled_runtime_config() -> dict[str, Any]:
         "LOJA_CEP",
         "MERCADO_PAGO_ACCESS_TOKEN",
         "MERCADO_PAGO_PUBLIC_KEY",
+        "MERCADO_PAGO_CLIENT_ID",
+        "MERCADO_PAGO_CLIENT_SECRET",
         "MERCADO_PAGO_WEBHOOK_SECRET",
     ):
         config[key] = ""
@@ -316,6 +323,8 @@ def runtime_config(store_ref_id: int | None = None) -> dict[str, Any]:
         "MERCADO_PAGO_ENABLED": getattr(settings, "mercado_pago_enabled", False),
         "MERCADO_PAGO_ACCESS_TOKEN": settings.get_secret("mercado_pago_access_token") or "",
         "MERCADO_PAGO_PUBLIC_KEY": settings.get_secret("mercado_pago_public_key") or "",
+        "MERCADO_PAGO_CLIENT_ID": settings.get_secret("mercado_pago_client_id") or "",
+        "MERCADO_PAGO_CLIENT_SECRET": settings.get_secret("mercado_pago_client_secret") or "",
         "MERCADO_PAGO_WEBHOOK_SECRET": settings.get_secret("mercado_pago_webhook_secret") or "",
     }
 

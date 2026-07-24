@@ -12,7 +12,6 @@ Testes:
 - POST /api/leads/whatsapp-start público continua funcionando
 """
 
-from app.models.lead import Lead
 from app.models.store import Store
 from app.models.user import User
 from app.services.auth_service import generate_token, hash_password

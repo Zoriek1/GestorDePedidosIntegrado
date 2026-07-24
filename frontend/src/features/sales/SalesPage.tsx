@@ -1,5 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { Box, Typography, Stack, TextField, Grid, useMediaQuery, useTheme } from '@mui/material';
 import { SalesCard } from './components/SalesCard';
 import { usePedidos } from '../../api/endpoints/pedidos';
@@ -27,7 +26,6 @@ export default function SalesPage() {
   const now = dayjs();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [compareStartDate, setCompareStartDate] = useState(

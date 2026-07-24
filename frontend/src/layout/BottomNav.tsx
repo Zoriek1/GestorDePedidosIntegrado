@@ -68,6 +68,9 @@ export function BottomNav({ role }: BottomNavProps) {
         }}
         sx={{
           height: 56,
+          // Respiro para o indicador de home do iPhone
+          pb: 'env(safe-area-inset-bottom)',
+          boxSizing: 'content-box',
           '& .MuiBottomNavigationAction-root': {
             minWidth: 0,
             py: 1,

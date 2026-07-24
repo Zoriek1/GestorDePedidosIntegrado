@@ -51,34 +51,29 @@ export function resolveThemeMode(mode: ThemeMode): 'light' | 'dark' {
   return mode === 'system' ? getSystemTheme() : mode;
 }
 
+const lightPalette = {
+  primary: { main: '#143d28', light: '#1f5234', dark: '#0a2818', contrastText: '#f5f1e8' },
+  secondary: { main: '#d4af7a', light: '#e0c397', dark: '#b8945f', contrastText: '#143d28' },
+  background: { default: '#f7f5ef', paper: '#ffffff' },
+  text: { primary: '#1f2937', secondary: '#4b5563' },
+  divider: '#e5e7eb',
+};
+
+const darkPalette = {
+  primary: { main: '#2d8a56', light: '#3aad6e', dark: '#1a5c3a', contrastText: '#ffffff' },
+  secondary: { main: '#d4af7a', light: '#e0c397', dark: '#b8945f', contrastText: '#0a0a0a' },
+  background: { default: '#121212', paper: '#1e1e1e' },
+  text: { primary: '#e5e5e5', secondary: '#a3a3a3' },
+  divider: '#2e2e2e',
+  error: { main: '#f87171' },
+  warning: { main: '#fbbf24' },
+  success: { main: '#4ade80' },
+  info: { main: '#60a5fa' },
+};
+
 export function createAppTheme(mode: 'light' | 'dark') {
   return createTheme({
-    cssVariables: true,
-    palette: { mode },
-    colorSchemes: {
-      light: {
-        palette: {
-          primary: { main: '#143d28', light: '#1f5234', dark: '#0a2818', contrastText: '#f5f1e8' },
-          secondary: { main: '#d4af7a', light: '#e0c397', dark: '#b8945f', contrastText: '#143d28' },
-          background: { default: '#f7f5ef', paper: '#ffffff' },
-          text: { primary: '#1f2937', secondary: '#4b5563' },
-          divider: '#e5e7eb',
-        },
-      },
-      dark: {
-        palette: {
-          primary: { main: '#2d8a56', light: '#3aad6e', dark: '#1a5c3a', contrastText: '#ffffff' },
-          secondary: { main: '#d4af7a', light: '#e0c397', dark: '#b8945f', contrastText: '#0a0a0a' },
-          background: { default: '#121212', paper: '#1e1e1e' },
-          text: { primary: '#e5e5e5', secondary: '#a3a3a3' },
-          divider: '#2e2e2e',
-          error: { main: '#f87171' },
-          warning: { main: '#fbbf24' },
-          success: { main: '#4ade80' },
-          info: { main: '#60a5fa' },
-        },
-      },
-    },
+    palette: { mode, ...(mode === 'dark' ? darkPalette : lightPalette) },
     shape: {
       borderRadius: 12,
     },
@@ -109,5 +104,3 @@ export function createAppTheme(mode: 'light' | 'dark') {
     },
   });
 }
-
-export const theme = createAppTheme('light');

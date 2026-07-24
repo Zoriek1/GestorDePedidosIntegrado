@@ -77,7 +77,7 @@ function JsonDialog({
           sx={{
             m: 0,
             p: 2,
-            bgcolor: 'grey.100',
+            bgcolor: 'action.hover',
             borderRadius: 1,
             maxHeight: 520,
             overflow: 'auto',
@@ -287,7 +287,7 @@ export function BlingIntegrationCard({ pedidoId }: { pedidoId: number }) {
           ) : (
             <Stack spacing={1.5}>
               {(logsQuery.data?.logs ?? []).map((log) => (
-                <Box key={log.id} sx={{ p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
+                <Box key={log.id} sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <Chip label={log.level} size="small" />
                     {log.step && <Chip label={STEP_LABELS[log.step] || log.step} size="small" variant="outlined" />}

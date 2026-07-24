@@ -556,7 +556,13 @@ export function AppShell({ children }: AppShellProps) {
           aria-label="Pegar entregas"
           variant="extended"
           onClick={() => navigate('/rota-entrega', { state: { pickup: true } })}
-          sx={{ position: 'fixed', bottom: 24, right: 24, gap: 1 }}
+          sx={{
+            position: 'fixed',
+            // Mobile: acima do BottomNav (56px) + safe-area; desktop: canto inferior
+            bottom: { xs: 'calc(56px + 16px + env(safe-area-inset-bottom))', md: 24 },
+            right: 24,
+            gap: 1,
+          }}
         >
           <LocalShippingIcon />
           Entregar
@@ -567,7 +573,8 @@ export function AppShell({ children }: AppShellProps) {
           ariaLabel="Opções de criação"
           sx={{
             position: 'fixed',
-            bottom: 24,
+            // Mobile: acima do BottomNav (56px) + safe-area; desktop: canto inferior
+            bottom: { xs: 'calc(56px + 16px + env(safe-area-inset-bottom))', md: 24 },
             right: 24,
             '& .MuiFab-primary': {
               bgcolor: 'primary.main',
@@ -627,9 +634,9 @@ export function AppShell({ children }: AppShellProps) {
           flex: 1,
           py: { xs: 2, sm: 3 },
           px: isOrderWizardPage ? { xs: 1.5, sm: 2, md: 4 } : { xs: 2, sm: 3 },
-          bgcolor: isOrderWizardPage ? 'grey.100' : undefined,
-          // Garantir que conteúdo não fique escondido atrás do FAB
-          pb: { xs: 10, sm: 12 },
+          bgcolor: isOrderWizardPage ? 'background.default' : undefined,
+          // Garantir que conteúdo não fique escondido atrás do FAB + BottomNav
+          pb: { xs: 18, sm: 12 },
         }}
       >
         {children}

@@ -65,7 +65,7 @@ function EntregadorSelector({ pedido }: EntregadorSelectorProps) {
   const currentEntregador = entregadores?.find((u) => u.id === pedido.entregador_id);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+    <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 180 }}>
           <LocalShippingIcon fontSize="small" color="action" />

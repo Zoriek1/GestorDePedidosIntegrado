@@ -84,7 +84,7 @@ export function AttributedOrdersCard({ userId, from, to }: Props) {
       <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
         <Table size="small">
           <TableHead>
-            <TableRow sx={{ bgcolor: 'grey.50' }}>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
               <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>Pedido</TableCell>
               <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>Pgt. Previsto</TableCell>
               <TableCell sx={{ fontWeight: 600, fontSize: 12 }} align="right">
